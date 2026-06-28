@@ -13,6 +13,7 @@ const ROW_TYPE_LABELS = {
   sub: '補助科目',
   item: '明細',
   plan: '計画',
+  breakdown: '内訳',
   profit: '利益',
   variance: '差異',
   warningSummary: '警告',
@@ -24,6 +25,7 @@ export function visibilityRowKey(sectionId, row) {
   if (row.type === 'variance') return `${sectionId}|variance|${row.label}`;
   if (row.type === 'group') return `${sectionId}|group|${row.label}`;
   if (row.type === 'plan') return `${sectionId}|plan|${row.label}|${row.subLabel}`;
+  if (row.type === 'breakdown') return `${sectionId}|breakdown|${row.parentVendorRowId}|${row.subLabel}`;
   if (row.type === 'sub') return `${sectionId}|sub|${row.label}|${row.subLabel}`;
   return `${sectionId}|item|${row.label}|${row.subLabel || ''}`;
 }

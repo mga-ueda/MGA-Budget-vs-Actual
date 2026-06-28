@@ -2045,6 +2045,20 @@ tr.row-sub-variance .col-amount.has-variance {
   white-space: nowrap;
 }
 
+.salary-plan-table th.salary-plan-col-sub,
+.salary-plan-table td.salary-plan-col-sub {
+  width: 11rem;
+  max-width: 11rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.salary-plan-table th.salary-plan-col-sub {
+  text-align: center;
+}
+
 .salary-plan-table th.salary-plan-col-month,
 .salary-plan-table td.salary-plan-amount-cell {
   width: 4.75rem;
