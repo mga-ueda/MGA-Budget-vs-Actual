@@ -31,6 +31,23 @@ const PERSONNEL_SECTION_LABEL = '\u4eba\u4ef6\u8cbb';
 const PERSONNEL_TOTAL_LABEL = '\u4eba\u4ef6\u8cbb\u5408\u8a08';
 const TOTAL_COLUMN = EXTRA_COLUMNS[0];
 
+function planRowSortTotal(row) {
+  return Math.abs(row.values[TOTAL_COLUMN] ?? 0);
+}
+
+/** 金額降順 → 勘定科目 → 補助科目（氏名） */
+function comparePlanRowsByTotal(a, b) {
+  const byAmount = planRowSortTotal(b) - planRowSortTotal(a);
+  if (byAmount !== 0) return byAmount;
+  const byAccount = (a.label ?? '').localeCompare(b.label ?? '', 'ja');
+  if (byAccount !== 0) return byAccount;
+  return (a.subLabel ?? '').localeCompare(b.subLabel ?? '', 'ja');
+}
+
+function sortPlanRowsByTotal(rows) {
+  return [...rows].sort(comparePlanRowsByTotal);
+}
+
 function combineMonthlyAndBonusValues(plan, fiscalMonths) {
   const values = {};
   for (const m of FISCAL_MONTHS) {
@@ -368,8 +385,8 @@ function buildEmployeePlanRows(activeEmployees, salaryPlans, fiscalPeriod, fisca
   const hasStaffPlan = (staffPlanTotalEnriched[TOTAL_COLUMN] ?? 0) !== 0;
 
   return {
-    directorRows,
-    salaryRows,
+    directorRows: sortPlanRowsByTotal(directorRows),
+    salaryRows: sortPlanRowsByTotal(salaryRows),
     directorPlanTotal: hasDirectorPlan ? directorPlanTotalEnriched : null,
     staffPlanTotal: hasStaffPlan ? staffPlanTotalEnriched : null,
   };
