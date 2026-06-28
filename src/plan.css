@@ -43,6 +43,7 @@ html {
   --plan-fill-color-2: #3F1B1B;
   --plan-amount-color: #00b0f0;
   --plan-amount-variance-color: #c65911;
+  --plan-warning-text: #ffff00;
   --plan-colored-cell-font-weight: bold;
   --plan-header-h: 120px;
   --plan-font-table: "Meiryo UI", Meiryo, "メイリオ", sans-serif;
@@ -103,15 +104,21 @@ html {
 }
 
 .plan-logo {
-  width: 36px;
+  box-sizing: border-box;
   height: 36px;
+  min-width: 36px;
+  width: auto;
+  padding: 0 0.5rem;
   border-radius: 8px;
-  background: linear-gradient(135deg, #2563eb, #1d4ed8);
-  display: grid;
-  place-items: center;
+  background: #2563eb;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   font-weight: 800;
   font-size: 0.7rem;
   letter-spacing: -0.03em;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .plan-company {
@@ -511,6 +518,33 @@ select.app-settings-input {
   flex-direction: column;
   gap: 0.35rem;
   max-width: 100%;
+}
+
+.brand-settings-section {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--plan-border);
+}
+
+.brand-color-row {
+  align-items: flex-end;
+}
+
+.brand-settings-preview {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  margin-top: 0.35rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 8px;
+  background: var(--plan-surface);
+  border: 1px solid var(--plan-border);
+  width: fit-content;
+  max-width: 100%;
+}
+
+.brand-settings-preview-company {
+  text-transform: uppercase;
 }
 
 .consumption-tax-rate-section,
@@ -1223,6 +1257,15 @@ select.app-settings-input {
   color: var(--section-text);
 }
 
+.plan-table tbody td.col-category.col-category-multiline {
+  white-space: normal;
+  line-height: 1.3;
+}
+
+.plan-table tbody td.col-category .col-category-note {
+  font-size: 0.5em;
+}
+
 .col-label {
   width: var(--plan-col-label-w);
   min-width: var(--plan-col-label-w);
@@ -1319,8 +1362,13 @@ tr.row-section-total .col-category {
   color: var(--plan-amount-color);
 }
 
-.plan-table tbody tr.row-plan-amount td.col-amount.plan-amount-variance {
-  color: var(--plan-amount-variance-color);
+.plan-table tbody td.col-amount.plan-amount-variance {
+  color: var(--plan-amount-variance-color) !important;
+}
+
+.plan-table tbody tr.row-plan-amount td.col-amount.plan-amount-variance,
+.plan-table tbody tr.row-section-total td.col-amount.plan-amount-variance {
+  color: var(--plan-amount-variance-color) !important;
 }
 
 tr.row-section-total .col-label,
@@ -1460,6 +1508,37 @@ tr.row-variance .col-amount.has-variance {
   background: rgba(255, 0, 0, 0.2) !important;
   border-color: rgba(255, 0, 0, 0.2) !important;
   color: #ff0000;
+}
+
+tr.row-warning-summary td {
+  background: var(--section-bg) !important;
+  border-color: var(--section-bg) !important;
+  font-weight: 600;
+}
+
+tr.row-warning-summary .col-label,
+tr.row-warning-summary .col-sub,
+tr.row-warning-summary .col-amount,
+tr.row-warning-summary .col-amount .amount-yen,
+tr.row-warning-summary .col-amount .amount-yen.amount-negative,
+tr.row-warning-summary .col-amount .amount-prefix {
+  background: var(--section-bg) !important;
+  color: var(--plan-warning-text) !important;
+}
+
+tr.row-sub-variance td {
+  background: rgba(255, 0, 0, 0.06);
+  border-color: rgba(255, 0, 0, 0.06);
+}
+
+tr.row-sub-variance .col-sub {
+  color: #ff0000;
+  font-weight: 600;
+}
+
+tr.row-sub-variance .col-amount.has-variance {
+  color: #ff0000 !important;
+  font-weight: 600;
 }
 
 .amount-variance-ok {

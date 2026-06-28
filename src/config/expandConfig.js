@@ -1,7 +1,7 @@
 const EXPAND_STORAGE_KEY = 'mga-sub-expand-config';
 
 /** 補助科目1件でも常に展開表示する大項目 */
-export const ALWAYS_EXPAND_SECTION_IDS = new Set(['revenue', 'receivables']);
+export const ALWAYS_EXPAND_SECTION_IDS = new Set(['revenue', 'revenueVariance']);
 
 export function expandConfigKey(sectionId, account) {
   return `${sectionId}|${account}`;

@@ -23,6 +23,7 @@ export const DEFAULT_UI_COLORS = {
   fillColor2: '#3F1B1B',
   planAmountColor: '#00B0F0',
   amountVarianceColor: '#C65911',
+  warningTextColor: '#FFFF00',
 };
 
 function parseHex(hex) {
@@ -91,6 +92,7 @@ export function getUiColors(config = {}) {
     fillColor2: config.fillColor2 ?? DEFAULT_UI_COLORS.fillColor2,
     planAmountColor: config.planAmountColor ?? DEFAULT_UI_COLORS.planAmountColor,
     amountVarianceColor: config.amountVarianceColor ?? DEFAULT_UI_COLORS.amountVarianceColor,
+    warningTextColor: config.warningTextColor ?? DEFAULT_UI_COLORS.warningTextColor,
   };
 }
 
@@ -105,6 +107,7 @@ export function applyUiColors(config = {}) {
     fillColor2,
     planAmountColor,
     amountVarianceColor,
+    warningTextColor,
   } = getUiColors(config);
   const root = document.querySelector('.plan-app');
   if (!root) return;
@@ -132,6 +135,7 @@ export function applyUiColors(config = {}) {
   root.style.setProperty('--plan-fill-color-2', opaqueHex(fillColor2));
   root.style.setProperty('--plan-amount-color', opaqueHex(planAmountColor));
   root.style.setProperty('--plan-amount-variance-color', opaqueHex(amountVarianceColor));
+  root.style.setProperty('--plan-warning-text', opaqueHex(warningTextColor));
 }
 
 export function isUiColorCustom(config = {}) {
@@ -153,5 +157,6 @@ export function isUiColorCustom(config = {}) {
     || current.fillColor2 !== DEFAULT_UI_COLORS.fillColor2
     || current.planAmountColor !== DEFAULT_UI_COLORS.planAmountColor
     || current.amountVarianceColor !== DEFAULT_UI_COLORS.amountVarianceColor
+    || current.warningTextColor !== DEFAULT_UI_COLORS.warningTextColor
   );
 }

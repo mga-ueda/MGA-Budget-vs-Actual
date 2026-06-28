@@ -97,6 +97,32 @@ function makeRow(id, label, subLabel, values, type = 'item', parentId = null, va
   return row;
 }
 
+function buildArMinusRevValues(arValues, revValues) {
+  const values = emptyMonthValues();
+  for (const m of FISCAL_MONTHS) {
+    values[m] = (arValues[m] ?? 0) - (revValues[m] ?? 0);
+  }
+  return values;
+}
+
+function buildArMinusRevVariance(arValues, revValues) {
+  return enrichRowValues(buildArMinusRevValues(arValues, revValues));
+}
+
+function appendReceivableSubVarianceRows(filteredItems, revenueSection) {
+  const revBySub = revenueBySub(revenueSection);
+  const rows = [];
+  for (const row of filteredItems) {
+    rows.push(row);
+    if (row.type !== 'item' && row.type !== 'sub') continue;
+    const rev = revBySub.get(subSortKey(row.subLabel || '')) ?? emptyMonthValues();
+    const diff = buildArMinusRevValues(monthValuesOnly(row.values), rev);
+    if (!FISCAL_MONTHS.some((m) => (diff[m] ?? 0) !== 0)) continue;
+    rows.push(makeRow(`${row.id}-saiko`, '', '差額有', diff, 'sub-variance', row.id));
+  }
+  return rows;
+}
+
 function sumRawValues(items) {
   const total = emptyMonthValues();
   for (const item of items) {
@@ -121,6 +147,39 @@ function accountGroupTotal(items) {
 
 function itemSortTotal(item) {
   return sortByAnnualTotal(item.values);
+}
+
+function subSortKey(sub) {
+  return sub || '補助科目なし';
+}
+
+/** 金額降順 → 勘定科目 → 補助科目 */
+function compareByAmountThenLabels(amountA, amountB, accountA, accountB, subA = '', subB = '') {
+  const byAmount = amountB - amountA;
+  if (byAmount !== 0) return byAmount;
+  const byAccount = accountA.localeCompare(accountB, 'ja');
+  if (byAccount !== 0) return byAccount;
+  return subSortKey(subA).localeCompare(subSortKey(subB), 'ja');
+}
+
+function compareItemsBySortTotal(a, b) {
+  return compareByAmountThenLabels(
+    itemSortTotal(a),
+    itemSortTotal(b),
+    a.account,
+    b.account,
+    a.sub,
+    b.sub,
+  );
+}
+
+function compareAccountGroups(a, b) {
+  return compareByAmountThenLabels(
+    accountGroupTotal(a[1]),
+    accountGroupTotal(b[1]),
+    a[0],
+    b[0],
+  );
 }
 
 /** 補助科目1件のみのときは非表示（売上高・売掛金は除く）。2件以上で空欄は「補助科目なし」 */
@@ -154,9 +213,7 @@ function buildGroupedAccountRows(rawItems, idPrefix, sectionId, expandConfig = {
     groups.get(r.account).push(r);
   }
 
-  const sorted = [...groups.entries()].sort(
-    (a, b) => accountGroupTotal(b[1]) - accountGroupTotal(a[1]),
-  );
+  const sorted = [...groups.entries()].sort(compareAccountGroups);
   const rows = [];
   let idx = 0;
 
@@ -165,9 +222,7 @@ function buildGroupedAccountRows(rawItems, idPrefix, sectionId, expandConfig = {
     const collapsible = isCollapsibleGroup(sectionId, account, subCount, expandConfig);
 
     if (!collapsible) {
-      const subs = [...items].sort(
-        (a, b) => itemSortTotal(b) - itemSortTotal(a),
-      );
+      const subs = [...items].sort(compareItemsBySortTotal);
       for (const item of subs) {
         rows.push(makeRow(
           `${idPrefix}-${idx++}`,
@@ -195,9 +250,7 @@ function buildGroupedAccountRows(rawItems, idPrefix, sectionId, expandConfig = {
     const groupId = `${idPrefix}-g-${idx++}`;
     rows.push(makeRow(groupId, account, '', sumRawValues(items), 'group'));
 
-    const subs = [...items].sort(
-      (a, b) => itemSortTotal(b) - itemSortTotal(a),
-    );
+    const subs = [...items].sort(compareItemsBySortTotal);
     subs.forEach((item, j) => {
       rows.push(makeRow(
         `${groupId}-s-${j}`,
@@ -273,19 +326,9 @@ function pushSection(sections, cfg) {
 
 function aggregateJournal(text) {
   const aggregated = new Map();
-  const receivables = new Map();
   const cashFlow = { inflow: emptyMonthValues(), outflow: emptyMonthValues() };
   const otherPayments = new Map();
   const corpTax = emptyMonthValues();
-
-  const trackReceivable = (debitAcct, debitSub, debitAmt, creditAcct, creditSub, creditAmt, month) => {
-    if (debitAcct !== '売掛金' || creditAcct !== '売上高' || debitAmt === 0) return;
-    if (debitAmt !== creditAmt) return;
-    const sub = debitSub || creditSub || '';
-    const key = sub ? `売掛金|${sub}` : '売掛金';
-    if (!receivables.has(key)) receivables.set(key, emptyMonthValues());
-    receivables.get(key)[month] += debitAmt;
-  };
 
   const trackPayment = (account, sub, amount, month) => {
     const key = sub ? `${account}|${sub}` : account;
@@ -342,10 +385,9 @@ function aggregateJournal(text) {
 
     processSide(debitAcct, debitSub, cells[8], 'debit');
     processSide(creditAcct, creditSub, cells[16], 'credit');
-    trackReceivable(debitAcct, debitSub, debitAmt, creditAcct, creditSub, creditAmt, mk);
   }
 
-  return { aggregated, receivables, cashFlow, otherPayments, corpTax };
+  return { aggregated, cashFlow, otherPayments, corpTax };
 }
 
 function buildPlSections(aggregated, expandConfig, expandCandidates) {
@@ -365,13 +407,13 @@ function buildPlSections(aggregated, expandConfig, expandCandidates) {
     bySection[cat].sort((a, b) => {
       const ta = FISCAL_MONTHS.reduce((s, m) => s + Math.abs(a.values[m] ?? 0), 0);
       const tb = FISCAL_MONTHS.reduce((s, m) => s + Math.abs(b.values[m] ?? 0), 0);
-      return tb - ta;
+      return compareByAmountThenLabels(ta, tb, a.account, b.account, a.sub, b.sub);
     });
   }
 
   const sections = [];
   const plDefs = [
-    { id: 'revenue', label: '売上高', filter: 'income', key: 'revenue', prefix: 'rev', totalLabel: '売上合計' },
+    { id: 'revenue', label: '売上高', filter: 'income', key: 'revenue', prefix: 'rev', totalLabel: '売上高合計' },
     { id: 'nonOperating', label: '営業外収益', filter: 'income', key: 'nonOperating', prefix: 'no', totalLabel: '営業外収益合計' },
     { id: 'nonOperatingExpense', label: '営業外費用', filter: 'expense', key: 'nonOperatingExpense', prefix: 'noe', totalLabel: '営業外費用合計' },
     { id: 'personnel', label: '人件費', filter: 'personnel', key: 'personnel', prefix: 'per', totalLabel: '人件費合計' },
@@ -396,41 +438,179 @@ function buildPlSections(aggregated, expandConfig, expandCandidates) {
 }
 
 function buildVarianceValues(revValues, arValues) {
-  const values = emptyMonthValues();
-  for (const m of FISCAL_MONTHS) {
-    values[m] = (revValues[m] ?? 0) - (arValues[m] ?? 0);
-  }
-  return enrichRowValues(values);
+  return buildArMinusRevVariance(arValues, revValues);
 }
 
-function buildReceivablesSection(receivables, plSections, expandConfig, expandCandidates) {
-  const revenueSection = plSections.find((s) => s.id === 'revenue');
-  if (!revenueSection || receivables.size === 0) return null;
+function extractReceivableRowsFromBs(bsText) {
+  const rows = extractBsRows(bsText, ['売上債権'], '売上債権合計', false);
+  return rows.filter((r) => r.account === '売掛金');
+}
 
-  const rawItems = [];
-  for (const [key, values] of receivables) {
-    const total = FISCAL_MONTHS.reduce((s, m) => s + Math.abs(values[m] ?? 0), 0);
-    if (total === 0) continue;
-    const [account, sub] = key.split('|');
-    rawItems.push({ account, sub: sub ?? '', values });
+function monthValuesOnly(values) {
+  const months = {};
+  for (const m of FISCAL_MONTHS) months[m] = values[m] ?? 0;
+  return months;
+}
+
+function revenueBySub(revenueSection) {
+  const bySub = new Map();
+  for (const row of revenueSection.rows) {
+    if (row.type !== 'item' && row.type !== 'sub') continue;
+    const key = subSortKey(row.subLabel || '');
+    if (!bySub.has(key)) bySub.set(key, emptyMonthValues());
+    const bucket = bySub.get(key);
+    for (const m of FISCAL_MONTHS) {
+      bucket[m] = (bucket[m] ?? 0) + (row.values[m] ?? 0);
+    }
   }
+  return bySub;
+}
+
+function sumRevValues(revBySub, subKeys) {
+  const sum = emptyMonthValues();
+  for (const key of subKeys) {
+    const rev = revBySub.get(key) ?? emptyMonthValues();
+    for (const m of FISCAL_MONTHS) sum[m] += rev[m] ?? 0;
+  }
+  return sum;
+}
+
+function sectionValuesBySub(section) {
+  const bySub = new Map();
+  if (!section) return bySub;
+  for (const row of section.rows) {
+    if (row.type !== 'item' && row.type !== 'sub') continue;
+    const key = subSortKey(row.subLabel || '');
+    if (!bySub.has(key)) bySub.set(key, emptyMonthValues());
+    const bucket = bySub.get(key);
+    for (const m of FISCAL_MONTHS) {
+      bucket[m] = (bucket[m] ?? 0) + (row.values[m] ?? 0);
+    }
+  }
+  return bySub;
+}
+
+function compareAmountAtMonth(aValues, bValues, month) {
+  return (aValues[month] ?? 0) !== (bValues[month] ?? 0);
+}
+
+function sumReceivablesArBalance(receivablesSection) {
+  if (!receivablesSection) return emptyMonthValues();
+  return sumValues(receivablesSection.rows.filter((r) => r.type === 'item' || r.type === 'group'));
+}
+
+/** 売上高差異の月次突合用ルックアップ（売上高側と比較） */
+export function buildRevenueReceivablesCrossVarianceContext(sections) {
+  const revenueSection = sections.find((s) => s.id === 'revenue');
+  const revenueVarianceSection = sections.find((s) => s.id === 'revenueVariance');
+  return {
+    revenueBySub: sectionValuesBySub(revenueSection),
+    revTotal: getTotalRow(revenueSection)?.values ?? emptyMonthValues(),
+    arTotal: sumReceivablesArBalance(revenueVarianceSection),
+  };
+}
+
+/** 売上高差異: 売上高と差異がある月だけ金額を表示 */
+export function shouldShowCrossVarianceMonth(section, row, month, ctx) {
+  if (section.id !== 'revenueVariance') return true;
+
+  if (row.type === 'sub-variance') {
+    return (row.values[month] ?? 0) !== 0;
+  }
+
+  if (row.type === 'warningSummary') {
+    return compareAmountAtMonth(ctx.revTotal, ctx.arTotal, month);
+  }
+
+  if (row.type === 'item' || row.type === 'sub') {
+    const key = subSortKey(row.subLabel || '');
+    const rev = ctx.revenueBySub.get(key) ?? emptyMonthValues();
+    return compareAmountAtMonth(row.values, rev, month);
+  }
+
+  if (row.type === 'group') {
+    const subs = section.rows
+      .filter((r) => r.parentId === row.id && (r.type === 'sub' || r.type === 'item'))
+      .map((r) => subSortKey(r.subLabel || ''));
+    const rev = sumRevValues(ctx.revenueBySub, subs);
+    return compareAmountAtMonth(row.values, rev, month);
+  }
+
+  return true;
+}
+
+function hasAnyMonthDifference(aValues, bValues) {
+  return FISCAL_MONTHS.some((m) => (aValues[m] ?? 0) !== (bValues[m] ?? 0));
+}
+
+/** 相手側の補助科目別月次と全月一致する明細行を除外 */
+function filterDetailRowsByCrossVariance(plainItems, otherBySub) {
+  const keptIds = new Set();
+
+  for (const row of plainItems) {
+    if (row.type === 'item' || row.type === 'sub') {
+      const other = otherBySub.get(subSortKey(row.subLabel || '')) ?? emptyMonthValues();
+      if (hasAnyMonthDifference(row.values, other)) keptIds.add(row.id);
+      continue;
+    }
+    if (row.type === 'group') {
+      const subKeys = plainItems
+        .filter((r) => r.parentId === row.id && (r.type === 'sub' || r.type === 'item'))
+        .map((r) => subSortKey(r.subLabel || ''));
+      const other = sumRevValues(otherBySub, subKeys);
+      if (hasAnyMonthDifference(row.values, other)) keptIds.add(row.id);
+    }
+  }
+
+  for (const row of plainItems) {
+    if (row.type === 'group' && plainItems.some((r) => r.parentId === row.id && keptIds.has(r.id))) {
+      keptIds.add(row.id);
+    }
+  }
+
+  return plainItems.filter((r) => keptIds.has(r.id));
+}
+
+function extractReceivableRawItems(bsText) {
+  if (!bsText) return [];
+  return filterBsDuplicateParents(extractReceivableRowsFromBs(bsText))
+    .filter((r) => !r.isTotal)
+    .map((r) => ({ account: r.account, sub: r.sub ?? '', values: r.values }))
+    .filter((item) => FISCAL_MONTHS.some((m) => (item.values[m] ?? 0) !== 0));
+}
+
+function buildReceivablesSection(bsText, revenueSection, expandConfig, expandCandidates) {
+  if (!revenueSection || !bsText) return null;
+
+  const rawItems = extractReceivableRawItems(bsText);
   if (rawItems.length === 0) return null;
 
-  expandCandidates.push(...collectExpandCandidatesFromItems('receivables', '売掛金', rawItems));
-  const items = buildGroupedAccountRows(rawItems, 'ar', 'receivables', expandConfig);
-  const arTotal = sumTopLevelRows(items);
+  const plainItems = buildGroupedAccountRows(rawItems, 'ar', 'revenueVariance', expandConfig);
+  const arTotalRaw = sumTopLevelRows(plainItems);
   const revTotal = getTotalRow(revenueSection);
-  const variance = buildVarianceValues(revTotal?.values ?? {}, arTotal);
+  const revMinusAr = subtractValues(revTotal?.values ?? enrichRowValues(emptyMonthValues()), arTotalRaw);
+  if ((revMinusAr.合計 ?? 0) === 0) return null;
+
+  expandCandidates.push(...collectExpandCandidatesFromItems('revenueVariance', '売掛金', rawItems));
+  const filteredItems = filterDetailRowsByCrossVariance(plainItems, revenueBySub(revenueSection));
+
+  const detailRows = appendReceivableSubVarianceRows(
+    filteredItems.map((r) => ({
+      ...r,
+      values: enrichRowValues(monthValuesOnly(r.values), 'balance'),
+    })),
+    revenueSection,
+  );
 
   return {
-    id: 'receivables',
-    label: '売掛金',
+    id: 'revenueVariance',
+    label: '売上高差異',
+    labelNote: '（差額有のみ）',
     filter: 'income',
-    ...sectionColors('receivables'),
+    ...sectionColors('revenueVariance'),
     rows: [
-      ...items,
-      makeTotalRow('ar-total', '売掛金合計', arTotal),
-      makeRow('ar-variance', '差異（売上−売掛）', '', variance, 'variance'),
+      ...detailRows,
+      makeRow('rev-ar-total', '売上高－売掛金', '', revMinusAr, 'warningSummary'),
     ],
   };
 }
@@ -691,10 +871,13 @@ export function zeroOutPlanData(planData) {
 }
 
 export function buildFullPlan(journalText, bsText, expandConfig = {}) {
-  const { aggregated, receivables, cashFlow, otherPayments, corpTax } = aggregateJournal(journalText);
+  const { aggregated, cashFlow, otherPayments, corpTax } = aggregateJournal(journalText);
   const expandCandidates = [];
   const plSections = buildPlSections(aggregated, expandConfig, expandCandidates);
-  const receivablesSection = buildReceivablesSection(receivables, plSections, expandConfig, expandCandidates);
+  const revenueSection = plSections.find((s) => s.id === 'revenue');
+  const receivablesSection = buildReceivablesSection(
+    bsText, revenueSection, expandConfig, expandCandidates,
+  );
   const plWithAr = insertReceivablesAfterRevenue(plSections, receivablesSection);
   const profitSection = buildProfitSection(plWithAr);
   const bsSections = bsText ? buildBsSections(bsText, expandConfig, expandCandidates) : [];

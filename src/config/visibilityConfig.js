@@ -1,7 +1,7 @@
 const VISIBILITY_STORAGE_KEY = 'mga-row-visibility';
 
 /** 表示設定の対象外（常に表示・大きく表示） */
-export const VISIBILITY_FIXED_SECTION_IDS = new Set(['revenue', 'receivables']);
+export const VISIBILITY_FIXED_SECTION_IDS = new Set(['revenue', 'revenueVariance']);
 
 export function isVisibilityFixedSection(sectionId) {
   return VISIBILITY_FIXED_SECTION_IDS.has(sectionId);
@@ -15,6 +15,7 @@ const ROW_TYPE_LABELS = {
   plan: '計画',
   profit: '利益',
   variance: '差異',
+  warningSummary: '警告',
 };
 
 export function visibilityRowKey(sectionId, row) {

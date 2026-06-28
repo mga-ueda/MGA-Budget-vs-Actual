@@ -158,7 +158,7 @@ async function readCsvFile(file) {
 const EXPAND_STORAGE_KEY = 'mga-sub-expand-config';
 
 /** 補助科目1件でも常に展開表示する大項目 */
-const ALWAYS_EXPAND_SECTION_IDS = new Set(['revenue', 'receivables']);
+const ALWAYS_EXPAND_SECTION_IDS = new Set(['revenue', 'revenueVariance']);
 
 function expandConfigKey(sectionId, account) {
   return `${sectionId}|${account}`;
@@ -234,7 +234,7 @@ function isHideTotalWhenExpanded(sectionId, account, config) {
 const VISIBILITY_STORAGE_KEY = 'mga-row-visibility';
 
 /** 表示設定の対象外（常に表示・大きく表示） */
-const VISIBILITY_FIXED_SECTION_IDS = new Set(['revenue', 'receivables']);
+const VISIBILITY_FIXED_SECTION_IDS = new Set(['revenue', 'revenueVariance']);
 
 function isVisibilityFixedSection(sectionId) {
   return VISIBILITY_FIXED_SECTION_IDS.has(sectionId);
@@ -248,6 +248,7 @@ const ROW_TYPE_LABELS = {
   plan: '計画',
   profit: '利益',
   variance: '差異',
+  warningSummary: '警告',
 };
 
 function visibilityRowKey(sectionId, row) {
@@ -365,7 +366,7 @@ const DEFAULT_SECTION_COLORS = {
   other: { color: '#375623', barColor: '#375623', textColor: DEFAULT_TEXT_COLOR },
   outsourcing: { color: '#548235', barColor: '#548235', textColor: DEFAULT_TEXT_COLOR },
   tax: { color: '#9a3412', barColor: '#7c2d12', textColor: DEFAULT_TEXT_COLOR },
-  receivables: { color: '#c00000', barColor: '#c00000', textColor: DEFAULT_TEXT_COLOR },
+  revenueVariance: { color: '#c00000', barColor: '#c00000', textColor: DEFAULT_TEXT_COLOR },
   profit: { color: '#ffc000', barColor: '#ffc000', textColor: DEFAULT_DARK_TEXT_COLOR },
   currentAssets: { color: '#1f4e78', barColor: '#1f4e78', textColor: DEFAULT_TEXT_COLOR },
   fixedAssets: { color: '#1f4e78', barColor: '#1f4e78', textColor: DEFAULT_TEXT_COLOR },
@@ -412,7 +413,12 @@ function saveSectionColorConfig(config) {
 
 function normalizeSectionColorConfig(config) {
   const normalized = {};
-  for (const [id, val] of Object.entries(config)) {
+  const migrated = { ...config };
+  if (migrated.receivables && !migrated.revenueVariance) {
+    migrated.revenueVariance = migrated.receivables;
+  }
+  delete migrated.receivables;
+  for (const [id, val] of Object.entries(migrated)) {
     if (typeof val === 'string') {
       normalized[id] = val;
     } else if (val) {
@@ -427,7 +433,8 @@ function normalizeSectionColorConfig(config) {
 
 function getSectionColors(sectionId, config = {}) {
   const defaults = DEFAULT_SECTION_COLORS[sectionId] ?? FALLBACK;
-  const override = config[sectionId];
+  const override = config[sectionId]
+    ?? (sectionId === 'revenueVariance' ? config.receivables : undefined);
   if (!override) return { ...defaults };
   if (typeof override === 'string') return { ...defaults, barColor: override };
   return {
@@ -505,6 +512,7 @@ const DEFAULT_UI_COLORS = {
   fillColor2: '#3F1B1B',
   planAmountColor: '#00B0F0',
   amountVarianceColor: '#C65911',
+  warningTextColor: '#FFFF00',
 };
 
 function parseHex(hex) {
@@ -573,6 +581,7 @@ function getUiColors(config = {}) {
     fillColor2: config.fillColor2 ?? DEFAULT_UI_COLORS.fillColor2,
     planAmountColor: config.planAmountColor ?? DEFAULT_UI_COLORS.planAmountColor,
     amountVarianceColor: config.amountVarianceColor ?? DEFAULT_UI_COLORS.amountVarianceColor,
+    warningTextColor: config.warningTextColor ?? DEFAULT_UI_COLORS.warningTextColor,
   };
 }
 
@@ -587,6 +596,7 @@ function applyUiColors(config = {}) {
     fillColor2,
     planAmountColor,
     amountVarianceColor,
+    warningTextColor,
   } = getUiColors(config);
   const root = document.querySelector('.plan-app');
   if (!root) return;
@@ -614,6 +624,7 @@ function applyUiColors(config = {}) {
   root.style.setProperty('--plan-fill-color-2', opaqueHex(fillColor2));
   root.style.setProperty('--plan-amount-color', opaqueHex(planAmountColor));
   root.style.setProperty('--plan-amount-variance-color', opaqueHex(amountVarianceColor));
+  root.style.setProperty('--plan-warning-text', opaqueHex(warningTextColor));
 }
 
 function isUiColorCustom(config = {}) {
@@ -635,6 +646,7 @@ function isUiColorCustom(config = {}) {
     || current.fillColor2 !== DEFAULT_UI_COLORS.fillColor2
     || current.planAmountColor !== DEFAULT_UI_COLORS.planAmountColor
     || current.amountVarianceColor !== DEFAULT_UI_COLORS.amountVarianceColor
+    || current.warningTextColor !== DEFAULT_UI_COLORS.warningTextColor
   );
 }
 
@@ -726,6 +738,32 @@ function makeRow(id, label, subLabel, values, type = 'item', parentId = null, va
   return row;
 }
 
+function buildArMinusRevValues(arValues, revValues) {
+  const values = emptyMonthValues();
+  for (const m of FISCAL_MONTHS) {
+    values[m] = (arValues[m] ?? 0) - (revValues[m] ?? 0);
+  }
+  return values;
+}
+
+function buildArMinusRevVariance(arValues, revValues) {
+  return enrichRowValues(buildArMinusRevValues(arValues, revValues));
+}
+
+function appendReceivableSubVarianceRows(filteredItems, revenueSection) {
+  const revBySub = revenueBySub(revenueSection);
+  const rows = [];
+  for (const row of filteredItems) {
+    rows.push(row);
+    if (row.type !== 'item' && row.type !== 'sub') continue;
+    const rev = revBySub.get(subSortKey(row.subLabel || '')) ?? emptyMonthValues();
+    const diff = buildArMinusRevValues(monthValuesOnly(row.values), rev);
+    if (!FISCAL_MONTHS.some((m) => (diff[m] ?? 0) !== 0)) continue;
+    rows.push(makeRow(`${row.id}-saiko`, '', '差額有', diff, 'sub-variance', row.id));
+  }
+  return rows;
+}
+
 function sumRawValues(items) {
   const total = emptyMonthValues();
   for (const item of items) {
@@ -750,6 +788,39 @@ function accountGroupTotal(items) {
 
 function itemSortTotal(item) {
   return sortByAnnualTotal(item.values);
+}
+
+function subSortKey(sub) {
+  return sub || '補助科目なし';
+}
+
+/** 金額降順 → 勘定科目 → 補助科目 */
+function compareByAmountThenLabels(amountA, amountB, accountA, accountB, subA = '', subB = '') {
+  const byAmount = amountB - amountA;
+  if (byAmount !== 0) return byAmount;
+  const byAccount = accountA.localeCompare(accountB, 'ja');
+  if (byAccount !== 0) return byAccount;
+  return subSortKey(subA).localeCompare(subSortKey(subB), 'ja');
+}
+
+function compareItemsBySortTotal(a, b) {
+  return compareByAmountThenLabels(
+    itemSortTotal(a),
+    itemSortTotal(b),
+    a.account,
+    b.account,
+    a.sub,
+    b.sub,
+  );
+}
+
+function compareAccountGroups(a, b) {
+  return compareByAmountThenLabels(
+    accountGroupTotal(a[1]),
+    accountGroupTotal(b[1]),
+    a[0],
+    b[0],
+  );
 }
 
 /** 補助科目1件のみのときは非表示（売上高・売掛金は除く）。2件以上で空欄は「補助科目なし」 */
@@ -783,9 +854,7 @@ function buildGroupedAccountRows(rawItems, idPrefix, sectionId, expandConfig = {
     groups.get(r.account).push(r);
   }
 
-  const sorted = [...groups.entries()].sort(
-    (a, b) => accountGroupTotal(b[1]) - accountGroupTotal(a[1]),
-  );
+  const sorted = [...groups.entries()].sort(compareAccountGroups);
   const rows = [];
   let idx = 0;
 
@@ -794,9 +863,7 @@ function buildGroupedAccountRows(rawItems, idPrefix, sectionId, expandConfig = {
     const collapsible = isCollapsibleGroup(sectionId, account, subCount, expandConfig);
 
     if (!collapsible) {
-      const subs = [...items].sort(
-        (a, b) => itemSortTotal(b) - itemSortTotal(a),
-      );
+      const subs = [...items].sort(compareItemsBySortTotal);
       for (const item of subs) {
         rows.push(makeRow(
           `${idPrefix}-${idx++}`,
@@ -824,9 +891,7 @@ function buildGroupedAccountRows(rawItems, idPrefix, sectionId, expandConfig = {
     const groupId = `${idPrefix}-g-${idx++}`;
     rows.push(makeRow(groupId, account, '', sumRawValues(items), 'group'));
 
-    const subs = [...items].sort(
-      (a, b) => itemSortTotal(b) - itemSortTotal(a),
-    );
+    const subs = [...items].sort(compareItemsBySortTotal);
     subs.forEach((item, j) => {
       rows.push(makeRow(
         `${groupId}-s-${j}`,
@@ -902,19 +967,9 @@ function pushSection(sections, cfg) {
 
 function aggregateJournal(text) {
   const aggregated = new Map();
-  const receivables = new Map();
   const cashFlow = { inflow: emptyMonthValues(), outflow: emptyMonthValues() };
   const otherPayments = new Map();
   const corpTax = emptyMonthValues();
-
-  const trackReceivable = (debitAcct, debitSub, debitAmt, creditAcct, creditSub, creditAmt, month) => {
-    if (debitAcct !== '売掛金' || creditAcct !== '売上高' || debitAmt === 0) return;
-    if (debitAmt !== creditAmt) return;
-    const sub = debitSub || creditSub || '';
-    const key = sub ? `売掛金|${sub}` : '売掛金';
-    if (!receivables.has(key)) receivables.set(key, emptyMonthValues());
-    receivables.get(key)[month] += debitAmt;
-  };
 
   const trackPayment = (account, sub, amount, month) => {
     const key = sub ? `${account}|${sub}` : account;
@@ -971,10 +1026,9 @@ function aggregateJournal(text) {
 
     processSide(debitAcct, debitSub, cells[8], 'debit');
     processSide(creditAcct, creditSub, cells[16], 'credit');
-    trackReceivable(debitAcct, debitSub, debitAmt, creditAcct, creditSub, creditAmt, mk);
   }
 
-  return { aggregated, receivables, cashFlow, otherPayments, corpTax };
+  return { aggregated, cashFlow, otherPayments, corpTax };
 }
 
 function buildPlSections(aggregated, expandConfig, expandCandidates) {
@@ -994,13 +1048,13 @@ function buildPlSections(aggregated, expandConfig, expandCandidates) {
     bySection[cat].sort((a, b) => {
       const ta = FISCAL_MONTHS.reduce((s, m) => s + Math.abs(a.values[m] ?? 0), 0);
       const tb = FISCAL_MONTHS.reduce((s, m) => s + Math.abs(b.values[m] ?? 0), 0);
-      return tb - ta;
+      return compareByAmountThenLabels(ta, tb, a.account, b.account, a.sub, b.sub);
     });
   }
 
   const sections = [];
   const plDefs = [
-    { id: 'revenue', label: '売上高', filter: 'income', key: 'revenue', prefix: 'rev', totalLabel: '売上合計' },
+    { id: 'revenue', label: '売上高', filter: 'income', key: 'revenue', prefix: 'rev', totalLabel: '売上高合計' },
     { id: 'nonOperating', label: '営業外収益', filter: 'income', key: 'nonOperating', prefix: 'no', totalLabel: '営業外収益合計' },
     { id: 'nonOperatingExpense', label: '営業外費用', filter: 'expense', key: 'nonOperatingExpense', prefix: 'noe', totalLabel: '営業外費用合計' },
     { id: 'personnel', label: '人件費', filter: 'personnel', key: 'personnel', prefix: 'per', totalLabel: '人件費合計' },
@@ -1025,41 +1079,179 @@ function buildPlSections(aggregated, expandConfig, expandCandidates) {
 }
 
 function buildVarianceValues(revValues, arValues) {
-  const values = emptyMonthValues();
-  for (const m of FISCAL_MONTHS) {
-    values[m] = (revValues[m] ?? 0) - (arValues[m] ?? 0);
-  }
-  return enrichRowValues(values);
+  return buildArMinusRevVariance(arValues, revValues);
 }
 
-function buildReceivablesSection(receivables, plSections, expandConfig, expandCandidates) {
-  const revenueSection = plSections.find((s) => s.id === 'revenue');
-  if (!revenueSection || receivables.size === 0) return null;
+function extractReceivableRowsFromBs(bsText) {
+  const rows = extractBsRows(bsText, ['売上債権'], '売上債権合計', false);
+  return rows.filter((r) => r.account === '売掛金');
+}
 
-  const rawItems = [];
-  for (const [key, values] of receivables) {
-    const total = FISCAL_MONTHS.reduce((s, m) => s + Math.abs(values[m] ?? 0), 0);
-    if (total === 0) continue;
-    const [account, sub] = key.split('|');
-    rawItems.push({ account, sub: sub ?? '', values });
+function monthValuesOnly(values) {
+  const months = {};
+  for (const m of FISCAL_MONTHS) months[m] = values[m] ?? 0;
+  return months;
+}
+
+function revenueBySub(revenueSection) {
+  const bySub = new Map();
+  for (const row of revenueSection.rows) {
+    if (row.type !== 'item' && row.type !== 'sub') continue;
+    const key = subSortKey(row.subLabel || '');
+    if (!bySub.has(key)) bySub.set(key, emptyMonthValues());
+    const bucket = bySub.get(key);
+    for (const m of FISCAL_MONTHS) {
+      bucket[m] = (bucket[m] ?? 0) + (row.values[m] ?? 0);
+    }
   }
+  return bySub;
+}
+
+function sumRevValues(revBySub, subKeys) {
+  const sum = emptyMonthValues();
+  for (const key of subKeys) {
+    const rev = revBySub.get(key) ?? emptyMonthValues();
+    for (const m of FISCAL_MONTHS) sum[m] += rev[m] ?? 0;
+  }
+  return sum;
+}
+
+function sectionValuesBySub(section) {
+  const bySub = new Map();
+  if (!section) return bySub;
+  for (const row of section.rows) {
+    if (row.type !== 'item' && row.type !== 'sub') continue;
+    const key = subSortKey(row.subLabel || '');
+    if (!bySub.has(key)) bySub.set(key, emptyMonthValues());
+    const bucket = bySub.get(key);
+    for (const m of FISCAL_MONTHS) {
+      bucket[m] = (bucket[m] ?? 0) + (row.values[m] ?? 0);
+    }
+  }
+  return bySub;
+}
+
+function compareAmountAtMonth(aValues, bValues, month) {
+  return (aValues[month] ?? 0) !== (bValues[month] ?? 0);
+}
+
+function sumReceivablesArBalance(receivablesSection) {
+  if (!receivablesSection) return emptyMonthValues();
+  return sumValues(receivablesSection.rows.filter((r) => r.type === 'item' || r.type === 'group'));
+}
+
+/** 売上高差異の月次突合用ルックアップ（売上高側と比較） */
+function buildRevenueReceivablesCrossVarianceContext(sections) {
+  const revenueSection = sections.find((s) => s.id === 'revenue');
+  const revenueVarianceSection = sections.find((s) => s.id === 'revenueVariance');
+  return {
+    revenueBySub: sectionValuesBySub(revenueSection),
+    revTotal: getTotalRow(revenueSection)?.values ?? emptyMonthValues(),
+    arTotal: sumReceivablesArBalance(revenueVarianceSection),
+  };
+}
+
+/** 売上高差異: 売上高と差異がある月だけ金額を表示 */
+function shouldShowCrossVarianceMonth(section, row, month, ctx) {
+  if (section.id !== 'revenueVariance') return true;
+
+  if (row.type === 'sub-variance') {
+    return (row.values[month] ?? 0) !== 0;
+  }
+
+  if (row.type === 'warningSummary') {
+    return compareAmountAtMonth(ctx.revTotal, ctx.arTotal, month);
+  }
+
+  if (row.type === 'item' || row.type === 'sub') {
+    const key = subSortKey(row.subLabel || '');
+    const rev = ctx.revenueBySub.get(key) ?? emptyMonthValues();
+    return compareAmountAtMonth(row.values, rev, month);
+  }
+
+  if (row.type === 'group') {
+    const subs = section.rows
+      .filter((r) => r.parentId === row.id && (r.type === 'sub' || r.type === 'item'))
+      .map((r) => subSortKey(r.subLabel || ''));
+    const rev = sumRevValues(ctx.revenueBySub, subs);
+    return compareAmountAtMonth(row.values, rev, month);
+  }
+
+  return true;
+}
+
+function hasAnyMonthDifference(aValues, bValues) {
+  return FISCAL_MONTHS.some((m) => (aValues[m] ?? 0) !== (bValues[m] ?? 0));
+}
+
+/** 相手側の補助科目別月次と全月一致する明細行を除外 */
+function filterDetailRowsByCrossVariance(plainItems, otherBySub) {
+  const keptIds = new Set();
+
+  for (const row of plainItems) {
+    if (row.type === 'item' || row.type === 'sub') {
+      const other = otherBySub.get(subSortKey(row.subLabel || '')) ?? emptyMonthValues();
+      if (hasAnyMonthDifference(row.values, other)) keptIds.add(row.id);
+      continue;
+    }
+    if (row.type === 'group') {
+      const subKeys = plainItems
+        .filter((r) => r.parentId === row.id && (r.type === 'sub' || r.type === 'item'))
+        .map((r) => subSortKey(r.subLabel || ''));
+      const other = sumRevValues(otherBySub, subKeys);
+      if (hasAnyMonthDifference(row.values, other)) keptIds.add(row.id);
+    }
+  }
+
+  for (const row of plainItems) {
+    if (row.type === 'group' && plainItems.some((r) => r.parentId === row.id && keptIds.has(r.id))) {
+      keptIds.add(row.id);
+    }
+  }
+
+  return plainItems.filter((r) => keptIds.has(r.id));
+}
+
+function extractReceivableRawItems(bsText) {
+  if (!bsText) return [];
+  return filterBsDuplicateParents(extractReceivableRowsFromBs(bsText))
+    .filter((r) => !r.isTotal)
+    .map((r) => ({ account: r.account, sub: r.sub ?? '', values: r.values }))
+    .filter((item) => FISCAL_MONTHS.some((m) => (item.values[m] ?? 0) !== 0));
+}
+
+function buildReceivablesSection(bsText, revenueSection, expandConfig, expandCandidates) {
+  if (!revenueSection || !bsText) return null;
+
+  const rawItems = extractReceivableRawItems(bsText);
   if (rawItems.length === 0) return null;
 
-  expandCandidates.push(...collectExpandCandidatesFromItems('receivables', '売掛金', rawItems));
-  const items = buildGroupedAccountRows(rawItems, 'ar', 'receivables', expandConfig);
-  const arTotal = sumTopLevelRows(items);
+  const plainItems = buildGroupedAccountRows(rawItems, 'ar', 'revenueVariance', expandConfig);
+  const arTotalRaw = sumTopLevelRows(plainItems);
   const revTotal = getTotalRow(revenueSection);
-  const variance = buildVarianceValues(revTotal?.values ?? {}, arTotal);
+  const revMinusAr = subtractValues(revTotal?.values ?? enrichRowValues(emptyMonthValues()), arTotalRaw);
+  if ((revMinusAr.合計 ?? 0) === 0) return null;
+
+  expandCandidates.push(...collectExpandCandidatesFromItems('revenueVariance', '売掛金', rawItems));
+  const filteredItems = filterDetailRowsByCrossVariance(plainItems, revenueBySub(revenueSection));
+
+  const detailRows = appendReceivableSubVarianceRows(
+    filteredItems.map((r) => ({
+      ...r,
+      values: enrichRowValues(monthValuesOnly(r.values), 'balance'),
+    })),
+    revenueSection,
+  );
 
   return {
-    id: 'receivables',
-    label: '売掛金',
+    id: 'revenueVariance',
+    label: '売上高差異',
+    labelNote: '（差額有のみ）',
     filter: 'income',
-    ...sectionColors('receivables'),
+    ...sectionColors('revenueVariance'),
     rows: [
-      ...items,
-      makeTotalRow('ar-total', '売掛金合計', arTotal),
-      makeRow('ar-variance', '差異（売上−売掛）', '', variance, 'variance'),
+      ...detailRows,
+      makeRow('rev-ar-total', '売上高－売掛金', '', revMinusAr, 'warningSummary'),
     ],
   };
 }
@@ -1320,10 +1512,13 @@ function zeroOutPlanData(planData) {
 }
 
 function buildFullPlan(journalText, bsText, expandConfig = {}) {
-  const { aggregated, receivables, cashFlow, otherPayments, corpTax } = aggregateJournal(journalText);
+  const { aggregated, cashFlow, otherPayments, corpTax } = aggregateJournal(journalText);
   const expandCandidates = [];
   const plSections = buildPlSections(aggregated, expandConfig, expandCandidates);
-  const receivablesSection = buildReceivablesSection(receivables, plSections, expandConfig, expandCandidates);
+  const revenueSection = plSections.find((s) => s.id === 'revenue');
+  const receivablesSection = buildReceivablesSection(
+    bsText, revenueSection, expandConfig, expandCandidates,
+  );
   const plWithAr = insertReceivablesAfterRevenue(plSections, receivablesSection);
   const profitSection = buildProfitSection(plWithAr);
   const bsSections = bsText ? buildBsSections(bsText, expandConfig, expandCandidates) : [];
@@ -1500,14 +1695,16 @@ function filterPl(entries, section, row, months) {
 function filterReceivables(entries, section, row, months) {
   return entries.filter((e) => {
     if (!months.includes(e.monthKey)) return false;
-    if (e.debitAcct !== '売掛金' || e.creditAcct !== '売上高') return false;
-    if (e.debitAmt === 0 || e.debitAmt !== e.creditAmt) return false;
-    if (row.type === 'total') return true;
     if (row.type === 'variance') return false;
-    const sub = normalizeSub(row.subLabel);
-    const entrySub = normalizeSub(e.debitSub || e.creditSub);
+    const debitIsAr = e.debitAcct === '売掛金' && e.debitAmt > 0;
+    const creditIsAr = e.creditAcct === '売掛金' && e.creditAmt > 0;
+    if (!debitIsAr && !creditIsAr) return false;
+    if (row.type === 'total') return true;
     if (row.type === 'group') return row.label === '売掛金';
-    return entrySub === sub;
+    const sub = normalizeSub(row.subLabel);
+    if (debitIsAr && normalizeSub(e.debitSub) === sub) return true;
+    if (creditIsAr && normalizeSub(e.creditSub) === sub) return true;
+    return false;
   });
 }
 
@@ -1558,6 +1755,7 @@ function filterBs(entries, section, row, months) {
 
 function isDrilldownAvailable(section, row) {
   if (row.type === 'profit' || row.type === 'variance' || row.type === 'plan') return false;
+  if (row.type === 'variance' || row.type === 'sub-variance' || row.type === 'warningSummary') return false;
   if (section.id === 'profit') return false;
   return true;
 }
@@ -1566,7 +1764,7 @@ function findRelatedJournalEntries(entries, section, row, month) {
   const months = resolveMonths(month);
 
   switch (section.id) {
-    case 'receivables':
+    case 'revenueVariance':
       return filterReceivables(entries, section, row, months);
     case 'cfIn':
     case 'cfOut':
@@ -3766,6 +3964,47 @@ const MAX_ROW_PADDING_SCALE = 1.5;
 /** 補助科目の法人等判定に使う文字列マーカー（カンマ区切り） */
 const DEFAULT_CORP_ENTITY_MARKERS = '\u3231,\u3232,(\u540c)';
 
+const DEFAULT_COMPANY_NAME = 'MIYABI GAME AUDIO INC.';
+const DEFAULT_BRAND_ICON_TEXT = 'MGA';
+const DEFAULT_BRAND_FILL_COLOR = '#2563eb';
+const DEFAULT_BRAND_TEXT_COLOR = '#ffffff';
+
+function parseHexColor(hex) {
+  const h = String(hex ?? '').replace('#', '').trim();
+  if (!/^[0-9a-fA-F]{6}$/.test(h)) return null;
+  return `#${h.toLowerCase()}`;
+}
+
+/** コーポレートカラーを #rrggbb に正規化 */
+function normalizeBrandColor(hex, fallback) {
+  return parseHexColor(hex) ?? fallback;
+}
+
+function normalizeCompanyName(value) {
+  const s = String(value ?? '').trim();
+  return s || DEFAULT_COMPANY_NAME;
+}
+
+function normalizeBrandIconText(value) {
+  const s = String(value ?? '').trim();
+  return s || DEFAULT_BRAND_ICON_TEXT;
+}
+
+function applyBrandSettings(settings) {
+  const logo = document.querySelector('.plan-logo');
+  const company = document.querySelector('.plan-company');
+  const fillColor = normalizeBrandColor(settings.brandFillColor, DEFAULT_BRAND_FILL_COLOR);
+  const textColor = normalizeBrandColor(settings.brandTextColor, DEFAULT_BRAND_TEXT_COLOR);
+  if (logo) {
+    logo.textContent = normalizeBrandIconText(settings.brandIconText);
+    logo.style.background = fillColor;
+    logo.style.color = textColor;
+  }
+  if (company) {
+    company.textContent = normalizeCompanyName(settings.companyName);
+  }
+}
+
 const DEFAULT_APP_SETTINGS = {
   businessStartYear: DEFAULT_BUSINESS_START_YEAR,
   fiscalEndMonth: DEFAULT_FISCAL_END_MONTH,
@@ -3773,6 +4012,10 @@ const DEFAULT_APP_SETTINGS = {
   fontScale: DEFAULT_FONT_SCALE,
   rowPaddingScale: DEFAULT_ROW_PADDING_SCALE,
   corpEntityMarkers: DEFAULT_CORP_ENTITY_MARKERS,
+  companyName: DEFAULT_COMPANY_NAME,
+  brandIconText: DEFAULT_BRAND_ICON_TEXT,
+  brandFillColor: DEFAULT_BRAND_FILL_COLOR,
+  brandTextColor: DEFAULT_BRAND_TEXT_COLOR,
   consumptionTaxRates: DEFAULT_CONSUMPTION_TAX_RATES.map((r) => ({ ...r })),
   withholdingTaxRates: DEFAULT_WITHHOLDING_TAX_RATES.map((r) => ({ ...r })),
   legalWelfareRate: DEFAULT_LEGAL_WELFARE_RATE,
@@ -4018,6 +4261,15 @@ function loadCorpEntityMarkers(stored) {
   return normalizeCorpEntityMarkers(stored);
 }
 
+function loadBrandSettings(parsed) {
+  return {
+    companyName: normalizeCompanyName(parsed?.companyName),
+    brandIconText: normalizeBrandIconText(parsed?.brandIconText),
+    brandFillColor: normalizeBrandColor(parsed?.brandFillColor, DEFAULT_BRAND_FILL_COLOR),
+    brandTextColor: normalizeBrandColor(parsed?.brandTextColor, DEFAULT_BRAND_TEXT_COLOR),
+  };
+}
+
 function loadAppSettings() {
   try {
     const raw = localStorage.getItem(APP_SETTINGS_STORAGE_KEY);
@@ -4030,6 +4282,7 @@ function loadAppSettings() {
         fontScale: DEFAULT_FONT_SCALE,
         rowPaddingScale: DEFAULT_ROW_PADDING_SCALE,
         corpEntityMarkers: DEFAULT_CORP_ENTITY_MARKERS,
+        ...loadBrandSettings(null),
         consumptionTaxRates: DEFAULT_CONSUMPTION_TAX_RATES.map((r) => ({ ...r })),
         withholdingTaxRates: DEFAULT_WITHHOLDING_TAX_RATES.map((r) => ({ ...r })),
         legalWelfareRate: DEFAULT_LEGAL_WELFARE_RATE,
@@ -4045,6 +4298,7 @@ function loadAppSettings() {
       fontScale: loadFontScale(parsed),
       rowPaddingScale: loadRowPaddingScale(parsed),
       corpEntityMarkers: loadCorpEntityMarkers(parsed?.corpEntityMarkers),
+      ...loadBrandSettings(parsed),
       consumptionTaxRates: normalizeConsumptionTaxRates(parsed?.consumptionTaxRates),
       withholdingTaxRates: normalizeWithholdingTaxRates(parsed?.withholdingTaxRates),
       legalWelfareRate: normalizeLegalWelfareRate(parsed?.legalWelfareRate),
@@ -4058,6 +4312,7 @@ function loadAppSettings() {
       fontScale: DEFAULT_FONT_SCALE,
       rowPaddingScale: DEFAULT_ROW_PADDING_SCALE,
       corpEntityMarkers: DEFAULT_CORP_ENTITY_MARKERS,
+      ...loadBrandSettings(null),
       consumptionTaxRates: DEFAULT_CONSUMPTION_TAX_RATES.map((r) => ({ ...r })),
       withholdingTaxRates: DEFAULT_WITHHOLDING_TAX_RATES.map((r) => ({ ...r })),
       legalWelfareRate: DEFAULT_LEGAL_WELFARE_RATE,
@@ -4082,9 +4337,29 @@ function resetAppSettings() {
     fontScale: DEFAULT_FONT_SCALE,
     rowPaddingScale: DEFAULT_ROW_PADDING_SCALE,
     corpEntityMarkers: DEFAULT_CORP_ENTITY_MARKERS,
+    companyName: DEFAULT_COMPANY_NAME,
+    brandIconText: DEFAULT_BRAND_ICON_TEXT,
+    brandFillColor: DEFAULT_BRAND_FILL_COLOR,
+    brandTextColor: DEFAULT_BRAND_TEXT_COLOR,
     consumptionTaxRates: DEFAULT_CONSUMPTION_TAX_RATES.map((r) => ({ ...r })),
     withholdingTaxRates: DEFAULT_WITHHOLDING_TAX_RATES.map((r) => ({ ...r })),
     legalWelfareRate: DEFAULT_LEGAL_WELFARE_RATE,
+  };
+}
+
+/** その他設定タブの項目のみデフォルトに戻す（フォント・行パディング等は維持） */
+function resetOtherAppSettings(current) {
+  const businessStartYear = DEFAULT_BUSINESS_START_YEAR;
+  return {
+    ...current,
+    businessStartYear,
+    fiscalEndMonth: DEFAULT_FISCAL_END_MONTH,
+    fiscalPeriod: normalizeFiscalPeriod(businessStartYear, current.fiscalPeriod),
+    corpEntityMarkers: DEFAULT_CORP_ENTITY_MARKERS,
+    companyName: DEFAULT_COMPANY_NAME,
+    brandIconText: DEFAULT_BRAND_ICON_TEXT,
+    brandFillColor: DEFAULT_BRAND_FILL_COLOR,
+    brandTextColor: DEFAULT_BRAND_TEXT_COLOR,
   };
 }
 
@@ -4741,12 +5016,48 @@ function formatAmount(value, rowType) {
   return `<span class="amount-yen">${abs}</span>`;
 }
 
-function planSalaryAmountDiffersFromPreviousMonth(rowValues, monthIndex) {
-  if (monthIndex <= 0) return false;
+function isPlanAmountHighlightMonth(displayMode, monthLabel, pastMonthSet) {
+  if (displayMode === 'actual') return false;
+  if (displayMode === 'budget-actual' && pastMonthSet.has(monthLabel)) return false;
+  return true;
+}
+
+/** 給与計画と同様: 期首月は常に差異色、以降は前月比（過去実績月は対象外） */
+function shouldHighlightPlanAmountMonth(rowValues, monthIndex, displayMode, pastMonthSet) {
+  if (monthIndex < 0) return false;
   const month = FISCAL_MONTHS[monthIndex];
+  if (month === '決算整理') return false;
+  if (!isPlanAmountHighlightMonth(displayMode, month, pastMonthSet)) return false;
+  if (monthIndex === 0) return true;
   const prevMonth = FISCAL_MONTHS[monthIndex - 1];
-  if (month === '\u6c7a\u7b97\u6574\u7406' || prevMonth === '\u6c7a\u7b97\u6574\u7406') return false;
+  if (prevMonth === '決算整理') return false;
   return salaryPlanAmountDiffersFromPrevious(rowValues[prevMonth], rowValues[month]);
+}
+
+/** 給与設定の個別給与と同様: 期首月は常に差異色、以降は前月比 */
+function shouldHighlightActualMonthDeltaFromPrevious(rowValues, monthIndex) {
+  if (monthIndex < 0) return false;
+  const month = FISCAL_MONTHS[monthIndex];
+  if (month === '決算整理') return false;
+  if (monthIndex === 0) return true;
+  const prevMonth = FISCAL_MONTHS[monthIndex - 1];
+  if (prevMonth === '決算整理') return false;
+  return salaryPlanAmountDiffersFromPrevious(rowValues[prevMonth], rowValues[month]);
+}
+
+function shouldHighlightMonthDeltaFromPrevious(section, row, monthIndex, displayMode, pastMonthSet) {
+  if (monthIndex < 0 || row.type === 'variance' || row.type === 'sub-variance' || row.type === 'warningSummary') {
+    return false;
+  }
+  if (row.type === 'plan') {
+    return !isTaxPublicChargeRow(row) && shouldHighlightPlanAmountMonth(row.values, monthIndex, displayMode, pastMonthSet);
+  }
+  if (section.id === 'revenue') {
+    if (row.type === 'item' || row.type === 'sub' || row.type === 'group') {
+      return shouldHighlightActualMonthDeltaFromPrevious(row.values, monthIndex);
+    }
+  }
+  return false;
 }
 
 function isTaxPublicChargeRow(row) {
@@ -4911,7 +5222,7 @@ function sectionFillsRowWithAccentBackground(sectionId) {
  * 大項目合計行・CF/利益セクションの行・差異行に該当。区分列（col-category）は行種別に関わらず常にアクセント。
  */
 function planRowHasAccentBackground(section, row) {
-  if (row.type === 'variance') return true;
+  if (row.type === 'variance' || row.type === 'warningSummary') return true;
   return row.type === 'total' || sectionFillsRowWithAccentBackground(section.id);
 }
 
@@ -4956,6 +5267,20 @@ function appendAggregateLabelContent(parent, label) {
   parent.appendChild(document.createTextNode(` ${text}`));
 }
 
+function appendSectionCategoryLabel(categoryTd, section) {
+  if (section.labelNote) {
+    categoryTd.classList.add('col-category-multiline');
+    const main = document.createElement('span');
+    main.textContent = section.label;
+    const note = document.createElement('span');
+    note.className = 'col-category-note';
+    note.textContent = section.labelNote;
+    categoryTd.append(main, document.createElement('br'), note);
+    return;
+  }
+  categoryTd.textContent = section.label;
+}
+
 function buildPlanRowTrClass(section, row) {
   const fillSectionColor = sectionFillsRowWithAccentBackground(section.id);
   return [
@@ -4967,6 +5292,8 @@ function buildPlanRowTrClass(section, row) {
     row.type === 'group' ? 'row-group' : '',
     row.type === 'sub' ? 'row-sub' : '',
     row.type === 'variance' ? 'row-variance' : '',
+    row.type === 'warningSummary' ? 'row-warning-summary' : '',
+    row.type === 'sub-variance' ? 'row-sub-variance' : '',
   ].filter(Boolean).join(' ');
 }
 
@@ -6248,6 +6575,21 @@ function renderTable() {
 
   const visibleSections = data.sections.filter(sectionVisible);
   const highlightCurrentMonth = shouldHighlightCurrentMonth();
+  const displayMode = getFiscalPeriodDisplayMode(
+    appSettings.businessStartYear,
+    appSettings.fiscalPeriod,
+  );
+  const pastMonthSet = displayMode === 'budget-actual'
+    ? buildPastFiscalMonthSet(
+      appSettings.businessStartYear,
+      appSettings.fiscalPeriod,
+      FISCAL_MONTHS,
+    )
+    : displayMode === 'actual'
+      ? new Set(FISCAL_MONTHS)
+      : new Set();
+
+  const crossVarianceCtx = buildRevenueReceivablesCrossVarianceContext(data.sections);
 
   const table = document.createElement('table');
   table.className = 'plan-table';
@@ -6322,7 +6664,7 @@ function renderTable() {
       tr.dataset.rowKey = visibilityRowKey(section.id, row);
       syncRowSelection(tr);
       if (row.parentId) tr.dataset.parentId = row.parentId;
-      if (!sectionCellAdded || row.type === 'total' || fillSectionColor) {
+      if (!sectionCellAdded || row.type === 'total' || row.type === 'warningSummary' || fillSectionColor) {
         tr.style.setProperty('--section-bg', section.barColor);
         tr.style.setProperty('--section-accent', section.color);
         tr.style.setProperty('--section-text', sectionTextColor);
@@ -6333,7 +6675,7 @@ function renderTable() {
         const category = document.createElement('td');
         category.className = 'col-category';
         category.rowSpan = visibleRows.length;
-        category.textContent = section.label;
+        appendSectionCategoryLabel(category, section);
         tr.appendChild(category);
         sectionCellAdded = true;
       }
@@ -6362,7 +6704,7 @@ function renderTable() {
           renderTable();
         });
         label.appendChild(btn);
-      } else if (row.type === 'sub') {
+      } else if (row.type === 'sub' || row.type === 'sub-variance') {
         label.textContent = '';
       } else if (row.label) {
         appendAggregateLabelContent(label, row.label);
@@ -6371,9 +6713,9 @@ function renderTable() {
 
       const sub = document.createElement('td');
       sub.className = 'col-sub';
-      if (row.type === 'sub') {
+      if (row.type === 'sub' || row.type === 'sub-variance') {
         sub.textContent = row.subLabel;
-      } else if (row.type !== 'total') {
+      } else if (row.type !== 'total' && row.type !== 'warningSummary') {
         sub.textContent = row.type === 'group' ? '' : (row.subLabel || '');
       }
       tr.appendChild(sub);
@@ -6387,20 +6729,24 @@ function renderTable() {
         const td = document.createElement('td');
         const val = row.values[m];
         td.className = `col-amount col-amount-month${highlightCurrentMonth && m === currentMonth ? ' current-month' : ''}`;
-        if (row.type === 'variance' && val !== 0) td.classList.add('has-variance');
         if (
-          row.type === 'plan'
-          && !isTaxPublicChargeRow(row)
-          && planSalaryAmountDiffersFromPreviousMonth(row.values, mi)
+          (row.type === 'variance' || row.type === 'sub-variance')
+          && val !== 0
         ) {
+          td.classList.add('has-variance');
+        }
+        if (shouldHighlightMonthDeltaFromPrevious(section, row, mi, displayMode, pastMonthSet)) {
           td.classList.add('plan-amount-variance');
         }
         if (row.planFillMonths?.includes(m)) {
           td.classList.add('plan-amount-filled');
         }
-        td.innerHTML = hideGroupTotal ? '' : formatAmount(val, row.type);
+        const amountType = row.type === 'variance' ? 'variance' : 'item';
+        const showAmount = shouldShowCrossVarianceMonth(section, row, m, crossVarianceCtx);
+        td.innerHTML = hideGroupTotal || !showAmount ? '' : formatAmount(val, amountType);
         if (
-          isDrilldownAvailable(section, row)
+          showAmount
+          && isDrilldownAvailable(section, row)
           && hasDrilldownEntries(getDrilldownIndex(), section, row, m)
           && !row.planFillMonths?.includes(m)
         ) {
@@ -6416,8 +6762,14 @@ function renderTable() {
         const td = document.createElement('td');
         const val = row.values[col];
         td.className = 'col-amount col-amount-extra';
-        if (row.type === 'variance' && val !== 0) td.classList.add('has-variance');
-        td.innerHTML = hideGroupTotal ? '' : formatAmount(val, row.type);
+        if (
+          (row.type === 'variance' || row.type === 'sub-variance')
+          && val !== 0
+        ) {
+          td.classList.add('has-variance');
+        }
+        const amountType = row.type === 'variance' ? 'variance' : 'item';
+        td.innerHTML = hideGroupTotal ? '' : formatAmount(val, amountType);
         tr.appendChild(td);
       }
       tbody.appendChild(tr);
@@ -7262,6 +7614,51 @@ function renderUiColorPanel(container) {
   );
   tbody.appendChild(varianceRow);
 
+  const warningRow = document.createElement('tr');
+  const warningLabelTd = document.createElement('td');
+  warningLabelTd.textContent = '警告文字色';
+
+  const warningBgInputTd = document.createElement('td');
+  warningBgInputTd.className = 'col-color-input';
+  warningBgInputTd.textContent = '—';
+  warningBgInputTd.title = '背景色は大項目色（売上高差異）を参照';
+
+  const warningTextInputTd = document.createElement('td');
+  warningTextInputTd.className = 'col-color-input';
+  const warningTextInput = document.createElement('input');
+  warningTextInput.type = 'color';
+  warningTextInput.className = 'section-color-input';
+  warningTextInput.value = colors.warningTextColor;
+  warningTextInput.title = colors.warningTextColor;
+  warningTextInputTd.appendChild(warningTextInput);
+
+  const warningPreviewTd = document.createElement('td');
+  warningPreviewTd.className = 'col-color-preview';
+  const warningPreview = document.createElement('span');
+  warningPreview.className = 'ui-color-preview-cell';
+  warningPreview.style.background = getSectionBarColor('revenueVariance', data?.sections, sectionColorConfig);
+  warningPreview.style.color = colors.warningTextColor;
+  warningPreview.textContent = '売上高－売掛金';
+  warningPreviewTd.appendChild(warningPreview);
+
+  const warningActionTd = document.createElement('td');
+  warningActionTd.className = 'col-color-action';
+  const warningResetBtn = document.createElement('button');
+  warningResetBtn.type = 'button';
+  warningResetBtn.className = 'section-color-reset-btn';
+  warningResetBtn.textContent = 'デフォルト';
+  warningResetBtn.disabled = colors.warningTextColor === getUiColors({}).warningTextColor;
+  warningActionTd.appendChild(warningResetBtn);
+
+  warningRow.append(
+    warningLabelTd,
+    warningBgInputTd,
+    warningTextInputTd,
+    warningPreviewTd,
+    warningActionTd,
+  );
+  tbody.appendChild(warningRow);
+
   table.appendChild(tbody);
   panel.appendChild(table);
   container.appendChild(panel);
@@ -7525,6 +7922,26 @@ function renderUiColorPanel(container) {
   varianceResetBtn.addEventListener('click', () => {
     applyAmountVarianceColor(getUiColors({}).amountVarianceColor);
     varianceResetBtn.disabled = true;
+  });
+
+  const applyWarningTextColor = (warningTextColor) => {
+    const text = opaqueHex(warningTextColor);
+    uiColorConfig = { ...uiColorConfig, warningTextColor: text };
+    persistUiColors();
+    warningTextInput.value = text;
+    warningTextInput.title = text;
+    warningPreview.style.color = text;
+    warningResetBtn.disabled = text === getUiColors({}).warningTextColor;
+    refreshPlanView();
+  };
+
+  warningTextInput.addEventListener('input', () => {
+    applyWarningTextColor(warningTextInput.value);
+  });
+
+  warningResetBtn.addEventListener('click', () => {
+    applyWarningTextColor(getUiColors({}).warningTextColor);
+    warningResetBtn.disabled = true;
   });
 
   cellResetBtn.addEventListener('click', () => {
@@ -9179,6 +9596,7 @@ function renderOtherSettings() {
       選択中の期（例: 第8期）と組み合わせて、各月の年ラベルを決定します。
       決算月は会計期の最終月（1〜12）です。
       法人判定文字は外注費の補助科目が法人か個人事業主かを判別する際に使います。
+      ブランド表示はヘッダー左上のアイコン・会社名に反映されます。
     </p>
     <div class="expand-settings-header-actions">
       <button type="button" class="expand-reset-btn" id="app-settings-reset-btn">デフォルトに戻す</button>
@@ -9207,6 +9625,35 @@ function renderOtherSettings() {
         spellcheck="false" autocomplete="off" />
     </label>
     <p class="app-settings-hint app-settings-hint-nowrap">外注費の補助科目名に含まれる場合、法人と判定します。カンマ区切りで入力。</p>
+    <div class="app-settings-section brand-settings-section">
+      <h2 class="ui-color-panel-title">ブランド表示</h2>
+      <p class="app-settings-hint">予実表ヘッダー左上のアイコンと会社名に反映されます。</p>
+      <label class="app-settings-field">
+        <span class="app-settings-label">会社名</span>
+        <input type="text" class="app-settings-input app-settings-input-wide" id="brand-company-name"
+          spellcheck="false" autocomplete="off" />
+      </label>
+      <label class="app-settings-field">
+        <span class="app-settings-label">アイコン表示</span>
+        <input type="text" class="app-settings-input app-settings-input-wide" id="brand-icon-text"
+          spellcheck="false" autocomplete="off" placeholder="MGA や ⚖️ など" />
+      </label>
+      <p class="app-settings-hint app-settings-hint-nowrap">テキストまたは絵文字を入力。幅は内容に応じて自動調整されます。</p>
+      <div class="app-settings-field-row brand-color-row">
+        <label class="app-settings-field">
+          <span class="app-settings-label">コーポレートカラー（塗り）</span>
+          <input type="color" class="section-color-input" id="brand-fill-color" />
+        </label>
+        <label class="app-settings-field">
+          <span class="app-settings-label">コーポレートカラー（文字）</span>
+          <input type="color" class="section-color-input" id="brand-text-color" />
+        </label>
+      </div>
+      <div class="brand-settings-preview" id="brand-settings-preview" aria-hidden="true">
+        <span class="plan-logo brand-settings-preview-logo" id="brand-preview-logo"></span>
+        <span class="plan-company brand-settings-preview-company" id="brand-preview-company"></span>
+      </div>
+    </div>
   `;
   wrap.appendChild(form);
 
@@ -9214,6 +9661,36 @@ function renderOtherSettings() {
   const preview = form.querySelector('#app-settings-preview');
   const fiscalEndMonthSelect = form.querySelector('#fiscal-end-month');
   const corpEntityMarkersInput = form.querySelector('#corp-entity-markers');
+  const companyNameInput = form.querySelector('#brand-company-name');
+  const brandIconTextInput = form.querySelector('#brand-icon-text');
+  const brandFillColorInput = form.querySelector('#brand-fill-color');
+  const brandTextColorInput = form.querySelector('#brand-text-color');
+  const brandPreviewLogo = form.querySelector('#brand-preview-logo');
+  const brandPreviewCompany = form.querySelector('#brand-preview-company');
+
+  function refreshBrandPreview() {
+    brandPreviewLogo.textContent = appSettings.brandIconText;
+    brandPreviewLogo.style.background = appSettings.brandFillColor;
+    brandPreviewLogo.style.color = appSettings.brandTextColor;
+    brandPreviewCompany.textContent = appSettings.companyName;
+    applyBrandSettings(appSettings);
+  }
+
+  function saveBrandSettings() {
+    appSettings = {
+      ...appSettings,
+      companyName: normalizeCompanyName(companyNameInput.value),
+      brandIconText: normalizeBrandIconText(brandIconTextInput.value),
+      brandFillColor: normalizeBrandColor(brandFillColorInput.value, DEFAULT_BRAND_FILL_COLOR),
+      brandTextColor: normalizeBrandColor(brandTextColorInput.value, DEFAULT_BRAND_TEXT_COLOR),
+    };
+    saveAppSettings(appSettings);
+    companyNameInput.value = appSettings.companyName;
+    brandIconTextInput.value = appSettings.brandIconText;
+    brandFillColorInput.value = appSettings.brandFillColor;
+    brandTextColorInput.value = appSettings.brandTextColor;
+    refreshBrandPreview();
+  }
 
   for (let m = 1; m <= 12; m += 1) {
     const opt = document.createElement('option');
@@ -9231,6 +9708,16 @@ function renderOtherSettings() {
   yearInput.value = String(appSettings.businessStartYear);
   fiscalEndMonthSelect.value = String(appSettings.fiscalEndMonth);
   corpEntityMarkersInput.value = appSettings.corpEntityMarkers;
+  companyNameInput.value = appSettings.companyName;
+  brandIconTextInput.value = appSettings.brandIconText;
+  brandFillColorInput.value = appSettings.brandFillColor;
+  brandTextColorInput.value = appSettings.brandTextColor;
+  refreshBrandPreview();
+
+  companyNameInput.addEventListener('change', saveBrandSettings);
+  brandIconTextInput.addEventListener('change', saveBrandSettings);
+  brandFillColorInput.addEventListener('input', saveBrandSettings);
+  brandTextColorInput.addEventListener('input', saveBrandSettings);
 
   yearInput.addEventListener('input', () => {
     const filtered = filterTaxRateIntegerInput(yearInput.value);
@@ -9270,12 +9757,16 @@ function renderOtherSettings() {
   });
 
   wrap.querySelector('#app-settings-reset-btn').addEventListener('click', () => {
-    appSettings = resetAppSettings();
+    appSettings = resetOtherAppSettings(appSettings);
+    saveAppSettings(appSettings);
     yearInput.value = String(appSettings.businessStartYear);
     fiscalEndMonthSelect.value = String(appSettings.fiscalEndMonth);
     corpEntityMarkersInput.value = appSettings.corpEntityMarkers;
-    applyPlanFontScaleSetting(appSettings.fontScale);
-    applyPlanRowPaddingScaleSetting(appSettings.rowPaddingScale);
+    companyNameInput.value = appSettings.companyName;
+    brandIconTextInput.value = appSettings.brandIconText;
+    brandFillColorInput.value = appSettings.brandFillColor;
+    brandTextColorInput.value = appSettings.brandTextColor;
+    refreshBrandPreview();
     syncPeriodControls();
     refreshPreview();
     if (activeTab === 'plan' && data) refreshPlanTable();
@@ -9619,6 +10110,7 @@ function loadData(loaded) {
 
 async function init() {
   applyUiColors(uiColorConfig);
+  applyBrandSettings(appSettings);
   applyFontScale(appSettings.fontScale);
   applyRowPaddingScale(appSettings.rowPaddingScale);
   renderToolbar();

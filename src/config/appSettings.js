@@ -34,6 +34,47 @@ export const MAX_ROW_PADDING_SCALE = 1.5;
 /** 補助科目の法人等判定に使う文字列マーカー（カンマ区切り） */
 export const DEFAULT_CORP_ENTITY_MARKERS = '\u3231,\u3232,(\u540c)';
 
+export const DEFAULT_COMPANY_NAME = 'MIYABI GAME AUDIO INC.';
+export const DEFAULT_BRAND_ICON_TEXT = 'MGA';
+export const DEFAULT_BRAND_FILL_COLOR = '#2563eb';
+export const DEFAULT_BRAND_TEXT_COLOR = '#ffffff';
+
+function parseHexColor(hex) {
+  const h = String(hex ?? '').replace('#', '').trim();
+  if (!/^[0-9a-fA-F]{6}$/.test(h)) return null;
+  return `#${h.toLowerCase()}`;
+}
+
+/** コーポレートカラーを #rrggbb に正規化 */
+export function normalizeBrandColor(hex, fallback) {
+  return parseHexColor(hex) ?? fallback;
+}
+
+export function normalizeCompanyName(value) {
+  const s = String(value ?? '').trim();
+  return s || DEFAULT_COMPANY_NAME;
+}
+
+export function normalizeBrandIconText(value) {
+  const s = String(value ?? '').trim();
+  return s || DEFAULT_BRAND_ICON_TEXT;
+}
+
+export function applyBrandSettings(settings) {
+  const logo = document.querySelector('.plan-logo');
+  const company = document.querySelector('.plan-company');
+  const fillColor = normalizeBrandColor(settings.brandFillColor, DEFAULT_BRAND_FILL_COLOR);
+  const textColor = normalizeBrandColor(settings.brandTextColor, DEFAULT_BRAND_TEXT_COLOR);
+  if (logo) {
+    logo.textContent = normalizeBrandIconText(settings.brandIconText);
+    logo.style.background = fillColor;
+    logo.style.color = textColor;
+  }
+  if (company) {
+    company.textContent = normalizeCompanyName(settings.companyName);
+  }
+}
+
 export const DEFAULT_APP_SETTINGS = {
   businessStartYear: DEFAULT_BUSINESS_START_YEAR,
   fiscalEndMonth: DEFAULT_FISCAL_END_MONTH,
@@ -41,6 +82,10 @@ export const DEFAULT_APP_SETTINGS = {
   fontScale: DEFAULT_FONT_SCALE,
   rowPaddingScale: DEFAULT_ROW_PADDING_SCALE,
   corpEntityMarkers: DEFAULT_CORP_ENTITY_MARKERS,
+  companyName: DEFAULT_COMPANY_NAME,
+  brandIconText: DEFAULT_BRAND_ICON_TEXT,
+  brandFillColor: DEFAULT_BRAND_FILL_COLOR,
+  brandTextColor: DEFAULT_BRAND_TEXT_COLOR,
   consumptionTaxRates: DEFAULT_CONSUMPTION_TAX_RATES.map((r) => ({ ...r })),
   withholdingTaxRates: DEFAULT_WITHHOLDING_TAX_RATES.map((r) => ({ ...r })),
   legalWelfareRate: DEFAULT_LEGAL_WELFARE_RATE,
@@ -286,6 +331,15 @@ function loadCorpEntityMarkers(stored) {
   return normalizeCorpEntityMarkers(stored);
 }
 
+function loadBrandSettings(parsed) {
+  return {
+    companyName: normalizeCompanyName(parsed?.companyName),
+    brandIconText: normalizeBrandIconText(parsed?.brandIconText),
+    brandFillColor: normalizeBrandColor(parsed?.brandFillColor, DEFAULT_BRAND_FILL_COLOR),
+    brandTextColor: normalizeBrandColor(parsed?.brandTextColor, DEFAULT_BRAND_TEXT_COLOR),
+  };
+}
+
 export function loadAppSettings() {
   try {
     const raw = localStorage.getItem(APP_SETTINGS_STORAGE_KEY);
@@ -298,6 +352,7 @@ export function loadAppSettings() {
         fontScale: DEFAULT_FONT_SCALE,
         rowPaddingScale: DEFAULT_ROW_PADDING_SCALE,
         corpEntityMarkers: DEFAULT_CORP_ENTITY_MARKERS,
+        ...loadBrandSettings(null),
         consumptionTaxRates: DEFAULT_CONSUMPTION_TAX_RATES.map((r) => ({ ...r })),
         withholdingTaxRates: DEFAULT_WITHHOLDING_TAX_RATES.map((r) => ({ ...r })),
         legalWelfareRate: DEFAULT_LEGAL_WELFARE_RATE,
@@ -313,6 +368,7 @@ export function loadAppSettings() {
       fontScale: loadFontScale(parsed),
       rowPaddingScale: loadRowPaddingScale(parsed),
       corpEntityMarkers: loadCorpEntityMarkers(parsed?.corpEntityMarkers),
+      ...loadBrandSettings(parsed),
       consumptionTaxRates: normalizeConsumptionTaxRates(parsed?.consumptionTaxRates),
       withholdingTaxRates: normalizeWithholdingTaxRates(parsed?.withholdingTaxRates),
       legalWelfareRate: normalizeLegalWelfareRate(parsed?.legalWelfareRate),
@@ -326,6 +382,7 @@ export function loadAppSettings() {
       fontScale: DEFAULT_FONT_SCALE,
       rowPaddingScale: DEFAULT_ROW_PADDING_SCALE,
       corpEntityMarkers: DEFAULT_CORP_ENTITY_MARKERS,
+      ...loadBrandSettings(null),
       consumptionTaxRates: DEFAULT_CONSUMPTION_TAX_RATES.map((r) => ({ ...r })),
       withholdingTaxRates: DEFAULT_WITHHOLDING_TAX_RATES.map((r) => ({ ...r })),
       legalWelfareRate: DEFAULT_LEGAL_WELFARE_RATE,
@@ -350,8 +407,28 @@ export function resetAppSettings() {
     fontScale: DEFAULT_FONT_SCALE,
     rowPaddingScale: DEFAULT_ROW_PADDING_SCALE,
     corpEntityMarkers: DEFAULT_CORP_ENTITY_MARKERS,
+    companyName: DEFAULT_COMPANY_NAME,
+    brandIconText: DEFAULT_BRAND_ICON_TEXT,
+    brandFillColor: DEFAULT_BRAND_FILL_COLOR,
+    brandTextColor: DEFAULT_BRAND_TEXT_COLOR,
     consumptionTaxRates: DEFAULT_CONSUMPTION_TAX_RATES.map((r) => ({ ...r })),
     withholdingTaxRates: DEFAULT_WITHHOLDING_TAX_RATES.map((r) => ({ ...r })),
     legalWelfareRate: DEFAULT_LEGAL_WELFARE_RATE,
+  };
+}
+
+/** その他設定タブの項目のみデフォルトに戻す（フォント・行パディング等は維持） */
+export function resetOtherAppSettings(current) {
+  const businessStartYear = DEFAULT_BUSINESS_START_YEAR;
+  return {
+    ...current,
+    businessStartYear,
+    fiscalEndMonth: DEFAULT_FISCAL_END_MONTH,
+    fiscalPeriod: normalizeFiscalPeriod(businessStartYear, current.fiscalPeriod),
+    corpEntityMarkers: DEFAULT_CORP_ENTITY_MARKERS,
+    companyName: DEFAULT_COMPANY_NAME,
+    brandIconText: DEFAULT_BRAND_ICON_TEXT,
+    brandFillColor: DEFAULT_BRAND_FILL_COLOR,
+    brandTextColor: DEFAULT_BRAND_TEXT_COLOR,
   };
 }

@@ -6,6 +6,8 @@ import {
   FISCAL_MONTHS,
   EXTRA_COLUMNS,
   APP_AGGREGATE_LABEL_PREFIX,
+  buildRevenueReceivablesCrossVarianceContext,
+  shouldShowCrossVarianceMonth,
 } from '../parse/parseJournal.js';
 import {
   resolvePlanStartup,
@@ -25,7 +27,7 @@ import {
 import {
   loadAppSettings,
   saveAppSettings,
-  resetAppSettings,
+  resetOtherAppSettings,
   buildMonthYearMap,
   parseFiscalPeriod,
   formatFiscalPeriodLabel,
@@ -33,6 +35,7 @@ import {
   getFiscalPeriodForDate,
   getFiscalPeriodDisplayMode,
   getFiscalPeriodDisplayModeLabel,
+  buildPastFiscalMonthSet,
   isPlanOnlyPeriod,
   normalizeFiscalPeriod,
   normalizeFiscalEndMonth,
@@ -47,6 +50,12 @@ import {
   MIN_ROW_PADDING_SCALE,
   MAX_ROW_PADDING_SCALE,
   normalizeCorpEntityMarkers,
+  normalizeCompanyName,
+  normalizeBrandIconText,
+  normalizeBrandColor,
+  applyBrandSettings,
+  DEFAULT_BRAND_FILL_COLOR,
+  DEFAULT_BRAND_TEXT_COLOR,
 } from '../config/appSettings.js';
 import {
   normalizeConsumptionTaxRates,
@@ -474,12 +483,48 @@ function formatAmount(value, rowType) {
   return `<span class="amount-yen">${abs}</span>`;
 }
 
-function planSalaryAmountDiffersFromPreviousMonth(rowValues, monthIndex) {
-  if (monthIndex <= 0) return false;
+function isPlanAmountHighlightMonth(displayMode, monthLabel, pastMonthSet) {
+  if (displayMode === 'actual') return false;
+  if (displayMode === 'budget-actual' && pastMonthSet.has(monthLabel)) return false;
+  return true;
+}
+
+/** 給与計画と同様: 期首月は常に差異色、以降は前月比（過去実績月は対象外） */
+function shouldHighlightPlanAmountMonth(rowValues, monthIndex, displayMode, pastMonthSet) {
+  if (monthIndex < 0) return false;
   const month = FISCAL_MONTHS[monthIndex];
+  if (month === '決算整理') return false;
+  if (!isPlanAmountHighlightMonth(displayMode, month, pastMonthSet)) return false;
+  if (monthIndex === 0) return true;
   const prevMonth = FISCAL_MONTHS[monthIndex - 1];
-  if (month === '\u6c7a\u7b97\u6574\u7406' || prevMonth === '\u6c7a\u7b97\u6574\u7406') return false;
+  if (prevMonth === '決算整理') return false;
   return salaryPlanAmountDiffersFromPrevious(rowValues[prevMonth], rowValues[month]);
+}
+
+/** 給与設定の個別給与と同様: 期首月は常に差異色、以降は前月比 */
+function shouldHighlightActualMonthDeltaFromPrevious(rowValues, monthIndex) {
+  if (monthIndex < 0) return false;
+  const month = FISCAL_MONTHS[monthIndex];
+  if (month === '決算整理') return false;
+  if (monthIndex === 0) return true;
+  const prevMonth = FISCAL_MONTHS[monthIndex - 1];
+  if (prevMonth === '決算整理') return false;
+  return salaryPlanAmountDiffersFromPrevious(rowValues[prevMonth], rowValues[month]);
+}
+
+function shouldHighlightMonthDeltaFromPrevious(section, row, monthIndex, displayMode, pastMonthSet) {
+  if (monthIndex < 0 || row.type === 'variance' || row.type === 'sub-variance' || row.type === 'warningSummary') {
+    return false;
+  }
+  if (row.type === 'plan') {
+    return !isTaxPublicChargeRow(row) && shouldHighlightPlanAmountMonth(row.values, monthIndex, displayMode, pastMonthSet);
+  }
+  if (section.id === 'revenue') {
+    if (row.type === 'item' || row.type === 'sub' || row.type === 'group') {
+      return shouldHighlightActualMonthDeltaFromPrevious(row.values, monthIndex);
+    }
+  }
+  return false;
 }
 
 function isTaxPublicChargeRow(row) {
@@ -644,7 +689,7 @@ function sectionFillsRowWithAccentBackground(sectionId) {
  * 大項目合計行・CF/利益セクションの行・差異行に該当。区分列（col-category）は行種別に関わらず常にアクセント。
  */
 function planRowHasAccentBackground(section, row) {
-  if (row.type === 'variance') return true;
+  if (row.type === 'variance' || row.type === 'warningSummary') return true;
   return row.type === 'total' || sectionFillsRowWithAccentBackground(section.id);
 }
 
@@ -689,6 +734,20 @@ function appendAggregateLabelContent(parent, label) {
   parent.appendChild(document.createTextNode(` ${text}`));
 }
 
+function appendSectionCategoryLabel(categoryTd, section) {
+  if (section.labelNote) {
+    categoryTd.classList.add('col-category-multiline');
+    const main = document.createElement('span');
+    main.textContent = section.label;
+    const note = document.createElement('span');
+    note.className = 'col-category-note';
+    note.textContent = section.labelNote;
+    categoryTd.append(main, document.createElement('br'), note);
+    return;
+  }
+  categoryTd.textContent = section.label;
+}
+
 function buildPlanRowTrClass(section, row) {
   const fillSectionColor = sectionFillsRowWithAccentBackground(section.id);
   return [
@@ -700,6 +759,8 @@ function buildPlanRowTrClass(section, row) {
     row.type === 'group' ? 'row-group' : '',
     row.type === 'sub' ? 'row-sub' : '',
     row.type === 'variance' ? 'row-variance' : '',
+    row.type === 'warningSummary' ? 'row-warning-summary' : '',
+    row.type === 'sub-variance' ? 'row-sub-variance' : '',
   ].filter(Boolean).join(' ');
 }
 
@@ -1981,6 +2042,21 @@ function renderTable() {
 
   const visibleSections = data.sections.filter(sectionVisible);
   const highlightCurrentMonth = shouldHighlightCurrentMonth();
+  const displayMode = getFiscalPeriodDisplayMode(
+    appSettings.businessStartYear,
+    appSettings.fiscalPeriod,
+  );
+  const pastMonthSet = displayMode === 'budget-actual'
+    ? buildPastFiscalMonthSet(
+      appSettings.businessStartYear,
+      appSettings.fiscalPeriod,
+      FISCAL_MONTHS,
+    )
+    : displayMode === 'actual'
+      ? new Set(FISCAL_MONTHS)
+      : new Set();
+
+  const crossVarianceCtx = buildRevenueReceivablesCrossVarianceContext(data.sections);
 
   const table = document.createElement('table');
   table.className = 'plan-table';
@@ -2055,7 +2131,7 @@ function renderTable() {
       tr.dataset.rowKey = visibilityRowKey(section.id, row);
       syncRowSelection(tr);
       if (row.parentId) tr.dataset.parentId = row.parentId;
-      if (!sectionCellAdded || row.type === 'total' || fillSectionColor) {
+      if (!sectionCellAdded || row.type === 'total' || row.type === 'warningSummary' || fillSectionColor) {
         tr.style.setProperty('--section-bg', section.barColor);
         tr.style.setProperty('--section-accent', section.color);
         tr.style.setProperty('--section-text', sectionTextColor);
@@ -2066,7 +2142,7 @@ function renderTable() {
         const category = document.createElement('td');
         category.className = 'col-category';
         category.rowSpan = visibleRows.length;
-        category.textContent = section.label;
+        appendSectionCategoryLabel(category, section);
         tr.appendChild(category);
         sectionCellAdded = true;
       }
@@ -2095,7 +2171,7 @@ function renderTable() {
           renderTable();
         });
         label.appendChild(btn);
-      } else if (row.type === 'sub') {
+      } else if (row.type === 'sub' || row.type === 'sub-variance') {
         label.textContent = '';
       } else if (row.label) {
         appendAggregateLabelContent(label, row.label);
@@ -2104,9 +2180,9 @@ function renderTable() {
 
       const sub = document.createElement('td');
       sub.className = 'col-sub';
-      if (row.type === 'sub') {
+      if (row.type === 'sub' || row.type === 'sub-variance') {
         sub.textContent = row.subLabel;
-      } else if (row.type !== 'total') {
+      } else if (row.type !== 'total' && row.type !== 'warningSummary') {
         sub.textContent = row.type === 'group' ? '' : (row.subLabel || '');
       }
       tr.appendChild(sub);
@@ -2120,20 +2196,24 @@ function renderTable() {
         const td = document.createElement('td');
         const val = row.values[m];
         td.className = `col-amount col-amount-month${highlightCurrentMonth && m === currentMonth ? ' current-month' : ''}`;
-        if (row.type === 'variance' && val !== 0) td.classList.add('has-variance');
         if (
-          row.type === 'plan'
-          && !isTaxPublicChargeRow(row)
-          && planSalaryAmountDiffersFromPreviousMonth(row.values, mi)
+          (row.type === 'variance' || row.type === 'sub-variance')
+          && val !== 0
         ) {
+          td.classList.add('has-variance');
+        }
+        if (shouldHighlightMonthDeltaFromPrevious(section, row, mi, displayMode, pastMonthSet)) {
           td.classList.add('plan-amount-variance');
         }
         if (row.planFillMonths?.includes(m)) {
           td.classList.add('plan-amount-filled');
         }
-        td.innerHTML = hideGroupTotal ? '' : formatAmount(val, row.type);
+        const amountType = row.type === 'variance' ? 'variance' : 'item';
+        const showAmount = shouldShowCrossVarianceMonth(section, row, m, crossVarianceCtx);
+        td.innerHTML = hideGroupTotal || !showAmount ? '' : formatAmount(val, amountType);
         if (
-          isDrilldownAvailable(section, row)
+          showAmount
+          && isDrilldownAvailable(section, row)
           && hasDrilldownEntries(getDrilldownIndex(), section, row, m)
           && !row.planFillMonths?.includes(m)
         ) {
@@ -2149,8 +2229,14 @@ function renderTable() {
         const td = document.createElement('td');
         const val = row.values[col];
         td.className = 'col-amount col-amount-extra';
-        if (row.type === 'variance' && val !== 0) td.classList.add('has-variance');
-        td.innerHTML = hideGroupTotal ? '' : formatAmount(val, row.type);
+        if (
+          (row.type === 'variance' || row.type === 'sub-variance')
+          && val !== 0
+        ) {
+          td.classList.add('has-variance');
+        }
+        const amountType = row.type === 'variance' ? 'variance' : 'item';
+        td.innerHTML = hideGroupTotal ? '' : formatAmount(val, amountType);
         tr.appendChild(td);
       }
       tbody.appendChild(tr);
@@ -2995,6 +3081,51 @@ function renderUiColorPanel(container) {
   );
   tbody.appendChild(varianceRow);
 
+  const warningRow = document.createElement('tr');
+  const warningLabelTd = document.createElement('td');
+  warningLabelTd.textContent = '警告文字色';
+
+  const warningBgInputTd = document.createElement('td');
+  warningBgInputTd.className = 'col-color-input';
+  warningBgInputTd.textContent = '—';
+  warningBgInputTd.title = '背景色は大項目色（売上高差異）を参照';
+
+  const warningTextInputTd = document.createElement('td');
+  warningTextInputTd.className = 'col-color-input';
+  const warningTextInput = document.createElement('input');
+  warningTextInput.type = 'color';
+  warningTextInput.className = 'section-color-input';
+  warningTextInput.value = colors.warningTextColor;
+  warningTextInput.title = colors.warningTextColor;
+  warningTextInputTd.appendChild(warningTextInput);
+
+  const warningPreviewTd = document.createElement('td');
+  warningPreviewTd.className = 'col-color-preview';
+  const warningPreview = document.createElement('span');
+  warningPreview.className = 'ui-color-preview-cell';
+  warningPreview.style.background = getSectionBarColor('revenueVariance', data?.sections, sectionColorConfig);
+  warningPreview.style.color = colors.warningTextColor;
+  warningPreview.textContent = '売上高－売掛金';
+  warningPreviewTd.appendChild(warningPreview);
+
+  const warningActionTd = document.createElement('td');
+  warningActionTd.className = 'col-color-action';
+  const warningResetBtn = document.createElement('button');
+  warningResetBtn.type = 'button';
+  warningResetBtn.className = 'section-color-reset-btn';
+  warningResetBtn.textContent = 'デフォルト';
+  warningResetBtn.disabled = colors.warningTextColor === getUiColors({}).warningTextColor;
+  warningActionTd.appendChild(warningResetBtn);
+
+  warningRow.append(
+    warningLabelTd,
+    warningBgInputTd,
+    warningTextInputTd,
+    warningPreviewTd,
+    warningActionTd,
+  );
+  tbody.appendChild(warningRow);
+
   table.appendChild(tbody);
   panel.appendChild(table);
   container.appendChild(panel);
@@ -3258,6 +3389,26 @@ function renderUiColorPanel(container) {
   varianceResetBtn.addEventListener('click', () => {
     applyAmountVarianceColor(getUiColors({}).amountVarianceColor);
     varianceResetBtn.disabled = true;
+  });
+
+  const applyWarningTextColor = (warningTextColor) => {
+    const text = opaqueHex(warningTextColor);
+    uiColorConfig = { ...uiColorConfig, warningTextColor: text };
+    persistUiColors();
+    warningTextInput.value = text;
+    warningTextInput.title = text;
+    warningPreview.style.color = text;
+    warningResetBtn.disabled = text === getUiColors({}).warningTextColor;
+    refreshPlanView();
+  };
+
+  warningTextInput.addEventListener('input', () => {
+    applyWarningTextColor(warningTextInput.value);
+  });
+
+  warningResetBtn.addEventListener('click', () => {
+    applyWarningTextColor(getUiColors({}).warningTextColor);
+    warningResetBtn.disabled = true;
   });
 
   cellResetBtn.addEventListener('click', () => {
@@ -4912,6 +5063,7 @@ function renderOtherSettings() {
       選択中の期（例: 第8期）と組み合わせて、各月の年ラベルを決定します。
       決算月は会計期の最終月（1〜12）です。
       法人判定文字は外注費の補助科目が法人か個人事業主かを判別する際に使います。
+      ブランド表示はヘッダー左上のアイコン・会社名に反映されます。
     </p>
     <div class="expand-settings-header-actions">
       <button type="button" class="expand-reset-btn" id="app-settings-reset-btn">デフォルトに戻す</button>
@@ -4940,6 +5092,35 @@ function renderOtherSettings() {
         spellcheck="false" autocomplete="off" />
     </label>
     <p class="app-settings-hint app-settings-hint-nowrap">外注費の補助科目名に含まれる場合、法人と判定します。カンマ区切りで入力。</p>
+    <div class="app-settings-section brand-settings-section">
+      <h2 class="ui-color-panel-title">ブランド表示</h2>
+      <p class="app-settings-hint">予実表ヘッダー左上のアイコンと会社名に反映されます。</p>
+      <label class="app-settings-field">
+        <span class="app-settings-label">会社名</span>
+        <input type="text" class="app-settings-input app-settings-input-wide" id="brand-company-name"
+          spellcheck="false" autocomplete="off" />
+      </label>
+      <label class="app-settings-field">
+        <span class="app-settings-label">アイコン表示</span>
+        <input type="text" class="app-settings-input app-settings-input-wide" id="brand-icon-text"
+          spellcheck="false" autocomplete="off" placeholder="MGA や ⚖️ など" />
+      </label>
+      <p class="app-settings-hint app-settings-hint-nowrap">テキストまたは絵文字を入力。幅は内容に応じて自動調整されます。</p>
+      <div class="app-settings-field-row brand-color-row">
+        <label class="app-settings-field">
+          <span class="app-settings-label">コーポレートカラー（塗り）</span>
+          <input type="color" class="section-color-input" id="brand-fill-color" />
+        </label>
+        <label class="app-settings-field">
+          <span class="app-settings-label">コーポレートカラー（文字）</span>
+          <input type="color" class="section-color-input" id="brand-text-color" />
+        </label>
+      </div>
+      <div class="brand-settings-preview" id="brand-settings-preview" aria-hidden="true">
+        <span class="plan-logo brand-settings-preview-logo" id="brand-preview-logo"></span>
+        <span class="plan-company brand-settings-preview-company" id="brand-preview-company"></span>
+      </div>
+    </div>
   `;
   wrap.appendChild(form);
 
@@ -4947,6 +5128,36 @@ function renderOtherSettings() {
   const preview = form.querySelector('#app-settings-preview');
   const fiscalEndMonthSelect = form.querySelector('#fiscal-end-month');
   const corpEntityMarkersInput = form.querySelector('#corp-entity-markers');
+  const companyNameInput = form.querySelector('#brand-company-name');
+  const brandIconTextInput = form.querySelector('#brand-icon-text');
+  const brandFillColorInput = form.querySelector('#brand-fill-color');
+  const brandTextColorInput = form.querySelector('#brand-text-color');
+  const brandPreviewLogo = form.querySelector('#brand-preview-logo');
+  const brandPreviewCompany = form.querySelector('#brand-preview-company');
+
+  function refreshBrandPreview() {
+    brandPreviewLogo.textContent = appSettings.brandIconText;
+    brandPreviewLogo.style.background = appSettings.brandFillColor;
+    brandPreviewLogo.style.color = appSettings.brandTextColor;
+    brandPreviewCompany.textContent = appSettings.companyName;
+    applyBrandSettings(appSettings);
+  }
+
+  function saveBrandSettings() {
+    appSettings = {
+      ...appSettings,
+      companyName: normalizeCompanyName(companyNameInput.value),
+      brandIconText: normalizeBrandIconText(brandIconTextInput.value),
+      brandFillColor: normalizeBrandColor(brandFillColorInput.value, DEFAULT_BRAND_FILL_COLOR),
+      brandTextColor: normalizeBrandColor(brandTextColorInput.value, DEFAULT_BRAND_TEXT_COLOR),
+    };
+    saveAppSettings(appSettings);
+    companyNameInput.value = appSettings.companyName;
+    brandIconTextInput.value = appSettings.brandIconText;
+    brandFillColorInput.value = appSettings.brandFillColor;
+    brandTextColorInput.value = appSettings.brandTextColor;
+    refreshBrandPreview();
+  }
 
   for (let m = 1; m <= 12; m += 1) {
     const opt = document.createElement('option');
@@ -4964,6 +5175,16 @@ function renderOtherSettings() {
   yearInput.value = String(appSettings.businessStartYear);
   fiscalEndMonthSelect.value = String(appSettings.fiscalEndMonth);
   corpEntityMarkersInput.value = appSettings.corpEntityMarkers;
+  companyNameInput.value = appSettings.companyName;
+  brandIconTextInput.value = appSettings.brandIconText;
+  brandFillColorInput.value = appSettings.brandFillColor;
+  brandTextColorInput.value = appSettings.brandTextColor;
+  refreshBrandPreview();
+
+  companyNameInput.addEventListener('change', saveBrandSettings);
+  brandIconTextInput.addEventListener('change', saveBrandSettings);
+  brandFillColorInput.addEventListener('input', saveBrandSettings);
+  brandTextColorInput.addEventListener('input', saveBrandSettings);
 
   yearInput.addEventListener('input', () => {
     const filtered = filterTaxRateIntegerInput(yearInput.value);
@@ -5003,12 +5224,16 @@ function renderOtherSettings() {
   });
 
   wrap.querySelector('#app-settings-reset-btn').addEventListener('click', () => {
-    appSettings = resetAppSettings();
+    appSettings = resetOtherAppSettings(appSettings);
+    saveAppSettings(appSettings);
     yearInput.value = String(appSettings.businessStartYear);
     fiscalEndMonthSelect.value = String(appSettings.fiscalEndMonth);
     corpEntityMarkersInput.value = appSettings.corpEntityMarkers;
-    applyPlanFontScaleSetting(appSettings.fontScale);
-    applyPlanRowPaddingScaleSetting(appSettings.rowPaddingScale);
+    companyNameInput.value = appSettings.companyName;
+    brandIconTextInput.value = appSettings.brandIconText;
+    brandFillColorInput.value = appSettings.brandFillColor;
+    brandTextColorInput.value = appSettings.brandTextColor;
+    refreshBrandPreview();
     syncPeriodControls();
     refreshPreview();
     if (activeTab === 'plan' && data) refreshPlanTable();
@@ -5352,6 +5577,7 @@ function loadData(loaded) {
 
 async function init() {
   applyUiColors(uiColorConfig);
+  applyBrandSettings(appSettings);
   applyFontScale(appSettings.fontScale);
   applyRowPaddingScale(appSettings.rowPaddingScale);
   renderToolbar();

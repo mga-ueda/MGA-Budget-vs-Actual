@@ -13,7 +13,7 @@ export const DEFAULT_SECTION_COLORS = {
   other: { color: '#375623', barColor: '#375623', textColor: DEFAULT_TEXT_COLOR },
   outsourcing: { color: '#548235', barColor: '#548235', textColor: DEFAULT_TEXT_COLOR },
   tax: { color: '#9a3412', barColor: '#7c2d12', textColor: DEFAULT_TEXT_COLOR },
-  receivables: { color: '#c00000', barColor: '#c00000', textColor: DEFAULT_TEXT_COLOR },
+  revenueVariance: { color: '#c00000', barColor: '#c00000', textColor: DEFAULT_TEXT_COLOR },
   profit: { color: '#ffc000', barColor: '#ffc000', textColor: DEFAULT_DARK_TEXT_COLOR },
   currentAssets: { color: '#1f4e78', barColor: '#1f4e78', textColor: DEFAULT_TEXT_COLOR },
   fixedAssets: { color: '#1f4e78', barColor: '#1f4e78', textColor: DEFAULT_TEXT_COLOR },
@@ -60,7 +60,12 @@ export function saveSectionColorConfig(config) {
 
 function normalizeSectionColorConfig(config) {
   const normalized = {};
-  for (const [id, val] of Object.entries(config)) {
+  const migrated = { ...config };
+  if (migrated.receivables && !migrated.revenueVariance) {
+    migrated.revenueVariance = migrated.receivables;
+  }
+  delete migrated.receivables;
+  for (const [id, val] of Object.entries(migrated)) {
     if (typeof val === 'string') {
       normalized[id] = val;
     } else if (val) {
@@ -75,7 +80,8 @@ function normalizeSectionColorConfig(config) {
 
 export function getSectionColors(sectionId, config = {}) {
   const defaults = DEFAULT_SECTION_COLORS[sectionId] ?? FALLBACK;
-  const override = config[sectionId];
+  const override = config[sectionId]
+    ?? (sectionId === 'revenueVariance' ? config.receivables : undefined);
   if (!override) return { ...defaults };
   if (typeof override === 'string') return { ...defaults, barColor: override };
   return {

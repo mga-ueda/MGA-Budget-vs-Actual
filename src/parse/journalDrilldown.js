@@ -130,14 +130,16 @@ function filterPl(entries, section, row, months) {
 function filterReceivables(entries, section, row, months) {
   return entries.filter((e) => {
     if (!months.includes(e.monthKey)) return false;
-    if (e.debitAcct !== '売掛金' || e.creditAcct !== '売上高') return false;
-    if (e.debitAmt === 0 || e.debitAmt !== e.creditAmt) return false;
-    if (row.type === 'total') return true;
     if (row.type === 'variance') return false;
-    const sub = normalizeSub(row.subLabel);
-    const entrySub = normalizeSub(e.debitSub || e.creditSub);
+    const debitIsAr = e.debitAcct === '売掛金' && e.debitAmt > 0;
+    const creditIsAr = e.creditAcct === '売掛金' && e.creditAmt > 0;
+    if (!debitIsAr && !creditIsAr) return false;
+    if (row.type === 'total') return true;
     if (row.type === 'group') return row.label === '売掛金';
-    return entrySub === sub;
+    const sub = normalizeSub(row.subLabel);
+    if (debitIsAr && normalizeSub(e.debitSub) === sub) return true;
+    if (creditIsAr && normalizeSub(e.creditSub) === sub) return true;
+    return false;
   });
 }
 
@@ -188,6 +190,7 @@ function filterBs(entries, section, row, months) {
 
 export function isDrilldownAvailable(section, row) {
   if (row.type === 'profit' || row.type === 'variance' || row.type === 'plan') return false;
+  if (row.type === 'variance' || row.type === 'sub-variance' || row.type === 'warningSummary') return false;
   if (section.id === 'profit') return false;
   return true;
 }
@@ -196,7 +199,7 @@ export function findRelatedJournalEntries(entries, section, row, month) {
   const months = resolveMonths(month);
 
   switch (section.id) {
-    case 'receivables':
+    case 'revenueVariance':
       return filterReceivables(entries, section, row, months);
     case 'cfIn':
     case 'cfOut':
