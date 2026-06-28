@@ -1,0 +1,257 @@
+const EMPLOYEE_STORAGE_KEY = 'mga-employees';
+
+const RESIDENT_TAX_MONTH_KEYS = ['6', '7', '8', '9', '10', '11', '12', '1', '2', '3', '4', '5'];
+
+export const EMPLOYEE_ALLOWANCE_COLUMNS = [
+  { key: 'directorSalary', label: '\u5f79\u54e1\u5831\u916c' },
+  { key: 'baseSalary', label: '\u57fa\u672c\u7d66' },
+  { key: 'positionAllowance', label: '\u5f79\u8077\u624b\u5f53' },
+  { key: 'fixedOvertimePay', label: '\u56fa\u5b9a\u6b8b\u696d\u4ee3' },
+  { key: 'childAllowance', label: '\u5b50\u5973\u624b\u5f53' },
+  { key: 'fixedOvertimeAllowance', label: '\u56fa\u5b9a\u6b8b\u696d\u624b\u5f53' },
+  { key: 'commutingAllowance', label: '\u901a\u52e4\u624b\u5f53' },
+];
+
+function normalizeSalary(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+}
+
+function normalizeResidentTaxMonthly(value) {
+  if (!value || typeof value !== 'object') return null;
+  const result = {};
+  for (const month of RESIDENT_TAX_MONTH_KEYS) {
+    const amount = normalizeSalary(value[month]);
+    if (amount !== null && amount !== 0) result[month] = amount;
+  }
+  return Object.keys(result).length > 0 ? result : null;
+}
+
+export function normalizeEmployee(employee) {
+  if (!employee || typeof employee !== 'object') return null;
+  const id = String(employee.id ?? '').trim();
+  if (!id) return null;
+  return {
+    id,
+    employeeNumber: String(employee.employeeNumber ?? '').trim(),
+    lastName: String(employee.lastName ?? '').trim(),
+    firstName: String(employee.firstName ?? '').trim(),
+    lastNameKana: String(employee.lastNameKana ?? '').trim(),
+    firstNameKana: String(employee.firstNameKana ?? '').trim(),
+    jobType: String(employee.jobType ?? '').trim(),
+    position: String(employee.position ?? '').trim(),
+    contractType: String(employee.contractType ?? '').trim(),
+    joinDate: String(employee.joinDate ?? '').trim(),
+    leaveDate: String(employee.leaveDate ?? '').trim(),
+    directorSalary: normalizeSalary(employee.directorSalary),
+    baseSalary: normalizeSalary(employee.baseSalary),
+    positionAllowance: normalizeSalary(employee.positionAllowance),
+    fixedOvertimePay: normalizeSalary(employee.fixedOvertimePay),
+    childAllowance: normalizeSalary(employee.childAllowance),
+    fixedOvertimeAllowance: normalizeSalary(employee.fixedOvertimeAllowance),
+    commutingAllowance: normalizeSalary(employee.commutingAllowance),
+    residentTaxMunicipality: String(employee.residentTaxMunicipality ?? '').trim(),
+    residentTaxYear: String(employee.residentTaxYear ?? '').trim(),
+    residentTaxMonthly: normalizeResidentTaxMonthly(employee.residentTaxMonthly),
+  };
+}
+
+export function loadEmployees() {
+  try {
+    const raw = localStorage.getItem(EMPLOYEE_STORAGE_KEY);
+    const list = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(list)) return [];
+    return sortEmployees(list.map(normalizeEmployee).filter(Boolean));
+  } catch {
+    return [];
+  }
+}
+
+export function saveEmployees(employees) {
+  const normalized = sortEmployees(employees.map(normalizeEmployee).filter(Boolean));
+  localStorage.setItem(EMPLOYEE_STORAGE_KEY, JSON.stringify(normalized));
+  return normalized;
+}
+
+export function sortEmployees(employees) {
+  return [...employees].sort((a, b) => {
+    const numA = parseInt(a.employeeNumber, 10);
+    const numB = parseInt(b.employeeNumber, 10);
+    if (Number.isFinite(numA) && Number.isFinite(numB) && numA !== numB) {
+      return numA - numB;
+    }
+    const nameA = `${a.employeeNumber}${a.lastName}${a.firstName}`;
+    const nameB = `${b.employeeNumber}${b.lastName}${b.firstName}`;
+    return nameA.localeCompare(nameB, 'ja');
+  });
+}
+
+export function mergeEmployees(existing, imported) {
+  const map = new Map(existing.map((e) => [e.id, e]));
+  for (const emp of imported) {
+    const normalized = normalizeEmployee(emp);
+    if (normalized) map.set(normalized.id, normalized);
+  }
+  return sortEmployees([...map.values()]);
+}
+
+export function createManualEmployee({ employeeNumber, lastName, firstName, contractType, joinDate, baseSalary }) {
+  const id = `manual-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  return normalizeEmployee({
+    id,
+    employeeNumber: employeeNumber ?? '',
+    lastName: lastName ?? '',
+    firstName: firstName ?? '',
+    contractType: contractType ?? '',
+    joinDate: joinDate ?? '',
+    baseSalary: baseSalary ?? null,
+  });
+}
+
+export function formatEmployeeName(employee) {
+  return `${employee.lastName} ${employee.firstName}`.trim();
+}
+
+export function formatEmployeeYen(value) {
+  if (value === null || value === undefined || value === 0) return '';
+  return `\u00a5${value.toLocaleString('ja-JP')}`;
+}
+
+export function hasAllowanceValue(employee, key) {
+  const value = employee[key];
+  return value !== null && value !== undefined && value !== 0;
+}
+
+export function getVisibleAllowanceColumns(employees) {
+  return EMPLOYEE_ALLOWANCE_COLUMNS.filter((col) =>
+    employees.some((emp) => hasAllowanceValue(emp, col.key)),
+  );
+}
+
+export function hasResidentTaxData(employee) {
+  if (employee.residentTaxMunicipality || employee.residentTaxYear) return true;
+  const monthly = employee.residentTaxMonthly;
+  return monthly != null && Object.keys(monthly).length > 0;
+}
+
+export function employeesHaveResidentTax(employees) {
+  return employees.some(hasResidentTaxData);
+}
+
+export function getCurrentMonthResidentTax(employee, refDate = new Date()) {
+  const monthly = employee.residentTaxMonthly;
+  if (!monthly) return null;
+  const monthKey = String(refDate.getMonth() + 1);
+  return monthly[monthKey] ?? null;
+}
+
+export function parseEmployeeDate(dateStr) {
+  if (!dateStr) return null;
+  const match = dateStr.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/);
+  if (!match) return null;
+  const year = parseInt(match[1], 10);
+  const month = parseInt(match[2], 10);
+  const day = parseInt(match[3], 10);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null;
+  return new Date(year, month - 1, day);
+}
+
+/** 現在時点（または退職日）での勤続年月を計算 */
+export function computeTenure(joinDateStr, leaveDateStr, refDate = new Date()) {
+  const join = parseEmployeeDate(joinDateStr);
+  if (!join) return '';
+
+  let end = new Date(refDate.getFullYear(), refDate.getMonth(), refDate.getDate());
+  const leave = parseEmployeeDate(leaveDateStr);
+  if (leave && leave < end) {
+    end = leave;
+  }
+
+  if (end < join) return '';
+
+  let years = end.getFullYear() - join.getFullYear();
+  let months = end.getMonth() - join.getMonth();
+  if (end.getDate() < join.getDate()) months -= 1;
+  if (months < 0) {
+    years -= 1;
+    months += 12;
+  }
+
+  return `${years}\u5e74${months}\u30f6\u6708`;
+}
+
+/** Monthly compensation (director salary or base + allowances). */
+export function computeMonthlySalary(employee) {
+  const director = employee.directorSalary ?? 0;
+  const base = employee.baseSalary ?? 0;
+  const main = director > 0 ? director : base;
+  const allowance =
+    (employee.positionAllowance ?? 0) +
+    (employee.fixedOvertimePay ?? 0) +
+    (employee.fixedOvertimeAllowance ?? 0) +
+    (employee.childAllowance ?? 0);
+  return main + allowance;
+}
+
+export function computeEmployeeAmountTotals(employees) {
+  let monthlySalary = 0;
+  for (const emp of employees) {
+    monthlySalary += computeMonthlySalary(emp);
+  }
+  return { monthlySalary };
+}
+
+export function getEmployeeAmountTotalValue(columnKey, totals) {
+  if (columnKey === 'monthlySalary') {
+    return formatEmployeeYen(totals.monthlySalary);
+  }
+  return '';
+}
+
+export function isActiveEmployee(employee) {
+  return !employee.leaveDate;
+}
+
+export function isDirectorEmployee(employee) {
+  if ((employee.directorSalary ?? 0) > 0) return true;
+  const contract = employee.contractType ?? '';
+  const position = employee.position ?? '';
+  return /\u5f79\u54e1/.test(contract) || /\u5f79\u54e1/.test(position);
+}
+
+export function buildEmployeeTableColumns() {
+  return [
+    { kind: 'text', key: 'employeeNumber', label: '\u756a\u53f7', className: 'col-emp-no' },
+    { kind: 'text', key: 'name', label: '\u6c0f\u540d', className: 'col-emp-name' },
+    { kind: 'text', key: 'contractType', label: '\u5951\u7d04\u7a2e\u5225', className: 'col-emp-contract' },
+    { kind: 'text', key: 'joinDate', label: '\u5165\u793e\u65e5', className: 'col-emp-join' },
+    { kind: 'tenure', key: 'tenure', label: '\u52e4\u7d9a', className: 'col-emp-tenure' },
+    {
+      kind: 'amount',
+      key: 'monthlySalary',
+      label: '\u6708\u984d\u5831\u916c',
+      className: 'col-emp-amount',
+    },
+    { kind: 'actions', key: 'actions', label: '\u64cd\u4f5c', className: 'col-emp-actions' },
+  ];
+}
+
+export function getEmployeeCellValue(employee, column, refDate = new Date()) {
+  switch (column.key) {
+    case 'employeeNumber':
+      return employee.employeeNumber || '';
+    case 'name':
+      return formatEmployeeName(employee);
+    case 'contractType':
+      return employee.contractType || '';
+    case 'joinDate':
+      return employee.joinDate || '';
+    case 'tenure':
+      return computeTenure(employee.joinDate, employee.leaveDate, refDate);
+    case 'monthlySalary':
+      return formatEmployeeYen(computeMonthlySalary(employee));
+    default:
+      return '';
+  }
+}

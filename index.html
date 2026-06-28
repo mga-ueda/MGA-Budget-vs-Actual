@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>月別収支計画表 — MGA Budget vs Actual</title>
+  <link rel="stylesheet" href="src/plan.css" />
+</head>
+<body class="plan-app">
+  <header class="plan-header">
+    <div class="plan-header-top">
+      <div>
+        <div class="plan-brand">
+          <div class="plan-logo">MGA</div>
+          <div>
+            <div class="plan-company">MIYABI GAME AUDIO INC.</div>
+            <div class="plan-title-row">
+              <h1>月別収支計画表</h1>
+              <div class="plan-period-nav">
+                <button type="button" class="plan-period-btn" id="plan-period-prev" aria-label="前期">&lt;</button>
+                <select class="plan-period-select" id="plan-period-select" aria-label="期"></select>
+                <button type="button" class="plan-period-btn" id="plan-period-next" aria-label="翌期">&gt;</button>
+                <span class="plan-period-mode" id="plan-period-mode" aria-live="polite"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="plan-meta">
+        <button type="button" class="plan-csv-reload-btn" id="plan-reload-csv">CSV再読込</button>
+        <button type="button" class="plan-csv-reload-btn" id="plan-change-folder">フォルダ変更</button>
+        <div id="plan-updated">—</div>
+        <div class="plan-kpi" id="plan-kpi">—</div>
+      </div>
+    </div>
+    <nav class="plan-main-tabs" id="plan-main-tabs" aria-label="メインメニュー">
+      <button type="button" class="plan-main-tab active" data-tab="plan">予実表</button>
+      <button type="button" class="plan-main-tab" data-tab="expand">展開設定</button>
+      <button type="button" class="plan-main-tab" data-tab="visibility">表示設定</button>
+      <button type="button" class="plan-main-tab" data-tab="csvnames">CSV名定義</button>
+      <button type="button" class="plan-main-tab" data-tab="colors">色設定</button>
+      <button type="button" class="plan-main-tab" data-tab="taxrates">税率設定</button>
+      <button type="button" class="plan-main-tab" data-tab="taxpayments">支払い設定</button>
+      <button type="button" class="plan-main-tab" data-tab="employees">人件費設定</button>
+      <button type="button" class="plan-main-tab" data-tab="settings">その他設定</button>
+    </nav>
+    <nav class="plan-toolbar" id="plan-toolbar" aria-label="表示フィルター"></nav>
+  </header>
+
+  <div class="plan-body">
+    <main id="plan-root"></main>
+
+    <footer class="plan-footer">
+      <span class="plan-footer-text">MGA Budget vs Actual — MIYABI GAME AUDIO INC.</span>
+      <br aria-hidden="true" />
+    </footer>
+  </div>
+
+  <script src="src/plan.bundle.js" defer></script>
+</body>
+</html>

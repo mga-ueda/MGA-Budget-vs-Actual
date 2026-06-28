@@ -1,0 +1,2200 @@
+:root {
+  --plan-font-scale: 0.85;
+  --plan-row-padding-scale: 1;
+}
+
+html {
+  font-size: calc(100% * var(--plan-font-scale));
+}
+
+.plan-app {
+  --plan-bg: #262626;
+  --plan-surface: #16161c;
+  --plan-cell-bg: #262626;
+  --plan-cell-bg-sub: #1e1e28;
+  --plan-border: #2a2a35;
+  --plan-text: #ffffff;
+  --plan-muted: #ffffff;
+  --plan-text-dim: rgba(255, 255, 255, 0.5);
+  --plan-text-faint: rgba(255, 255, 255, 0.35);
+  --plan-accent: #ff0000;
+  /** 設定画面の入力欄（ページ背景より明るくして編集可能と分かるように） */
+  --plan-editor-bg: #383848;
+  --plan-editor-border: #52526a;
+  --plan-editor-bg-hover: #404052;
+  --plan-editor-border-hover: #5f5f78;
+  --plan-editor-bg-focus: #45455a;
+  --plan-editor-border-focus: #7070a0;
+  --plan-editor-focus-ring: rgba(112, 112, 176, 0.35);
+  --plan-negative-amount: #ff0000;
+  --plan-year-row-bg: #c65911;
+  --plan-year-row-text: #ffffff;
+  --plan-month-row-bg: #595959;
+  --plan-month-row-text: #ffffff;
+  --current-month-overlay: rgba(128, 0, 0, 0.28);
+  --current-month-ring: rgba(255, 0, 0, 0.45);
+  --current-month-overlay-head: rgba(128, 0, 0, 0.34);
+  --current-month-overlay-hover: rgba(128, 0, 0, 0.22);
+  --current-month-overlay-total: rgba(128, 0, 0, 0.32);
+  --row-selection-ring: #ffff00;
+  --row-hover-border: #00ffff;
+  --plan-expandable-highlight: #00ffff;
+  --plan-fill-color-1: #404040;
+  --plan-fill-color-2: #3F1B1B;
+  --plan-amount-color: #00b0f0;
+  --plan-amount-variance-color: #c65911;
+  --plan-colored-cell-font-weight: bold;
+  --plan-header-h: 120px;
+  --plan-font-table: "Meiryo UI", Meiryo, "メイリオ", sans-serif;
+  --plan-font-table-base: 0.72rem;
+  /** 予実表 tbody 標準（Excel 9pt 相当）。フォント倍率 UI（--plan-font-scale）と連動 */
+  --plan-font-table-standard: calc(9pt * var(--plan-font-scale) / 0.85);
+  /** 予実表 tbody 小（Excel 7pt 相当） */
+  --plan-font-table-small: calc(7pt * var(--plan-font-scale) / 0.85);
+  /** 設定画面など予実表外テーブルの金額列 */
+  --plan-font-table-amount: var(--plan-font-table-standard);
+  /** 予実表 tbody の上下 padding 基準。UI 倍率（--plan-row-padding-scale）と掛け合わせる */
+  --plan-table-row-plain-base: 0.22;
+  --plan-table-row-plain-scale: calc(var(--plan-table-row-plain-base) * var(--plan-row-padding-scale, 1));
+  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--plan-bg);
+  color: var(--plan-text);
+  display: flex;
+  flex-direction: column;
+}
+
+.plan-app table {
+  font-family: var(--plan-font-table);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+.plan-app table:not(.plan-table) :is(.col-amount, .col-amt) {
+  font-size: var(--plan-font-table-amount);
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+  letter-spacing: 0.02em;
+}
+
+.plan-app table :is(input, select, textarea, button) {
+  font-family: inherit;
+}
+
+.plan-header {
+  padding: 0.75rem 1rem 0.5rem;
+  background: linear-gradient(180deg, var(--plan-bg) 0%, var(--plan-bg) 100%);
+}
+
+.plan-header-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem 1.5rem;
+  margin-bottom: 0.625rem;
+}
+
+.plan-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+}
+
+.plan-logo {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: 0.7rem;
+  letter-spacing: -0.03em;
+}
+
+.plan-company {
+  font-size: 0.7rem;
+  color: var(--plan-muted);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.plan-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.plan-title-row h1 {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 700;
+}
+
+.plan-period-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.plan-period-btn {
+  background: var(--plan-cell-bg);
+  border: 1px solid var(--plan-border);
+  color: var(--plan-text);
+  border-radius: 6px;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  font-size: 0.85rem;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.plan-period-btn:hover:not(:disabled) {
+  background: #2f2f3a;
+}
+
+.plan-period-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.plan-period-select {
+  background: var(--plan-cell-bg);
+  border: 1px solid var(--plan-border);
+  color: var(--plan-text);
+  border-radius: 6px;
+  padding: 0.2rem 0.5rem;
+  font-size: 0.8rem;
+}
+
+.plan-period-mode {
+  margin-left: 0.35rem;
+  padding: 0.1rem 0.55rem;
+  border-radius: 6px;
+  font-size: 1.125rem;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+  color: #ffffff;
+}
+
+.plan-period-mode--budget-actual {
+  background: #0891b2;
+}
+
+.plan-period-mode--actual {
+  background: #16a34a;
+}
+
+.plan-period-mode--plan {
+  background: #ea580c;
+}
+
+.plan-meta {
+  text-align: right;
+  font-size: 0.7rem;
+  color: var(--plan-muted);
+}
+
+.plan-csv-reload-btn {
+  display: inline-block;
+  margin-bottom: 0.35rem;
+  padding: 0.25rem 0.6rem;
+  border: 1px solid var(--plan-border);
+  border-radius: 6px;
+  background: var(--plan-cell-bg);
+  color: var(--plan-text);
+  font-size: 0.68rem;
+  cursor: pointer;
+}
+
+.plan-csv-reload-btn:hover {
+  background: #2f2f3a;
+}
+
+.plan-kpi {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--plan-text);
+  margin-top: 0.15rem;
+}
+
+.plan-kpi.plan-kpi-negative {
+  color: var(--plan-negative-amount);
+}
+
+.plan-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.plan-main-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.plan-main-tab {
+  border: 1px solid var(--plan-border);
+  border-radius: 4px;
+  padding: 0.3rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  background: var(--plan-cell-bg);
+  color: var(--plan-text);
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.plan-main-tab:hover {
+  background: #2e2e3a;
+}
+
+.plan-main-tab.active {
+  background: #fff;
+  color: #111;
+  border-color: #fff;
+}
+
+.expand-settings-wrap {
+  padding: 1rem 1rem 2rem;
+}
+
+.expand-settings-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.expand-settings-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.expand-settings-desc {
+  margin: 0;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.75);
+  max-width: 42rem;
+  line-height: 1.5;
+}
+
+.expand-reset-btn {
+  border: 1px solid var(--plan-border);
+  border-radius: 4px;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  background: var(--plan-cell-bg);
+  color: var(--plan-text);
+}
+
+.expand-reset-btn:hover {
+  background: #2e2e3a;
+}
+
+.app-settings-form,
+.app-settings-form-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-width: 24rem;
+}
+
+.app-settings-field-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 1.25rem;
+  align-items: flex-start;
+}
+
+.app-settings-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.app-settings-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--plan-text);
+}
+
+:is(
+  .app-settings-input,
+  .consumption-tax-rate-input,
+  .tax-rate-input,
+  .csvname-pattern-input,
+  .csvname-example-input,
+  .section-color-input,
+  .salary-plan-amount-input
+) {
+  border: 1px solid var(--plan-editor-border);
+  background-color: var(--plan-editor-bg);
+  transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+:is(
+  .app-settings-input,
+  .consumption-tax-rate-input,
+  .tax-rate-input,
+  .csvname-pattern-input,
+  .csvname-example-input,
+  .section-color-input,
+  .salary-plan-amount-input
+):hover:not(:disabled) {
+  background-color: var(--plan-editor-bg-hover);
+  border-color: var(--plan-editor-border-hover);
+}
+
+:is(
+  .app-settings-input,
+  .consumption-tax-rate-input,
+  .tax-rate-input,
+  .csvname-pattern-input,
+  .csvname-example-input,
+  .section-color-input,
+  .salary-plan-amount-input
+):focus {
+  outline: none;
+  background-color: var(--plan-editor-bg-focus);
+  border-color: var(--plan-editor-border-focus);
+  box-shadow: 0 0 0 2px var(--plan-editor-focus-ring);
+}
+
+:is(
+  .app-settings-input,
+  .consumption-tax-rate-input,
+  .tax-rate-input,
+  .csvname-pattern-input,
+  .csvname-example-input
+):disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+select.app-settings-input {
+  cursor: pointer;
+}
+
+.app-settings-input {
+  border-radius: 4px;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.85rem;
+  color: var(--plan-text);
+  width: 8rem;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.app-settings-input[type="number"]::-webkit-outer-spin-button,
+.app-settings-input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.app-settings-input-wide {
+  width: 100%;
+  max-width: 24rem;
+}
+
+.app-settings-input-year {
+  width: 4.5rem;
+  text-align: center;
+}
+
+.app-settings-input-fiscal-month {
+  width: 6.75rem;
+  text-align: center;
+}
+
+.app-settings-range {
+  width: 100%;
+  max-width: 16rem;
+  accent-color: #2563eb;
+}
+
+.app-settings-hint {
+  margin: 0;
+  font-size: 0.72rem;
+  color: rgba(255, 255, 255, 0.65);
+  line-height: 1.5;
+}
+
+.app-settings-hint-nowrap {
+  white-space: nowrap;
+}
+
+.plan-font-scale,
+.plan-row-padding-scale {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+  flex-shrink: 0;
+}
+
+.plan-font-scale {
+  margin-left: 0.35rem;
+}
+
+.plan-row-padding-scale {
+  margin-left: 0.2rem;
+}
+
+.plan-font-scale-btn,
+.plan-row-padding-scale-btn {
+  background: var(--plan-cell-bg);
+  border: 1px solid var(--plan-border);
+  color: var(--plan-text);
+  border-radius: 4px;
+  padding: 0;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.3rem;
+  height: 1.3rem;
+}
+
+.plan-scale-btn-icon {
+  width: 0.8rem;
+  height: 0.8rem;
+  display: block;
+}
+
+.plan-font-scale-btn:hover:not(:disabled),
+.plan-row-padding-scale-btn:hover:not(:disabled) {
+  background: #2f2f3a;
+}
+
+.plan-font-scale-btn:disabled,
+.plan-row-padding-scale-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.plan-font-scale-value,
+.plan-row-padding-scale-value {
+  text-align: center;
+  font-size: 0.72rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--plan-text);
+  user-select: none;
+}
+
+.plan-font-scale-value {
+  min-width: 2.4rem;
+}
+
+.plan-row-padding-scale-value {
+  min-width: 2.4rem;
+}
+
+.app-settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  max-width: 100%;
+}
+
+.consumption-tax-rate-section,
+.tax-rate-section {
+  margin-top: 0.25rem;
+}
+
+.tax-rate-settings-wrap .app-settings-form {
+  max-width: none;
+  width: 100%;
+}
+
+.tax-rate-settings-wrap .expand-settings-desc {
+  max-width: none;
+  flex: 1 1 36rem;
+}
+
+.tax-rate-settings-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  gap: 0.85rem 2rem;
+  align-items: start;
+}
+
+.tax-rate-settings-form .tax-rate-section--wide {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 720px) {
+  .tax-rate-settings-form {
+    grid-template-columns: 1fr;
+  }
+}
+
+.tax-rate-section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.85rem;
+  margin-bottom: 0.15rem;
+}
+
+.tax-rate-section-head .app-settings-label {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.tax-rate-section-hint {
+  margin: 0;
+  flex: 1 1 12rem;
+  min-width: 0;
+  line-height: 1.45;
+}
+
+.legal-welfare-rate-inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.75rem;
+}
+
+.legal-welfare-rate-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex: 0 0 auto;
+}
+
+.legal-welfare-rate-field .app-settings-label {
+  margin: 0;
+}
+
+.consumption-tax-rate-table th,
+.tax-rate-table th,
+.consumption-tax-rate-table td,
+.tax-rate-table td {
+  text-align: center;
+}
+
+.consumption-tax-rate-input,
+.tax-rate-input {
+  width: 4.5rem;
+  border-radius: 4px;
+  padding: 0.25rem 0.35rem;
+  font-size: 0.75rem;
+  color: var(--plan-text);
+  text-align: center;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.tax-rate-input[type="number"]::-webkit-outer-spin-button,
+.tax-rate-input[type="number"]::-webkit-inner-spin-button,
+.consumption-tax-rate-input[type="number"]::-webkit-outer-spin-button,
+.consumption-tax-rate-input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.consumption-tax-rate-input-rate,
+.tax-rate-input-rate {
+  width: 4rem;
+}
+
+.tax-rate-input-threshold {
+  width: 6.5rem;
+}
+
+.withholding-tax-rate-table {
+  width: 100%;
+  max-width: none;
+}
+
+.legal-welfare-rate-input {
+  width: 5.5rem;
+}
+
+.consumption-tax-rate-delete-btn,
+.tax-rate-delete-btn {
+  border: 1px solid var(--plan-border);
+  border-radius: 4px;
+  padding: 0.2rem 0.45rem;
+  font-size: 0.68rem;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.75);
+  cursor: pointer;
+}
+
+.consumption-tax-rate-delete-btn:hover,
+.tax-rate-delete-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.consumption-tax-rate-add-btn,
+.tax-rate-add-btn {
+  align-self: flex-start;
+  margin-top: 0.15rem;
+}
+
+.consumption-tax-rate-table .col-tax-rate-actions,
+.tax-rate-table .col-tax-rate-actions {
+  width: 1%;
+  padding-left: 0.25rem;
+  padding-right: 0.25rem;
+}
+
+.expand-settings-empty {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 0.8rem;
+}
+
+.expand-settings-table {
+  width: max-content;
+  max-width: 100%;
+  border-collapse: collapse;
+  font-size: 0.75rem;
+  table-layout: auto;
+}
+
+.expand-settings-table th,
+.expand-settings-table td {
+  border-bottom: 1px solid var(--plan-border);
+  padding: 0.35rem 0.45rem;
+  text-align: left;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.expand-settings-table thead th {
+  position: sticky;
+  top: 0;
+  background: #1e1e28;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.85);
+  text-align: center;
+}
+
+.expand-settings-table tbody tr:hover td:not(.col-section-label) {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.expand-section-row td:first-child {
+  font-weight: 700;
+  padding-top: 0.75rem;
+}
+
+.expand-settings-table .col-section-label {
+  font-weight: 600;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.section-color-table .col-color-input,
+.ui-color-table .col-color-input {
+  width: 1%;
+  padding-left: 0.35rem;
+  padding-right: 0.35rem;
+}
+
+.section-color-input {
+  width: 2.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.section-color-preview {
+  display: inline-block;
+  padding: 0.3rem 0.5rem;
+  border-radius: 4px;
+  font-weight: 600;
+  font-size: 0.72rem;
+  text-align: center;
+}
+
+.section-color-table .col-color-preview,
+.ui-color-table .col-color-preview {
+  width: 1%;
+}
+
+.section-color-table .col-color-action,
+.ui-color-table .col-color-action {
+  width: 1%;
+  padding-right: 0.35rem;
+}
+
+.ui-color-panel {
+  margin-bottom: 1.25rem;
+  padding-bottom: 1.25rem;
+  border-bottom: 1px solid var(--plan-border);
+}
+
+.ui-color-panel-title {
+  margin: 0 0 0.75rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--plan-text);
+}
+
+
+.ui-color-table .col-color-none {
+  color: rgba(255, 255, 255, 0.35);
+  text-align: center;
+}
+
+.ui-color-preview-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.35rem;
+  padding: 0.3rem 0.45rem;
+  border-radius: 4px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.ui-color-preview-hover {
+  box-sizing: border-box;
+}
+
+.section-color-reset-btn {
+  border: 1px solid var(--plan-border);
+  border-radius: 4px;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.68rem;
+  cursor: pointer;
+  background: var(--plan-cell-bg);
+  color: var(--plan-text);
+}
+
+.section-color-reset-btn:hover:not(:disabled) {
+  background: #2e2e3a;
+}
+
+.section-color-reset-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.expand-settings-table .col-count {
+  text-align: center;
+  width: 1%;
+}
+
+.csv-name-settings-table .col-csvname-pattern {
+  width: 1%;
+}
+
+.csv-name-settings-table .col-csvname-example {
+  width: 1%;
+}
+
+.csvname-pattern-input,
+.csvname-example-input {
+  border-radius: 4px;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.72rem;
+  color: var(--plan-text);
+}
+
+.csvname-pattern-input {
+  width: 27rem;
+  box-sizing: border-box;
+}
+
+.csvname-example-input {
+  width: 21rem;
+  box-sizing: border-box;
+}
+
+.csvname-pattern-input.is-invalid {
+  border-color: #ef4444;
+}
+
+.col-csvname-test {
+  width: 1%;
+  text-align: center;
+  font-weight: 600;
+}
+
+.col-csvname-test.is-ok {
+  color: #86efac;
+}
+
+.col-csvname-test.is-ng {
+  color: #fca5a5;
+}
+
+.expand-settings-table .col-row-type {
+  width: 1%;
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 0.68rem;
+}
+
+.expand-settings-table tbody .col-settings-label,
+.expand-settings-table tbody .col-subs {
+  text-align: right;
+}
+
+.expand-settings-table .col-subs {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.68rem;
+}
+
+.expand-config-table tbody .col-subs {
+  text-align: left;
+}
+
+.expand-settings-table.visibility-config-table th,
+.expand-settings-table.visibility-config-table td {
+  text-align: center;
+}
+
+.expand-settings-table .col-toggle {
+  width: 1%;
+}
+
+.expand-toggle-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.expand-default-hint {
+  font-size: 0.62rem;
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.plan-filter-btn {
+  border: none;
+  border-radius: 4px;
+  padding: 0.25rem 0.55rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.1s;
+}
+
+.plan-filter-btn:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+.plan-filter-btn.active {
+  outline: 2px solid currentColor;
+  outline-offset: 1px;
+}
+
+.plan-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
+}
+
+#plan-root {
+  display: block;
+}
+
+.plan-footer {
+  padding: 0.45rem 1rem 1.5rem;
+  border-top: 1px solid var(--plan-border);
+  background: var(--plan-bg);
+  text-align: center;
+  line-height: 1.5;
+}
+
+.plan-footer-text {
+  font-size: 0.65rem;
+  color: var(--plan-text-dim);
+  letter-spacing: 0.04em;
+}
+
+.plan-table-wrap {
+  position: relative;
+  box-sizing: border-box;
+  width: 100%;
+  --plan-table-inline-margin: 1rem;
+  padding-inline: var(--plan-table-inline-margin);
+  padding-bottom: 1.5rem;
+}
+
+.plan-row-hover-plate {
+  position: absolute;
+  box-sizing: border-box;
+  pointer-events: none;
+  z-index: 11;
+  visibility: hidden;
+  background: transparent;
+  border: 1px solid var(--row-hover-border);
+}
+
+.plan-row-hover-plate.is-expandable {
+  border-color: var(--plan-expandable-highlight);
+}
+
+.plan-row-hover-plate.is-active {
+  visibility: visible;
+}
+
+.plan-row-selection-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10;
+  overflow: visible;
+}
+
+.plan-row-selection-plate {
+  position: absolute;
+  box-sizing: border-box;
+  pointer-events: none;
+  background: transparent;
+  border: 2px solid var(--row-selection-ring);
+}
+
+.plan-row-context-menu {
+  position: fixed;
+  z-index: 1100;
+  min-width: 220px;
+  max-width: min(320px, calc(100vw - 16px));
+  padding: 0.35rem 0;
+  background: #1e1e28;
+  border: 1px solid var(--plan-border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+.plan-row-context-menu-title {
+  padding: 0.45rem 0.85rem 0.35rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.35;
+  color: var(--plan-text-dim, #9a9aad);
+  border-bottom: 1px solid var(--plan-border);
+  margin-bottom: 0.2rem;
+}
+
+.plan-row-context-menu-heading {
+  padding: 0.35rem 0.85rem 0.15rem;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--plan-text-dim, #9a9aad);
+}
+
+.plan-row-context-menu-sep {
+  height: 1px;
+  margin: 0.25rem 0;
+  background: var(--plan-border);
+}
+
+.plan-row-context-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.4rem 0.85rem;
+  border: none;
+  background: transparent;
+  color: var(--plan-text);
+  font: inherit;
+  font-size: 0.78rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.plan-row-context-menu-item:hover:not(:disabled),
+.plan-row-context-menu-item:focus-visible {
+  background: rgba(255, 255, 255, 0.08);
+  outline: none;
+}
+
+.plan-row-context-menu-item:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.plan-row-context-menu-check {
+  flex: 0 0 1rem;
+  font-size: 0.75rem;
+  color: var(--plan-accent, #7eb6ff);
+  text-align: center;
+}
+
+.plan-row-context-menu-label {
+  flex: 1 1 auto;
+  line-height: 1.35;
+}
+
+.plan-table {
+  --plan-col-category-w: auto;
+  --plan-col-label-w: auto;
+  --plan-col-sub-w: auto;
+  --plan-col-amount-month-w: auto;
+  --plan-col-amount-extra-w: auto;
+  /** 月次列幅 = 計測値 × この倍率（1 = 変更なし）。見切れ時は JS が自動で広げる */
+  --plan-col-amount-month-scale: 0.94;
+  --plan-table-font-standard: var(--plan-font-table-standard);
+  --plan-table-font-small: var(--plan-font-table-small);
+  --plan-table-cell-padding-y: 0.22rem;
+  --plan-table-cell-padding-x: 0.32rem;
+  --plan-table-amount-padding-x: 0.14rem;
+  --plan-table-category-padding-x: 0.22rem;
+  --plan-table-sub-indent: 0.65rem;
+  --plan-table-cell-padding-y-compact: calc(var(--plan-table-cell-padding-y) * var(--plan-table-row-plain-scale));
+  --plan-table-category-padding-y: 0.35rem;
+  --plan-table-category-padding-y-compact: calc(var(--plan-table-category-padding-y) * var(--plan-table-row-plain-scale));
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: var(--plan-font-table-base);
+  width: 100%;
+  min-width: 100%;
+}
+
+.plan-table :is(.col-amount, .col-amt) {
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+  letter-spacing: 0.02em;
+}
+
+.plan-table.plan-table-measuring {
+  table-layout: auto;
+  width: max-content;
+  min-width: 0;
+}
+
+.plan-table.plan-table-measuring :is(.col-category, .col-label, .col-sub, .col-amount-month, .col-amount-extra) {
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: none !important;
+}
+
+.plan-table thead th {
+  position: sticky;
+  z-index: 4;
+  background: #1e1e28;
+  border-bottom: 1px solid #1e1e28;
+  border-right: 1px solid #1e1e28;
+  padding: 0.35rem 0.5rem;
+  font-weight: 600;
+  text-align: center;
+  white-space: nowrap;
+  color: var(--plan-muted);
+}
+
+.plan-table thead th.col-category,
+.plan-table thead th.col-label,
+.plan-table thead th.col-sub {
+  z-index: 6;
+}
+
+.plan-table thead th.col-category {
+  z-index: 8;
+  text-align: center;
+  vertical-align: bottom;
+}
+
+.plan-table thead th.col-sub {
+  z-index: 7;
+  border-right-width: 0;
+}
+
+.plan-table :is(th, td):is(.col-category, .col-label, .col-sub) {
+  box-sizing: border-box;
+}
+
+.plan-table :is(th, td):is(.col-amount-month, .col-amount-extra) {
+  box-sizing: border-box;
+  overflow: visible;
+}
+
+.plan-table :is(th, td).col-label {
+  padding-left: var(--plan-table-cell-padding-x);
+  padding-right: var(--plan-table-cell-padding-x);
+}
+
+.plan-table :is(th, td).col-sub {
+  padding-left: var(--plan-table-cell-padding-x);
+  padding-right: var(--plan-table-cell-padding-x);
+  border-right-width: 0;
+}
+
+.plan-table thead .year-row th {
+  top: 0;
+  font-size: var(--plan-table-font-standard);
+  padding: 0.2rem 0.5rem;
+  background: var(--plan-bg);
+  border-color: var(--plan-bg);
+  border-top-width: 0;
+  color: var(--plan-text);
+}
+
+.plan-table thead .year-row th.year-row-label {
+  font-size: var(--plan-table-font-standard);
+  background: var(--plan-year-row-bg);
+  border-color: var(--plan-year-row-bg);
+  color: var(--plan-year-row-text);
+}
+
+.plan-table thead .year-row th.year-row-label.col-amount {
+  border-bottom-color: var(--plan-month-row-bg);
+}
+
+.plan-table thead .month-row th {
+  top: var(--plan-thead-year-h, 1.35rem);
+  font-size: var(--plan-table-font-standard);
+  background: var(--plan-month-row-bg);
+  border-color: var(--plan-month-row-bg);
+  border-bottom-color: var(--plan-cell-bg);
+  color: var(--plan-month-row-text);
+}
+
+.plan-table thead .month-row th:is(.col-label, .col-sub) {
+  font-size: var(--plan-table-font-standard);
+}
+
+.plan-table tbody td {
+  border-bottom-width: 0;
+  border-right: 1px solid var(--plan-cell-bg);
+  padding: var(--plan-table-cell-padding-y-compact) var(--plan-table-cell-padding-x);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  background: var(--plan-cell-bg);
+}
+
+.plan-table :is(th, td).col-amount-month,
+.plan-table :is(th, td).col-amount-extra {
+  padding-left: var(--plan-table-amount-padding-x);
+  padding-right: var(--plan-table-amount-padding-x);
+}
+
+.plan-table :is(
+  tbody td.col-category,
+  tr.row-section-total td,
+  thead .year-row th.year-row-label,
+  thead .month-row th
+) {
+  font-weight: var(--plan-colored-cell-font-weight);
+}
+
+.col-category {
+  width: var(--plan-col-category-w);
+  min-width: var(--plan-col-category-w);
+  max-width: var(--plan-col-category-w);
+  padding: var(--plan-table-category-padding-y-compact) var(--plan-table-category-padding-x) !important;
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  text-align: center;
+  vertical-align: middle;
+  font-size: var(--plan-table-font-standard);
+  line-height: 1.35;
+  white-space: nowrap;
+  border-right: 1px solid var(--plan-cell-bg);
+  border-bottom-width: 0;
+}
+
+.plan-table tbody td.col-category {
+  font-size: var(--plan-table-font-standard);
+  background: var(--section-bg) !important;
+  border-color: var(--section-bg) !important;
+  color: var(--section-text);
+}
+
+.col-label {
+  width: var(--plan-col-label-w);
+  min-width: var(--plan-col-label-w);
+  max-width: var(--plan-col-label-w);
+  position: sticky;
+  left: var(--plan-col-label-left, var(--plan-col-category-w));
+  z-index: 2;
+  background: var(--plan-cell-bg);
+  color: var(--plan-text);
+  white-space: nowrap;
+  text-align: right;
+}
+
+.col-sub {
+  width: var(--plan-col-sub-w);
+  min-width: var(--plan-col-sub-w);
+  max-width: var(--plan-col-sub-w);
+  position: sticky;
+  left: var(--plan-col-sub-left, calc(var(--plan-col-category-w) + var(--plan-col-label-w)));
+  z-index: 3;
+  background: var(--plan-cell-bg);
+  color: var(--plan-text);
+  white-space: nowrap;
+  text-align: right;
+}
+
+.col-amount {
+  text-align: right;
+  color: var(--plan-text);
+  white-space: nowrap;
+}
+
+.col-amount-month {
+  width: var(--plan-col-amount-month-w);
+  min-width: var(--plan-col-amount-month-w);
+  max-width: var(--plan-col-amount-month-w);
+}
+
+.col-amount-extra {
+  width: var(--plan-col-amount-extra-w);
+  min-width: var(--plan-col-amount-extra-w);
+  max-width: var(--plan-col-amount-extra-w);
+}
+
+.col-amount.current-month {
+  box-shadow: inset 0 0 0 9999px var(--current-month-overlay);
+  border-top-width: 0 !important;
+  border-bottom-width: 0 !important;
+  border-left: 1px solid var(--current-month-ring) !important;
+  border-right: 1px solid var(--current-month-ring) !important;
+}
+
+.plan-table tbody .col-amount.current-month {
+  position: relative;
+}
+
+thead .col-amount.current-month {
+  --current-month-overlay: var(--current-month-overlay-head);
+  color: var(--plan-text);
+}
+
+.plan-table thead .month-row th.col-amount.current-month {
+  border-bottom-width: 0 !important;
+}
+
+tr.row-section-total td {
+  background: var(--section-bg) !important;
+  border-color: var(--section-bg) !important;
+}
+
+tr.row-section-total .col-category {
+  background: var(--section-bg) !important;
+}
+
+.plan-table tbody tr.row-fill-1 td:not(.col-category) {
+  background: var(--plan-fill-color-1) !important;
+  border-color: var(--plan-fill-color-1) !important;
+}
+
+.plan-table tbody tr.row-fill-2 td:not(.col-category) {
+  background: var(--plan-fill-color-2) !important;
+  border-color: var(--plan-fill-color-2) !important;
+}
+
+.plan-table tbody tr.row-plan-amount td.col-amount {
+  color: var(--plan-amount-color);
+}
+
+.plan-table tbody tr.row-plan-amount td.col-amount .amount-yen.amount-negative {
+  color: var(--plan-negative-amount) !important;
+}
+
+.plan-table tbody td.col-amount.plan-amount-filled {
+  color: var(--plan-amount-color);
+}
+
+.plan-table tbody tr.row-plan-amount td.col-amount.plan-amount-variance {
+  color: var(--plan-amount-variance-color);
+}
+
+tr.row-section-total .col-label,
+tr.row-section-total .col-sub {
+  color: var(--section-text);
+  background: var(--section-bg) !important;
+}
+
+tr.row-section-total .col-amount {
+  color: var(--section-text);
+}
+
+tr.row-section-total .col-amount.current-month {
+  --current-month-overlay: var(--current-month-overlay-total);
+  box-shadow: inset 0 0 0 9999px var(--current-month-overlay);
+  border-top-width: 0 !important;
+  border-bottom-width: 0 !important;
+  border-left: 1px solid var(--current-month-ring) !important;
+  border-right: 1px solid var(--current-month-ring) !important;
+  color: var(--section-text);
+}
+
+tr.row-section-total .amount-empty {
+  color: var(--section-text-dim);
+}
+
+tr.row-section-total .amount-yen::before {
+  opacity: 0.75;
+}
+
+/*
+ * 予実表フォントサイズ・行高（plan.js の planRowHasAccentBackground と対応）
+ * - row-accent-bg / 大きく表示: 9pt 相当（--plan-table-font-standard）
+ * - row-plain-bg: 7pt 相当（--plan-table-font-small）
+ * - col-category: 区分列は行種別に関わらず常にアクセントサイズ
+ * - 行高（上下 padding）は tbody 全体で --plan-table-row-plain-scale を共有（大項目区分列含む）
+ */
+.plan-table tbody tr.row-accent-bg td {
+  font-size: var(--plan-table-font-standard);
+}
+
+.plan-table tbody tr.row-plain-bg td:not(.col-category) {
+  font-size: var(--plan-table-font-small);
+}
+
+.plan-table tbody tr.row-plain-bg.row-sub td.col-sub {
+  font-size: var(--plan-table-font-small);
+}
+
+.plan-table tbody tr.row-plain-bg td.col-amount {
+  font-size: var(--plan-table-font-small);
+}
+
+tr.row-group .col-label {
+  color: var(--plan-text);
+}
+
+tr.row-sub .col-sub {
+  padding-right: var(--plan-table-sub-indent);
+  color: var(--plan-text);
+}
+
+tr.row-sub .col-label,
+tr.row-sub .col-sub,
+tr.row-sub td {
+  background: var(--plan-cell-bg-sub);
+  border-color: var(--plan-cell-bg-sub);
+}
+
+.row-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  width: 100%;
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+
+.row-toggle-text {
+  flex: 1;
+  min-width: 0;
+  text-align: right;
+}
+
+.aggregate-label-prefix {
+  font-weight: 400;
+  font-size: 0.5em;
+  vertical-align: baseline;
+}
+
+.row-toggle:hover,
+.row-toggle:hover .toggle-icon {
+  color: var(--plan-expandable-highlight);
+}
+
+.toggle-icon {
+  flex-shrink: 0;
+  display: inline-block;
+  width: 0.75rem;
+  font-size: 0.55rem;
+  color: var(--plan-text);
+  text-align: center;
+}
+
+tr.row-profit td {
+  background: var(--plan-cell-bg);
+  border-color: var(--plan-cell-bg);
+}
+
+tr.row-profit .col-label,
+tr.row-profit .col-sub {
+  background: var(--plan-cell-bg);
+  color: var(--section-text, var(--plan-text));
+}
+
+tr.row-profit .col-amount {
+  color: var(--section-text, var(--plan-text));
+}
+
+tr.row-variance td {
+  background: rgba(220, 38, 38, 0.06);
+  border-color: rgba(220, 38, 38, 0.06);
+  font-weight: 600;
+}
+
+tr.row-variance .col-label,
+tr.row-variance .col-sub {
+  background: rgba(220, 38, 38, 0.06);
+  color: #ff0000;
+}
+
+tr.row-variance .col-amount.has-variance {
+  background: rgba(255, 0, 0, 0.2) !important;
+  border-color: rgba(255, 0, 0, 0.2) !important;
+  color: #ff0000;
+}
+
+.amount-variance-ok {
+  color: var(--plan-text-faint);
+}
+
+.amount-negative {
+  color: var(--plan-negative-amount) !important;
+}
+
+.amount-yen::before {
+  content: '¥';
+  opacity: 0.85;
+  margin-right: 1px;
+  font-size: inherit;
+}
+
+.amount-yen.amount-has-prefix::before {
+  content: none;
+}
+
+.amount-prefix {
+  font-size: inherit;
+  font-weight: inherit;
+  margin-right: 1px;
+}
+
+.amount-empty {
+  color: var(--plan-text-dim);
+}
+
+.plan-loading,
+.plan-error {
+  padding: 3rem 1.5rem;
+  text-align: center;
+  color: var(--plan-muted);
+}
+
+.plan-loading-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 20000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(8, 8, 14, 0.38);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  opacity: 0;
+  transition: opacity 0.38s ease;
+  pointer-events: all;
+}
+
+.plan-loading-overlay--visible {
+  opacity: 1;
+}
+
+.plan-loading-overlay--hiding {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.plan-loading-overlay-panel {
+  display: flex;
+  align-items: baseline;
+  gap: 0;
+  color: var(--plan-text, #e8e8ef);
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.plan-loading-overlay-dots {
+  display: inline-flex;
+  min-width: 1.5em;
+}
+
+.plan-loading-overlay-dots span {
+  animation: plan-loading-dot 1.2s ease-in-out infinite;
+  opacity: 0.25;
+}
+
+.plan-loading-overlay-dots span:nth-child(1) {
+  animation-delay: 0s;
+}
+
+.plan-loading-overlay-dots span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.plan-loading-overlay-dots span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes plan-loading-dot {
+  0%,
+  80%,
+  100% {
+    opacity: 0.2;
+    transform: translateY(0);
+  }
+
+  40% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+}
+
+.plan-error {
+  color: #ff0000;
+}
+
+.plan-csv-load {
+  max-width: 32rem;
+  margin: 3rem auto;
+  padding: 0 1.5rem;
+  text-align: center;
+}
+
+.plan-csv-load h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.1rem;
+}
+
+.plan-csv-load p {
+  margin: 0 0 0.75rem;
+  color: var(--plan-muted);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.plan-csv-note {
+  color: var(--plan-text-dim) !important;
+  font-size: 0.78rem !important;
+}
+
+.plan-csv-error {
+  color: #ff6666 !important;
+}
+
+.plan-csv-drop {
+  margin: 1.25rem 0;
+  padding: 2rem 1.5rem;
+  border: 2px dashed var(--plan-border);
+  border-radius: 12px;
+  background: var(--plan-surface);
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.plan-csv-drop.dragover {
+  border-color: #2563eb;
+  background: rgba(37, 99, 235, 0.08);
+}
+
+.plan-csv-drop-label {
+  margin-bottom: 1rem !important;
+}
+
+.plan-csv-btn {
+  display: inline-block;
+  padding: 0.5rem 1.25rem;
+  border: none;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.plan-csv-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.plan-csv-link-btn {
+  background: none;
+  border: none;
+  color: var(--plan-text-dim);
+  font-size: 0.78rem;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0;
+}
+
+.plan-csv-link-btn:hover {
+  color: var(--plan-text);
+}
+
+.plan-csv-btn:hover {
+  filter: brightness(1.08);
+}
+
+.employee-settings-actions {
+  align-items: center;
+}
+
+.employee-status-msg {
+  margin: 0 0 1rem;
+  font-size: 0.75rem;
+  color: #86efac;
+}
+
+.employee-status-msg.employee-status-error {
+  color: #fca5a5;
+}
+
+.employee-add-form {
+  margin-bottom: 1.25rem;
+  padding: 1rem;
+  border: 1px solid var(--plan-border);
+  border-radius: 8px;
+  background: var(--plan-surface);
+}
+
+.employee-add-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
+  gap: 0.75rem 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.employee-add-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.employee-settings-table th {
+  text-align: center;
+}
+
+.employee-settings-table td:not(.col-emp-amount) {
+  text-align: center;
+}
+
+.employee-settings-table .col-emp-no {
+  width: 3.5rem;
+  white-space: nowrap;
+}
+
+.employee-settings-table .col-emp-name {
+  max-width: 8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.employee-settings-table td.col-emp-amount,
+.employee-settings-table tfoot td.col-emp-amount {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.employee-settings-table tfoot tr.employee-settings-total-row td {
+  font-weight: 600;
+  border-top: 2px solid var(--plan-border);
+}
+
+.employee-settings-table tfoot .employee-settings-total-label {
+  text-align: center;
+}
+
+.employee-settings-table .col-emp-actions {
+  width: 7.5rem;
+  text-align: center;
+}
+
+.employee-actions-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.25rem;
+}
+
+.employee-actions-wrap.employee-actions-confirm {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.employee-delete-prompt {
+  font-size: 0.65rem;
+  color: var(--plan-text-faint);
+  line-height: 1.3;
+}
+
+.employee-delete-confirm-btn,
+.employee-delete-cancel-btn {
+  border-radius: 4px;
+  padding: 0.2rem 0.4rem;
+  font-size: 0.65rem;
+  font-weight: 600;
+  cursor: pointer;
+  background: transparent;
+}
+
+.employee-delete-confirm-btn {
+  border: 1px solid rgba(248, 113, 113, 0.55);
+  color: #fca5a5;
+}
+
+.employee-delete-confirm-btn:hover {
+  background: rgba(248, 113, 113, 0.12);
+}
+
+.employee-delete-cancel-btn {
+  border: 1px solid var(--plan-border);
+  color: var(--plan-text-faint);
+}
+
+.employee-delete-cancel-btn:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.employee-settings-table tbody tr.employee-row-inactive td {
+  color: var(--plan-text-faint);
+}
+
+.employee-delete-btn {
+  border: 1px solid rgba(248, 113, 113, 0.45);
+  border-radius: 4px;
+  padding: 0.2rem 0.5rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  cursor: pointer;
+  background: transparent;
+  color: #fca5a5;
+}
+
+.employee-delete-btn:hover {
+  background: rgba(248, 113, 113, 0.12);
+}
+
+.salary-plan-section {
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--plan-border);
+}
+
+.salary-plan-header {
+  margin-bottom: 1rem;
+}
+
+.salary-plan-header-spaced {
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--plan-border);
+}
+
+.salary-plan-title {
+  margin: 0 0 0.35rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--plan-text);
+}
+
+.salary-plan-desc {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--plan-text-faint);
+  line-height: 1.5;
+}
+
+.salary-plan-bonus-month-config {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1rem;
+  margin-top: 0.85rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--plan-border);
+  border-radius: 8px;
+  background: var(--plan-surface);
+}
+
+.salary-plan-bonus-month-config-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--plan-text);
+}
+
+.salary-plan-bonus-month-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.salary-plan-bonus-month-field-label {
+  font-size: 0.72rem;
+  color: var(--plan-text-faint);
+}
+
+.salary-plan-bonus-month-select {
+  min-width: 4.5rem;
+  padding: 0.25rem 0.4rem;
+  border: 1px solid var(--plan-border);
+  border-radius: 4px;
+  background: var(--plan-bg);
+  color: var(--plan-text);
+  font-size: 0.72rem;
+}
+
+.salary-plan-travel-allowance-config {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1rem;
+  margin-top: 0.85rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--plan-border);
+  border-radius: 8px;
+  background: var(--plan-surface);
+}
+
+.salary-plan-travel-allowance-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.salary-plan-travel-allowance-field-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--plan-text);
+}
+
+.salary-plan-travel-allowance-input {
+  width: 7rem;
+  padding: 0.25rem 0.4rem;
+  border: 1px solid var(--plan-border);
+  border-radius: 4px;
+  background: var(--plan-bg);
+  color: var(--plan-text);
+  font-size: 0.72rem;
+  text-align: right;
+}
+
+.salary-plan-travel-allowance-suffix {
+  font-size: 0.72rem;
+  color: var(--plan-text-faint);
+}
+
+.salary-plan-col-bonus-month {
+  background: rgba(134, 239, 172, 0.08);
+}
+
+.salary-plan-period-block {
+  margin-top: 1.5rem;
+}
+
+.salary-plan-period-block:first-of-type {
+  margin-top: 1rem;
+}
+
+.salary-plan-period-title {
+  margin: 0 0 0.75rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--plan-text);
+}
+
+.salary-plan-table-wrap {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.salary-plan-table {
+  table-layout: fixed;
+  width: max-content;
+  max-width: 100%;
+  font-size: 0.72rem;
+}
+
+.salary-plan-table th {
+  text-align: center;
+  white-space: nowrap;
+}
+
+.salary-plan-table td:not(.salary-plan-amount-cell):not(.salary-plan-col-total) {
+  text-align: center;
+}
+
+.salary-plan-table th.salary-plan-col-no,
+.salary-plan-table td.salary-plan-col-no {
+  width: 3rem;
+  max-width: 3rem;
+  white-space: nowrap;
+}
+
+.salary-plan-table th.salary-plan-col-name,
+.salary-plan-table td.salary-plan-col-name {
+  width: 7rem;
+  max-width: 7rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.salary-plan-table th.salary-plan-col-kind,
+.salary-plan-table td.salary-plan-col-kind {
+  width: 3rem;
+  max-width: 3rem;
+  white-space: nowrap;
+}
+
+.salary-plan-table th.salary-plan-col-month,
+.salary-plan-table td.salary-plan-amount-cell {
+  width: 4.75rem;
+  max-width: 4.75rem;
+  overflow: hidden;
+  box-sizing: border-box;
+  padding-left: 0.2rem;
+  padding-right: 0.2rem;
+}
+
+.salary-plan-table th.salary-plan-col-total {
+  width: 5.5rem;
+  max-width: 5.5rem;
+  white-space: nowrap;
+}
+
+.salary-plan-table td.salary-plan-col-total {
+  width: 5.5rem;
+  max-width: 5.5rem;
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  box-sizing: border-box;
+  padding-left: 0.2rem;
+  padding-right: 0.2rem;
+}
+
+.salary-plan-table th.salary-plan-col-increase,
+.salary-plan-table td.salary-plan-col-increase {
+  width: 4.25rem;
+  max-width: 4.25rem;
+  text-align: center;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.salary-plan-table td.salary-plan-amount-cell {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.salary-plan-table td.salary-plan-amount-cell.salary-plan-cell-disabled {
+  text-align: center;
+}
+
+.salary-plan-table tbody tr:not(.salary-plan-total-row) td.salary-plan-amount-cell.salary-plan-amount-changed,
+.salary-plan-table tbody tr:not(.salary-plan-total-row) td.salary-plan-amount-cell.salary-plan-amount-start-month {
+  color: var(--plan-amount-variance-color);
+}
+
+.salary-plan-table tbody tr:not(.salary-plan-total-row) td.salary-plan-amount-cell.salary-plan-cell-editable {
+  background-color: var(--plan-editor-bg);
+  box-shadow: inset 0 0 0 1px var(--plan-editor-border);
+  transition: background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.salary-plan-cell-editable {
+  cursor: pointer;
+}
+
+.salary-plan-table tbody tr:not(.salary-plan-total-row) td.salary-plan-amount-cell.salary-plan-cell-editable:hover {
+  background-color: var(--plan-editor-bg-hover);
+  box-shadow: inset 0 0 0 1px var(--plan-editor-border-hover);
+}
+
+.salary-plan-cell-disabled {
+  background: transparent;
+  box-shadow: none;
+}
+
+.salary-plan-row-bonus td.salary-plan-col-kind {
+  color: var(--plan-text-faint);
+}
+
+.salary-plan-total-row td {
+  font-weight: 600;
+  border-top: 2px solid var(--plan-border);
+}
+
+.salary-plan-total-label {
+  text-align: center;
+}
+
+.salary-plan-amount-input {
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0.05rem 0.15rem;
+  border-radius: 2px;
+  color: var(--plan-text);
+  font-size: inherit;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.plan-csv-hint {
+  font-size: 0.75rem !important;
+  color: var(--plan-text-faint) !important;
+}
+
+/* 当月列: 行種別の枠線より優先して横線を消す */
+.plan-table :is(th, td).col-amount.current-month {
+  border-top-width: 0 !important;
+  border-bottom-width: 0 !important;
+}
+
+@media (max-width: 768px) {
+  .plan-table tbody td.col-category {
+    font-size: var(--plan-table-font-small);
+  }
+}
+
+.col-amount-drilldown {
+  cursor: pointer;
+}
+
+.plan-table tbody td.col-amount.col-amount-drilldown:hover,
+.plan-table tbody td.col-amount.col-amount-drilldown:hover .amount-yen {
+  color: var(--plan-expandable-highlight);
+}
+
+.plan-table tbody td.col-amount.col-amount-drilldown:hover .amount-yen.amount-negative {
+  color: var(--plan-expandable-highlight) !important;
+}
+
+body.plan-journal-open {
+  overflow: hidden;
+}
+
+.plan-journal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: rgba(0, 0, 0, 0.65);
+}
+
+.plan-journal-modal {
+  width: min(960px, 100%);
+  max-height: min(80vh, 720px);
+  display: flex;
+  flex-direction: column;
+  background: #1e1e28;
+  border: 1px solid var(--plan-border);
+  border-radius: 8px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
+}
+
+.plan-journal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid var(--plan-border);
+}
+
+.plan-journal-title {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 700;
+  line-height: 1.4;
+  color: var(--plan-text);
+}
+
+.plan-journal-close {
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  color: var(--plan-text);
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+}
+
+.plan-journal-close:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.plan-journal-body {
+  overflow: auto;
+  padding: 0.75rem 1rem 1rem;
+}
+
+.plan-journal-empty,
+.plan-journal-count {
+  margin: 0 0 0.5rem;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.plan-journal-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.72rem;
+}
+
+.plan-journal-table th,
+.plan-journal-table td {
+  border-bottom: 1px solid var(--plan-border);
+  padding: 0.35rem 0.45rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.plan-journal-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--plan-cell-bg);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.plan-journal-table .col-amt {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.plan-journal-table tbody tr:hover td {
+  background: rgba(255, 255, 255, 0.03);
+}
