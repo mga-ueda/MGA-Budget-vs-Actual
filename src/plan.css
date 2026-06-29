@@ -8,24 +8,34 @@ html {
 }
 
 .plan-app {
+  --plan-radius-sm: 6px;
+  --plan-radius-md: 10px;
+  --plan-radius-lg: 12px;
+  --plan-ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --plan-duration: 0.18s;
+  --plan-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.28);
+  --plan-shadow-md: 0 4px 16px rgba(0, 0, 0, 0.32);
+  --plan-shadow-header: 0 1px 0 rgba(255, 255, 255, 0.05), 0 10px 28px rgba(0, 0, 0, 0.26);
+  --plan-font-ui: "Segoe UI", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Meiryo UI", Meiryo, sans-serif;
   --plan-bg: #262626;
-  --plan-surface: #16161c;
+  --plan-surface: color-mix(in srgb, var(--plan-bg) 55%, #0a0a0f);
   --plan-cell-bg: #262626;
   --plan-cell-bg-sub: #1e1e28;
-  --plan-border: #2a2a35;
+  --plan-border: color-mix(in srgb, var(--plan-text) 14%, var(--plan-bg));
   --plan-text: #ffffff;
   --plan-muted: #ffffff;
   --plan-text-dim: rgba(255, 255, 255, 0.5);
   --plan-text-faint: rgba(255, 255, 255, 0.35);
   --plan-accent: #ff0000;
   /** 設定画面の入力欄（ページ背景より明るくして編集可能と分かるように） */
-  --plan-editor-bg: #383848;
-  --plan-editor-border: #52526a;
-  --plan-editor-bg-hover: #404052;
-  --plan-editor-border-hover: #5f5f78;
-  --plan-editor-bg-focus: #45455a;
-  --plan-editor-border-focus: #7070a0;
-  --plan-editor-focus-ring: rgba(112, 112, 176, 0.35);
+  --plan-editor-bg: color-mix(in srgb, var(--plan-cell-bg) 72%, var(--plan-text) 10%);
+  --plan-editor-border: color-mix(in srgb, var(--plan-text) 22%, var(--plan-cell-bg));
+  --plan-editor-bg-hover: color-mix(in srgb, var(--plan-cell-bg) 65%, var(--plan-text) 14%);
+  --plan-editor-border-hover: color-mix(in srgb, var(--plan-text) 28%, var(--plan-cell-bg));
+  --plan-editor-bg-focus: color-mix(in srgb, var(--plan-cell-bg) 60%, var(--plan-text) 18%);
+  --plan-editor-border-focus: color-mix(in srgb, var(--plan-text) 38%, var(--plan-cell-bg));
+  --plan-editor-focus-ring: color-mix(in srgb, var(--plan-text) 22%, transparent);
+  --plan-hover-surface: color-mix(in srgb, var(--plan-cell-bg) 88%, var(--plan-text) 12%);
   --plan-negative-amount: #ff0000;
   --plan-year-row-bg: #c65911;
   --plan-year-row-text: #ffffff;
@@ -62,6 +72,9 @@ html {
   overflow: hidden;
   background: var(--plan-bg);
   color: var(--plan-text);
+  font-family: var(--plan-font-ui);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   display: flex;
   flex-direction: column;
 }
@@ -84,8 +97,11 @@ html {
 }
 
 .plan-header {
-  padding: 0.75rem 1rem 0.5rem;
-  background: linear-gradient(180deg, var(--plan-bg) 0%, var(--plan-bg) 100%);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  padding: 0.875rem 1.25rem 0.625rem;
+  background: var(--plan-bg);
 }
 
 .plan-header-top {
@@ -109,8 +125,9 @@ html {
   min-width: 36px;
   width: auto;
   padding: 0 0.5rem;
-  border-radius: 8px;
-  background: #2563eb;
+  border-radius: var(--plan-radius-md);
+  background: linear-gradient(145deg, #3b82f6, #2563eb);
+  box-shadow: 0 2px 10px rgba(37, 99, 235, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.18);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -138,6 +155,7 @@ html {
   margin: 0;
   font-size: 1.125rem;
   font-weight: 700;
+  letter-spacing: -0.02em;
 }
 
 .plan-period-nav {
@@ -150,7 +168,7 @@ html {
   background: var(--plan-cell-bg);
   border: 1px solid var(--plan-border);
   color: var(--plan-text);
-  border-radius: 6px;
+  border-radius: var(--plan-radius-sm);
   width: 1.75rem;
   height: 1.75rem;
   padding: 0;
@@ -158,10 +176,17 @@ html {
   line-height: 1;
   cursor: pointer;
   flex-shrink: 0;
+  transition: background var(--plan-duration) var(--plan-ease), border-color var(--plan-duration) var(--plan-ease), box-shadow var(--plan-duration) var(--plan-ease);
 }
 
 .plan-period-btn:hover:not(:disabled) {
-  background: #2f2f3a;
+  background: var(--plan-hover-surface);
+  box-shadow: var(--plan-shadow-sm);
+}
+
+.plan-period-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--plan-editor-focus-ring);
 }
 
 .plan-period-btn:disabled {
@@ -173,20 +198,32 @@ html {
   background: var(--plan-cell-bg);
   border: 1px solid var(--plan-border);
   color: var(--plan-text);
-  border-radius: 6px;
+  border-radius: var(--plan-radius-sm);
   padding: 0.2rem 0.5rem;
   font-size: 0.8rem;
+  transition: background var(--plan-duration) var(--plan-ease), border-color var(--plan-duration) var(--plan-ease), box-shadow var(--plan-duration) var(--plan-ease);
+}
+
+.plan-period-select:hover {
+  background: var(--plan-hover-surface);
+}
+
+.plan-period-select:focus-visible {
+  outline: none;
+  border-color: var(--plan-editor-border-focus);
+  box-shadow: 0 0 0 2px var(--plan-editor-focus-ring);
 }
 
 .plan-period-mode {
   margin-left: 0.35rem;
   padding: 0.1rem 0.55rem;
-  border-radius: 6px;
+  border-radius: var(--plan-radius-sm);
   font-size: 1.125rem;
   font-weight: 700;
   line-height: 1.2;
   white-space: nowrap;
   color: #ffffff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), var(--plan-shadow-sm);
 }
 
 .plan-period-mode--budget-actual {
@@ -212,15 +249,22 @@ html {
   margin-bottom: 0.35rem;
   padding: 0.25rem 0.6rem;
   border: 1px solid var(--plan-border);
-  border-radius: 6px;
+  border-radius: var(--plan-radius-sm);
   background: var(--plan-cell-bg);
   color: var(--plan-text);
   font-size: 0.68rem;
   cursor: pointer;
+  transition: background var(--plan-duration) var(--plan-ease), border-color var(--plan-duration) var(--plan-ease), box-shadow var(--plan-duration) var(--plan-ease);
 }
 
 .plan-csv-reload-btn:hover {
-  background: #2f2f3a;
+  background: var(--plan-hover-surface);
+  box-shadow: var(--plan-shadow-sm);
+}
+
+.plan-csv-reload-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--plan-editor-focus-ring);
 }
 
 .plan-kpi {
@@ -228,47 +272,84 @@ html {
   font-weight: 700;
   color: var(--plan-text);
   margin-top: 0.15rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
 }
 
 .plan-kpi.plan-kpi-negative {
   color: var(--plan-negative-amount);
 }
 
+.plan-header-nav {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.plan-header-nav::-webkit-scrollbar {
+  height: 6px;
+}
+
+.plan-header-nav::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--plan-text) 22%, transparent);
+  border-radius: 3px;
+}
+
 .plan-toolbar {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 0.35rem;
   align-items: center;
+  flex: 0 0 auto;
 }
 
 .plan-main-tabs {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.25rem;
+  flex-wrap: nowrap;
+  gap: 0.15rem;
   align-items: center;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0;
+  padding: 0.2rem;
+  border-radius: var(--plan-radius-md);
+  background: var(--plan-surface);
+  border: 1px solid var(--plan-border);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  flex: 0 0 auto;
 }
 
 .plan-main-tab {
-  border: 1px solid var(--plan-border);
-  border-radius: 4px;
-  padding: 0.3rem 0.75rem;
+  border: 1px solid transparent;
+  border-radius: calc(var(--plan-radius-md) - 3px);
+  padding: 0.32rem 0.65rem;
   font-size: 0.75rem;
   font-weight: 600;
   cursor: pointer;
-  background: var(--plan-cell-bg);
-  color: var(--plan-text);
-  transition: background 0.15s, border-color 0.15s;
+  background: transparent;
+  color: var(--plan-text-dim);
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background var(--plan-duration) var(--plan-ease), color var(--plan-duration) var(--plan-ease), box-shadow var(--plan-duration) var(--plan-ease), border-color var(--plan-duration) var(--plan-ease);
 }
 
 .plan-main-tab:hover {
-  background: #2e2e3a;
+  background: color-mix(in srgb, var(--plan-cell-bg) 55%, transparent);
+  color: var(--plan-text);
 }
 
 .plan-main-tab.active {
-  background: #fff;
-  color: #111;
-  border-color: #fff;
+  background: var(--plan-hover-surface);
+  color: var(--plan-text);
+  border-color: color-mix(in srgb, var(--plan-border) 80%, var(--plan-text) 8%);
+  box-shadow: var(--plan-shadow-sm);
+}
+
+.plan-main-tab:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--plan-editor-focus-ring);
 }
 
 .expand-settings-wrap {
@@ -300,17 +381,19 @@ html {
 
 .expand-reset-btn {
   border: 1px solid var(--plan-border);
-  border-radius: 4px;
+  border-radius: var(--plan-radius-sm);
   padding: 0.35rem 0.75rem;
   font-size: 0.72rem;
   font-weight: 600;
   cursor: pointer;
   background: var(--plan-cell-bg);
   color: var(--plan-text);
+  transition: background var(--plan-duration) var(--plan-ease), box-shadow var(--plan-duration) var(--plan-ease);
 }
 
 .expand-reset-btn:hover {
-  background: #2e2e3a;
+  background: var(--plan-hover-surface);
+  box-shadow: var(--plan-shadow-sm);
 }
 
 .app-settings-form,
@@ -466,7 +549,7 @@ select.app-settings-input {
   background: var(--plan-cell-bg);
   border: 1px solid var(--plan-border);
   color: var(--plan-text);
-  border-radius: 4px;
+  border-radius: var(--plan-radius-sm);
   padding: 0;
   line-height: 1;
   cursor: pointer;
@@ -476,6 +559,7 @@ select.app-settings-input {
   justify-content: center;
   width: 1.3rem;
   height: 1.3rem;
+  transition: background var(--plan-duration) var(--plan-ease), box-shadow var(--plan-duration) var(--plan-ease);
 }
 
 .plan-scale-btn-icon {
@@ -486,7 +570,8 @@ select.app-settings-input {
 
 .plan-font-scale-btn:hover:not(:disabled),
 .plan-row-padding-scale-btn:hover:not(:disabled) {
-  background: #2f2f3a;
+  background: var(--plan-hover-surface);
+  box-shadow: var(--plan-shadow-sm);
 }
 
 .plan-font-scale-btn:disabled,
@@ -536,9 +621,10 @@ select.app-settings-input {
   gap: 0.625rem;
   margin-top: 0.35rem;
   padding: 0.65rem 0.75rem;
-  border-radius: 8px;
+  border-radius: var(--plan-radius-md);
   background: var(--plan-surface);
   border: 1px solid var(--plan-border);
+  box-shadow: var(--plan-shadow-sm);
   width: fit-content;
   max-width: 100%;
 }
@@ -716,10 +802,11 @@ select.app-settings-input {
 .expand-settings-table thead th {
   position: sticky;
   top: 0;
-  background: #1e1e28;
+  background: var(--plan-surface);
   font-weight: 600;
   color: rgba(255, 255, 255, 0.85);
   text-align: center;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.18);
 }
 
 .expand-settings-table tbody tr:hover td:not(.col-section-label) {
@@ -808,16 +895,18 @@ select.app-settings-input {
 
 .section-color-reset-btn {
   border: 1px solid var(--plan-border);
-  border-radius: 4px;
+  border-radius: var(--plan-radius-sm);
   padding: 0.25rem 0.5rem;
   font-size: 0.68rem;
   cursor: pointer;
   background: var(--plan-cell-bg);
   color: var(--plan-text);
+  transition: background var(--plan-duration) var(--plan-ease), box-shadow var(--plan-duration) var(--plan-ease);
 }
 
 .section-color-reset-btn:hover:not(:disabled) {
-  background: #2e2e3a;
+  background: var(--plan-hover-surface);
+  box-shadow: var(--plan-shadow-sm);
 }
 
 .section-color-reset-btn:disabled {
@@ -919,22 +1008,27 @@ select.app-settings-input {
 
 .plan-filter-btn {
   border: none;
-  border-radius: 4px;
-  padding: 0.25rem 0.55rem;
+  border-radius: var(--plan-radius-sm);
+  padding: 0.28rem 0.55rem;
   font-size: 0.7rem;
   font-weight: 600;
   cursor: pointer;
-  transition: opacity 0.15s, transform 0.1s;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: opacity var(--plan-duration) var(--plan-ease), transform var(--plan-duration) var(--plan-ease), box-shadow var(--plan-duration) var(--plan-ease);
+  box-shadow: var(--plan-shadow-sm);
 }
 
 .plan-filter-btn:hover {
-  opacity: 0.9;
+  opacity: 0.92;
   transform: translateY(-1px);
+  box-shadow: var(--plan-shadow-md);
 }
 
 .plan-filter-btn.active {
   outline: 2px solid currentColor;
   outline-offset: 1px;
+  box-shadow: var(--plan-shadow-md);
 }
 
 .plan-body {
@@ -943,6 +1037,25 @@ select.app-settings-input {
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--plan-text) 22%, transparent) transparent;
+}
+
+.plan-body::-webkit-scrollbar {
+  width: 8px;
+}
+
+.plan-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.plan-body::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--plan-text) 22%, transparent);
+  border-radius: 4px;
+}
+
+.plan-body::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--plan-text) 32%, transparent);
 }
 
 #plan-root {
@@ -952,7 +1065,7 @@ select.app-settings-input {
 .plan-footer {
   padding: 0.45rem 1rem 1.5rem;
   border-top: 1px solid var(--plan-border);
-  background: var(--plan-bg);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--plan-bg) 96%, var(--plan-surface)) 0%, var(--plan-bg) 100%);
   text-align: center;
   line-height: 1.5;
 }
@@ -1683,14 +1796,16 @@ tr.row-sub-variance .col-amount.has-variance {
   margin: 1.25rem 0;
   padding: 2rem 1.5rem;
   border: 2px dashed var(--plan-border);
-  border-radius: 12px;
+  border-radius: var(--plan-radius-lg);
   background: var(--plan-surface);
-  transition: border-color 0.15s, background 0.15s;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  transition: border-color var(--plan-duration) var(--plan-ease), background var(--plan-duration) var(--plan-ease), box-shadow var(--plan-duration) var(--plan-ease);
 }
 
 .plan-csv-drop.dragover {
   border-color: #2563eb;
   background: rgba(37, 99, 235, 0.08);
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
 }
 
 .plan-csv-drop-label {
@@ -1701,12 +1816,14 @@ tr.row-sub-variance .col-amount.has-variance {
   display: inline-block;
   padding: 0.5rem 1.25rem;
   border: none;
-  border-radius: 8px;
-  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  border-radius: var(--plan-radius-md);
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
   color: #fff;
   font-size: 0.85rem;
   font-weight: 600;
   cursor: pointer;
+  box-shadow: 0 2px 10px rgba(37, 99, 235, 0.35);
+  transition: filter var(--plan-duration) var(--plan-ease), transform var(--plan-duration) var(--plan-ease), box-shadow var(--plan-duration) var(--plan-ease);
 }
 
 .plan-csv-btn:disabled {
@@ -1729,7 +1846,9 @@ tr.row-sub-variance .col-amount.has-variance {
 }
 
 .plan-csv-btn:hover {
-  filter: brightness(1.08);
+  filter: brightness(1.06);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.42);
 }
 
 .employee-settings-actions {
@@ -1750,8 +1869,9 @@ tr.row-sub-variance .col-amount.has-variance {
   margin-bottom: 1.25rem;
   padding: 1rem;
   border: 1px solid var(--plan-border);
-  border-radius: 8px;
+  border-radius: var(--plan-radius-lg);
   background: var(--plan-surface);
+  box-shadow: var(--plan-shadow-sm);
 }
 
 .employee-add-form-grid {
@@ -1911,8 +2031,9 @@ tr.row-sub-variance .col-amount.has-variance {
   margin-top: 0.85rem;
   padding: 0.75rem 1rem;
   border: 1px solid var(--plan-border);
-  border-radius: 8px;
+  border-radius: var(--plan-radius-lg);
   background: var(--plan-surface);
+  box-shadow: var(--plan-shadow-sm);
 }
 
 .salary-plan-bonus-month-config-label {
@@ -1950,8 +2071,9 @@ tr.row-sub-variance .col-amount.has-variance {
   margin-top: 0.85rem;
   padding: 0.75rem 1rem;
   border: 1px solid var(--plan-border);
-  border-radius: 8px;
+  border-radius: var(--plan-radius-lg);
   background: var(--plan-surface);
+  box-shadow: var(--plan-shadow-sm);
 }
 
 .salary-plan-travel-allowance-field {
