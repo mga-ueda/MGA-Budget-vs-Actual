@@ -28,8 +28,13 @@
         </div>
       </div>
       <div class="plan-meta">
-        <button type="button" class="plan-csv-reload-btn" id="plan-reload-csv">CSV再読込</button>
-        <button type="button" class="plan-csv-reload-btn" id="plan-change-folder">フォルダ変更</button>
+        <div class="plan-meta-buttons">
+          <button type="button" class="plan-csv-reload-btn" id="plan-settings-export">設定エクスポート</button>
+          <button type="button" class="plan-csv-reload-btn" id="plan-settings-import">設定インポート</button>
+          <input type="file" id="plan-settings-import-input" accept=".json,application/json" hidden />
+          <button type="button" class="plan-csv-reload-btn" id="plan-reload-csv">CSV再読込</button>
+          <button type="button" class="plan-csv-reload-btn" id="plan-change-folder">フォルダ変更</button>
+        </div>
         <div id="plan-updated">—</div>
         <div class="plan-kpi" id="plan-kpi">—</div>
       </div>

@@ -1,0 +1,76 @@
+/** Regenerate src/parse/aggregateFormula.js (UTF-8, ASCII-only generator) */
+import { writeFileSync } from 'fs';
+import { resolve, dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const target = resolve(__dirname, '../src/parse/aggregateFormula.js');
+
+function jp(...codes) {
+  return String.fromCodePoint(...codes);
+}
+
+const MINUS_CHAR = '\u2212';
+
+const FORMULA = {
+  sectionSum: jp(0x30bb, 0x30af, 0x30b7, 0x30e7, 0x30f3, 0x5185, 0x306e, 0x52d8, 0x5b9a, 0x79d1, 0x76ee, 0x884c, 0x306e, 0x5408, 0x8a08),
+  sectionSumExcludePlan: jp(0x30bb, 0x30af, 0x30b7, 0x30e7, 0x30f3, 0x5185, 0x306e, 0x52d8, 0x5b9a, 0x79d1, 0x76ee, 0x884c, 0x306e, 0x5408, 0x8a08, 0xff08, 0x8a08, 0x753b, 0x884c, 0x3092, 0x9664, 0x304f, 0xff09),
+  sectionSumOtherPay: jp(0x4fdd, 0x967a, 0x7a4d, 0x7acb, 0x91d1, 0x30fb, 0x9577, 0x671f, 0x672a, 0x6255, 0x91d1, 0x30fb, 0x672a, 0x6255, 0x6d88, 0x8cbb, 0x7a0e, 0x30fb, 0x672a, 0x6255, 0x6cd5, 0x4eba, 0x7a0e, 0x7b49, 0x30fb, 0x4f4f, 0x6c11, 0x7a0e, 0x306e, 0x5408, 0x8a08),
+  profitOperating: `${jp(0x58f2, 0x4e0a, 0x9ad8, 0x5408, 0x8a08)} ${MINUS_CHAR} (${jp(0x4eba, 0x4ef6, 0x8cbb, 0x5408, 0x8a08)} + ${jp(0x8af8, 0x7d4c, 0x8cbb, 0x5408, 0x8a08)} + ${jp(0x5916, 0x6ce8, 0x8cbb, 0x5408, 0x8a08)} + ${jp(0x305d, 0x306e, 0x4ed6, 0x5408, 0x8a08)})`,
+  profitOrdinary: `${jp(0x55b6, 0x696d, 0x5229, 0x76ca)} + ${jp(0x55b6, 0x696d, 0x5916, 0x53ce, 0x76ca, 0x5408, 0x8a08)} ${MINUS_CHAR} ${jp(0x55b6, 0x696d, 0x5916, 0x8cbb, 0x7528, 0x5408, 0x8a08)}`,
+  profitPreTax: jp(0x7d4c, 0x5e38, 0x5229, 0x76ca),
+  profitNet: `${jp(0x7a0e, 0x5f15, 0x524d, 0x5f53, 0x671f, 0x7d14, 0x5229, 0x76ca)} ${MINUS_CHAR} ${jp(0x6cd5, 0x4eba, 0x7a0e, 0x5408, 0x8a08)}`,
+  sgaTaxable: `${jp(0x4eba, 0x4ef6, 0x8cbb, 0x5408, 0x8a08)} + ${jp(0x8af8, 0x7d4c, 0x8cbb, 0x5408, 0x8a08)} + ${jp(0x5916, 0x6ce8, 0x8cbb, 0x5408, 0x8a08)}`,
+  sgaTotal: `${jp(0x6d88, 0x8cbb, 0x7a0e, 0x5bfe, 0x8c61, 0x8ca9, 0x7ba1, 0x8cbb, 0x5408, 0x8a08)} + ${jp(0x305d, 0x306e, 0x4ed6, 0x5408, 0x8a08)}`,
+  cashInflow: jp(0x4ed5, 0x8a33, 0x306e, 0x501f, 0x65b9, 0x300c, 0x666e, 0x901a, 0x9810, 0x91d1, 0x300d, 0x306e, 0x5408, 0x8a08),
+  cashOutflow: jp(0x4ed5, 0x8a33, 0x306e, 0x8cb8, 0x65b9, 0x300c, 0x666e, 0x901a, 0x9810, 0x91d1, 0x300d, 0x306e, 0x5408, 0x8a08),
+};
+
+function q(s) {
+  return `'${s.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
+}
+
+const content = `import { APP_AGGREGATE_LABEL_PREFIX } from './parseJournal.js';
+
+const FORMULA_LABELS = {
+  sectionSum: ${q(FORMULA.sectionSum)},
+  sectionSumExcludePlan: ${q(FORMULA.sectionSumExcludePlan)},
+  sectionSumOtherPay: ${q(FORMULA.sectionSumOtherPay)},
+  profitOperating: ${q(FORMULA.profitOperating)},
+  profitOrdinary: ${q(FORMULA.profitOrdinary)},
+  profitPreTax: ${q(FORMULA.profitPreTax)},
+  profitNet: ${q(FORMULA.profitNet)},
+  sgaTaxable: ${q(FORMULA.sgaTaxable)},
+  sgaTotal: ${q(FORMULA.sgaTotal)},
+  cashInflow: ${q(FORMULA.cashInflow)},
+  cashOutflow: ${q(FORMULA.cashOutflow)},
+};
+
+export function isAggregateRow(row) {
+  return Boolean(row?.aggregateFormula || isAggregateLabel(row?.label));
+}
+
+export function isAggregateLabel(label) {
+  return label?.startsWith(APP_AGGREGATE_LABEL_PREFIX) ?? false;
+}
+
+export function getAggregateFormulaLabel(row, section = null) {
+  if (row?.aggregateFormula === 'sectionSumExcludePlan' && section?.id === 'otherPay') {
+    return FORMULA_LABELS.sectionSumOtherPay;
+  }
+  if (row?.aggregateFormula && FORMULA_LABELS[row.aggregateFormula]) {
+    return FORMULA_LABELS[row.aggregateFormula];
+  }
+  if (isAggregateLabel(row?.label)) {
+    return FORMULA_LABELS.sectionSum;
+  }
+  return null;
+}
+
+export function getAggregateFormulaDetail(row, section, planData, columnKey) {
+  return getAggregateFormulaLabel(row, section);
+}
+`;
+
+writeFileSync(target, content, 'utf8');
+console.log('Wrote', target);

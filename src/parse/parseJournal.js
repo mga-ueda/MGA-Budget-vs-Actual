@@ -51,7 +51,7 @@ function isBsInformationalSub(sub) {
 }
 
 const PAYMENT_COUNTERPARTS = new Set([
-  '長期未払金', '保険積立金', '役員借入金', '短期借入金', '未払法人税等', '未払消費税',
+  '長期未払金', '保険積立金', '住民税', '役員借入金', '短期借入金', '未払法人税等', '未払消費税',
 ]);
 
 function monthKey(dateStr) {
@@ -353,7 +353,6 @@ function aggregateJournal(text) {
   const aggregated = new Map();
   const cashFlow = { inflow: emptyMonthValues(), outflow: emptyMonthValues() };
   const otherPayments = new Map();
-  const corpTax = emptyMonthValues();
 
   const trackPayment = (account, sub, amount, month) => {
     const key = sub ? `${account}|${sub}` : account;
@@ -390,9 +389,6 @@ function aggregateJournal(text) {
       trackPayment(creditAcct, creditSub, creditAmt, mk);
     }
 
-    if (/法人税|消費税/.test(debitAcct ?? '') && debitAmt > 0) corpTax[mk] += debitAmt;
-    if (/法人税|消費税/.test(creditAcct ?? '') && creditAmt > 0) corpTax[mk] += creditAmt;
-
     const processSide = (account, sub, amountStr, side) => {
       const amount = parseInt(amountStr, 10) || 0;
       if (!account || amount === 0) return;
@@ -412,7 +408,7 @@ function aggregateJournal(text) {
     processSide(creditAcct, creditSub, cells[16], 'credit');
   }
 
-  return { aggregated, cashFlow, otherPayments, corpTax };
+  return { aggregated, cashFlow, otherPayments };
 }
 
 function buildPlSections(aggregated, expandConfig, expandCandidates) {
@@ -922,7 +918,7 @@ function buildBsSections(bsText, expandConfig, expandCandidates) {
   return sections;
 }
 
-function buildCashFlowSections(cashFlow, otherPayments, corpTax, bsText, expandConfig, expandCandidates) {
+function buildCashFlowSections(cashFlow, otherPayments, bsText, expandConfig, expandCandidates) {
   const sections = [];
 
   if (otherPayments.size > 0) {
@@ -956,14 +952,6 @@ function buildCashFlowSections(cashFlow, otherPayments, corpTax, bsText, expandC
     ));
   }
 
-  const taxTotal = enrichRowValues(corpTax);
-  if (taxTotal.合計 !== 0) {
-    pushSection(sections, {
-      id: 'corpTax', label: '法人税・消費税', filter: 'tax', ...sectionColors('corpTax'),
-      rows: [makeTotalRow('corp-tax-total', '法人税・消費税合計', corpTax, 'flow', 'corpTax')],
-    });
-  }
-
   return sections;
 }
 
@@ -982,7 +970,7 @@ export function zeroOutPlanData(planData) {
 }
 
 export function buildFullPlan(journalText, bsText, expandConfig = {}) {
-  const { aggregated, cashFlow, otherPayments, corpTax } = aggregateJournal(journalText);
+  const { aggregated, cashFlow, otherPayments } = aggregateJournal(journalText);
   const expandCandidates = [];
   const plSections = buildPlSections(aggregated, expandConfig, expandCandidates);
   const revenueSection = plSections.find((s) => s.id === 'revenue');
@@ -993,7 +981,7 @@ export function buildFullPlan(journalText, bsText, expandConfig = {}) {
   const profitSection = buildProfitSection(plWithAr);
   const bsSections = bsText ? buildBsSections(bsText, expandConfig, expandCandidates) : [];
   const cfSections = bsText
-    ? buildCashFlowSections(cashFlow, otherPayments, corpTax, bsText, expandConfig, expandCandidates)
+    ? buildCashFlowSections(cashFlow, otherPayments, bsText, expandConfig, expandCandidates)
     : [];
 
   const sections = [

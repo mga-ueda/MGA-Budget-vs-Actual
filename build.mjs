@@ -32,6 +32,7 @@ const FILES = [
   'enrich/planPeriodAverageFill.js',
   'parse/parseEmployee.js',
   'config/appSettings.js',
+  'config/settingsExport.js',
   'csv/csvFolder.js',
   'csv/csvLoader.js',
   'ui/plan.js',

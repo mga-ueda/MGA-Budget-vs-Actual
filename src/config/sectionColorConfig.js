@@ -24,7 +24,6 @@ export const DEFAULT_SECTION_COLORS = {
   cfIn: { color: '#548235', barColor: '#548235', textColor: DEFAULT_TEXT_COLOR },
   cfOut: { color: '#c65911', barColor: '#c65911', textColor: DEFAULT_TEXT_COLOR },
   cashBalance: { color: '#203764', barColor: '#203764', textColor: DEFAULT_TEXT_COLOR },
-  corpTax: { color: '#44403c', barColor: '#292524', textColor: DEFAULT_TEXT_COLOR },
 };
 
 const FALLBACK = { color: '#44403c', barColor: '#292524', textColor: DEFAULT_TEXT_COLOR };

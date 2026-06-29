@@ -129,6 +129,30 @@ export function getVisibleAllowanceColumns(employees) {
   );
 }
 
+export function getEmployeeResidentTaxMunicipality(employee) {
+  return String(employee.residentTaxMunicipality ?? '').trim();
+}
+
+/** 月額報酬または住民税納付額があり、住民税の市区町村行の対象となる社員か */
+export function employeeHasResidentTaxObligation(employee) {
+  const monthly = employee.residentTaxMonthly;
+  if (monthly && Object.values(monthly).some((v) => (v ?? 0) > 0)) return true;
+  return computeMonthlySalary(employee) > 0;
+}
+
+/** 住民税の支払い対象となる市区町村名（報酬・住民税額がゼロの社員は除外） */
+export function collectEmployeeResidentTaxMunicipalityNames(employees) {
+  const names = new Set();
+  for (const employee of employees ?? []) {
+    const municipality = getEmployeeResidentTaxMunicipality(employee);
+    if (!municipality) continue;
+    if (employeeHasResidentTaxObligation(employee)) {
+      names.add(municipality);
+    }
+  }
+  return [...names];
+}
+
 export function hasResidentTaxData(employee) {
   if (employee.residentTaxMunicipality || employee.residentTaxYear) return true;
   const monthly = employee.residentTaxMonthly;
@@ -224,6 +248,7 @@ export function buildEmployeeTableColumns() {
   return [
     { kind: 'text', key: 'employeeNumber', label: '番号', className: 'col-emp-no' },
     { kind: 'text', key: 'name', label: '氏名', className: 'col-emp-name' },
+    { kind: 'text', key: 'residentTaxMunicipality', label: '市区町村', className: 'col-emp-municipality' },
     { kind: 'text', key: 'contractType', label: '契約種別', className: 'col-emp-contract' },
     { kind: 'text', key: 'joinDate', label: '入社日', className: 'col-emp-join' },
     { kind: 'tenure', key: 'tenure', label: '勤続', className: 'col-emp-tenure' },
@@ -243,6 +268,8 @@ export function getEmployeeCellValue(employee, column, refDate = new Date()) {
       return employee.employeeNumber || '';
     case 'name':
       return formatEmployeeName(employee);
+    case 'residentTaxMunicipality':
+      return getEmployeeResidentTaxMunicipality(employee);
     case 'contractType':
       return employee.contractType || '';
     case 'joinDate':

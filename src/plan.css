@@ -243,6 +243,20 @@ html {
   color: var(--plan-muted);
 }
 
+.plan-meta-buttons {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.35rem;
+  margin-bottom: 0.35rem;
+}
+
+.plan-meta-buttons .plan-csv-reload-btn {
+  margin-bottom: 0;
+}
+
 .plan-csv-reload-btn {
   display: inline-block;
   margin-bottom: 0.35rem;
@@ -376,6 +390,25 @@ html {
   color: rgba(255, 255, 255, 0.75);
   max-width: 42rem;
   line-height: 1.5;
+}
+
+.tax-payment-settings-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem 1.25rem;
+  margin-top: 0.75rem;
+}
+
+.tax-payment-plan-years-input {
+  width: 5rem;
+}
+
+.tax-payment-plan-years-hint {
+  margin: 0;
+  font-size: 0.7rem;
+  color: rgba(255, 255, 255, 0.55);
+  line-height: 1.4;
 }
 
 .expand-reset-btn {
@@ -1961,6 +1994,14 @@ tr.row-sub-variance .col-amount.has-variance {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.employee-settings-table .col-emp-municipality {
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
 }
 
 .employee-settings-table td.col-emp-amount,

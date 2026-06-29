@@ -268,6 +268,26 @@ export function applyAmountFromMonthForward(source, fiscalMonths, startMonth, am
   return next;
 }
 
+/** 支払い計画など。過去月を除き、0・空欄も後続月へ反映する */
+export function applyAmountFromMonthForwardSkippingPast(
+  source,
+  fiscalMonths,
+  startMonth,
+  amount,
+  pastMonths,
+) {
+  const next = { ...source };
+  const startIndex = fiscalMonths.indexOf(startMonth);
+  if (startIndex < 0) return next;
+  next[startMonth] = amount;
+  for (let i = startIndex + 1; i < fiscalMonths.length; i += 1) {
+    const month = fiscalMonths[i];
+    if (pastMonths?.has(month)) continue;
+    next[month] = amount;
+  }
+  return next;
+}
+
 export function salaryPlanAmountDiffersFromPrevious(prev, current) {
   const p = normalizeAmount(prev) ?? 0;
   const c = normalizeAmount(current) ?? 0;

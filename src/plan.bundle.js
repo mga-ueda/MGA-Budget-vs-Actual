@@ -640,7 +640,6 @@ const DEFAULT_SECTION_COLORS = {
   cfIn: { color: '#548235', barColor: '#548235', textColor: DEFAULT_TEXT_COLOR },
   cfOut: { color: '#c65911', barColor: '#c65911', textColor: DEFAULT_TEXT_COLOR },
   cashBalance: { color: '#203764', barColor: '#203764', textColor: DEFAULT_TEXT_COLOR },
-  corpTax: { color: '#44403c', barColor: '#292524', textColor: DEFAULT_TEXT_COLOR },
 };
 
 const FALLBACK = { color: '#44403c', barColor: '#292524', textColor: DEFAULT_TEXT_COLOR };
@@ -953,7 +952,7 @@ function isBsInformationalSub(sub) {
 }
 
 const PAYMENT_COUNTERPARTS = new Set([
-  '長期未払金', '保険積立金', '役員借入金', '短期借入金', '未払法人税等', '未払消費税',
+  '長期未払金', '保険積立金', '住民税', '役員借入金', '短期借入金', '未払法人税等', '未払消費税',
 ]);
 
 function monthKey(dateStr) {
@@ -1255,7 +1254,6 @@ function aggregateJournal(text) {
   const aggregated = new Map();
   const cashFlow = { inflow: emptyMonthValues(), outflow: emptyMonthValues() };
   const otherPayments = new Map();
-  const corpTax = emptyMonthValues();
 
   const trackPayment = (account, sub, amount, month) => {
     const key = sub ? `${account}|${sub}` : account;
@@ -1292,9 +1290,6 @@ function aggregateJournal(text) {
       trackPayment(creditAcct, creditSub, creditAmt, mk);
     }
 
-    if (/法人税|消費税/.test(debitAcct ?? '') && debitAmt > 0) corpTax[mk] += debitAmt;
-    if (/法人税|消費税/.test(creditAcct ?? '') && creditAmt > 0) corpTax[mk] += creditAmt;
-
     const processSide = (account, sub, amountStr, side) => {
       const amount = parseInt(amountStr, 10) || 0;
       if (!account || amount === 0) return;
@@ -1314,7 +1309,7 @@ function aggregateJournal(text) {
     processSide(creditAcct, creditSub, cells[16], 'credit');
   }
 
-  return { aggregated, cashFlow, otherPayments, corpTax };
+  return { aggregated, cashFlow, otherPayments };
 }
 
 function buildPlSections(aggregated, expandConfig, expandCandidates) {
@@ -1824,7 +1819,7 @@ function buildBsSections(bsText, expandConfig, expandCandidates) {
   return sections;
 }
 
-function buildCashFlowSections(cashFlow, otherPayments, corpTax, bsText, expandConfig, expandCandidates) {
+function buildCashFlowSections(cashFlow, otherPayments, bsText, expandConfig, expandCandidates) {
   const sections = [];
 
   if (otherPayments.size > 0) {
@@ -1858,14 +1853,6 @@ function buildCashFlowSections(cashFlow, otherPayments, corpTax, bsText, expandC
     ));
   }
 
-  const taxTotal = enrichRowValues(corpTax);
-  if (taxTotal.合計 !== 0) {
-    pushSection(sections, {
-      id: 'corpTax', label: '法人税・消費税', filter: 'tax', ...sectionColors('corpTax'),
-      rows: [makeTotalRow('corp-tax-total', '法人税・消費税合計', corpTax, 'flow', 'corpTax')],
-    });
-  }
-
   return sections;
 }
 
@@ -1884,7 +1871,7 @@ function zeroOutPlanData(planData) {
 }
 
 function buildFullPlan(journalText, bsText, expandConfig = {}) {
-  const { aggregated, cashFlow, otherPayments, corpTax } = aggregateJournal(journalText);
+  const { aggregated, cashFlow, otherPayments } = aggregateJournal(journalText);
   const expandCandidates = [];
   const plSections = buildPlSections(aggregated, expandConfig, expandCandidates);
   const revenueSection = plSections.find((s) => s.id === 'revenue');
@@ -1895,7 +1882,7 @@ function buildFullPlan(journalText, bsText, expandConfig = {}) {
   const profitSection = buildProfitSection(plWithAr);
   const bsSections = bsText ? buildBsSections(bsText, expandConfig, expandCandidates) : [];
   const cfSections = bsText
-    ? buildCashFlowSections(cashFlow, otherPayments, corpTax, bsText, expandConfig, expandCandidates)
+    ? buildCashFlowSections(cashFlow, otherPayments, bsText, expandConfig, expandCandidates)
     : [];
 
   const sections = [
@@ -1938,36 +1925,19 @@ function calcTotalProfitMargin(data) {
 }
 
 /* parse/aggregateFormula.js */
-const MINUS = '\u2212';
-const YEN = '\u00a5';
-
 const FORMULA_LABELS = {
   sectionSum: 'セクション内の勘定科目行の合計',
   sectionSumExcludePlan: 'セクション内の勘定科目行の合計（計画行を除く）',
-  profitOperating: `売上高合計 ${MINUS} (人件費合計 + 諸経費合計 + 外注費合計 + その他合計)`,
-  profitOrdinary: `営業利益 + 営業外収益合計 ${MINUS} 営業外費用合計`,
+  sectionSumOtherPay: '保険積立金・長期未払金・未払消費税・未払法人税等・住民税の合計',
+  profitOperating: '売上高合計 − (人件費合計 + 諸経費合計 + 外注費合計 + その他合計)',
+  profitOrdinary: '営業利益 + 営業外収益合計 − 営業外費用合計',
   profitPreTax: '経常利益',
-  profitNet: `税引前当期純利益 ${MINUS} 法人税合計`,
+  profitNet: '税引前当期純利益 − 法人税合計',
   sgaTaxable: '人件費合計 + 諸経費合計 + 外注費合計',
   sgaTotal: '消費税対象販管費合計 + その他合計',
   cashInflow: '仕訳の借方「普通預金」の合計',
   cashOutflow: '仕訳の貸方「普通預金」の合計',
-  corpTax: '仕訳の法人税・消費税勘定の合計',
 };
-
-const LABEL_REVENUE_TOTAL = '売上高合計';
-const LABEL_PERSONNEL_TOTAL = '人件費合計';
-const LABEL_EXPENSE_TOTAL = '諸経費合計';
-const LABEL_OUTSOURCING_TOTAL = '外注費合計';
-const LABEL_OTHER_TOTAL = 'その他合計';
-const LABEL_OPERATING_PROFIT = '営業利益';
-const LABEL_NON_OPERATING_REVENUE_TOTAL = '営業外収益合計';
-const LABEL_NON_OPERATING_EXPENSE_TOTAL = '営業外費用合計';
-const LABEL_ORDINARY_PROFIT = '経常利益';
-const LABEL_PRE_TAX_NET_PROFIT = '税引前当期純利益';
-const LABEL_TAX_TOTAL = '法人税合計';
-const LABEL_SGA_TAXABLE_TOTAL = '消費税対象販管費合計';
-const NO_BREAKDOWN = '（内訳なし）';
 
 function isAggregateRow(row) {
   return Boolean(row?.aggregateFormula || isAggregateLabel(row?.label));
@@ -1977,131 +1947,10 @@ function isAggregateLabel(label) {
   return label?.startsWith(APP_AGGREGATE_LABEL_PREFIX) ?? false;
 }
 
-function formatYenAmount(val) {
-  if (val === undefined || val === null || val === 0) return `${YEN}0`;
-  const sign = val < 0 ? MINUS : '';
-  return `${sign}${YEN}${formatYen(Math.abs(val))}`;
-}
-
-function stripAggregatePrefix(label) {
-  return (label ?? '').replace(APP_AGGREGATE_LABEL_PREFIX, '').trim();
-}
-
-function getRowValue(row, columnKey) {
-  return row?.values?.[columnKey] ?? 0;
-}
-
-function getSectionTotalRow(sections, sectionId) {
-  const section = sections.find((s) => s.id === sectionId);
-  return section?.rows.find((r) => r.type === 'total');
-}
-
-function getSectionTotalValue(sections, sectionId, columnKey) {
-  return getRowValue(getSectionTotalRow(sections, sectionId), columnKey);
-}
-
-function getSectionRowById(sections, sectionId, rowId) {
-  const section = sections.find((s) => s.id === sectionId);
-  return section?.rows.find((r) => r.id === rowId);
-}
-
-function formatTerm(label, val) {
-  return `${label}(${formatYenAmount(val)})`;
-}
-
-function formatSumDetail(terms) {
-  const nonZero = terms.filter((t) => t.val !== 0);
-  if (nonZero.length === 0) return NO_BREAKDOWN;
-  const sum = nonZero.reduce((s, t) => s + t.val, 0);
-  const expr = nonZero.map((t) => formatTerm(t.label, t.val)).join(' + ');
-  return `${expr} = ${formatYenAmount(sum)}`;
-}
-
-function formatSubtractDetail(minuendLabel, minuendVal, subtrahendTerms) {
-  const subSum = subtrahendTerms.reduce((s, t) => s + t.val, 0);
-  const subExpr = subtrahendTerms.map((t) => formatTerm(t.label, t.val)).join(' + ');
-  const result = minuendVal - subSum;
-  if (subtrahendTerms.length === 1) {
-    return `${formatTerm(minuendLabel, minuendVal)} ${MINUS} ${formatTerm(subtrahendTerms[0].label, subtrahendTerms[0].val)} = ${formatYenAmount(result)}`;
+function getAggregateFormulaLabel(row, section = null) {
+  if (row?.aggregateFormula === 'sectionSumExcludePlan' && section?.id === 'otherPay') {
+    return FORMULA_LABELS.sectionSumOtherPay;
   }
-  return `${formatTerm(minuendLabel, minuendVal)} ${MINUS} (${subExpr}) = ${formatYenAmount(result)}`;
-}
-
-function formatSectionSumDetail(section, columnKey, { excludeTypes = ['plan', 'total', 'breakdown'] } = {}) {
-  const terms = [];
-  for (const r of section.rows) {
-    if (excludeTypes.includes(r.type)) continue;
-    if (r.type !== 'item' && r.type !== 'group') continue;
-    const val = getRowValue(r, columnKey);
-    if (val === 0) continue;
-    let label = stripAggregatePrefix(r.label);
-    if (r.type === 'sub') label = r.subLabel || label;
-    else if (r.subLabel) label = `${label}（${r.subLabel}）`;
-    terms.push({ label, val });
-  }
-  return formatSumDetail(terms);
-}
-
-function formatProfitOperatingDetail(sections, columnKey) {
-  const rev = getSectionTotalValue(sections, 'revenue', columnKey);
-  const costs = [
-    { label: LABEL_PERSONNEL_TOTAL, val: getSectionTotalValue(sections, 'personnel', columnKey) },
-    { label: LABEL_EXPENSE_TOTAL, val: getSectionTotalValue(sections, 'expense', columnKey) },
-    { label: LABEL_OUTSOURCING_TOTAL, val: getSectionTotalValue(sections, 'outsourcing', columnKey) },
-    { label: LABEL_OTHER_TOTAL, val: getSectionTotalValue(sections, 'other', columnKey) },
-  ];
-  return formatSubtractDetail(LABEL_REVENUE_TOTAL, rev, costs);
-}
-
-function formatProfitOrdinaryDetail(sections, columnKey) {
-  const operating = getRowValue(getSectionRowById(sections, 'profit', 'op-profit'), columnKey);
-  const nonOp = getSectionTotalValue(sections, 'nonOperating', columnKey);
-  const nonOpExp = getSectionTotalValue(sections, 'nonOperatingExpense', columnKey);
-  const afterNonOp = operating + nonOp;
-  const nonOpPart = nonOp !== 0
-    ? `${formatTerm(LABEL_OPERATING_PROFIT, operating)} + ${formatTerm(LABEL_NON_OPERATING_REVENUE_TOTAL, nonOp)}`
-    : formatTerm(LABEL_OPERATING_PROFIT, operating);
-  if (nonOpExp === 0) {
-    return `${nonOpPart} = ${formatYenAmount(afterNonOp)}`;
-  }
-  return `${nonOpPart} ${MINUS} ${formatTerm(LABEL_NON_OPERATING_EXPENSE_TOTAL, nonOpExp)} = ${formatYenAmount(afterNonOp - nonOpExp)}`;
-}
-
-function formatProfitPreTaxDetail(sections, columnKey) {
-  const ordinary = getRowValue(getSectionRowById(sections, 'profit', 'ord-profit'), columnKey);
-  return `${formatTerm(LABEL_ORDINARY_PROFIT, ordinary)} = ${formatYenAmount(ordinary)}`;
-}
-
-function formatProfitNetDetail(sections, columnKey) {
-  const preTaxNet = getRowValue(getSectionRowById(sections, 'profit', 'pre-tax-net'), columnKey);
-  const tax = getSectionTotalValue(sections, 'tax', columnKey);
-  return formatSubtractDetail(LABEL_PRE_TAX_NET_PROFIT, preTaxNet, [{ label: LABEL_TAX_TOTAL, val: tax }]);
-}
-
-function formatSgaTaxableDetail(sections, columnKey) {
-  const terms = [
-    { label: LABEL_PERSONNEL_TOTAL, val: getSectionTotalValue(sections, 'personnel', columnKey) },
-    { label: LABEL_EXPENSE_TOTAL, val: getSectionTotalValue(sections, 'expense', columnKey) },
-    { label: LABEL_OUTSOURCING_TOTAL, val: getSectionTotalValue(sections, 'outsourcing', columnKey) },
-  ];
-  return formatSumDetail(terms);
-}
-
-function formatSgaTotalDetail(sections, columnKey) {
-  const taxable = getRowValue(getSectionRowById(sections, 'sgaTaxable', 'sgaTaxable-row'), columnKey);
-  const other = getSectionTotalValue(sections, 'other', columnKey);
-  return formatSumDetail([
-    { label: LABEL_SGA_TAXABLE_TOTAL, val: taxable },
-    { label: LABEL_OTHER_TOTAL, val: other },
-  ]);
-}
-
-function formatStaticValueDetail(label, columnKey, row) {
-  const val = getRowValue(row, columnKey);
-  return `${label} = ${formatYenAmount(val)}`;
-}
-
-function getAggregateFormulaLabel(row) {
   if (row?.aggregateFormula && FORMULA_LABELS[row.aggregateFormula]) {
     return FORMULA_LABELS[row.aggregateFormula];
   }
@@ -2112,38 +1961,7 @@ function getAggregateFormulaLabel(row) {
 }
 
 function getAggregateFormulaDetail(row, section, planData, columnKey) {
-  const sections = planData?.sections ?? [];
-  const key = row?.aggregateFormula;
-
-  switch (key) {
-    case 'sectionSum':
-      return formatSectionSumDetail(section, columnKey);
-    case 'sectionSumExcludePlan':
-      return formatSectionSumDetail(section, columnKey, { excludeTypes: ['plan', 'total', 'breakdown'] });
-    case 'profitOperating':
-      return formatProfitOperatingDetail(sections, columnKey);
-    case 'profitOrdinary':
-      return formatProfitOrdinaryDetail(sections, columnKey);
-    case 'profitPreTax':
-      return formatProfitPreTaxDetail(sections, columnKey);
-    case 'profitNet':
-      return formatProfitNetDetail(sections, columnKey);
-    case 'sgaTaxable':
-      return formatSgaTaxableDetail(sections, columnKey);
-    case 'sgaTotal':
-      return formatSgaTotalDetail(sections, columnKey);
-    case 'cashInflow':
-      return formatStaticValueDetail(FORMULA_LABELS.cashInflow, columnKey, row);
-    case 'cashOutflow':
-      return formatStaticValueDetail(FORMULA_LABELS.cashOutflow, columnKey, row);
-    case 'corpTax':
-      return formatStaticValueDetail(FORMULA_LABELS.corpTax, columnKey, row);
-    default:
-      if (isAggregateLabel(row?.label) && section) {
-        return formatSectionSumDetail(section, columnKey);
-      }
-      return getAggregateFormulaLabel(row);
-  }
+  return getAggregateFormulaLabel(row, section);
 }
 
 /* parse/journalDrilldown.js */
@@ -2319,15 +2137,6 @@ function filterOtherPay(entries, section, row, months) {
   });
 }
 
-function filterCorpTax(entries, months) {
-  return entries.filter((e) => {
-    if (!months.includes(e.monthKey)) return false;
-    if (/法人税|消費税/.test(e.debitAcct) && e.debitAmt > 0) return true;
-    if (/法人税|消費税/.test(e.creditAcct) && e.creditAmt > 0) return true;
-    return false;
-  });
-}
-
 function filterBs(entries, section, row, months) {
   const keys = collectSectionAccountKeys(section, row);
   return entries.filter((e) => months.includes(e.monthKey)
@@ -2352,8 +2161,6 @@ function findRelatedJournalEntries(entries, section, row, month) {
       return filterCashflow(entries, row, months);
     case 'otherPay':
       return filterOtherPay(entries, section, row, months);
-    case 'corpTax':
-      return filterCorpTax(entries, months);
     default:
       if (BS_SECTION_IDS.has(section.id)) {
         return filterBs(entries, section, row, months);
@@ -2878,6 +2685,30 @@ function getVisibleAllowanceColumns(employees) {
   );
 }
 
+function getEmployeeResidentTaxMunicipality(employee) {
+  return String(employee.residentTaxMunicipality ?? '').trim();
+}
+
+/** 月額報酬または住民税納付額があり、住民税の市区町村行の対象となる社員か */
+function employeeHasResidentTaxObligation(employee) {
+  const monthly = employee.residentTaxMonthly;
+  if (monthly && Object.values(monthly).some((v) => (v ?? 0) > 0)) return true;
+  return computeMonthlySalary(employee) > 0;
+}
+
+/** 住民税の支払い対象となる市区町村名（報酬・住民税額がゼロの社員は除外） */
+function collectEmployeeResidentTaxMunicipalityNames(employees) {
+  const names = new Set();
+  for (const employee of employees ?? []) {
+    const municipality = getEmployeeResidentTaxMunicipality(employee);
+    if (!municipality) continue;
+    if (employeeHasResidentTaxObligation(employee)) {
+      names.add(municipality);
+    }
+  }
+  return [...names];
+}
+
 function hasResidentTaxData(employee) {
   if (employee.residentTaxMunicipality || employee.residentTaxYear) return true;
   const monthly = employee.residentTaxMonthly;
@@ -2973,6 +2804,7 @@ function buildEmployeeTableColumns() {
   return [
     { kind: 'text', key: 'employeeNumber', label: '番号', className: 'col-emp-no' },
     { kind: 'text', key: 'name', label: '氏名', className: 'col-emp-name' },
+    { kind: 'text', key: 'residentTaxMunicipality', label: '市区町村', className: 'col-emp-municipality' },
     { kind: 'text', key: 'contractType', label: '契約種別', className: 'col-emp-contract' },
     { kind: 'text', key: 'joinDate', label: '入社日', className: 'col-emp-join' },
     { kind: 'tenure', key: 'tenure', label: '勤続', className: 'col-emp-tenure' },
@@ -2992,6 +2824,8 @@ function getEmployeeCellValue(employee, column, refDate = new Date()) {
       return employee.employeeNumber || '';
     case 'name':
       return formatEmployeeName(employee);
+    case 'residentTaxMunicipality':
+      return getEmployeeResidentTaxMunicipality(employee);
     case 'contractType':
       return employee.contractType || '';
     case 'joinDate':
@@ -3273,6 +3107,26 @@ function applyAmountFromMonthForward(source, fiscalMonths, startMonth, amount) {
   return next;
 }
 
+/** 支払い計画など。過去月を除き、0・空欄も後続月へ反映する */
+function applyAmountFromMonthForwardSkippingPast(
+  source,
+  fiscalMonths,
+  startMonth,
+  amount,
+  pastMonths,
+) {
+  const next = { ...source };
+  const startIndex = fiscalMonths.indexOf(startMonth);
+  if (startIndex < 0) return next;
+  next[startMonth] = amount;
+  for (let i = startIndex + 1; i < fiscalMonths.length; i += 1) {
+    const month = fiscalMonths[i];
+    if (pastMonths?.has(month)) continue;
+    next[month] = amount;
+  }
+  return next;
+}
+
 function salaryPlanAmountDiffersFromPrevious(prev, current) {
   const p = normalizeAmount(prev) ?? 0;
   const c = normalizeAmount(current) ?? 0;
@@ -3324,6 +3178,54 @@ function formatSalaryIncreaseRate(ratePercent) {
 
 /* config/taxPaymentConfig.js */
 const TAX_PAYMENT_STORAGE_KEY = 'mga-tax-payment-plans';
+const TAX_PAYMENT_SETTINGS_STORAGE_KEY = 'mga-tax-payment-settings';
+
+const DEFAULT_PAYMENT_PLAN_YEARS = 5;
+const MIN_PAYMENT_PLAN_YEARS = 1;
+const MAX_PAYMENT_PLAN_YEARS = 30;
+
+/** 支払い設定で管理する勘定科目（表示・集計用） */
+const PAYMENT_PLAN_ACCOUNTS = [
+  '租税公課',
+  '保険積立金',
+  '長期未払金',
+  '未払消費税',
+  '未払法人税等',
+  '住民税',
+];
+
+/** 単一行で編集する勘定科目 */
+const PAYMENT_PLAN_SIMPLE_ACCOUNTS = [
+  '租税公課',
+  '保険積立金',
+  '長期未払金',
+  '未払消費税',
+  '未払法人税等',
+];
+
+const RESIDENT_TAX_ACCOUNT = '住民税';
+
+const RESIDENT_TAX_MUNICIPALITIES_KEY = 'residentTaxMunicipalities';
+
+/** 予実表の「その他」セクションに反映する勘定 */
+const PAYMENT_PLAN_OTHER_SECTION_ACCOUNTS = new Set(['租税公課']);
+
+/** 予実表の「その他支払」セクションに反映する勘定 */
+const PAYMENT_PLAN_OTHER_PAY_ACCOUNTS = new Set([
+  '保険積立金',
+  '長期未払金',
+  '未払消費税',
+  '未払法人税等',
+  '住民税',
+]);
+
+/** 単一行で編集する「その他支払」勘定 */
+const PAYMENT_PLAN_OTHER_PAY_SIMPLE_ACCOUNTS = [
+  '保険積立金',
+  '長期未払金',
+  '未払消費税',
+  '未払法人税等',
+];
 
 function normalizeAmount(value) {
   if (value === null || value === undefined || value === '') return null;
@@ -3337,6 +3239,11 @@ function emptyMonthly(fiscalMonths) {
   return monthly;
 }
 
+function isLegacyPeriodPlan(stored) {
+  if (!stored || typeof stored !== 'object') return false;
+  return Object.keys(stored).some((key) => /^\d+月$/.test(key) || key === '決算整理');
+}
+
 function normalizeTaxPaymentPlan(plan, fiscalMonths) {
   const monthly = emptyMonthly(fiscalMonths);
   if (plan && typeof plan === 'object') {
@@ -3345,6 +3252,229 @@ function normalizeTaxPaymentPlan(plan, fiscalMonths) {
     }
   }
   return monthly;
+}
+
+function normalizePeriodPlans(stored, fiscalMonths) {
+  if (!stored || typeof stored !== 'object') return {};
+  if (isLegacyPeriodPlan(stored)) {
+    return { 租税公課: normalizeTaxPaymentPlan(stored, fiscalMonths) };
+  }
+  const result = {};
+  for (const account of PAYMENT_PLAN_SIMPLE_ACCOUNTS) {
+    result[account] = normalizeTaxPaymentPlan(stored[account], fiscalMonths);
+  }
+  return result;
+}
+
+function getPeriodStorageRaw(plans, fiscalPeriod) {
+  const stored = plans[String(fiscalPeriod)];
+  if (!stored || typeof stored !== 'object') return {};
+  if (isLegacyPeriodPlan(stored)) return stored;
+  return stored;
+}
+
+function hasLegacyResidentTaxMonthly(stored, fiscalMonths) {
+  const legacy = normalizeTaxPaymentPlan(stored[RESIDENT_TAX_ACCOUNT], fiscalMonths);
+  return fiscalMonths.some((m) => (legacy[m] ?? 0) !== 0);
+}
+
+function createResidentTaxMunicipalityId(municipality) {
+  const base = String(municipality ?? '').trim();
+  return `rt-m-${encodeURIComponent(base).replace(/%/g, '_')}`;
+}
+
+function normalizeResidentTaxMunicipalityEntry(entry, fiscalMonths) {
+  if (!entry || typeof entry !== 'object') return null;
+  const municipality = String(entry.municipality ?? '').trim();
+  if (!municipality) return null;
+  const id = String(entry.id ?? '').trim() || createResidentTaxMunicipalityId(municipality);
+  return {
+    id,
+    municipality,
+    monthly: normalizeTaxPaymentPlan(entry.monthly, fiscalMonths),
+    manual: entry.manual === true,
+  };
+}
+
+function getResidentTaxMunicipalityEntries(plans, fiscalPeriod, fiscalMonths) {
+  const raw = getPeriodStorageRaw(plans, fiscalPeriod);
+  const entries = (Array.isArray(raw[RESIDENT_TAX_MUNICIPALITIES_KEY])
+    ? raw[RESIDENT_TAX_MUNICIPALITIES_KEY]
+    : [])
+    .map((entry) => normalizeResidentTaxMunicipalityEntry(entry, fiscalMonths))
+    .filter(Boolean);
+  const seen = new Set();
+  const unique = entries.filter((entry) => {
+    if (seen.has(entry.id)) return false;
+    seen.add(entry.id);
+    return true;
+  });
+  if (unique.length > 0) return unique;
+  if (hasLegacyResidentTaxMonthly(raw, fiscalMonths)) {
+    return [{
+      id: 'legacy-resident-tax',
+      municipality: '未設定',
+      monthly: normalizeTaxPaymentPlan(raw[RESIDENT_TAX_ACCOUNT], fiscalMonths),
+    }];
+  }
+  return [];
+}
+
+function serializePeriodStorage(periodPlans, municipalities, fiscalMonths) {
+  const data = {};
+  for (const account of PAYMENT_PLAN_SIMPLE_ACCOUNTS) {
+    data[account] = periodPlans[account] ?? normalizeTaxPaymentPlan(null, fiscalMonths);
+  }
+  data[RESIDENT_TAX_MUNICIPALITIES_KEY] = municipalities.map((entry) => ({
+    id: entry.id,
+    municipality: entry.municipality,
+    monthly: normalizeTaxPaymentPlan(entry.monthly, fiscalMonths),
+    ...(entry.manual ? { manual: true } : {}),
+  }));
+  return data;
+}
+
+function setResidentTaxMunicipalityEntries(plans, fiscalPeriod, municipalities, fiscalMonths) {
+  const periodKey = String(fiscalPeriod);
+  const periodPlans = getPaymentPlansForPeriod(plans, fiscalPeriod, fiscalMonths);
+  const normalized = municipalities
+    .map((entry) => normalizeResidentTaxMunicipalityEntry(entry, fiscalMonths))
+    .filter(Boolean);
+  return saveTaxPaymentPlans({
+    ...plans,
+    [periodKey]: serializePeriodStorage(periodPlans, normalized, fiscalMonths),
+  });
+}
+
+function setResidentTaxMunicipalityEntry(plans, fiscalPeriod, entry, fiscalMonths) {
+  const normalized = normalizeResidentTaxMunicipalityEntry(entry, fiscalMonths);
+  if (!normalized) return plans;
+  const entries = getResidentTaxMunicipalityEntries(plans, fiscalPeriod, fiscalMonths);
+  const idx = entries.findIndex((e) => e.id === normalized.id);
+  const next = [...entries];
+  if (idx >= 0) next[idx] = normalized;
+  else next.push(normalized);
+  return setResidentTaxMunicipalityEntries(plans, fiscalPeriod, next, fiscalMonths);
+}
+
+function removeResidentTaxMunicipalityEntry(plans, fiscalPeriod, municipalityId, fiscalMonths) {
+  const entries = getResidentTaxMunicipalityEntries(plans, fiscalPeriod, fiscalMonths);
+  return setResidentTaxMunicipalityEntries(
+    plans,
+    fiscalPeriod,
+    entries.filter((e) => e.id !== municipalityId),
+    fiscalMonths,
+  );
+}
+
+function createManualResidentTaxMunicipality({ municipality }) {
+  const name = String(municipality ?? '').trim();
+  if (!name) return null;
+  return {
+    id: createResidentTaxMunicipalityId(name),
+    municipality: name,
+    monthly: {},
+    manual: true,
+  };
+}
+
+function sumResidentTaxMunicipalityMonthly(municipalities, fiscalMonths) {
+  const total = emptyMonthly(fiscalMonths);
+  for (const entry of municipalities) {
+    for (const month of fiscalMonths) {
+      const amount = entry.monthly?.[month] ?? 0;
+      if (amount !== 0) {
+        total[month] = (total[month] ?? 0) + amount;
+      }
+    }
+  }
+  for (const month of fiscalMonths) {
+    if (total[month] === 0) total[month] = null;
+  }
+  return total;
+}
+
+function mergeResidentTaxMunicipalitiesFromNames(
+  plans,
+  fiscalPeriod,
+  municipalityNames,
+  fiscalMonths,
+) {
+  if (!Array.isArray(municipalityNames) || municipalityNames.length === 0) return plans;
+  const entries = getResidentTaxMunicipalityEntries(plans, fiscalPeriod, fiscalMonths);
+  const existing = new Set(entries.map((e) => e.municipality));
+  let changed = false;
+  const next = [...entries];
+  for (const rawName of municipalityNames) {
+    const municipality = String(rawName ?? '').trim();
+    if (!municipality || existing.has(municipality)) continue;
+    existing.add(municipality);
+    const created = createManualResidentTaxMunicipality({ municipality });
+    if (created) {
+      next.push(normalizeResidentTaxMunicipalityEntry(created, fiscalMonths));
+      changed = true;
+    }
+  }
+  if (!changed) return plans;
+  return setResidentTaxMunicipalityEntries(plans, fiscalPeriod, next, fiscalMonths);
+}
+
+function syncResidentTaxMunicipalitiesFromReference(
+  plans,
+  targetPeriod,
+  referencePeriod,
+  fiscalMonths,
+) {
+  const refEntries = getResidentTaxMunicipalityEntries(plans, referencePeriod, fiscalMonths);
+  const targetEntries = getResidentTaxMunicipalityEntries(plans, targetPeriod, fiscalMonths);
+  const targetNames = new Set(targetEntries.map((e) => e.municipality));
+  let changed = false;
+  const next = [...targetEntries];
+  for (const ref of refEntries) {
+    if (targetNames.has(ref.municipality)) continue;
+    targetNames.add(ref.municipality);
+    next.push({
+      id: createResidentTaxMunicipalityId(ref.municipality),
+      municipality: ref.municipality,
+      monthly: emptyMonthly(fiscalMonths),
+      manual: ref.manual === true,
+    });
+    changed = true;
+  }
+  if (!changed) return plans;
+  return setResidentTaxMunicipalityEntries(plans, targetPeriod, next, fiscalMonths);
+}
+
+function collectResidentTaxMunicipalityNamesFromEmployees(employees) {
+  return collectEmployeeResidentTaxMunicipalityNames(employees);
+}
+
+/** 計画・実績・社員マスタから、表示対象の市区町村か判定 */
+function isResidentTaxMunicipalityVisible(entry, { employees, actualMonthly, fiscalMonths }) {
+  if (!entry) return false;
+  if (entry.manual) return true;
+  for (const month of fiscalMonths) {
+    if ((entry.monthly?.[month] ?? 0) !== 0) return true;
+    if ((actualMonthly?.[month] ?? 0) !== 0) return true;
+  }
+  const municipality = String(entry.municipality ?? '').trim();
+  if (!municipality || municipality === '未設定') return false;
+  for (const employee of employees ?? []) {
+    if (getEmployeeResidentTaxMunicipality(employee) !== municipality) continue;
+    if (employeeHasResidentTaxObligation(employee)) return true;
+  }
+  return false;
+}
+
+function filterVisibleResidentTaxMunicipalities(entries, { employees, actualByMunicipality, fiscalMonths }) {
+  const actualMap = actualByMunicipality instanceof Map ? actualByMunicipality : null;
+  return entries.filter((entry) => isResidentTaxMunicipalityVisible(entry, {
+    employees,
+    actualMonthly: actualMap
+      ? (actualMap.get(entry.municipality) ?? {})
+      : (actualByMunicipality?.[entry.municipality] ?? {}),
+    fiscalMonths,
+  }));
 }
 
 function loadTaxPaymentPlans() {
@@ -3362,18 +3492,36 @@ function saveTaxPaymentPlans(plans) {
   return plans;
 }
 
-function getTaxPaymentPlan(plans, fiscalPeriod, fiscalMonths) {
+function getPaymentPlansForPeriod(plans, fiscalPeriod, fiscalMonths) {
   const periodKey = String(fiscalPeriod);
   const stored = plans[periodKey];
-  return normalizeTaxPaymentPlan(stored, fiscalMonths);
+  return normalizePeriodPlans(stored, fiscalMonths);
+}
+
+function getTaxPaymentPlan(plans, fiscalPeriod, fiscalMonths) {
+  const periodPlans = getPaymentPlansForPeriod(plans, fiscalPeriod, fiscalMonths);
+  return periodPlans['租税公課'] ?? normalizeTaxPaymentPlan(null, fiscalMonths);
+}
+
+function getPaymentPlanAccount(plans, fiscalPeriod, account, fiscalMonths) {
+  const periodPlans = getPaymentPlansForPeriod(plans, fiscalPeriod, fiscalMonths);
+  return periodPlans[account] ?? normalizeTaxPaymentPlan(null, fiscalMonths);
+}
+
+function setPaymentPlanAccount(plans, fiscalPeriod, account, monthly, fiscalMonths) {
+  if (account === RESIDENT_TAX_ACCOUNT) return plans;
+  const periodKey = String(fiscalPeriod);
+  const periodPlans = getPaymentPlansForPeriod(plans, fiscalPeriod, fiscalMonths);
+  const municipalities = getResidentTaxMunicipalityEntries(plans, fiscalPeriod, fiscalMonths);
+  periodPlans[account] = normalizeTaxPaymentPlan(monthly, fiscalMonths);
+  return saveTaxPaymentPlans({
+    ...plans,
+    [periodKey]: serializePeriodStorage(periodPlans, municipalities, fiscalMonths),
+  });
 }
 
 function setTaxPaymentPlan(plans, fiscalPeriod, monthly, fiscalMonths) {
-  const periodKey = String(fiscalPeriod);
-  return saveTaxPaymentPlans({
-    ...plans,
-    [periodKey]: normalizeTaxPaymentPlan(monthly, fiscalMonths),
-  });
+  return setPaymentPlanAccount(plans, fiscalPeriod, '租税公課', monthly, fiscalMonths);
 }
 
 function sumTaxPaymentPlanTotal(plan, fiscalMonths) {
@@ -3382,6 +3530,53 @@ function sumTaxPaymentPlanTotal(plan, fiscalMonths) {
     total += plan[month] ?? 0;
   }
   return total;
+}
+
+function normalizePaymentPlanYears(value) {
+  const n = Math.round(Number(value));
+  if (!Number.isFinite(n)) return DEFAULT_PAYMENT_PLAN_YEARS;
+  return Math.min(MAX_PAYMENT_PLAN_YEARS, Math.max(MIN_PAYMENT_PLAN_YEARS, n));
+}
+
+function loadPaymentPlanSettings() {
+  try {
+    const raw = localStorage.getItem(TAX_PAYMENT_SETTINGS_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function savePaymentPlanSettings(settings) {
+  localStorage.setItem(TAX_PAYMENT_SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+  return settings;
+}
+
+function getPaymentPlanYears(settings) {
+  return normalizePaymentPlanYears(settings?.planYears ?? DEFAULT_PAYMENT_PLAN_YEARS);
+}
+
+function setPaymentPlanYears(settings, planYears) {
+  return savePaymentPlanSettings({
+    ...settings,
+    planYears: normalizePaymentPlanYears(planYears),
+  });
+}
+
+/** 今期を起点に、計画対象の会計期リストを生成 */
+function buildPaymentPlanPeriodEntries(currentPeriod, planYears) {
+  const years = normalizePaymentPlanYears(planYears);
+  const entries = [];
+  for (let i = 0; i < years; i += 1) {
+    const period = currentPeriod + i;
+    let label;
+    if (i === 0) label = '今期';
+    else if (i === 1) label = '来期';
+    else label = `第${i + 1}期`;
+    entries.push({ period, label });
+  }
+  return entries;
 }
 
 /* config/outsourcingPlanConfig.js */
@@ -4130,9 +4325,10 @@ function enrichPlanDataWithEmployeeSalaryRows(planData, {
 }
 
 /* enrich/planTaxPaymentRows.js */
-const TAX_PAY_ACCOUNT = '租税公課';
 const TAX_PAY_OTHER_SECTION_LABEL = 'その他';
 const TAX_PAY_OTHER_TOTAL_LABEL = 'その他合計';
+const TAX_PAY_OTHER_PAY_SECTION_LABEL = 'その他支払';
+const TAX_PAY_OTHER_PAY_TOTAL_LABEL = 'その他支払合計';
 const NO_SUB_LABEL = '補助科目なし';
 
 function taxPayEmptyRawMonthValues() {
@@ -4151,18 +4347,19 @@ function taxPayIsMissingCsvMonthValue(value) {
   return value === undefined || value === null || value === 0;
 }
 
-function taxPayIsTaxPublicChargeRow(row) {
-  return (row.label ?? '') === TAX_PAY_ACCOUNT;
+function taxPayIsAccountRow(row, account) {
+  return (row.label ?? '') === account;
 }
 
-function taxPayPartitionTaxPublicChargeRows(rows) {
-  const taxPublicChargeCsv = [];
+function taxPayPartitionAccountRows(rows, accounts) {
+  const accountSet = new Set(accounts);
+  const matched = [];
   const otherRest = [];
   for (const row of rows) {
-    if (taxPayIsTaxPublicChargeRow(row)) taxPublicChargeCsv.push(row);
+    if (accountSet.has(row.label ?? '')) matched.push(row);
     else otherRest.push(row);
   }
-  return { taxPublicChargeCsv, otherRest };
+  return { matched, otherRest };
 }
 
 function taxPayRawValuesFromRow(row) {
@@ -4171,11 +4368,26 @@ function taxPayRawValuesFromRow(row) {
   return values;
 }
 
-function taxPayMergePlanIntoCsvRow(csvRow, planMonthValues, fiscalMonths, skipPlanFillMonths = null) {
+function taxPayIsActualSourceRow(row) {
+  return row.type === 'item' || row.type === 'sub';
+}
+
+function taxPayMergePlanIntoCsvRow(
+  csvRow,
+  planMonthValues,
+  actualMonthly,
+  fiscalMonths,
+  pastMonths,
+) {
   const months = taxPayRawValuesFromRow(csvRow);
   const planFillMonths = [];
   for (const m of fiscalMonths) {
-    if (skipPlanFillMonths?.has(m)) continue;
+    if (pastMonths.has(m)) {
+      if (taxPayIsMissingCsvMonthValue(months[m])) {
+        months[m] = actualMonthly[m] ?? 0;
+      }
+      continue;
+    }
     if (taxPayIsMissingCsvMonthValue(months[m]) && (planMonthValues[m] ?? 0) !== 0) {
       months[m] = planMonthValues[m];
       planFillMonths.push(m);
@@ -4190,19 +4402,25 @@ function taxPayMergePlanIntoCsvRow(csvRow, planMonthValues, fiscalMonths, skipPl
 
 function taxPayMergePlanIntoPrimaryCsvRow(
   csvRows,
-  planTotal,
+  planMonthValues,
+  actualMonthly,
   fiscalMonths,
-  skipPlanFillMonths = null,
+  pastMonths,
 ) {
-  if (csvRows.length === 0 || !planTotal) return csvRows;
-  const planMonths = taxPayRawValuesFromRow({ values: planTotal });
+  if (csvRows.length === 0) return csvRows;
   const primaryIdx = csvRows.findIndex(
     (row) => !row.subLabel || row.subLabel === NO_SUB_LABEL,
   );
   const targetIdx = primaryIdx >= 0 ? primaryIdx : 0;
   return csvRows.map((row, index) => {
     if (index !== targetIdx) return row;
-    return taxPayMergePlanIntoCsvRow(row, planMonths, fiscalMonths, skipPlanFillMonths);
+    return taxPayMergePlanIntoCsvRow(
+      row,
+      planMonthValues,
+      actualMonthly,
+      fiscalMonths,
+      pastMonths,
+    );
   });
 }
 
@@ -4219,53 +4437,264 @@ function taxPayMakePlanRow(id, label, subLabel, values) {
 function taxPaySumNonPlanRows(rows) {
   const total = taxPayEmptyRawMonthValues();
   for (const row of rows) {
-    if (row.type === 'plan' || row.type === 'total') continue;
-    taxPayAddRawMonthValues(total, row.values);
+    if (row.type === 'total' || row.type === 'breakdown' || row.type === 'sub') continue;
+    if (row.type === 'item' || row.type === 'group' || row.type === 'plan') {
+      taxPayAddRawMonthValues(total, row.values);
+    }
   }
   return enrichRowValues(total, 'flow');
 }
 
-function taxPayBuildTaxPaymentPlanTotal(taxPaymentPlans, fiscalPeriod, fiscalMonths) {
-  const plan = getTaxPaymentPlan(taxPaymentPlans ?? {}, fiscalPeriod, fiscalMonths);
+function taxPayBuildResidentTaxPlanTotal(monthlyPlan, fiscalMonths) {
   const values = taxPayEmptyRawMonthValues();
+  let hasValue = false;
   for (const m of fiscalMonths) {
-    const amount = plan[m] ?? 0;
-    if (amount !== 0) values[m] = amount;
+    const amount = monthlyPlan[m] ?? 0;
+    if (amount !== 0) {
+      values[m] = amount;
+      hasValue = true;
+    }
   }
-  const enriched = enrichRowValues(values, 'flow');
-  if ((enriched[EXTRA_COLUMNS[0]] ?? 0) === 0) return null;
-  return enriched;
+  if (!hasValue) return null;
+  return enrichRowValues(values, 'flow');
 }
 
-function taxPayBuildTaxPaymentPlanRow(planTotal) {
+function taxPayMergeResidentTaxPlanIntoCsvRow(csvRow, planMonthValues, fiscalMonths) {
+  const months = taxPayRawValuesFromRow(csvRow);
+  const planFillMonths = [];
+  for (const m of fiscalMonths) {
+    const planVal = planMonthValues[m];
+    months[m] = planVal ?? 0;
+    if ((planVal ?? 0) !== 0) planFillMonths.push(m);
+  }
+  return {
+    ...csvRow,
+    values: enrichRowValues(months, 'flow'),
+    planFillMonths,
+  };
+}
+
+function taxPayBuildAccountPlanTotal(monthlyPlan, actualMonthly, fiscalMonths, pastMonths) {
+  const values = taxPayEmptyRawMonthValues();
+  let hasValue = false;
+  for (const m of fiscalMonths) {
+    const amount = pastMonths.has(m)
+      ? (actualMonthly[m] ?? 0)
+      : (monthlyPlan[m] ?? 0);
+    if (amount !== 0) {
+      values[m] = amount;
+      hasValue = true;
+    }
+  }
+  if (!hasValue) return null;
+  return enrichRowValues(values, 'flow');
+}
+
+function taxPayHasFuturePlanAmount(periodPlans, municipalities, fiscalMonths, pastMonths) {
+  for (const account of PAYMENT_PLAN_SIMPLE_ACCOUNTS) {
+    const plan = periodPlans[account] ?? {};
+    for (const m of fiscalMonths) {
+      if (!pastMonths.has(m) && (plan[m] ?? 0) !== 0) return true;
+    }
+  }
+  for (const entry of municipalities) {
+    for (const m of fiscalMonths) {
+      if (!pastMonths.has(m) && (entry.monthly?.[m] ?? 0) !== 0) return true;
+    }
+  }
+  return false;
+}
+
+function taxPayHasPastActualAmount(actualAmounts, fiscalMonths, pastMonths) {
+  for (const account of PAYMENT_PLAN_ACCOUNTS) {
+    const actual = actualAmounts.get(account) ?? {};
+    for (const m of fiscalMonths) {
+      if (pastMonths.has(m) && (actual[m] ?? 0) !== 0) return true;
+    }
+  }
+  return false;
+}
+
+function taxPayRowMatchesMunicipality(row, municipality) {
+  return row.label === RESIDENT_TAX_ACCOUNT && (row.subLabel ?? '') === municipality;
+}
+
+function taxPayBuildMunicipalityPlanRows(municipalities, fiscalMonths) {
+  const rows = [];
+  for (const entry of municipalities) {
+    const planTotal = taxPayBuildResidentTaxPlanTotal(
+      entry.monthly ?? {},
+      fiscalMonths,
+    );
+    const planRow = taxPayBuildAccountPlanRow(
+      RESIDENT_TAX_ACCOUNT,
+      planTotal,
+      `other-pay-plan-rt-${entry.id}`,
+    );
+    if (!planRow) continue;
+    rows.push({
+      ...planRow,
+      id: `other-pay-plan-rt-${entry.id}`,
+      subLabel: entry.municipality,
+    });
+  }
+  return rows;
+}
+
+function taxPayRebuildResidentTaxRows(
+  rows,
+  municipalities,
+  actualByMunicipality,
+  actualTotal,
+  fiscalMonths,
+  pastMonths,
+) {
+  const totalRow = rows.find((r) => r.type === 'total');
+  const body = rows.filter((r) => r.type !== 'plan' && r.type !== 'total');
+  const residentTaxCsv = body.filter((r) => r.label === RESIDENT_TAX_ACCOUNT);
+  const otherRest = body.filter((r) => r.label !== RESIDENT_TAX_ACCOUNT);
+  const summedPlanMonthly = sumResidentTaxMunicipalityMonthly(municipalities, fiscalMonths);
+  const matchedMunicipalityIds = new Set();
+  const rebuiltResidentTax = [];
+
+  for (const row of residentTaxCsv) {
+    if (!taxPayIsActualSourceRow(row)) {
+      rebuiltResidentTax.push(row);
+      continue;
+    }
+    const sub = String(row.subLabel ?? '').trim();
+    if (!sub || sub === NO_SUB_LABEL) {
+      rebuiltResidentTax.push(taxPayMergeResidentTaxPlanIntoCsvRow(
+        row,
+        summedPlanMonthly,
+        fiscalMonths,
+      ));
+      continue;
+    }
+    const municipality = municipalities.find((entry) => entry.municipality === sub);
+    if (!municipality) {
+      rebuiltResidentTax.push(row);
+      continue;
+    }
+    matchedMunicipalityIds.add(municipality.id);
+    rebuiltResidentTax.push(taxPayMergeResidentTaxPlanIntoCsvRow(
+      row,
+      municipality.monthly ?? {},
+      fiscalMonths,
+    ));
+  }
+
+  const orphanPlanRows = taxPayBuildMunicipalityPlanRows(
+    municipalities.filter((entry) => !matchedMunicipalityIds.has(entry.id)),
+    fiscalMonths,
+  );
+
+  if (residentTaxCsv.length === 0 && orphanPlanRows.length > 0) {
+    const rebuilt = [...orphanPlanRows, ...otherRest];
+    if (totalRow) rebuilt.push(totalRow);
+    return rebuilt;
+  }
+
+  const rebuilt = [...rebuiltResidentTax, ...orphanPlanRows, ...otherRest];
+  if (totalRow) rebuilt.push(totalRow);
+  return rebuilt;
+}
+
+function taxPayCollectResidentTaxPlanVisibilityCandidates(
+  municipalities,
+  actualByMunicipality,
+  fiscalMonths,
+  pastMonths,
+) {
+  const candidates = [];
+  for (const entry of municipalities) {
+    const planTotal = taxPayBuildResidentTaxPlanTotal(
+      entry.monthly ?? {},
+      fiscalMonths,
+    );
+    const planRow = taxPayBuildAccountPlanRow(
+      RESIDENT_TAX_ACCOUNT,
+      planTotal,
+      `other-pay-plan-rt-${entry.id}`,
+    );
+    if (!planRow) continue;
+    candidates.push(...taxPayCollectPlanVisibilityCandidates(
+      { ...planRow, subLabel: entry.municipality },
+      'otherPay',
+      TAX_PAY_OTHER_PAY_SECTION_LABEL,
+    ));
+  }
+  return candidates;
+}
+
+function taxPayBuildAccountPlanRow(account, planTotal, idPrefix) {
   if (!planTotal) return null;
   return taxPayMakePlanRow(
-    'tax-pay-plan',
-    TAX_PAY_ACCOUNT,
+    `${idPrefix}-${account}`,
+    account,
     '',
     planTotal,
   );
 }
 
-function taxPayRebuildOtherRows(rows, taxPaymentPlanTotal, fiscalMonths, skipPlanFillMonths = null) {
+function taxPayCollectPlanVisibilityCandidates(planRow, sectionId, sectionLabel) {
+  if (!planRow) return [];
+  return [{
+    key: visibilityRowKey(sectionId, planRow),
+    sectionId,
+    sectionLabel,
+    account: planRow.label,
+    subLabel: planRow.subLabel || '',
+    rowType: planRow.type,
+    rowTypeLabel: rowTypeLabel(planRow.type),
+  }];
+}
+
+function taxPayRebuildRowsForAccounts(
+  rows,
+  accounts,
+  periodPlans,
+  actualAmounts,
+  fiscalMonths,
+  pastMonths,
+  planRowIdPrefix,
+) {
   const totalRow = rows.find((r) => r.type === 'total');
   const body = rows.filter((r) => r.type !== 'plan' && r.type !== 'total');
-  const { taxPublicChargeCsv, otherRest } = taxPayPartitionTaxPublicChargeRows(body);
-  const taxPublicChargeCsvMerged = taxPayMergePlanIntoPrimaryCsvRow(
-    taxPublicChargeCsv,
-    taxPaymentPlanTotal,
-    fiscalMonths,
-    skipPlanFillMonths,
-  );
-  const taxPaymentPlanRow = taxPublicChargeCsv.length === 0
-    ? taxPayBuildTaxPaymentPlanRow(taxPaymentPlanTotal)
-    : null;
+  const { matched, otherRest } = taxPayPartitionAccountRows(body, accounts);
 
-  const rebuilt = [
-    ...taxPublicChargeCsvMerged,
-    ...(taxPaymentPlanRow ? [taxPaymentPlanRow] : []),
-    ...otherRest,
-  ];
+  const rebuiltAccountRows = [];
+  const planRows = [];
+
+  for (const account of accounts) {
+    const accountCsv = matched.filter((row) => taxPayIsAccountRow(row, account));
+    const monthlyPlan = periodPlans[account] ?? {};
+    const actualMonthly = actualAmounts.get(account) ?? {};
+    const mergedCsv = taxPayMergePlanIntoPrimaryCsvRow(
+      accountCsv,
+      monthlyPlan,
+      actualMonthly,
+      fiscalMonths,
+      pastMonths,
+    );
+    const planTotal = taxPayBuildAccountPlanTotal(
+      monthlyPlan,
+      actualMonthly,
+      fiscalMonths,
+      pastMonths,
+    );
+    const planRow = accountCsv.length === 0
+      ? taxPayBuildAccountPlanRow(account, planTotal, planRowIdPrefix)
+      : null;
+    rebuiltAccountRows.push(...mergedCsv);
+    if (planRow) planRows.push(planRow);
+  }
+
+  const nonTargetRest = otherRest.filter(
+    (row) => !accounts.includes(row.label ?? ''),
+  );
+
+  const rebuilt = [...rebuiltAccountRows, ...planRows, ...nonTargetRest];
   if (totalRow) rebuilt.push(totalRow);
   return rebuilt;
 }
@@ -4296,71 +4725,90 @@ function taxPayCreateOtherSection(rows) {
   };
 }
 
-function taxPayCollectPlanVisibilityCandidates(planRow) {
-  if (!planRow) return [];
-  return [{
-    key: visibilityRowKey('other', planRow),
-    sectionId: 'other',
-    sectionLabel: TAX_PAY_OTHER_SECTION_LABEL,
-    account: planRow.label,
-    subLabel: planRow.subLabel || '',
-    rowType: planRow.type,
-    rowTypeLabel: rowTypeLabel(planRow.type),
-  }];
+function taxPayCreateOtherPaySection(rows) {
+  const colors = DEFAULT_SECTION_COLORS.otherPay ?? {
+    color: '#1f4e78',
+    barColor: '#1f4e78',
+    textColor: '#ffffff',
+  };
+  const totalValues = taxPaySumNonPlanRows(rows);
+  const totalRow = {
+    id: 'pay-total',
+    label: `${APP_AGGREGATE_LABEL_PREFIX}${TAX_PAY_OTHER_PAY_TOTAL_LABEL}`,
+    subLabel: '',
+    type: 'total',
+    values: totalValues,
+    aggregateFormula: 'sectionSumExcludePlan',
+  };
+  return {
+    id: 'otherPay',
+    label: TAX_PAY_OTHER_PAY_SECTION_LABEL,
+    filter: 'cashflow',
+    color: colors.color,
+    barColor: colors.barColor,
+    textColor: colors.textColor,
+    rows: [...rows, totalRow],
+  };
 }
 
-/** 税金・公租公課の支払計画をその他セクションにマージ（予算・予実モード）。 */
-function enrichPlanDataWithTaxPaymentRows(planData, {
-  taxPaymentPlans,
-  businessStartYear,
-  fiscalPeriod,
-  fiscalEndMonth,
-  displayMode,
-}) {
-  if (displayMode !== 'plan' && displayMode !== 'budget-actual') {
-    return planData;
-  }
+function taxPayHasAnyPlanAmount(periodPlans, municipalities, actualAmounts, fiscalMonths, pastMonths) {
+  return taxPayHasFuturePlanAmount(periodPlans, municipalities, fiscalMonths, pastMonths)
+    || taxPayHasPastActualAmount(actualAmounts, fiscalMonths, pastMonths);
+}
 
-  const fiscalMonths = buildFiscalYearMonths(fiscalEndMonth);
-  const taxPaymentPlanTotal = taxPayBuildTaxPaymentPlanTotal(
-    taxPaymentPlans,
-    fiscalPeriod,
+function taxPayCollectAllPlanVisibilityCandidates(
+  periodPlans,
+  municipalities,
+  actualAmounts,
+  actualResidentTaxByMunicipality,
+  fiscalMonths,
+  pastMonths,
+) {
+  const candidates = [];
+  for (const account of PAYMENT_PLAN_SIMPLE_ACCOUNTS) {
+    const planTotal = taxPayBuildAccountPlanTotal(
+      periodPlans[account] ?? {},
+      actualAmounts.get(account) ?? {},
+      fiscalMonths,
+      pastMonths,
+    );
+    const planRow = taxPayBuildAccountPlanRow(account, planTotal, 'tax-pay-plan');
+    if (!planRow) continue;
+    if (PAYMENT_PLAN_OTHER_SECTION_ACCOUNTS.has(account)) {
+      candidates.push(...taxPayCollectPlanVisibilityCandidates(
+        planRow,
+        'other',
+        TAX_PAY_OTHER_SECTION_LABEL,
+      ));
+    }
+    if (PAYMENT_PLAN_OTHER_PAY_SIMPLE_ACCOUNTS.includes(account)) {
+      candidates.push(...taxPayCollectPlanVisibilityCandidates(
+        planRow,
+        'otherPay',
+        TAX_PAY_OTHER_PAY_SECTION_LABEL,
+      ));
+    }
+  }
+  candidates.push(...taxPayCollectResidentTaxPlanVisibilityCandidates(
+    municipalities,
+    actualResidentTaxByMunicipality,
     fiscalMonths,
-  );
-  const taxPaymentPlanRow = taxPayBuildTaxPaymentPlanRow(taxPaymentPlanTotal);
-  const otherIdx = planData.sections.findIndex((s) => s.id === 'other');
-  const canEnrich = taxPaymentPlanTotal || otherIdx >= 0;
-  if (!canEnrich) {
-    return planData;
-  }
+    pastMonths,
+  ));
+  return candidates;
+}
 
-  const extraCandidates = taxPayCollectPlanVisibilityCandidates(taxPaymentPlanRow);
-  const skipPlanFillMonths = displayMode === 'budget-actual'
-    ? buildPastFiscalMonthSet(businessStartYear, fiscalPeriod, fiscalMonths)
-    : null;
-
-  if (otherIdx < 0) {
-    const planRows = taxPaymentPlanRow ? [taxPaymentPlanRow] : [];
-    if (planRows.length === 0) return planData;
-    const section = taxPayCreateOtherSection(planRows);
-    return {
-      ...planData,
-      sections: [...planData.sections, section],
-      visibilityCandidates: [
-        ...(planData.visibilityCandidates ?? []),
-        ...extraCandidates,
-      ],
-    };
-  }
-
-  const other = planData.sections[otherIdx];
-  const rows = taxPayRebuildOtherRows(
-    other.rows,
-    taxPaymentPlanTotal,
+function taxPayEnrichOtherSection(section, periodPlans, actualAmounts, fiscalMonths, pastMonths) {
+  const accounts = [...PAYMENT_PLAN_OTHER_SECTION_ACCOUNTS];
+  const rows = taxPayRebuildRowsForAccounts(
+    section.rows,
+    accounts,
+    periodPlans,
+    actualAmounts,
     fiscalMonths,
-    skipPlanFillMonths,
+    pastMonths,
+    'tax-pay-plan',
   );
-
   const totalIdx = rows.findIndex((r) => r.type === 'total');
   if (totalIdx >= 0) {
     rows[totalIdx] = {
@@ -4369,11 +4817,287 @@ function enrichPlanDataWithTaxPaymentRows(planData, {
       aggregateFormula: 'sectionSumExcludePlan',
     };
   }
+  return { ...section, rows };
+}
 
-  const sections = planData.sections.map((section, idx) => {
-    if (idx !== otherIdx) return section;
-    return { ...section, rows };
-  });
+function taxPayEnrichOtherPaySection(
+  section,
+  periodPlans,
+  municipalities,
+  actualAmounts,
+  actualResidentTaxByMunicipality,
+  fiscalMonths,
+  pastMonths,
+) {
+  const accounts = [...PAYMENT_PLAN_OTHER_PAY_SIMPLE_ACCOUNTS];
+  let rows = taxPayRebuildRowsForAccounts(
+    section.rows,
+    accounts,
+    periodPlans,
+    actualAmounts,
+    fiscalMonths,
+    pastMonths,
+    'other-pay-plan',
+  );
+  rows = taxPayRebuildResidentTaxRows(
+    rows,
+    municipalities,
+    actualResidentTaxByMunicipality,
+    actualAmounts.get(RESIDENT_TAX_ACCOUNT) ?? {},
+    fiscalMonths,
+    pastMonths,
+  );
+  const totalIdx = rows.findIndex((r) => r.type === 'total');
+  if (totalIdx >= 0) {
+    rows[totalIdx] = {
+      ...rows[totalIdx],
+      values: taxPaySumNonPlanRows(rows),
+      aggregateFormula: 'sectionSumExcludePlan',
+    };
+  }
+  return { ...section, rows };
+}
+
+function taxPayCreateOtherSectionFromPlans(periodPlans, actualAmounts, fiscalMonths, pastMonths) {
+  const planRows = [];
+  for (const account of PAYMENT_PLAN_OTHER_SECTION_ACCOUNTS) {
+    const planTotal = taxPayBuildAccountPlanTotal(
+      periodPlans[account] ?? {},
+      actualAmounts.get(account) ?? {},
+      fiscalMonths,
+      pastMonths,
+    );
+    const planRow = taxPayBuildAccountPlanRow(account, planTotal, 'tax-pay-plan');
+    if (planRow) planRows.push(planRow);
+  }
+  if (planRows.length === 0) return null;
+  return taxPayCreateOtherSection(planRows);
+}
+
+function taxPayCreateOtherPaySectionFromPlans(
+  periodPlans,
+  municipalities,
+  actualAmounts,
+  actualResidentTaxByMunicipality,
+  fiscalMonths,
+  pastMonths,
+) {
+  const planRows = [];
+  for (const account of PAYMENT_PLAN_OTHER_PAY_SIMPLE_ACCOUNTS) {
+    const planTotal = taxPayBuildAccountPlanTotal(
+      periodPlans[account] ?? {},
+      actualAmounts.get(account) ?? {},
+      fiscalMonths,
+      pastMonths,
+    );
+    const planRow = taxPayBuildAccountPlanRow(account, planTotal, 'other-pay-plan');
+    if (planRow) planRows.push(planRow);
+  }
+  planRows.push(...taxPayBuildMunicipalityPlanRows(
+    municipalities,
+    fiscalMonths,
+  ));
+  if (planRows.length === 0) return null;
+  return taxPayCreateOtherPaySection(planRows);
+}
+
+/** 予実データから住民税の市区町村別実績を抽出 */
+function collectResidentTaxActualByMunicipality(planData, fiscalMonths) {
+  const byMunicipality = new Map();
+  const total = {};
+  for (const m of fiscalMonths) total[m] = 0;
+
+  const otherPaySection = planData?.sections?.find((s) => s.id === 'otherPay');
+  if (!otherPaySection) {
+    return { byMunicipality, total };
+  }
+
+  for (const row of otherPaySection.rows) {
+    if (!taxPayIsActualSourceRow(row)) continue;
+    if (row.label !== RESIDENT_TAX_ACCOUNT) continue;
+    const sub = String(row.subLabel ?? '').trim();
+    if (!sub || sub === NO_SUB_LABEL) {
+      for (const m of fiscalMonths) {
+        total[m] += row.values[m] ?? 0;
+      }
+      continue;
+    }
+    if (!byMunicipality.has(sub)) {
+      const monthly = {};
+      for (const m of fiscalMonths) monthly[m] = 0;
+      byMunicipality.set(sub, monthly);
+    }
+    const monthly = byMunicipality.get(sub);
+    for (const m of fiscalMonths) {
+      monthly[m] += row.values[m] ?? 0;
+      total[m] += row.values[m] ?? 0;
+    }
+  }
+
+  return { byMunicipality, total };
+}
+
+/** 仕訳から住民税の市区町村（補助科目）一覧を抽出 */
+function collectResidentTaxSubaccountsFromPlanData(planData) {
+  const section = planData?.sections?.find((s) => s.id === 'otherPay');
+  if (!section) return [];
+  const result = [];
+  const seen = new Set();
+  for (const row of section.rows) {
+    if (!taxPayIsActualSourceRow(row)) continue;
+    if (row.label !== RESIDENT_TAX_ACCOUNT) continue;
+    const municipality = String(row.subLabel ?? '').trim();
+    if (!municipality || municipality === NO_SUB_LABEL || seen.has(municipality)) continue;
+    seen.add(municipality);
+    result.push({ municipality });
+  }
+  return result;
+}
+
+/** 予実データから支払い実績の月別金額を勘定科目ごとに抽出 */
+function collectPaymentActualAmountsFromPlanData(planData, fiscalMonths) {
+  const result = new Map();
+  for (const account of PAYMENT_PLAN_ACCOUNTS) {
+    const monthly = {};
+    for (const m of fiscalMonths) monthly[m] = 0;
+    result.set(account, monthly);
+  }
+
+  const otherSection = planData?.sections?.find((s) => s.id === 'other');
+  if (otherSection) {
+    for (const row of otherSection.rows) {
+      if (!taxPayIsActualSourceRow(row)) continue;
+      if (row.label !== '租税公課') continue;
+      const monthly = result.get('租税公課');
+      for (const m of fiscalMonths) {
+        monthly[m] += row.values[m] ?? 0;
+      }
+    }
+  }
+
+  const otherPaySection = planData?.sections?.find((s) => s.id === 'otherPay');
+  if (otherPaySection) {
+    for (const row of otherPaySection.rows) {
+      if (!taxPayIsActualSourceRow(row)) continue;
+      const account = row.label ?? '';
+      if (!PAYMENT_PLAN_OTHER_PAY_ACCOUNTS.has(account)) continue;
+      const monthly = result.get(account);
+      for (const m of fiscalMonths) {
+        monthly[m] += row.values[m] ?? 0;
+      }
+    }
+  }
+
+  return result;
+}
+
+/** 支払い計画を予実表の「その他」「その他支払」セクションにマージ（予算・予実モード）。 */
+function enrichPlanDataWithTaxPaymentRows(planData, {
+  taxPaymentPlans,
+  employees,
+  businessStartYear,
+  fiscalPeriod,
+  fiscalEndMonth,
+  displayMode,
+  actualSourcePlanData = null,
+}) {
+  if (displayMode !== 'plan' && displayMode !== 'budget-actual') {
+    return planData;
+  }
+
+  const fiscalMonths = buildFiscalYearMonths(fiscalEndMonth);
+  const pastMonths = buildPastFiscalMonthSet(businessStartYear, fiscalPeriod, fiscalMonths);
+  const actualSource = actualSourcePlanData ?? planData;
+  const actualAmounts = collectPaymentActualAmountsFromPlanData(
+    actualSource,
+    fiscalMonths,
+  );
+  const { byMunicipality: actualResidentTaxByMunicipality } = collectResidentTaxActualByMunicipality(
+    actualSource,
+    fiscalMonths,
+  );
+  const periodPlans = getPaymentPlansForPeriod(
+    taxPaymentPlans ?? {},
+    fiscalPeriod,
+    fiscalMonths,
+  );
+  const municipalities = filterVisibleResidentTaxMunicipalities(
+    getResidentTaxMunicipalityEntries(
+      taxPaymentPlans ?? {},
+      fiscalPeriod,
+      fiscalMonths,
+    ),
+    {
+      employees,
+      fiscalMonths,
+      actualByMunicipality: actualResidentTaxByMunicipality,
+    },
+  );
+  const hasPlans = taxPayHasAnyPlanAmount(
+    periodPlans,
+    municipalities,
+    actualAmounts,
+    fiscalMonths,
+    pastMonths,
+  );
+  const otherIdx = planData.sections.findIndex((s) => s.id === 'other');
+  const otherPayIdx = planData.sections.findIndex((s) => s.id === 'otherPay');
+  const canEnrich = hasPlans || otherIdx >= 0 || otherPayIdx >= 0;
+  if (!canEnrich) {
+    return planData;
+  }
+
+  const extraCandidates = taxPayCollectAllPlanVisibilityCandidates(
+    periodPlans,
+    municipalities,
+    actualAmounts,
+    actualResidentTaxByMunicipality,
+    fiscalMonths,
+    pastMonths,
+  );
+
+  let sections = [...planData.sections];
+
+  if (otherIdx >= 0) {
+    sections[otherIdx] = taxPayEnrichOtherSection(
+      sections[otherIdx],
+      periodPlans,
+      actualAmounts,
+      fiscalMonths,
+      pastMonths,
+    );
+  } else if (hasPlans) {
+    const created = taxPayCreateOtherSectionFromPlans(
+      periodPlans,
+      actualAmounts,
+      fiscalMonths,
+      pastMonths,
+    );
+    if (created) sections = [...sections, created];
+  }
+
+  const updatedOtherPayIdx = sections.findIndex((s) => s.id === 'otherPay');
+  if (updatedOtherPayIdx >= 0) {
+    sections[updatedOtherPayIdx] = taxPayEnrichOtherPaySection(
+      sections[updatedOtherPayIdx],
+      periodPlans,
+      municipalities,
+      actualAmounts,
+      actualResidentTaxByMunicipality,
+      fiscalMonths,
+      pastMonths,
+    );
+  } else if (hasPlans) {
+    const created = taxPayCreateOtherPaySectionFromPlans(
+      periodPlans,
+      municipalities,
+      actualAmounts,
+      actualResidentTaxByMunicipality,
+      fiscalMonths,
+      pastMonths,
+    );
+    if (created) sections = [...sections, created];
+  }
 
   return {
     ...planData,
@@ -5582,6 +6306,177 @@ function resetOtherAppSettings(current) {
   };
 }
 
+/* config/settingsExport.js */
+const SETTINGS_EXPORT_FORMAT = 'mga-budget-settings';
+const SETTINGS_EXPORT_VERSION = 1;
+
+const SETTINGS_EXPORT_APP_KEY = 'mga-app-settings';
+
+/** Excluded from export/import (per-device font scale and row padding). */
+const APP_SETTINGS_EXCLUDED_KEYS = ['fontScale', 'rowPaddingScale', 'fontScaleUi'];
+
+const ALL_SETTINGS_STORAGE_KEYS = [
+  SETTINGS_EXPORT_APP_KEY,
+  'mga-employees',
+  'mga-salary-plans',
+  'mga-salary-plan-settings',
+  'mga-tax-payment-plans',
+  'mga-tax-payment-settings',
+  'mga-outsourcing-plans',
+  'mga-sub-expand-config',
+  'mga-row-visibility',
+  'mga-row-display',
+  'mga-expense-sort-order',
+  'mga-section-colors',
+  'mga-ui-colors',
+  'mga-csv-name-config',
+];
+
+function stripAppSettingsForExport(appSettings) {
+  if (!appSettings || typeof appSettings !== 'object') return appSettings;
+  const stripped = { ...appSettings };
+  for (const key of APP_SETTINGS_EXCLUDED_KEYS) {
+    delete stripped[key];
+  }
+  return stripped;
+}
+
+function loadCurrentAppSettingsRaw() {
+  try {
+    const raw = localStorage.getItem(SETTINGS_EXPORT_APP_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function mergeAppSettingsForImport(imported) {
+  const current = loadCurrentAppSettingsRaw();
+  const merged = { ...imported };
+  for (const key of APP_SETTINGS_EXCLUDED_KEYS) {
+    if (current && current[key] !== undefined) {
+      merged[key] = current[key];
+    } else {
+      delete merged[key];
+    }
+  }
+  return merged;
+}
+
+function prepareSettingsValueForExport(key, value) {
+  if (key !== SETTINGS_EXPORT_APP_KEY) return value;
+  return stripAppSettingsForExport(value);
+}
+
+function prepareSettingsValueForImport(key, value) {
+  if (key !== SETTINGS_EXPORT_APP_KEY) return value;
+  return mergeAppSettingsForImport(value);
+}
+
+function collectSettingsForExport() {
+  const settings = {};
+  for (const key of ALL_SETTINGS_STORAGE_KEYS) {
+    const raw = localStorage.getItem(key);
+    if (raw == null) continue;
+    try {
+      settings[key] = prepareSettingsValueForExport(key, JSON.parse(raw));
+    } catch {
+      /* skip corrupted entry */
+    }
+  }
+  return {
+    format: SETTINGS_EXPORT_FORMAT,
+    version: SETTINGS_EXPORT_VERSION,
+    exportedAt: new Date().toISOString(),
+    settings,
+  };
+}
+
+function exportSettingsToJsonString() {
+  return JSON.stringify(collectSettingsForExport(), null, 2);
+}
+
+function formatSettingsExportFilename(date = new Date()) {
+  const pad = (n) => String(n).padStart(2, '0');
+  const y = date.getFullYear();
+  const m = pad(date.getMonth() + 1);
+  const d = pad(date.getDate());
+  const h = pad(date.getHours());
+  const min = pad(date.getMinutes());
+  const s = pad(date.getSeconds());
+  return `mga-settings-${y}${m}${d}-${h}${min}${s}.json`;
+}
+
+function downloadSettingsExport() {
+  const json = exportSettingsToJsonString();
+  const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = formatSettingsExportFilename();
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
+const IMPORT_ERRORS = {
+  json: "JSON として読み込めません。",
+  format: "形式が正しくありません。",
+  notApp: "このアプリ用の設定ファイルではありません。",
+  noData: "設定データが含まれていません。",
+  noKeys: "取り込める設定項目がありませんでした。",
+  saveFail: "設定の保存に失敗しました（",
+};
+
+function validateSettingsImportText(text) {
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return { ok: false, error: IMPORT_ERRORS.json };
+  }
+  if (!parsed || typeof parsed !== 'object') {
+    return { ok: false, error: IMPORT_ERRORS.format };
+  }
+  if (parsed.format !== SETTINGS_EXPORT_FORMAT) {
+    return { ok: false, error: IMPORT_ERRORS.notApp };
+  }
+  if (!parsed.settings || typeof parsed.settings !== 'object') {
+    return { ok: false, error: IMPORT_ERRORS.noData };
+  }
+  const keys = Object.keys(parsed.settings);
+  const importableKeys = keys.filter((key) => ALL_SETTINGS_STORAGE_KEYS.includes(key));
+  if (importableKeys.length === 0) {
+    return { ok: false, error: IMPORT_ERRORS.noKeys };
+  }
+  return {
+    ok: true,
+    data: parsed,
+    importableKeys,
+    exportedAt: typeof parsed.exportedAt === 'string' ? parsed.exportedAt : null,
+  };
+}
+
+function applyValidatedSettingsImport(data) {
+  const keys = Object.keys(data.settings);
+  const importedKeys = [];
+  for (const key of keys) {
+    if (!ALL_SETTINGS_STORAGE_KEYS.includes(key)) continue;
+    const value = data.settings[key];
+    if (value === undefined) continue;
+    try {
+      localStorage.setItem(key, JSON.stringify(prepareSettingsValueForImport(key, value)));
+      importedKeys.push(key);
+    } catch {
+      return { ok: false, error: IMPORT_ERRORS.saveFail + key + '）。' };
+    }
+  }
+  if (importedKeys.length === 0) {
+    return { ok: false, error: IMPORT_ERRORS.noKeys };
+  }
+  return { ok: true, importedKeys };
+}
+
 /* csv/csvFolder.js */
 const DB_NAME = 'mga-budget-cache';
 const DB_VERSION = 3;
@@ -6108,6 +7003,7 @@ let employees = loadEmployees();
 let salaryPlans = loadSalaryPlans();
 let salaryPlanSettings = loadSalaryPlanSettings();
 let taxPaymentPlans = loadTaxPaymentPlans();
+let paymentPlanSettings = loadPaymentPlanSettings();
 let outsourcingPlans = loadOutsourcingPlans();
 let employeeTenureTimerId = null;
 let journalEntriesCache = null;
@@ -7864,10 +8760,12 @@ function applyPlanColors(planData) {
   });
   const withTaxPayments = enrichPlanDataWithTaxPaymentRows(enriched, {
     taxPaymentPlans,
+    employees,
     businessStartYear: appSettings.businessStartYear,
     fiscalPeriod: appSettings.fiscalPeriod,
     fiscalEndMonth: appSettings.fiscalEndMonth,
     displayMode,
+    actualSourcePlanData: enriched,
   });
   const withOutsourcing = enrichPlanDataWithOutsourcingRows(withTaxPayments, {
     outsourcingPlans,
@@ -8387,7 +9285,7 @@ function renderTable() {
 
       const label = document.createElement('td');
       label.className = 'col-label';
-      const aggregateFormulaLabel = getAggregateFormulaLabel(row);
+      const aggregateFormulaLabel = getAggregateFormulaLabel(row, section);
 
       if (row.type === 'group') {
         const expanded = expandedGroups.has(row.id);
@@ -10221,15 +11119,111 @@ function renderTaxPaymentSettings() {
   header.className = 'expand-settings-header';
   header.innerHTML = `
     <p class="expand-settings-desc">
-      租税公課の支払い計画を設定します。決算月を基準とした12か月分の支払予定額を入力できます。
-      各セルをダブルクリックで編集します。設定はブラウザに保存され、予実表の「その他」セクションに反映されます。
+      租税公課・保険積立金・長期未払金・未払消費税・未払法人税等・住民税の支払い計画を設定します。住民税は市区町村ごとに入力し、合計が予実表に反映されます。
+      今期の支払済み月は仕訳実績を表示します（編集不可）。未来の月のみダブルクリックで編集できます。住民税のみ過去月も入力でき、予実表にもその値が反映されます。Shift+Enter で入力した月以降の同額を後続月に反映します。
     </p>
+    <div class="expand-settings-header-actions employee-settings-actions">
+      <button type="button" class="expand-reset-btn" id="resident-tax-add-toggle-btn">市区町村を追加</button>
+    </div>
+    <div class="tax-payment-settings-controls">
+      <label class="app-settings-field">
+        <span class="app-settings-label">計画年数</span>
+        <input
+          type="number"
+          class="app-settings-input tax-payment-plan-years-input"
+          id="tax-payment-plan-years-input"
+          min="1"
+          max="30"
+          step="1"
+          inputmode="numeric"
+          autocomplete="off"
+          spellcheck="false"
+        />
+      </label>
+      <p class="tax-payment-plan-years-hint">今期を含む年数です。デフォルトは ${DEFAULT_PAYMENT_PLAN_YEARS} 年です。</p>
+    </div>
   `;
   wrap.appendChild(header);
 
+  const statusEl = document.createElement('p');
+  statusEl.className = 'employee-status-msg';
+  statusEl.hidden = true;
+  wrap.appendChild(statusEl);
+
+  const addMunicipalityForm = document.createElement('div');
+  addMunicipalityForm.className = 'employee-add-form';
+  addMunicipalityForm.hidden = true;
+  addMunicipalityForm.innerHTML = `
+    <div class="employee-add-form-grid">
+      <label class="app-settings-field">
+        <span class="app-settings-label">市区町村名</span>
+        <input type="text" class="app-settings-input" id="resident-tax-add-name" autocomplete="off" spellcheck="false" />
+      </label>
+    </div>
+    <div class="employee-add-form-actions">
+      <button type="button" class="plan-csv-btn" id="resident-tax-add-submit-btn">追加</button>
+      <button type="button" class="expand-reset-btn" id="resident-tax-add-cancel-btn">キャンセル</button>
+    </div>
+  `;
+  wrap.appendChild(addMunicipalityForm);
+
+  const planYearsInput = header.querySelector('#tax-payment-plan-years-input');
+  planYearsInput.value = String(getPaymentPlanYears(paymentPlanSettings));
+  planYearsInput.addEventListener('change', () => {
+    paymentPlanSettings = setPaymentPlanYears(paymentPlanSettings, planYearsInput.value);
+    planYearsInput.value = String(getPaymentPlanYears(paymentPlanSettings));
+    renderPlanSection();
+  });
+  planYearsInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      planYearsInput.blur();
+    }
+  });
+
   const fiscalMonths = buildFiscalYearMonths(appSettings.fiscalEndMonth);
   const currentPeriod = appSettings.fiscalPeriod;
-  const nextPeriod = appSettings.fiscalPeriod + 1;
+  const planPeriodEntries = () => buildPaymentPlanPeriodEntries(
+    currentPeriod,
+    getPaymentPlanYears(paymentPlanSettings),
+  );
+  const actualAmountsByAccount = rawPlanData
+    ? collectPaymentActualAmountsFromPlanData(rawPlanData, fiscalMonths)
+    : new Map();
+  const { byMunicipality: actualResidentTaxByMunicipality } = rawPlanData
+    ? collectResidentTaxActualByMunicipality(rawPlanData, fiscalMonths)
+    : { byMunicipality: new Map() };
+  const currentPastMonths = buildPastFiscalMonthSet(
+    appSettings.businessStartYear,
+    currentPeriod,
+    fiscalMonths,
+  );
+
+  const municipalityNames = [
+    ...collectResidentTaxMunicipalityNamesFromEmployees(employees),
+    ...collectResidentTaxSubaccountsFromPlanData(rawPlanData).map((item) => item.municipality),
+  ];
+  taxPaymentPlans = mergeResidentTaxMunicipalitiesFromNames(
+    taxPaymentPlans,
+    currentPeriod,
+    municipalityNames,
+    fiscalMonths,
+  );
+  for (const { period } of planPeriodEntries()) {
+    if (period === currentPeriod) continue;
+    taxPaymentPlans = syncResidentTaxMunicipalitiesFromReference(
+      taxPaymentPlans,
+      period,
+      currentPeriod,
+      fiscalMonths,
+    );
+  }
+
+  function showStatus(message, isError = false) {
+    statusEl.textContent = message;
+    statusEl.hidden = !message;
+    statusEl.classList.toggle('employee-status-error', isError);
+  }
 
   function refreshPlanTableIfNeeded() {
     refreshSectionColors();
@@ -10237,23 +11231,109 @@ function renderTaxPaymentSettings() {
   }
 
   function getPlanForPeriod(fiscalPeriod) {
-    return getTaxPaymentPlan(taxPaymentPlans, fiscalPeriod, fiscalMonths);
+    return getPaymentPlansForPeriod(taxPaymentPlans, fiscalPeriod, fiscalMonths);
   }
 
-  function persistPlan(monthly, fiscalPeriod) {
-    taxPaymentPlans = setTaxPaymentPlan(
+  function getPastMonthsForPeriod(fiscalPeriod) {
+    if (fiscalPeriod === currentPeriod) return currentPastMonths;
+    return new Set();
+  }
+
+  function getAccountActualMonthly(account, fiscalPeriod) {
+    if (fiscalPeriod !== currentPeriod) return {};
+    return actualAmountsByAccount.get(account) ?? {};
+  }
+
+  function getMunicipalitiesForPeriod(fiscalPeriod) {
+    const entries = getResidentTaxMunicipalityEntries(taxPaymentPlans, fiscalPeriod, fiscalMonths);
+    const actualByMunicipality = fiscalPeriod === currentPeriod
+      ? actualResidentTaxByMunicipality
+      : new Map();
+    return filterVisibleResidentTaxMunicipalities(entries, {
+      employees,
+      fiscalMonths,
+      actualByMunicipality: fiscalPeriod === currentPeriod ? actualResidentTaxByMunicipality : new Map(),
+    });
+  }
+
+  function persistMunicipality(entry, fiscalPeriod) {
+    taxPaymentPlans = setResidentTaxMunicipalityEntry(
       taxPaymentPlans,
       fiscalPeriod,
+      entry,
+      fiscalMonths,
+    );
+    refreshPlanTableIfNeeded();
+  }
+
+  function buildMunicipalityDisplayMonthly(entry, fiscalPeriod) {
+    const display = {};
+    for (const month of fiscalMonths) {
+      display[month] = entry.monthly[month];
+    }
+    return display;
+  }
+
+  function buildResidentTaxTotalDisplay(fiscalPeriod) {
+    const municipalities = getMunicipalitiesForPeriod(fiscalPeriod);
+    const display = {};
+    for (const month of fiscalMonths) display[month] = 0;
+    for (const entry of municipalities) {
+      const rowDisplay = buildMunicipalityDisplayMonthly(entry, fiscalPeriod);
+      for (const month of fiscalMonths) {
+        display[month] += rowDisplay[month] ?? 0;
+      }
+    }
+    return display;
+  }
+
+  function buildDisplayMonthly(account, fiscalPeriod) {
+    const pastMonths = getPastMonthsForPeriod(fiscalPeriod);
+    const actualMonthly = getAccountActualMonthly(account, fiscalPeriod);
+    const plan = getPlanForPeriod(fiscalPeriod)[account] ?? {};
+    const display = {};
+    for (const month of fiscalMonths) {
+      if (pastMonths.has(month)) {
+        display[month] = actualMonthly[month] ?? 0;
+      } else {
+        display[month] = plan[month];
+      }
+    }
+    return display;
+  }
+
+  function isMonthEditable(fiscalPeriod, month) {
+    return !getPastMonthsForPeriod(fiscalPeriod).has(month);
+  }
+
+  function isResidentTaxMonthEditable() {
+    return true;
+  }
+
+  function sumDisplayMonthlyTotal(display) {
+    let total = 0;
+    for (const month of fiscalMonths) {
+      total += display[month] ?? 0;
+    }
+    return total;
+  }
+
+  function persistPlan(account, monthly, fiscalPeriod) {
+    taxPaymentPlans = setPaymentPlanAccount(
+      taxPaymentPlans,
+      fiscalPeriod,
+      account,
       monthly,
       fiscalMonths,
     );
     refreshPlanTableIfNeeded();
   }
 
-  function startCellEdit(td, month, fiscalPeriod) {
+  function startCellEdit(td, account, month, fiscalPeriod) {
+    if (!isMonthEditable(fiscalPeriod, month)) return;
     if (td.querySelector('input')) return;
 
-    const plan = getPlanForPeriod(fiscalPeriod);
+    const plan = getPlanForPeriod(fiscalPeriod)[account] ?? {};
     const rawValue = plan[month];
 
     const input = document.createElement('input');
@@ -10264,26 +11344,45 @@ function renderTaxPaymentSettings() {
     input.spellcheck = false;
     input.value = rawValue != null && rawValue !== 0 ? String(rawValue) : '';
 
-    const finish = (save) => {
+    let editClosed = false;
+
+    const finish = (save, fillForward = false) => {
+      if (editClosed) return;
+      editClosed = true;
       if (save) {
         const parsed = parseSalaryPlanAmountInput(input.value);
-        const next = { ...plan, [month]: parsed };
-        persistPlan(next, fiscalPeriod);
+        const pastMonths = getPastMonthsForPeriod(fiscalPeriod);
+        const next = fillForward
+          ? applyAmountFromMonthForwardSkippingPast(
+            plan,
+            fiscalMonths,
+            month,
+            parsed,
+            pastMonths,
+          )
+          : { ...plan, [month]: parsed };
+        persistPlan(account, next, fiscalPeriod);
       }
       renderPlanSection();
     };
 
     input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
+      if (e.isComposing) return;
+      if (e.key === 'Enter' || e.code === 'NumpadEnter') {
         e.preventDefault();
-        finish(true);
+        finish(true, e.shiftKey);
+        return;
       }
       if (e.key === 'Escape') {
         e.preventDefault();
         finish(false);
       }
     });
-    input.addEventListener('blur', () => finish(true));
+    input.addEventListener('blur', () => {
+      setTimeout(() => {
+        if (!editClosed) finish(true, false);
+      }, 0);
+    });
 
     td.textContent = '';
     td.appendChild(input);
@@ -10291,30 +11390,128 @@ function renderTaxPaymentSettings() {
     input.select();
   }
 
-  function appendAmountCell(tr, { month, fiscalPeriod, value }) {
+  function startMunicipalityCellEdit(td, entry, month, fiscalPeriod) {
+    if (!isResidentTaxMonthEditable()) return;
+    if (td.querySelector('input')) return;
+
+    const rawValue = entry.monthly[month];
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.inputMode = 'numeric';
+    input.className = 'salary-plan-amount-input';
+    input.autocomplete = 'off';
+    input.spellcheck = false;
+    input.value = rawValue != null && rawValue !== 0 ? String(rawValue) : '';
+
+    let editClosed = false;
+
+    const finish = (save, fillForward = false) => {
+      if (editClosed) return;
+      editClosed = true;
+      if (save) {
+        const parsed = parseSalaryPlanAmountInput(input.value);
+        const nextMonthly = fillForward
+          ? applyAmountFromMonthForward(
+            entry.monthly,
+            fiscalMonths,
+            month,
+            parsed,
+          )
+          : { ...entry.monthly, [month]: parsed };
+        persistMunicipality({ ...entry, monthly: nextMonthly }, fiscalPeriod);
+      }
+      renderPlanSection();
+    };
+
+    input.addEventListener('keydown', (e) => {
+      if (e.isComposing) return;
+      if (e.key === 'Enter' || e.code === 'NumpadEnter') {
+        e.preventDefault();
+        finish(true, e.shiftKey);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        finish(false);
+      }
+    });
+    input.addEventListener('blur', () => {
+      setTimeout(() => {
+        if (!editClosed) finish(true, false);
+      }, 0);
+    });
+
+    td.textContent = '';
+    td.appendChild(input);
+    input.focus();
+    input.select();
+  }
+
+  function appendAmountCell(tr, { account, month, fiscalPeriod, value, prevValue, editable }) {
     const td = document.createElement('td');
     td.className = 'salary-plan-amount-cell';
-    td.classList.add('salary-plan-cell-editable');
-    td.title = 'ダブルクリックで編集';
-    td.textContent = formatSalaryPlanYen(value);
-    td.addEventListener('dblclick', () => {
-      startCellEdit(td, month, fiscalPeriod);
-    });
+    if (month === fiscalMonths[0]) {
+      td.classList.add('salary-plan-amount-start-month');
+    } else if (prevValue !== undefined && salaryPlanAmountDiffersFromPrevious(prevValue, value)) {
+      td.classList.add('salary-plan-amount-changed');
+    }
+    if (editable) {
+      td.classList.add('salary-plan-cell-editable');
+      td.title = 'ダブルクリックで編集（Shift+Enter で後続月へ同額反映）';
+      td.textContent = formatSalaryPlanYen(value);
+      td.addEventListener('dblclick', () => {
+        startCellEdit(td, account, month, fiscalPeriod);
+      });
+    } else {
+      td.classList.add('salary-plan-cell-disabled');
+      td.textContent = formatSalaryPlanYen(value);
+    }
+    tr.appendChild(td);
+  }
+
+  function appendMunicipalityAmountCell(tr, {
+    entry,
+    month,
+    fiscalPeriod,
+    value,
+    prevValue,
+    editable,
+  }) {
+    const td = document.createElement('td');
+    td.className = 'salary-plan-amount-cell';
+    if (month === fiscalMonths[0]) {
+      td.classList.add('salary-plan-amount-start-month');
+    } else if (prevValue !== undefined && salaryPlanAmountDiffersFromPrevious(prevValue, value)) {
+      td.classList.add('salary-plan-amount-changed');
+    }
+    if (editable) {
+      td.classList.add('salary-plan-cell-editable');
+      td.title = 'ダブルクリックで編集（Shift+Enter で後続月へ同額反映）';
+      td.textContent = formatSalaryPlanYen(value);
+      td.addEventListener('dblclick', () => {
+        startMunicipalityCellEdit(td, entry, month, fiscalPeriod);
+      });
+    } else {
+      td.classList.add('salary-plan-cell-disabled');
+      td.textContent = formatSalaryPlanYen(value);
+    }
     tr.appendChild(td);
   }
 
   function buildTaxPaymentTable(fiscalPeriod) {
-    const plan = getPlanForPeriod(fiscalPeriod);
+    const municipalities = getMunicipalitiesForPeriod(fiscalPeriod);
     const table = document.createElement('table');
     table.className = 'expand-settings-table salary-plan-table';
 
-    const headerLabels = ['勘定科目', ...fiscalMonths, '合計'];
+    const headerLabels = ['勘定科目', '市区町村', ...fiscalMonths, '合計'];
     const thead = document.createElement('thead');
     const headerRow = document.createElement('tr');
     for (const label of headerLabels) {
       const th = document.createElement('th');
       th.textContent = label;
       if (label === '勘定科目') th.className = 'salary-plan-col-name';
+      else if (label === '市区町村') th.className = 'salary-plan-col-sub';
       else if (label === '合計') th.className = 'salary-plan-col-total';
       else th.className = 'salary-plan-col-month';
       headerRow.appendChild(th);
@@ -10323,28 +11520,148 @@ function renderTaxPaymentSettings() {
     table.appendChild(thead);
 
     const tbody = document.createElement('tbody');
-    const tr = document.createElement('tr');
-    tr.className = 'salary-plan-row-monthly';
+    for (const account of PAYMENT_PLAN_SIMPLE_ACCOUNTS) {
+      const displayMonthly = buildDisplayMonthly(account, fiscalPeriod);
+      const tr = document.createElement('tr');
+      tr.className = 'salary-plan-row-monthly';
 
-    const accountTd = document.createElement('td');
-    accountTd.className = 'salary-plan-col-name';
-    accountTd.textContent = '租税公課';
-    tr.appendChild(accountTd);
+      const accountTd = document.createElement('td');
+      accountTd.className = 'salary-plan-col-name';
+      accountTd.textContent = account;
+      tr.appendChild(accountTd);
 
-    for (const month of fiscalMonths) {
-      appendAmountCell(tr, {
-        month,
-        fiscalPeriod,
-        value: plan[month],
-      });
+      const subTd = document.createElement('td');
+      subTd.className = 'salary-plan-col-sub';
+      tr.appendChild(subTd);
+
+      for (let i = 0; i < fiscalMonths.length; i += 1) {
+        const month = fiscalMonths[i];
+        const editable = isMonthEditable(fiscalPeriod, month);
+        const prevMonth = i > 0 ? fiscalMonths[i - 1] : null;
+        const prevValue = prevMonth != null ? displayMonthly[prevMonth] : undefined;
+        appendAmountCell(tr, {
+          account,
+          month,
+          fiscalPeriod,
+          value: displayMonthly[month],
+          prevValue,
+          editable,
+        });
+      }
+
+      const totalTd = document.createElement('td');
+      totalTd.className = 'salary-plan-col-total';
+      totalTd.textContent = formatSalaryPlanYen(sumDisplayMonthlyTotal(displayMonthly));
+      tr.appendChild(totalTd);
+
+      tbody.appendChild(tr);
     }
 
-    const totalTd = document.createElement('td');
-    totalTd.className = 'salary-plan-col-total';
-    totalTd.textContent = formatSalaryPlanYen(sumTaxPaymentPlanTotal(plan, fiscalMonths));
-    tr.appendChild(totalTd);
+    for (const entry of municipalities) {
+      const displayMonthly = buildMunicipalityDisplayMonthly(entry, fiscalPeriod);
+      const tr = document.createElement('tr');
+      tr.className = 'salary-plan-row-monthly salary-plan-row-sub';
 
-    tbody.appendChild(tr);
+      const accountTd = document.createElement('td');
+      accountTd.className = 'salary-plan-col-name';
+      accountTd.textContent = RESIDENT_TAX_ACCOUNT;
+      tr.appendChild(accountTd);
+
+      const subTd = document.createElement('td');
+      subTd.className = 'salary-plan-col-sub';
+      subTd.textContent = entry.municipality;
+      tr.appendChild(subTd);
+
+      for (let i = 0; i < fiscalMonths.length; i += 1) {
+        const month = fiscalMonths[i];
+        const editable = isResidentTaxMonthEditable();
+        const prevMonth = i > 0 ? fiscalMonths[i - 1] : null;
+        const prevValue = prevMonth != null ? displayMonthly[prevMonth] : undefined;
+        appendMunicipalityAmountCell(tr, {
+          entry,
+          month,
+          fiscalPeriod,
+          value: displayMonthly[month],
+          prevValue,
+          editable,
+        });
+      }
+
+      const rowTotalTd = document.createElement('td');
+      rowTotalTd.className = 'salary-plan-col-total';
+      rowTotalTd.textContent = formatSalaryPlanYen(sumDisplayMonthlyTotal(displayMonthly));
+      tr.appendChild(rowTotalTd);
+
+      tbody.appendChild(tr);
+    }
+
+    const residentTaxTotalDisplay = buildResidentTaxTotalDisplay(fiscalPeriod);
+    const totalTr = document.createElement('tr');
+    totalTr.className = 'salary-plan-row-monthly salary-plan-row-total';
+
+    const totalAccountTd = document.createElement('td');
+    totalAccountTd.className = 'salary-plan-col-name';
+    totalAccountTd.textContent = RESIDENT_TAX_ACCOUNT;
+    totalTr.appendChild(totalAccountTd);
+
+    const totalSubTd = document.createElement('td');
+    totalSubTd.className = 'salary-plan-col-sub';
+    totalSubTd.textContent = '合計';
+    totalTr.appendChild(totalSubTd);
+
+    for (let i = 0; i < fiscalMonths.length; i += 1) {
+      const month = fiscalMonths[i];
+      const prevMonth = i > 0 ? fiscalMonths[i - 1] : null;
+      const prevValue = prevMonth != null ? residentTaxTotalDisplay[prevMonth] : undefined;
+      const td = document.createElement('td');
+      td.className = 'salary-plan-amount-cell salary-plan-cell-disabled';
+      td.textContent = formatSalaryPlanYen(residentTaxTotalDisplay[month]);
+      if (prevValue !== undefined && salaryPlanAmountDiffersFromPrevious(prevValue, residentTaxTotalDisplay[month])) {
+        td.classList.add('salary-plan-amount-changed');
+      }
+      totalTr.appendChild(td);
+    }
+
+    const residentTaxTotalTd = document.createElement('td');
+    residentTaxTotalTd.className = 'salary-plan-col-total';
+    residentTaxTotalTd.textContent = formatSalaryPlanYen(sumDisplayMonthlyTotal(residentTaxTotalDisplay));
+    totalTr.appendChild(residentTaxTotalTd);
+    tbody.appendChild(totalTr);
+
+    const grandTotalDisplay = {};
+    for (const month of fiscalMonths) grandTotalDisplay[month] = 0;
+    for (const account of PAYMENT_PLAN_SIMPLE_ACCOUNTS) {
+      const displayMonthly = buildDisplayMonthly(account, fiscalPeriod);
+      for (const month of fiscalMonths) {
+        grandTotalDisplay[month] += displayMonthly[month] ?? 0;
+      }
+    }
+    for (const month of fiscalMonths) {
+      grandTotalDisplay[month] += residentTaxTotalDisplay[month] ?? 0;
+    }
+
+    const grandTr = document.createElement('tr');
+    grandTr.className = 'salary-plan-total-row salary-plan-row-monthly';
+
+    const grandLabelTd = document.createElement('td');
+    grandLabelTd.colSpan = 2;
+    grandLabelTd.className = 'salary-plan-total-label';
+    grandLabelTd.textContent = '合計';
+    grandTr.appendChild(grandLabelTd);
+
+    for (const month of fiscalMonths) {
+      const td = document.createElement('td');
+      td.className = 'salary-plan-amount-cell salary-plan-cell-disabled';
+      td.textContent = formatSalaryPlanYen(grandTotalDisplay[month]);
+      grandTr.appendChild(td);
+    }
+
+    const grandTotalTd = document.createElement('td');
+    grandTotalTd.className = 'salary-plan-col-total';
+    grandTotalTd.textContent = formatSalaryPlanYen(sumDisplayMonthlyTotal(grandTotalDisplay));
+    grandTr.appendChild(grandTotalTd);
+    tbody.appendChild(grandTr);
+
     table.appendChild(tbody);
     return table;
   }
@@ -10358,18 +11675,15 @@ function renderTaxPaymentSettings() {
     const planHeader = document.createElement('div');
     planHeader.className = 'salary-plan-header';
     planHeader.innerHTML = `
-      <h3 class="salary-plan-title">租税公課支払い計画表</h3>
+      <h3 class="salary-plan-title">支払い計画表</h3>
       <p class="salary-plan-desc">
         決算月 ${appSettings.fiscalEndMonth}月 を基準とした12か月分です。
-        各セルをダブルクリックで編集できます。
+        今期の支払済み月は仕訳実績を表示します（編集不可）。未来の月のみダブルクリックで編集できます。住民税のみ過去月も入力でき、予実表にもその値が反映されます。Shift+Enter で後続月へ同額を反映できます。
       </p>
     `;
     section.appendChild(planHeader);
 
-    for (const { period, label } of [
-      { period: currentPeriod, label: '今期' },
-      { period: nextPeriod, label: '来期' },
-    ]) {
+    for (const { period, label } of planPeriodEntries()) {
       const block = document.createElement('div');
       block.className = 'salary-plan-period-block';
 
@@ -10388,6 +11702,63 @@ function renderTaxPaymentSettings() {
 
     wrap.appendChild(section);
   }
+
+  header.querySelector('#resident-tax-add-toggle-btn').addEventListener('click', () => {
+    addMunicipalityForm.hidden = !addMunicipalityForm.hidden;
+    if (!addMunicipalityForm.hidden) {
+      addMunicipalityForm.querySelector('#resident-tax-add-name').focus();
+    }
+  });
+  addMunicipalityForm.querySelector('#resident-tax-add-cancel-btn').addEventListener('click', () => {
+    addMunicipalityForm.hidden = true;
+    addMunicipalityForm.querySelector('#resident-tax-add-name').value = '';
+  });
+  addMunicipalityForm.querySelector('#resident-tax-add-submit-btn').addEventListener('click', () => {
+    const municipality = addMunicipalityForm.querySelector('#resident-tax-add-name').value.trim();
+    if (!municipality) {
+      showStatus('市区町村名を入力してください。', true);
+      return;
+    }
+    const created = createManualResidentTaxMunicipality({ municipality });
+    if (!created) {
+      showStatus('市区町村名を入力してください。', true);
+      return;
+    }
+    const allEntries = getResidentTaxMunicipalityEntries(taxPaymentPlans, currentPeriod, fiscalMonths);
+    const existingEntry = allEntries.find((entry) => entry.municipality === municipality);
+    if (existingEntry) {
+      if (existingEntry.manual || getMunicipalitiesForPeriod(currentPeriod).some((e) => e.municipality === municipality)) {
+        showStatus('同じ市区町村が既に登録されています。', true);
+        return;
+      }
+      taxPaymentPlans = setResidentTaxMunicipalityEntry(
+        taxPaymentPlans,
+        currentPeriod,
+        { ...existingEntry, manual: true },
+        fiscalMonths,
+      );
+    } else {
+      taxPaymentPlans = setResidentTaxMunicipalityEntry(
+        taxPaymentPlans,
+        currentPeriod,
+        created,
+        fiscalMonths,
+      );
+    }
+    for (const { period } of planPeriodEntries()) {
+      if (period === currentPeriod) continue;
+      taxPaymentPlans = syncResidentTaxMunicipalitiesFromReference(
+        taxPaymentPlans,
+        period,
+        currentPeriod,
+        fiscalMonths,
+      );
+    }
+    addMunicipalityForm.hidden = true;
+    addMunicipalityForm.querySelector('#resident-tax-add-name').value = '';
+    showStatus(`${municipality} を追加しました。`);
+    renderPlanSection();
+  });
 
   renderPlanSection();
   replaceRootPanel(wrap);
@@ -10839,7 +12210,7 @@ function renderEmployeeSettings() {
     const table = document.createElement('table');
     table.className = 'expand-settings-table salary-plan-table';
 
-    const headerLabels = ['番号', '氏名', '種別', ...fiscalMonths, '合計'];
+    const headerLabels = ['番号', '氏名', '市区町村', '種別', ...fiscalMonths, '合計'];
     const thead = document.createElement('thead');
     const headerRow = document.createElement('tr');
     for (const label of headerLabels) {
@@ -10847,6 +12218,7 @@ function renderEmployeeSettings() {
       th.textContent = label;
       if (label === '番号') th.className = 'salary-plan-col-no';
       else if (label === '氏名') th.className = 'salary-plan-col-name';
+      else if (label === '市区町村') th.className = 'salary-plan-col-sub';
       else if (label === '種別') th.className = 'salary-plan-col-kind';
       else if (label === '合計') th.className = 'salary-plan-col-total';
       else th.className = 'salary-plan-col-month';
@@ -10868,6 +12240,11 @@ function renderEmployeeSettings() {
     nameTd.className = 'salary-plan-col-name';
     nameTd.textContent = '';
     tr.appendChild(nameTd);
+
+    const municipalityTd = document.createElement('td');
+    municipalityTd.className = 'salary-plan-col-sub';
+    municipalityTd.textContent = '';
+    tr.appendChild(municipalityTd);
 
     const kindTd = document.createElement('td');
     kindTd.className = 'salary-plan-col-kind';
@@ -10970,7 +12347,7 @@ function renderEmployeeSettings() {
     const table = document.createElement('table');
     table.className = 'expand-settings-table salary-plan-table';
 
-    const headerLabels = ['番号', '氏名', '種別', ...fiscalMonths, '合計'];
+    const headerLabels = ['番号', '氏名', '市区町村', '種別', ...fiscalMonths, '合計'];
     if (showIncreaseRate) headerLabels.push('昇給率');
 
     const thead = document.createElement('thead');
@@ -10980,6 +12357,7 @@ function renderEmployeeSettings() {
       th.textContent = label;
       if (label === '番号') th.className = 'salary-plan-col-no';
       else if (label === '氏名') th.className = 'salary-plan-col-name';
+      else if (label === '市区町村') th.className = 'salary-plan-col-sub';
       else if (label === '種別') th.className = 'salary-plan-col-kind';
       else if (label === '合計') th.className = 'salary-plan-col-total';
       else if (label === '昇給率') th.className = 'salary-plan-col-increase';
@@ -11014,6 +12392,12 @@ function renderEmployeeSettings() {
       nameTd.rowSpan = rowSpan;
       nameTd.textContent = formatEmployeeName(emp);
       trMonthly.appendChild(nameTd);
+
+      const municipalityTd = document.createElement('td');
+      municipalityTd.className = 'salary-plan-col-sub';
+      municipalityTd.rowSpan = rowSpan;
+      municipalityTd.textContent = getEmployeeResidentTaxMunicipality(emp);
+      trMonthly.appendChild(municipalityTd);
 
       const kindMonthlyTd = document.createElement('td');
       kindMonthlyTd.className = 'salary-plan-col-kind';
@@ -12297,6 +13681,93 @@ function bindCsvReloadButton() {
   folderBtn?.addEventListener('click', handlePickCsvFolder);
 }
 
+function reloadAllSettingsFromStorage() {
+  expandConfig = loadExpandConfig();
+  visibilityConfig = loadVisibilityConfig();
+  rowDisplayConfig = loadRowDisplayConfig();
+  expenseSortConfig = loadExpenseSortConfig();
+  sectionColorConfig = loadSectionColorConfig();
+  uiColorConfig = loadUiColorConfig();
+  csvNameConfig = loadCsvNameConfig();
+  appSettings = loadAppSettings();
+  employees = loadEmployees();
+  salaryPlans = loadSalaryPlans();
+  salaryPlanSettings = loadSalaryPlanSettings();
+  taxPaymentPlans = loadTaxPaymentPlans();
+  paymentPlanSettings = loadPaymentPlanSettings();
+  outsourcingPlans = loadOutsourcingPlans();
+
+  applyUiColors(uiColorConfig);
+  applyBrandSettings(appSettings);
+  applyFontScale(appSettings.fontScale);
+  applyRowPaddingScale(appSettings.rowPaddingScale);
+  refreshPlanFontScaleControl();
+  refreshPlanRowPaddingScaleControl();
+  syncPeriodControls();
+
+  if (rawPlanData) {
+    if (journalText) rebuildPlanData();
+    else {
+      data = applyPlanColors(rawPlanData);
+      invalidateDrilldownIndex();
+    }
+  }
+
+  renderToolbar();
+  renderPlanViewAfterDataChange();
+}
+
+function bindSettingsImportExport() {
+  const exportBtn = document.getElementById('plan-settings-export');
+  const importBtn = document.getElementById('plan-settings-import');
+  const importInput = document.getElementById('plan-settings-import-input');
+
+  exportBtn?.addEventListener('click', () => {
+    downloadSettingsExport();
+  });
+
+  importBtn?.addEventListener('click', () => {
+    importInput?.click();
+  });
+
+  importInput?.addEventListener('change', async () => {
+    const file = importInput.files?.[0];
+    importInput.value = '';
+    if (!file) return;
+
+    let text;
+    try {
+      text = await file.text();
+    } catch {
+      window.alert('ファイルを読み込めませんでした。');
+      return;
+    }
+
+    const validation = validateSettingsImportText(text);
+    if (!validation.ok) {
+      window.alert(validation.error);
+      return;
+    }
+
+    const exportedAtLabel = validation.exportedAt
+      ? new Date(validation.exportedAt).toLocaleString('ja-JP')
+      : '不明';
+    const confirmed = window.confirm(
+      `設定をインポートしますか？\n\n項目数: ${validation.importableKeys.length}\nエクスポート日時: ${exportedAtLabel}\n\n現在の設定は上書きされます。`,
+    );
+    if (!confirmed) return;
+
+    const result = applyValidatedSettingsImport(validation.data);
+    if (!result.ok) {
+      window.alert(result.error);
+      return;
+    }
+
+    reloadAllSettingsFromStorage();
+    window.alert('設定をインポートしました。');
+  });
+}
+
 function loadPlanOnlyPeriodData() {
   journalEntriesCache = null;
   invalidateDrilldownIndex();
@@ -12341,6 +13812,7 @@ async function init() {
   mountPlanRowPaddingScaleControl();
   bindPeriodControls();
   bindCsvReloadButton();
+  bindSettingsImportExport();
 
   mainTabs.querySelectorAll('.plan-main-tab').forEach((btn) => {
     btn.addEventListener('click', () => {

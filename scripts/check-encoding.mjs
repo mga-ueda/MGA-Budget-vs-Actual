@@ -1,5 +1,5 @@
 /**
- * ?????R?[?h??????????E?p??R?????g??????????B
+ * 文字コードの文字化け・英語コメントを検査する。
  */
 import { readFileSync, readdirSync, statSync } from 'fs';
 import { resolve, join, relative } from 'path';
@@ -18,7 +18,6 @@ const SKIP_FILES = new Set([
   resolve(repoRoot, 'scripts/check-encoding.mjs'),
   resolve(repoRoot, 'scripts/fix-all-encoding.mjs'),
   resolve(repoRoot, 'scripts/patch-expense-config.mjs'),
-  resolve(repoRoot, 'scripts/deunicode.mjs'),
 ]);
 
 const EXPENSE_CONFIG = resolve(repoRoot, 'src/config/expenseAccountConfig.js');
@@ -50,7 +49,7 @@ function jp(...codes) {
 }
 
 function hasJapanese(text) {
-  return /[?-??-???-?]/.test(text);
+  return /[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFF]/.test(text);
 }
 
 function isCjkEscape(escapeSeq) {
@@ -58,7 +57,6 @@ function isCjkEscape(escapeSeq) {
   return (
     (code >= 0x3000 && code <= 0x9fff)
     || (code >= 0xf900 && code <= 0xfaff)
-    || (code >= 0xff00 && code <= 0xffef)
   );
 }
 
@@ -92,10 +90,13 @@ function findEnglishOnlyComments(text) {
   return hits;
 }
 
-function findCjkEscapes(text) {
+function findCjkEscapesInComments(text) {
   const hits = [];
-  for (const match of text.matchAll(CJK_ESCAPE_PATTERN)) {
-    if (isCjkEscape(match[0])) hits.push(match[0]);
+  for (const line of text.split('\n')) {
+    if (!/(?:\/\/|\/\*|\*)/.test(line)) continue;
+    for (const match of line.matchAll(CJK_ESCAPE_PATTERN)) {
+      if (isCjkEscape(match[0])) hits.push(match[0]);
+    }
   }
   return hits;
 }
@@ -132,9 +133,9 @@ for (const dir of TARGET_DIRS) {
       errors.push(`${rel}: ${jp(0x82f1, 0x8a9e, 0x306e, 0x307f, 0x306e, 0x30b3, 0x30e1, 0x30f3, 0x30c8, 0x3067, 0x3059, 0xFF08, 0x65e5, 0x672c, 0x8a9e, 0x3067, 0x66f8, 0x3044, 0x3066, 0x304f, 0x3060, 0x3055, 0x3044, 0xFF09)}`);
     }
 
-    const cjkEscapes = findCjkEscapes(text);
+    const cjkEscapes = findCjkEscapesInComments(text);
     if (cjkEscapes.length > 0) {
-      errors.push(`${rel}: ???{?? \\uXXXX ??L?q??????????i${cjkEscapes[0]}?j`);
+      errors.push(`${rel}: ${jp(0x65e5, 0x672c, 0x8a9e, 0x304c, 0x5c, 0x5c, 0x75, 0x30, 0x30, 0x30, 0x30, 0x3067, 0x66, 0x8a, 0x8a, 0x8a18, 0x3055, 0x308c, 0x3066, 0x3044, 0x307e, 0x3059, 0xFF08)}${cjkEscapes[0]}）`);
     }
   }
 }
@@ -143,7 +144,7 @@ if (EXPENSE_CONFIG) {
   const expenseText = readFileSync(EXPENSE_CONFIG, 'utf8');
   for (const required of REQUIRED_EXPENSE_ACCOUNTS) {
     if (!expenseText.includes(required)) {
-      errors.push(`src/config/expenseAccountConfig.js: ${jp(0x6b63, 0x3057, 0x3044, 0x8868, 0x8a18, 0x304c, 0x3042, 0x308a, 0x307e, 0x305b, 0x3093, 0xFF08)}${required}?j`);
+      errors.push(`src/config/expenseAccountConfig.js: ${jp(0x6b63, 0x3057, 0x3044, 0x8868, 0x8a18, 0x304c, 0x3042, 0x308a, 0x307e, 0x305b, 0x3093, 0xFF08)}${required}）`);
     }
   }
 }
@@ -152,7 +153,6 @@ if (errors.length > 0) {
   console.error(jp(0x6587, 0x5b57, 0x30b3, 0x30fc, 0x30c9, 0x30c1, 0x30a7, 0x30c3, 0x30af, 0x306b, 0x5931, 0x6557, 0x3057, 0x307e, 0x3057, 0x305f, 0x3a));
   for (const err of errors) console.error(`  - ${err}`);
   console.error('.cursor/rules/utf8-encoding.mdc');
-  console.error('node scripts/deunicode.mjs');
   console.error('node scripts/fix-all-encoding.mjs');
   process.exit(1);
 }

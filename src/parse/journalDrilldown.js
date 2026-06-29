@@ -173,15 +173,6 @@ function filterOtherPay(entries, section, row, months) {
   });
 }
 
-function filterCorpTax(entries, months) {
-  return entries.filter((e) => {
-    if (!months.includes(e.monthKey)) return false;
-    if (/法人税|消費税/.test(e.debitAcct) && e.debitAmt > 0) return true;
-    if (/法人税|消費税/.test(e.creditAcct) && e.creditAmt > 0) return true;
-    return false;
-  });
-}
-
 function filterBs(entries, section, row, months) {
   const keys = collectSectionAccountKeys(section, row);
   return entries.filter((e) => months.includes(e.monthKey)
@@ -206,8 +197,6 @@ export function findRelatedJournalEntries(entries, section, row, month) {
       return filterCashflow(entries, row, months);
     case 'otherPay':
       return filterOtherPay(entries, section, row, months);
-    case 'corpTax':
-      return filterCorpTax(entries, months);
     default:
       if (BS_SECTION_IDS.has(section.id)) {
         return filterBs(entries, section, row, months);
