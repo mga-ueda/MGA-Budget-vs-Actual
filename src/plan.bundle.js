@@ -748,6 +748,72 @@ function getSectionTextColor(sectionId, sections, config = {}) {
   return getSectionColors(sectionId, config).textColor;
 }
 
+/* config/sectionFilterConfig.js */
+const SECTION_FILTER_STORAGE_KEY = 'mga-section-filter';
+
+/** Section has a visible category-column label (filter button target). */
+function isPlanSectionFilterTarget(section) {
+  return Boolean(section?.label) && !section.hideCategory;
+}
+
+/** section.id list in plan table order. */
+function getPlanSectionFilterIds(sections = []) {
+  return sections.filter(isPlanSectionFilterTarget).map((s) => s.id);
+}
+
+/** Filter key for row visibility (rows without category follow a parent section). */
+function getSectionFilterKey(section) {
+  if (!section) return null;
+  if (isPlanSectionFilterTarget(section)) return section.id;
+  if (section.id === 'sgaTaxable' || section.id === 'sgaTotal') return 'other';
+  return section.id;
+}
+
+function defaultSectionFilterState(sectionIds = []) {
+  return Object.fromEntries(sectionIds.map((id) => [id, true]));
+}
+
+function normalizeSectionFilterConfig(config, sectionIds = []) {
+  const result = defaultSectionFilterState(sectionIds);
+  if (!config || typeof config !== 'object') return result;
+  for (const id of sectionIds) {
+    if (typeof config[id] === 'boolean') result[id] = config[id];
+  }
+  return result;
+}
+
+function loadSectionFilterConfig(sectionIds = []) {
+  try {
+    const raw = localStorage.getItem(SECTION_FILTER_STORAGE_KEY);
+    return normalizeSectionFilterConfig(raw ? JSON.parse(raw) : null, sectionIds);
+  } catch {
+    return defaultSectionFilterState(sectionIds);
+  }
+}
+
+function saveSectionFilterConfig(config, sectionIds = []) {
+  localStorage.setItem(
+    SECTION_FILTER_STORAGE_KEY,
+    JSON.stringify(normalizeSectionFilterConfig(config, sectionIds)),
+  );
+}
+
+function isAllSectionFiltersEnabled(config, sectionIds = []) {
+  return sectionIds.every((id) => config[id] !== false);
+}
+
+/** True when only filterId is enabled (solo display). */
+function isSoloSectionFilter(config, sectionIds = [], filterId) {
+  return sectionIds.every((id) => config[id] === (id === filterId));
+}
+
+function sectionMatchesFilter(section, config, sectionIds = []) {
+  if (!section) return true;
+  if (isAllSectionFiltersEnabled(config, sectionIds)) return true;
+  const key = getSectionFilterKey(section);
+  return config[key] !== false;
+}
+
 /* config/uiColorConfig.js */
 const UI_COLOR_STORAGE_KEY = 'mga-ui-colors';
 
@@ -3192,6 +3258,7 @@ const PAYMENT_PLAN_ACCOUNTS = [
   '未払消費税',
   '未払法人税等',
   '住民税',
+  '役員借入金',
 ];
 
 /** 単一行で編集する勘定科目 */
@@ -3201,6 +3268,7 @@ const PAYMENT_PLAN_SIMPLE_ACCOUNTS = [
   '長期未払金',
   '未払消費税',
   '未払法人税等',
+  '役員借入金',
 ];
 
 const RESIDENT_TAX_ACCOUNT = '住民税';
@@ -3217,6 +3285,7 @@ const PAYMENT_PLAN_OTHER_PAY_ACCOUNTS = new Set([
   '未払消費税',
   '未払法人税等',
   '住民税',
+  '役員借入金',
 ]);
 
 /** 単一行で編集する「その他支払」勘定 */
@@ -3225,6 +3294,7 @@ const PAYMENT_PLAN_OTHER_PAY_SIMPLE_ACCOUNTS = [
   '長期未払金',
   '未払消費税',
   '未払法人税等',
+  '役員借入金',
 ];
 
 function normalizeAmount(value) {
@@ -6328,6 +6398,7 @@ const ALL_SETTINGS_STORAGE_KEYS = [
   'mga-row-display',
   'mga-expense-sort-order',
   'mga-section-colors',
+  'mga-section-filter',
   'mga-ui-colors',
   'mga-csv-name-config',
 ];
@@ -6520,6 +6591,65 @@ async function dbPut(key, value) {
 
 function isFolderPickerSupported() {
   return typeof window.showDirectoryPicker === 'function';
+}
+
+function isFolderDropSupported() {
+  return typeof DataTransferItem !== 'undefined'
+    && typeof DataTransferItem.prototype.getAsFileSystemHandle === 'function';
+}
+
+/** @returns {Promise<FileSystemDirectoryHandle | null>} */
+async function folderHandleFromDataTransfer(dataTransfer) {
+  if (!dataTransfer?.items?.length) return null;
+  for (const item of dataTransfer.items) {
+    if (item.kind !== 'file') continue;
+    const handle = await item.getAsFileSystemHandle();
+    if (handle?.kind === 'directory') return handle;
+  }
+  return null;
+}
+
+function bindDirectoryDropZone(element, onDirectory, options = {}) {
+  if (!element || !isFolderDropSupported() || typeof onDirectory !== 'function') {
+    return () => {};
+  }
+
+  const onDragOver = (ev) => {
+    ev.preventDefault();
+    ev.dataTransfer.dropEffect = 'copy';
+    element.classList.add('dragover');
+  };
+
+  const onDragLeave = (ev) => {
+    if (!element.contains(ev.relatedTarget)) {
+      element.classList.remove('dragover');
+    }
+  };
+
+  const onDropEvent = async (ev) => {
+    ev.preventDefault();
+    element.classList.remove('dragover');
+    try {
+      const handle = await folderHandleFromDataTransfer(ev.dataTransfer);
+      if (!handle) {
+        options.onInvalid?.();
+        return;
+      }
+      await onDirectory(handle);
+    } catch (err) {
+      options.onError?.(err);
+    }
+  };
+
+  element.addEventListener('dragover', onDragOver);
+  element.addEventListener('dragleave', onDragLeave);
+  element.addEventListener('drop', onDropEvent);
+
+  return () => {
+    element.removeEventListener('dragover', onDragOver);
+    element.removeEventListener('dragleave', onDragLeave);
+    element.removeEventListener('drop', onDropEvent);
+  };
 }
 
 async function getSavedFolderHandle() {
@@ -6717,6 +6847,18 @@ async function pickCsvFolder(periodOptions) {
   return readCsvFromFolderHandle(handle, periodOptions, { forceRefresh: true });
 }
 
+async function loadCsvFromDroppedFolderHandle(handle, periodOptions) {
+  if (!isFolderDropSupported()) {
+    throw new Error('このブラウザではフォルダのドラッグ＆ドロップに対応していません。Chrome または Edge をご利用ください。');
+  }
+  if (!handle || handle.kind !== 'directory') {
+    throw new Error('フォルダをドロップしてください。');
+  }
+  clearFolderCsvCache();
+  await saveFolderHandle(handle);
+  return readCsvFromFolderHandle(handle, periodOptions, { forceRefresh: true });
+}
+
 async function loadCsvFromSavedFolder(periodOptions, options = {}) {
   const state = await getSavedFolderState();
   if (state.kind === 'none') return null;
@@ -6799,6 +6941,11 @@ async function resolvePlanStartup(expandConfig, periodOptions) {
 
 async function loadPlanDataFromPickedFolder(expandConfig, periodOptions) {
   const folderData = await pickCsvFolder(periodOptions);
+  return toPlanData(folderData, expandConfig);
+}
+
+async function loadPlanDataFromDroppedFolder(expandConfig, periodOptions, handle) {
+  const folderData = await loadCsvFromDroppedFolderHandle(handle, periodOptions);
   return toPlanData(folderData, expandConfig);
 }
 
@@ -6971,24 +7118,13 @@ function bindPeriodControls() {
   });
 }
 
-const FILTERS = [
-  { id: 'all', label: '通常表示' },
-  { id: 'income', label: '収入' },
-  { id: 'personnel', label: '人件費' },
-  { id: 'expense', label: '諸経費' },
-  { id: 'outsourcing', label: '外注費' },
-  { id: 'other', label: 'その他' },
-  { id: 'tax', label: '法人税' },
-  { id: 'trends', label: '事業推移' },
-];
-
 let rawPlanData = null;
 let data = null;
 let journalText = null;
 let bsText = null;
 let generalLedgerText = null;
 let generalLedgerName = null;
-let activeFilter = 'all';
+let sectionFilterConfig = {};
 let activeTab = 'plan';
 let currentMonth = '6月';
 let expandConfig = loadExpandConfig();
@@ -7038,7 +7174,6 @@ const planBody = () => document.querySelector('.plan-body');
 const mainTabs = document.getElementById('plan-main-tabs');
 const toolbar = document.getElementById('plan-toolbar');
 const kpiEl = document.getElementById('plan-kpi');
-const updatedEl = document.getElementById('plan-updated');
 
 function setPlanKpi(margin) {
   if (margin === null || margin === undefined) {
@@ -7516,8 +7651,6 @@ function collectPlanColumnWidthCandidates(planData) {
   if (!planData?.sections) return { labelSpecs, subEntries };
 
   for (const section of planData.sections) {
-    if (!sectionVisible(section)) continue;
-
     for (const row of section.rows) {
       if (!rowVisibleInSection(section, row)) continue;
 
@@ -8725,12 +8858,57 @@ function applyPlanRowPaddingScaleSetting(scale) {
   });
 }
 
-function sectionVisible(section) {
-  if (activeFilter === 'all') return true;
-  if (activeFilter === 'trends') {
-    return section.filter === 'trends' || section.id === 'revenue';
+function getCurrentSectionFilterIds() {
+  return getPlanSectionFilterIds(data?.sections ?? []);
+}
+
+function syncSectionFilterConfigToData(forceReload = false) {
+  const ids = getCurrentSectionFilterIds();
+  if (!ids.length) {
+    sectionFilterConfig = {};
+    return;
   }
-  return section.filter === activeFilter;
+  if (forceReload || !Object.keys(sectionFilterConfig).some((key) => ids.includes(key))) {
+    sectionFilterConfig = loadSectionFilterConfig(ids);
+    return;
+  }
+  sectionFilterConfig = normalizeSectionFilterConfig(sectionFilterConfig, ids);
+}
+
+function applyPlanSectionFilterState(table) {
+  if (!table || !data) return;
+  const sectionIds = getCurrentSectionFilterIds();
+  const sectionVisibility = new Map();
+  for (const section of data.sections) {
+    sectionVisibility.set(
+      section.id,
+      sectionMatchesFilter(section, sectionFilterConfig, sectionIds),
+    );
+  }
+  for (const tr of table.querySelectorAll('tbody tr[data-section-id]')) {
+    tr.hidden = !sectionVisibility.get(tr.dataset.sectionId);
+  }
+}
+
+function handleSectionFilterClick(filterId, ev) {
+  const sectionIds = getCurrentSectionFilterIds();
+  if (filterId === 'all') {
+    sectionFilterConfig = defaultSectionFilterState(sectionIds);
+  } else if (ev.ctrlKey || ev.metaKey) {
+    sectionFilterConfig = {
+      ...sectionFilterConfig,
+      [filterId]: sectionFilterConfig[filterId] === false,
+    };
+  } else if (isSoloSectionFilter(sectionFilterConfig, sectionIds, filterId)) {
+    sectionFilterConfig = defaultSectionFilterState(sectionIds);
+  } else {
+    sectionFilterConfig = Object.fromEntries(
+      sectionIds.map((id) => [id, id === filterId]),
+    );
+  }
+  saveSectionFilterConfig(sectionFilterConfig, sectionIds);
+  renderToolbar();
+  applyPlanSectionFilterState(root.querySelector('.plan-table'));
 }
 
 function rowVisibleInSection(section, row) {
@@ -8948,9 +9126,8 @@ document.addEventListener('keydown', (ev) => {
 });
 
 function renderMainTabs() {
-  mainTabs.querySelectorAll('.plan-main-tab').forEach((btn) => {
-    btn.classList.toggle('active', btn.dataset.tab === activeTab);
-  });
+  const select = mainTabs?.querySelector('.plan-main-tab-select');
+  if (select && select.value !== activeTab) select.value = activeTab;
   toolbar.hidden = activeTab !== 'plan';
 }
 
@@ -8959,33 +9136,55 @@ function getFilterButtonColors(filterId) {
   if (filterId === 'all') {
     return { background: cellBg, color: textColor };
   }
-  const sectionId = getFilterSectionId(filterId);
-  if (!sectionId) {
-    return { background: cellBg, color: textColor };
-  }
   return {
-    background: getSectionBarColor(sectionId, data?.sections, sectionColorConfig),
-    color: getSectionTextColor(sectionId, data?.sections, sectionColorConfig),
+    background: getSectionBarColor(filterId, data?.sections, sectionColorConfig),
+    color: getSectionTextColor(filterId, data?.sections, sectionColorConfig),
   };
 }
 
 function applyFilterButtonStyle(btn) {
-  const { background, color } = getFilterButtonColors(btn.dataset.filter);
+  const filterId = btn.dataset.filter;
+  const { background, color } = getFilterButtonColors(filterId);
   btn.style.background = background;
   btn.style.color = color;
+
+  const sectionIds = getCurrentSectionFilterIds();
+
+  if (filterId === 'all') {
+    const allOn = isAllSectionFiltersEnabled(sectionFilterConfig, sectionIds);
+    btn.classList.toggle('is-default', allOn);
+    btn.classList.toggle('is-on', !allOn);
+    btn.classList.remove('is-off', 'active');
+    btn.setAttribute('aria-pressed', String(allOn));
+    return;
+  }
+
+  const enabled = sectionFilterConfig[filterId] !== false;
+  btn.classList.toggle('is-on', enabled);
+  btn.classList.toggle('is-off', !enabled);
+  btn.classList.remove('active');
+  btn.setAttribute('aria-pressed', String(enabled));
+}
+
+function getPlanSectionFilterButtons() {
+  if (!data?.sections) return [];
+  return data.sections
+    .filter(isPlanSectionFilterTarget)
+    .map((section) => ({ id: section.id, label: section.label }));
 }
 
 function renderToolbar() {
-  toolbar.innerHTML = FILTERS.map(
+  syncSectionFilterConfigToData();
+  const buttons = [{ id: 'all', label: '通常表示' }, ...getPlanSectionFilterButtons()];
+  toolbar.innerHTML = buttons.map(
     (f) =>
-      `<button type="button" class="plan-filter-btn${activeFilter === f.id ? ' active' : ''}" data-filter="${f.id}">${f.label}</button>`,
+      `<button type="button" class="plan-filter-btn${f.id === 'all' ? ' plan-filter-btn-all' : ''}" data-filter="${f.id}" aria-pressed="false">${f.label}</button>`,
   ).join('');
 
   toolbar.querySelectorAll('.plan-filter-btn').forEach((btn) => {
     applyFilterButtonStyle(btn);
-    btn.addEventListener('click', () => {
-      activeFilter = btn.dataset.filter;
-      renderView();
+    btn.addEventListener('click', (ev) => {
+      handleSectionFilterClick(btn.dataset.filter, ev);
     });
   });
 }
@@ -9170,7 +9369,7 @@ function renderTable() {
 
   setPlanKpi(calcTotalProfitMargin(data));
 
-  const visibleSections = data.sections.filter(sectionVisible);
+  const allSections = data.sections;
   const highlightCurrentMonth = shouldHighlightCurrentMonth();
   const displayMode = getFiscalPeriodDisplayMode(
     appSettings.businessStartYear,
@@ -9243,7 +9442,7 @@ function renderTable() {
 
   const tbody = document.createElement('tbody');
 
-  for (const section of visibleSections) {
+  for (const section of allSections) {
     const visibleRows = section.rows.filter((row) => {
       if (!rowVisibleInSection(section, row)) return false;
       if (section.hideSectionTotal && row.type === 'total') return false;
@@ -9408,6 +9607,7 @@ function renderTable() {
   bindRowHoverPlate(wrap, table);
   bindRowSelectionPlates(wrap, table);
   bindRowContextMenu(wrap, table);
+  applyPlanSectionFilterState(table);
 
   const scrollTarget = planBody() ?? wrap;
   schedulePlanTableColumnWidths(table, {
@@ -11119,7 +11319,7 @@ function renderTaxPaymentSettings() {
   header.className = 'expand-settings-header';
   header.innerHTML = `
     <p class="expand-settings-desc">
-      租税公課・保険積立金・長期未払金・未払消費税・未払法人税等・住民税の支払い計画を設定します。住民税は市区町村ごとに入力し、合計が予実表に反映されます。
+      租税公課・保険積立金・長期未払金・未払消費税・未払法人税等・住民税・役員借入金の支払い計画を設定します。住民税は市区町村ごとに入力し、合計が予実表に反映されます。
       今期の支払済み月は仕訳実績を表示します（編集不可）。未来の月のみダブルクリックで編集できます。住民税のみ過去月も入力でき、予実表にもその値が反映されます。Shift+Enter で入力した月以降の同額を後続月に反映します。
     </p>
     <div class="expand-settings-header-actions employee-settings-actions">
@@ -12073,16 +12273,13 @@ function renderEmployeeSettings() {
     tr.appendChild(td);
   }
 
-  function buildTravelAllowanceConfig(fiscalPeriod) {
-    const config = document.createElement('div');
-    config.className = 'salary-plan-travel-allowance-config';
-
+  function buildTravelAllowanceField(fiscalPeriod, periodLabel) {
     const field = document.createElement('label');
     field.className = 'salary-plan-travel-allowance-field';
 
     const fieldLabel = document.createElement('span');
     fieldLabel.className = 'salary-plan-travel-allowance-field-label';
-    fieldLabel.textContent = '一人あたり';
+    fieldLabel.textContent = periodLabel;
     field.appendChild(fieldLabel);
 
     const input = document.createElement('input');
@@ -12118,7 +12315,20 @@ function renderEmployeeSettings() {
 
     field.appendChild(input);
     field.appendChild(suffix);
-    config.appendChild(field);
+    return field;
+  }
+
+  function buildTravelAllowanceConfig(currentPeriod, nextPeriod) {
+    const config = document.createElement('div');
+    config.className = 'salary-plan-travel-allowance-config';
+    config.appendChild(buildTravelAllowanceField(
+      currentPeriod,
+      `今期（${formatFiscalPeriodLabel(currentPeriod)}）`,
+    ));
+    config.appendChild(buildTravelAllowanceField(
+      nextPeriod,
+      `来期（${formatFiscalPeriodLabel(nextPeriod)}）`,
+    ));
     return config;
   }
 
@@ -12210,16 +12420,13 @@ function renderEmployeeSettings() {
     const table = document.createElement('table');
     table.className = 'expand-settings-table salary-plan-table';
 
-    const headerLabels = ['番号', '氏名', '市区町村', '種別', ...fiscalMonths, '合計'];
+    const headerLabels = ['種別', ...fiscalMonths, '合計'];
     const thead = document.createElement('thead');
     const headerRow = document.createElement('tr');
     for (const label of headerLabels) {
       const th = document.createElement('th');
       th.textContent = label;
-      if (label === '番号') th.className = 'salary-plan-col-no';
-      else if (label === '氏名') th.className = 'salary-plan-col-name';
-      else if (label === '市区町村') th.className = 'salary-plan-col-sub';
-      else if (label === '種別') th.className = 'salary-plan-col-kind';
+      if (label === '種別') th.className = 'salary-plan-col-kind';
       else if (label === '合計') th.className = 'salary-plan-col-total';
       else th.className = 'salary-plan-col-month';
       headerRow.appendChild(th);
@@ -12230,21 +12437,6 @@ function renderEmployeeSettings() {
     const tbody = document.createElement('tbody');
     const tr = document.createElement('tr');
     tr.className = 'salary-plan-row-monthly';
-
-    const noTd = document.createElement('td');
-    noTd.className = 'salary-plan-col-no';
-    noTd.textContent = '';
-    tr.appendChild(noTd);
-
-    const nameTd = document.createElement('td');
-    nameTd.className = 'salary-plan-col-name';
-    nameTd.textContent = '';
-    tr.appendChild(nameTd);
-
-    const municipalityTd = document.createElement('td');
-    municipalityTd.className = 'salary-plan-col-sub';
-    municipalityTd.textContent = '';
-    tr.appendChild(municipalityTd);
 
     const kindTd = document.createElement('td');
     kindTd.className = 'salary-plan-col-kind';
@@ -12574,22 +12766,7 @@ function renderEmployeeSettings() {
       </p>
     `;
     section.appendChild(travelHeader);
-
-    for (const { period, label } of [
-      { period: currentPeriod, label: '今期' },
-      { period: nextPeriod, label: '来期' },
-    ]) {
-      const block = document.createElement('div');
-      block.className = 'salary-plan-period-block';
-
-      const blockTitle = document.createElement('h4');
-      blockTitle.className = 'salary-plan-period-title';
-      blockTitle.textContent = `${label}（${formatFiscalPeriodLabel(period)}）`;
-      block.appendChild(blockTitle);
-
-      block.appendChild(buildTravelAllowanceConfig(period));
-      section.appendChild(block);
-    }
+    section.appendChild(buildTravelAllowanceConfig(currentPeriod, nextPeriod));
 
     const overtimeHeader = document.createElement('div');
     overtimeHeader.className = 'salary-plan-header salary-plan-header-spaced';
@@ -13554,6 +13731,35 @@ function replaceRootPanel(el) {
   else root.appendChild(el);
 }
 
+function csvFolderDropHintHtml() {
+  if (!isFolderDropSupported()) return '';
+  return '<p class="plan-csv-drop-label">フォルダをここにドロップ</p>';
+}
+
+function bindCsvFolderDropZone(panel, onInvalid) {
+  const dropEl = panel.querySelector('.plan-csv-drop');
+  if (!dropEl) return;
+  bindDirectoryDropZone(dropEl, handleDropCsvFolder, {
+    onInvalid: () => onInvalid('フォルダをドロップしてください。'),
+    onError: (err) => onInvalid(err instanceof Error ? err.message : 'CSV の読み込みに失敗しました。'),
+  });
+}
+
+async function handleDropCsvFolder(handle) {
+  showPlanLoadingOverlay({ awaitLayout: true });
+  try {
+    const loaded = await loadPlanDataFromDroppedFolder(expandConfig, getPeriodOptions(), handle);
+    loadData(loaded);
+  } catch (err) {
+    cancelPlanLoadingOverlay();
+    if (err?.code === 'NEEDS_PERMISSION' && err.handle) {
+      renderFolderAccessScreen(err.folderName ?? err.handle.name, err.handle);
+      return;
+    }
+    renderCsvLoadScreen(err instanceof Error ? err.message : 'CSV の読み込みに失敗しました。');
+  }
+}
+
 function renderFolderAccessScreen(folderName, handle) {
   cancelPlanLoadingOverlay();
   const panel = document.createElement('div');
@@ -13563,6 +13769,7 @@ function renderFolderAccessScreen(folderName, handle) {
     <p>フォルダ <strong>${folderName}</strong> から CSV を読み込みます。</p>
     <p class="plan-csv-note">ブラウザのセキュリティのため、再読み込み後は「読み込む」をクリックしてください（フォルダの再選択は不要です）。</p>
     <div class="plan-csv-drop">
+      ${csvFolderDropHintHtml()}
       <button type="button" class="plan-csv-btn" id="csv-grant-btn">読み込む</button>
     </div>
     <p class="plan-csv-hint"><button type="button" class="plan-csv-link-btn" id="csv-repick-btn">別のフォルダを選択</button></p>
@@ -13574,6 +13781,14 @@ function renderFolderAccessScreen(folderName, handle) {
     handleGrantFolderAccess(handle);
   });
   panel.querySelector('#csv-repick-btn').addEventListener('click', handlePickCsvFolder);
+  bindCsvFolderDropZone(panel, (message) => {
+    if (!message) return;
+    panel.querySelector('.plan-csv-drop-error')?.remove();
+    const msg = document.createElement('p');
+    msg.className = 'plan-csv-error plan-csv-drop-error';
+    msg.textContent = message;
+    panel.querySelector('.plan-csv-drop')?.before(msg);
+  });
 
   requestAnimationFrame(() => {
     panel.querySelector('#csv-grant-btn')?.focus();
@@ -13619,6 +13834,7 @@ function renderCsvLoadScreen(message = '') {
     ${unsupported ? '<p class="plan-csv-error">このブラウザではフォルダ選択に対応していません。Chrome または Edge をご利用ください。</p>' : ''}
     ${message ? `<p class="plan-csv-error">${message}</p>` : ''}
     <div class="plan-csv-drop">
+      ${csvFolderDropHintHtml()}
       <button type="button" class="plan-csv-btn" id="csv-folder-btn" ${unsupported ? 'disabled' : ''}>
         フォルダを選択
       </button>
@@ -13631,6 +13847,9 @@ function renderCsvLoadScreen(message = '') {
 
   if (!unsupported) {
     panel.querySelector('#csv-folder-btn').addEventListener('click', handlePickCsvFolder);
+    bindCsvFolderDropZone(panel, (dropMessage) => {
+      if (dropMessage) renderCsvLoadScreen(dropMessage);
+    });
   }
 }
 
@@ -13713,6 +13932,7 @@ function reloadAllSettingsFromStorage() {
     }
   }
 
+  syncSectionFilterConfigToData(true);
   renderToolbar();
   renderPlanViewAfterDataChange();
 }
@@ -13781,7 +14001,6 @@ function loadPlanOnlyPeriodData() {
     : buildFullPlan('', null, expandConfig);
   rawPlanData = planData;
   data = applyPlanColors(planData);
-  updatedEl.textContent = `第${appSettings.fiscalPeriod}期 / 計画表示（データなし）`;
   renderPlanViewAfterDataChange();
 }
 
@@ -13795,9 +14014,6 @@ function loadData(loaded) {
   closeJournalPopup();
   rawPlanData = loaded.data;
   data = applyPlanColors(loaded.data);
-  const ledgerLabel = generalLedgerName ? ` / 元帳: ${generalLedgerName}` : ' / 元帳: —';
-  const folderLabel = loaded.folderName ? ` / フォルダ: ${loaded.folderName}` : '';
-  updatedEl.textContent = `第${appSettings.fiscalPeriod}期 / 仕訳: ${loaded.journalName} / BS: ${loaded.bsName}${ledgerLabel}${folderLabel}`;
   renderPlanViewAfterDataChange();
 }
 
@@ -13814,10 +14030,9 @@ async function init() {
   bindCsvReloadButton();
   bindSettingsImportExport();
 
-  mainTabs.querySelectorAll('.plan-main-tab').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      switchMainTab(btn.dataset.tab);
-    });
+  const mainTabSelect = mainTabs?.querySelector('.plan-main-tab-select');
+  mainTabSelect?.addEventListener('change', () => {
+    switchMainTab(mainTabSelect.value);
   });
 
   root.innerHTML = '';

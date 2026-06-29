@@ -19,6 +19,7 @@ export const ALL_SETTINGS_STORAGE_KEYS = [
   'mga-row-display',
   'mga-expense-sort-order',
   'mga-section-colors',
+  'mga-section-filter',
   'mga-ui-colors',
   'mga-csv-name-config',
 ];

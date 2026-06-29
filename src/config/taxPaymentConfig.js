@@ -15,6 +15,7 @@ export const PAYMENT_PLAN_ACCOUNTS = [
   '未払消費税',
   '未払法人税等',
   '住民税',
+  '役員借入金',
 ];
 
 /** 単一行で編集する勘定科目 */
@@ -24,6 +25,7 @@ export const PAYMENT_PLAN_SIMPLE_ACCOUNTS = [
   '長期未払金',
   '未払消費税',
   '未払法人税等',
+  '役員借入金',
 ];
 
 export const RESIDENT_TAX_ACCOUNT = '住民税';
@@ -40,6 +42,7 @@ export const PAYMENT_PLAN_OTHER_PAY_ACCOUNTS = new Set([
   '未払消費税',
   '未払法人税等',
   '住民税',
+  '役員借入金',
 ]);
 
 /** 単一行で編集する「その他支払」勘定 */
@@ -48,6 +51,7 @@ export const PAYMENT_PLAN_OTHER_PAY_SIMPLE_ACCOUNTS = [
   '長期未払金',
   '未払消費税',
   '未払法人税等',
+  '役員借入金',
 ];
 
 function normalizeAmount(value) {

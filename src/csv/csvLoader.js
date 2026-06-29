@@ -3,6 +3,7 @@ import {
   loadCsvFromSavedFolder,
   loadCsvFromSavedFolderWithAccess,
   pickCsvFolder,
+  loadCsvFromDroppedFolderHandle,
   getSavedFolderState,
   resolveFolderDataFromCache,
 } from './csvFolder.js';
@@ -10,6 +11,8 @@ import {
 export {
   classifyCsvFile,
   isFolderPickerSupported,
+  isFolderDropSupported,
+  bindDirectoryDropZone,
   getSavedFolderName,
   getSavedFolderState,
   hasFolderCsvCache,
@@ -89,6 +92,11 @@ export async function resolvePlanStartup(expandConfig, periodOptions) {
 
 export async function loadPlanDataFromPickedFolder(expandConfig, periodOptions) {
   const folderData = await pickCsvFolder(periodOptions);
+  return toPlanData(folderData, expandConfig);
+}
+
+export async function loadPlanDataFromDroppedFolder(expandConfig, periodOptions, handle) {
+  const folderData = await loadCsvFromDroppedFolderHandle(handle, periodOptions);
   return toPlanData(folderData, expandConfig);
 }
 

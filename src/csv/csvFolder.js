@@ -55,6 +55,65 @@ export function isFolderPickerSupported() {
   return typeof window.showDirectoryPicker === 'function';
 }
 
+export function isFolderDropSupported() {
+  return typeof DataTransferItem !== 'undefined'
+    && typeof DataTransferItem.prototype.getAsFileSystemHandle === 'function';
+}
+
+/** @returns {Promise<FileSystemDirectoryHandle | null>} */
+export async function folderHandleFromDataTransfer(dataTransfer) {
+  if (!dataTransfer?.items?.length) return null;
+  for (const item of dataTransfer.items) {
+    if (item.kind !== 'file') continue;
+    const handle = await item.getAsFileSystemHandle();
+    if (handle?.kind === 'directory') return handle;
+  }
+  return null;
+}
+
+export function bindDirectoryDropZone(element, onDirectory, options = {}) {
+  if (!element || !isFolderDropSupported() || typeof onDirectory !== 'function') {
+    return () => {};
+  }
+
+  const onDragOver = (ev) => {
+    ev.preventDefault();
+    ev.dataTransfer.dropEffect = 'copy';
+    element.classList.add('dragover');
+  };
+
+  const onDragLeave = (ev) => {
+    if (!element.contains(ev.relatedTarget)) {
+      element.classList.remove('dragover');
+    }
+  };
+
+  const onDropEvent = async (ev) => {
+    ev.preventDefault();
+    element.classList.remove('dragover');
+    try {
+      const handle = await folderHandleFromDataTransfer(ev.dataTransfer);
+      if (!handle) {
+        options.onInvalid?.();
+        return;
+      }
+      await onDirectory(handle);
+    } catch (err) {
+      options.onError?.(err);
+    }
+  };
+
+  element.addEventListener('dragover', onDragOver);
+  element.addEventListener('dragleave', onDragLeave);
+  element.addEventListener('drop', onDropEvent);
+
+  return () => {
+    element.removeEventListener('dragover', onDragOver);
+    element.removeEventListener('dragleave', onDragLeave);
+    element.removeEventListener('drop', onDropEvent);
+  };
+}
+
 export async function getSavedFolderHandle() {
   try {
     return await dbGet(FOLDER_KEY);
@@ -246,6 +305,18 @@ export async function pickCsvFolder(periodOptions) {
   }
   clearFolderCsvCache();
   const handle = await window.showDirectoryPicker({ mode: 'read' });
+  await saveFolderHandle(handle);
+  return readCsvFromFolderHandle(handle, periodOptions, { forceRefresh: true });
+}
+
+export async function loadCsvFromDroppedFolderHandle(handle, periodOptions) {
+  if (!isFolderDropSupported()) {
+    throw new Error('このブラウザではフォルダのドラッグ＆ドロップに対応していません。Chrome または Edge をご利用ください。');
+  }
+  if (!handle || handle.kind !== 'directory') {
+    throw new Error('フォルダをドロップしてください。');
+  }
+  clearFolderCsvCache();
   await saveFolderHandle(handle);
   return readCsvFromFolderHandle(handle, periodOptions, { forceRefresh: true });
 }

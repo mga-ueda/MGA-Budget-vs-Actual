@@ -35,24 +35,25 @@
           <button type="button" class="plan-csv-reload-btn" id="plan-reload-csv">CSV再読込</button>
           <button type="button" class="plan-csv-reload-btn" id="plan-change-folder">フォルダ変更</button>
         </div>
-        <div id="plan-updated">—</div>
         <div class="plan-kpi" id="plan-kpi">—</div>
       </div>
     </div>
     <div class="plan-header-nav">
-      <nav class="plan-main-tabs" id="plan-main-tabs" aria-label="メインメニュー">
-        <button type="button" class="plan-main-tab active" data-tab="plan">予実表</button>
-        <button type="button" class="plan-main-tab" data-tab="expand">展開設定</button>
-        <button type="button" class="plan-main-tab" data-tab="visibility">表示設定</button>
-        <button type="button" class="plan-main-tab" data-tab="csvnames">CSV名定義</button>
-        <button type="button" class="plan-main-tab" data-tab="colors">色設定</button>
-        <button type="button" class="plan-main-tab" data-tab="taxrates">税率設定</button>
-        <button type="button" class="plan-main-tab" data-tab="taxpayments">支払い設定</button>
-        <button type="button" class="plan-main-tab" data-tab="employees">人件費設定</button>
-        <button type="button" class="plan-main-tab" data-tab="outsourcing">外注費設定</button>
-        <button type="button" class="plan-main-tab" data-tab="settings">その他設定</button>
-      </nav>
       <nav class="plan-toolbar" id="plan-toolbar" aria-label="表示フィルター"></nav>
+      <nav class="plan-main-tabs" id="plan-main-tabs" aria-label="メインメニュー">
+        <select id="plan-main-tab-select" class="plan-main-tab-select" aria-label="画面を選択">
+          <option value="plan">予実表</option>
+          <option value="expand">展開設定</option>
+          <option value="visibility">表示設定</option>
+          <option value="csvnames">CSV名定義</option>
+          <option value="colors">色設定</option>
+          <option value="taxrates">税率設定</option>
+          <option value="taxpayments">支払い設定</option>
+          <option value="employees">人件費設定</option>
+          <option value="outsourcing">外注費設定</option>
+          <option value="settings">その他設定</option>
+        </select>
+      </nav>
     </div>
   </header>
 

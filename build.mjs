@@ -14,6 +14,7 @@ const FILES = [
   'config/expenseAccountConfig.js',
   'config/expenseSortConfig.js',
   'config/sectionColorConfig.js',
+  'config/sectionFilterConfig.js',
   'config/uiColorConfig.js',
   'parse/parseJournal.js',
   'parse/aggregateFormula.js',
