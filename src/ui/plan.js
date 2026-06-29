@@ -431,7 +431,9 @@ let planLoadingOverlayEl = null;
 let planLoadingHideTimer = null;
 let planLoadingFinishTimer = null;
 let planLoadingShownAt = 0;
-const PLAN_LOADING_MIN_DISPLAY_MS = 350;
+const PLAN_LOADING_MIN_DISPLAY_MS = 150;
+/** 予実表を一度でも列幅確定まで表示済みなら true（以降の読み込みは列幅待ちしない） */
+let planTableInitialLayoutDone = false;
 
 let planTableColumnWidthScheduleGeneration = 0;
 
@@ -2894,9 +2896,17 @@ function renderTable() {
   bindRowContextMenu(wrap, table);
   applyPlanSectionFilterState(table);
 
+  if (planLoadingAwaitLayout && planTableInitialLayoutDone) {
+    finishPlanLoadingAfterLayout();
+  }
+
   const scrollTarget = planBody() ?? wrap;
   schedulePlanTableColumnWidths(table, {
-    onSettled: planLoadingAwaitLayout ? finishPlanLoadingAfterLayout : undefined,
+    onSettled: () => {
+      if (planTableInitialLayoutDone) return;
+      planTableInitialLayoutDone = true;
+      if (planLoadingAwaitLayout) finishPlanLoadingAfterLayout();
+    },
     beforeMeasure: () => {
       if (scrollTarget) {
         scrollTarget.scrollTop = scrollTop;
