@@ -32,7 +32,7 @@ export function normalizeEmployee(employee) {
   if (!employee || typeof employee !== 'object') return null;
   const id = String(employee.id ?? '').trim();
   if (!id) return null;
-  return {
+  const result = {
     id,
     employeeNumber: String(employee.employeeNumber ?? '').trim(),
     lastName: String(employee.lastName ?? '').trim(),
@@ -55,6 +55,8 @@ export function normalizeEmployee(employee) {
     residentTaxYear: String(employee.residentTaxYear ?? '').trim(),
     residentTaxMonthly: normalizeResidentTaxMonthly(employee.residentTaxMonthly),
   };
+  if (employee.excludedFromSalaryPlan) result.excludedFromSalaryPlan = true;
+  return result;
 }
 
 export function loadEmployees() {
@@ -133,14 +135,13 @@ export function getEmployeeResidentTaxMunicipality(employee) {
   return String(employee.residentTaxMunicipality ?? '').trim();
 }
 
-/** 月額報酬または住民税納付額があり、住民税の市区町村行の対象となる社員か */
+/** 住民税の市区町村行の対象となる社員か（非表示フラグで除外。給与ゼロでも市区町村があれば対象） */
 export function employeeHasResidentTaxObligation(employee) {
-  const monthly = employee.residentTaxMonthly;
-  if (monthly && Object.values(monthly).some((v) => (v ?? 0) > 0)) return true;
-  return computeMonthlySalary(employee) > 0;
+  if (employee.excludedFromSalaryPlan) return false;
+  return Boolean(getEmployeeResidentTaxMunicipality(employee));
 }
 
-/** 住民税の支払い対象となる市区町村名（報酬・住民税額がゼロの社員は除外） */
+/** 住民税の支払い対象となる市区町村名 */
 export function collectEmployeeResidentTaxMunicipalityNames(employees) {
   const names = new Set();
   for (const employee of employees ?? []) {
@@ -237,6 +238,11 @@ export function isActiveEmployee(employee) {
   return !employee.leaveDate;
 }
 
+/** 給与支払い計画表・予実の人件費計画に含める在籍社員 */
+export function isSalaryPlanEmployee(employee) {
+  return isActiveEmployee(employee) && !employee.excludedFromSalaryPlan;
+}
+
 export function isDirectorEmployee(employee) {
   if ((employee.directorSalary ?? 0) > 0) return true;
   const contract = employee.contractType ?? '';
@@ -257,6 +263,12 @@ export function buildEmployeeTableColumns() {
       key: 'monthlySalary',
       label: '月額報酬',
       className: 'col-emp-amount',
+    },
+    {
+      kind: 'salaryPlanExclude',
+      key: 'salaryPlanExclude',
+      label: '非表示',
+      className: 'col-emp-exclude',
     },
     { kind: 'actions', key: 'actions', label: '操作', className: 'col-emp-actions' },
   ];

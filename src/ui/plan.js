@@ -93,7 +93,6 @@ import {
   setExpandEntry,
   expandConfigKey,
   ALWAYS_EXPAND_SECTION_IDS,
-  isExpandSettingsSection,
 } from '../config/expandConfig.js';
 import {
   loadVisibilityConfig,
@@ -103,6 +102,7 @@ import {
   isVisibilityFixedSection,
   isOutsourcingFixedDisplaySection,
   isOutsourcingBreakdownRow,
+  collectVisibilityCandidates,
 } from '../config/visibilityConfig.js';
 import {
   loadRowDisplayConfig,
@@ -168,6 +168,7 @@ import {
   getEmployeeCellValue,
   computeTenure,
   isActiveEmployee,
+  isSalaryPlanEmployee,
   computeEmployeeAmountTotals,
   getEmployeeAmountTotalValue,
   isDirectorEmployee,
@@ -179,6 +180,7 @@ import {
   setEmployeeSalaryPlan,
   getEmployeeSalaryPlan,
   parseSalaryPlanAmountInput,
+  parseSalaryPlanAmountInputWithFillForward,
   formatSalaryPlanYen,
   computeSalaryPlanEmployeeTotal,
   computeSalaryPlanMonthlyTotals,
@@ -215,7 +217,6 @@ import {
   DEFAULT_PAYMENT_PLAN_YEARS,
   getResidentTaxMunicipalityEntries,
   setResidentTaxMunicipalityEntry,
-  createManualResidentTaxMunicipality,
   mergeResidentTaxMunicipalitiesFromNames,
   syncResidentTaxMunicipalitiesFromReference,
   collectResidentTaxMunicipalityNamesFromEmployees,
@@ -1673,7 +1674,7 @@ function showExpandSettingsContextMenu(clientX, clientY, candidates) {
       }
       saveExpandConfig(expandConfig);
       rebuildPlanData();
-      renderExpandSettings();
+      if (activeTab === 'visibility') renderVisibilitySettings();
     },
   });
   appendContextMenuItem(menu, {
@@ -1688,7 +1689,7 @@ function showExpandSettingsContextMenu(clientX, clientY, candidates) {
         });
       }
       saveExpandConfig(expandConfig);
-      renderExpandSettings();
+      if (activeTab === 'visibility') renderVisibilitySettings();
     },
   });
   if (!multi && hasCustomEntry) {
@@ -1701,7 +1702,7 @@ function showExpandSettingsContextMenu(clientX, clientY, candidates) {
         delete expandConfig[key];
         saveExpandConfig(expandConfig);
         rebuildPlanData();
-        renderExpandSettings();
+        if (activeTab === 'visibility') renderVisibilitySettings();
       },
     });
   }
@@ -2231,7 +2232,12 @@ function applyPlanColors(planData) {
     ...withAverages,
     sections: applySectionColors(withAverages.sections, sectionColorConfig),
   };
-  return applyExpenseSortToPlanData(insertSgaSummarySections(colored), expenseSortConfig);
+  const withSga = insertSgaSummarySections(colored);
+  const sorted = applyExpenseSortToPlanData(withSga, expenseSortConfig);
+  return {
+    ...sorted,
+    visibilityCandidates: collectVisibilityCandidates(sorted.sections),
+  };
 }
 
 function refreshSectionColors() {
@@ -2390,9 +2396,23 @@ document.addEventListener('keydown', (ev) => {
   if (ev.key === 'Escape') handleEscapeKey();
 });
 
+const MAIN_MENU_ENTRIES = [
+  { kind: 'item', value: 'plan', label: '予実表' },
+  { kind: 'heading', label: '設定' },
+  { kind: 'item', value: 'taxpayments', label: '支払い', indented: true },
+  { kind: 'item', value: 'employees', label: '人件費', indented: true },
+  { kind: 'item', value: 'outsourcing', label: '外注費', indented: true },
+  { kind: 'item', value: 'visibility', label: '表示', indented: true },
+  { kind: 'item', value: 'colors', label: '色', indented: true },
+  { kind: 'item', value: 'settings', label: 'その他', indented: true },
+  { kind: 'heading', label: '操作' },
+  { kind: 'item', value: 'action:settings-export', label: 'エクスポート', indented: true },
+  { kind: 'item', value: 'action:settings-import', label: 'インポート', indented: true },
+  { kind: 'item', value: 'action:reload-csv', label: '再読み込み', indented: true },
+  { kind: 'item', value: 'action:change-folder', label: 'フォルダ変更', indented: true },
+];
+
 function renderMainTabs() {
-  const select = mainTabs?.querySelector('.plan-main-tab-select');
-  if (select && select.value !== activeTab) select.value = activeTab;
   toolbar.hidden = activeTab !== 'plan';
 }
 
@@ -2489,6 +2509,8 @@ function clearEmployeeTenureTimer() {
 }
 
 function switchMainTab(nextTab) {
+  if (nextTab === 'expand') nextTab = 'visibility';
+  if (nextTab === 'csvnames') nextTab = 'settings';
   const prevTab = activeTab;
   activeTab = nextTab;
   if (nextTab === 'plan' && prevTab !== 'plan') {
@@ -2515,10 +2537,8 @@ function renderView() {
     else if (planLoadingAwaitLayout && !root.querySelector('.plan-table')) {
       finishPlanLoadingAfterLayout();
     }
-  } else if (activeTab === 'expand') renderExpandSettings();
-  else if (activeTab === 'visibility') renderVisibilitySettings();
+  } else if (activeTab === 'visibility') renderVisibilitySettings();
   else if (activeTab === 'colors') renderSectionColorSettings();
-  else if (activeTab === 'csvnames') renderCsvNameSettings();
   else if (activeTab === 'taxrates') renderTaxRateSettings();
   else if (activeTab === 'taxpayments') renderTaxPaymentSettings();
   else if (activeTab === 'employees') renderEmployeeSettings();
@@ -2886,150 +2906,18 @@ function renderTable() {
   });
 }
 
-function renderExpandSettings() {
-  if (!data) return;
-
-  setPlanKpi(null);
-
-  const wrap = document.createElement('div');
-  wrap.className = 'expand-settings-wrap';
-
-  const header = document.createElement('div');
-  header.className = 'expand-settings-header';
-  header.innerHTML = `
-    <p class="expand-settings-desc">
-      補助科目の表示方法を勘定科目ごとに設定します。
-      <strong>折りたたむ</strong>（オン）の場合はグループ行で畳み、クリックで補助科目を表示します（デフォルトはオフ＝常時表示）。
-      <strong>展開時に合計非表示</strong>（オン）の場合、展開中はグループ行の合計金額を非表示にします。
-      設定はブラウザに保存されます。
-    </p>
-    <button type="button" class="expand-reset-btn" id="expand-reset-btn">デフォルトに戻す</button>
-  `;
-  wrap.appendChild(header);
-
-  const candidates = (data.expandCandidates ?? []).filter(
-    (c) => isExpandSettingsSection(c.sectionId),
-  );
-  if (candidates.length === 0) {
-    const empty = document.createElement('p');
-    empty.className = 'expand-settings-empty';
-    empty.textContent = '補助科目を持つ勘定科目がありません。';
-    wrap.appendChild(empty);
-    replaceRootPanel(wrap);
-    return;
-  }
-
-  const table = document.createElement('table');
-  table.className = 'expand-settings-table expand-config-table';
-  table.innerHTML = `
-    <thead>
-      <tr>
-        <th>大項目</th>
-        <th class="col-settings-label">勘定科目</th>
-        <th class="col-count">件数</th>
-        <th class="col-subs">補助科目</th>
-        <th class="col-toggle">折りたたむ</th>
-        <th class="col-toggle">展開時に合計非表示</th>
-      </tr>
-    </thead>
-  `;
-
-  const tbody = document.createElement('tbody');
-  let lastSection = '';
-
-  function appendExpandCheckbox(cell, { checked, labelText, disabled, onChange }) {
-    const label = document.createElement('label');
-    label.className = 'expand-toggle-label';
-    const checkbox = document.createElement('input');
-    checkbox.type = 'checkbox';
-    checkbox.checked = checked;
-    checkbox.disabled = disabled;
-    label.appendChild(checkbox);
-    label.append(` ${labelText}`);
-    checkbox.addEventListener('change', onChange);
-    cell.appendChild(label);
-    return checkbox;
-  }
-
-  for (const c of candidates) {
-    const tr = document.createElement('tr');
-    if (c.sectionLabel !== lastSection) {
-      tr.className = 'expand-section-row';
-      lastSection = c.sectionLabel;
-    }
-
-    const entry = getExpandEntry(expandConfig, c.sectionId, c.account);
-    const isDefault = !Object.prototype.hasOwnProperty.call(
-      expandConfig,
-      expandConfigKey(c.sectionId, c.account),
-    );
-    const forceExpanded = ALWAYS_EXPAND_SECTION_IDS?.has?.(c.sectionId);
-
-    tr.dataset.sectionId = c.sectionId;
-    tr.dataset.account = c.account;
-
-    tr.innerHTML = `
-      <td></td>
-      <td class="col-settings-label">${c.account}</td>
-      <td class="col-count">${c.subCount}</td>
-      <td class="col-subs">${c.subLabels.join('、')}</td>
-      <td class="col-toggle"></td>
-      <td class="col-toggle"></td>
-    `;
-    styleSectionLabelCell(tr.querySelector('td'), c.sectionId);
-    tr.querySelector('td').textContent = c.sectionLabel;
-
-    const collapsibleCell = tr.querySelector('td.col-toggle');
-    const hideTotalCell = tr.querySelector('td.col-toggle:last-child');
-
-    const collapsibleCheckbox = appendExpandCheckbox(collapsibleCell, {
-      checked: entry.collapsible,
-      labelText: '折りたたむ',
-      disabled: forceExpanded,
-      onChange: () => {
-        expandConfig = setExpandEntry(expandConfig, c.sectionId, c.account, {
-          collapsible: collapsibleCheckbox.checked,
-        });
-        saveExpandConfig(expandConfig);
-        rebuildPlanData();
-        renderExpandSettings();
-      },
-    });
-
-    const hideTotalCheckbox = appendExpandCheckbox(hideTotalCell, {
-      checked: entry.hideTotalWhenExpanded,
-      labelText: '展開時に合計非表示',
-      disabled: forceExpanded || !entry.collapsible,
-      onChange: () => {
-        expandConfig = setExpandEntry(expandConfig, c.sectionId, c.account, {
-          hideTotalWhenExpanded: hideTotalCheckbox.checked,
-        });
-        saveExpandConfig(expandConfig);
-      },
-    });
-
-    if (isDefault) {
-      const hint = document.createElement('span');
-      hint.className = 'expand-default-hint';
-      hint.textContent = '（初期）';
-      collapsibleCell.querySelector('.expand-toggle-label').appendChild(hint);
-    }
-
-    tbody.appendChild(tr);
-  }
-
-  table.appendChild(tbody);
-  wrap.appendChild(table);
-  bindExpandSettingsContextMenu(wrap, table);
-
-  wrap.querySelector('#expand-reset-btn').addEventListener('click', () => {
-    expandConfig = {};
-    saveExpandConfig(expandConfig);
-    rebuildPlanData();
-    renderExpandSettings();
-  });
-
-  replaceRootPanel(wrap);
+function appendExpandSettingsCheckbox(cell, { checked, labelText, disabled, onChange }) {
+  const label = document.createElement('label');
+  label.className = 'expand-toggle-label';
+  const checkbox = document.createElement('input');
+  checkbox.type = 'checkbox';
+  checkbox.checked = checked;
+  checkbox.disabled = disabled;
+  label.appendChild(checkbox);
+  label.append(` ${labelText}`);
+  checkbox.addEventListener('change', onChange);
+  cell.appendChild(label);
+  return checkbox;
 }
 
 function renderVisibilitySettings() {
@@ -3038,18 +2926,12 @@ function renderVisibilitySettings() {
   setPlanKpi(null);
 
   const wrap = document.createElement('div');
-  wrap.className = 'expand-settings-wrap';
+  wrap.className = 'expand-settings-wrap visibility-settings-wrap';
 
   const header = document.createElement('div');
   header.className = 'expand-settings-header';
   header.innerHTML = `
-    <p class="expand-settings-desc">
-      予実表に表示する行を選択します。オフにした行は予実表に表示されません（補助科目行は親行をオフにすると非表示になります）。
-      <strong>大きく表示</strong>は通常サイズのフォント・行高で表示します（デフォルトは小さめ）。
-      <strong>塗り色１</strong>は注目したい行、<strong>塗り色２</strong>は注意したい行に着色します（色は色設定で変更可能）。
-      <strong>諸経費</strong>の勘定科目行では<strong>並び順</strong>（数値が小さいほど上）を指定できます。
-      設定はブラウザに保存されます。
-    </p>
+    <p class="expand-settings-desc">予実表に表示する行と見え方を設定します。オフにした行は予実表に表示されません（補助科目行は親行をオフにすると非表示になります）。<strong>折りたたむ</strong>（オン）の場合はグループ行で畳み、クリックで補助科目を表示します（デフォルトはオフ＝常時表示）。<strong>展開時に合計非表示</strong>（オン）の場合、展開中はグループ行の合計金額を非表示にします。<strong>大きく表示</strong>は通常サイズのフォント・行高で表示します（デフォルトは小さめ）。<strong>塗り色１</strong>は注目したい行、<strong>塗り色２</strong>は注意したい行に着色します（色は色設定で変更可能）。<strong>諸経費</strong>の勘定科目行では<strong>並び順</strong>（数値が小さいほど上）を指定できます。設定はブラウザに保存されます。</p>
     <div class="expand-settings-header-actions">
       <button type="button" class="expand-reset-btn" id="visibility-show-all-btn">すべて表示</button>
       <button type="button" class="expand-reset-btn" id="visibility-reset-btn">デフォルトに戻す</button>
@@ -3068,16 +2950,19 @@ function renderVisibilitySettings() {
       visibilityConfig = {};
       rowDisplayConfig = {};
       expenseSortConfig = {};
+      expandConfig = {};
       saveVisibilityConfig(visibilityConfig);
       saveRowDisplayConfig(rowDisplayConfig);
       saveExpenseSortConfig(expenseSortConfig);
-      if (rawPlanData) data = applyPlanColors(rawPlanData);
+      saveExpandConfig(expandConfig);
+      if (journalText) rebuildPlanData();
+      else if (rawPlanData) data = applyPlanColors(rawPlanData);
       renderVisibilitySettings();
       if (activeTab === 'plan') refreshPlanTable();
     });
   }
 
-  const candidates = data.visibilityCandidates ?? [];
+  const candidates = collectVisibilityCandidates(data.sections);
   if (candidates.length === 0) {
     const empty = document.createElement('p');
     empty.className = 'expand-settings-empty';
@@ -3098,6 +2983,8 @@ function renderVisibilitySettings() {
         <th class="col-settings-label">勘定科目</th>
         <th class="col-subs">補助科目</th>
         <th class="col-sort-order">並び順</th>
+        <th class="col-toggle">折りたたむ</th>
+        <th class="col-toggle">展開時に合計非表示</th>
         <th class="col-toggle">表示</th>
         <th class="col-toggle">大きく表示</th>
         <th class="col-toggle">塗り色１（注目）</th>
@@ -3109,6 +2996,7 @@ function renderVisibilitySettings() {
   const tbody = document.createElement('tbody');
   let lastSection = '';
   const expenseSortAccountsShown = new Set();
+  const expandAccountsShown = new Set();
 
   function applyExpenseSortAndRefreshPlan() {
     if (rawPlanData) data = applyPlanColors(rawPlanData);
@@ -3158,6 +3046,8 @@ function renderVisibilitySettings() {
       <td class="col-toggle"></td>
       <td class="col-toggle"></td>
       <td class="col-toggle"></td>
+      <td class="col-toggle"></td>
+      <td class="col-toggle"></td>
     `;
     styleSectionLabelCell(tr.querySelector('td'), c.sectionId);
     tr.querySelector('td').textContent = c.sectionLabel;
@@ -3188,7 +3078,59 @@ function renderVisibilitySettings() {
       sortCell.appendChild(sortInput);
     }
 
-    const toggleCell = tr.querySelector('.col-toggle');
+    const expandAccountKey = `${c.sectionId}|${c.account}`;
+    const isExpandAccountRow = findExpandCandidate(c.sectionId, c.account)
+      && !expandAccountsShown.has(expandAccountKey);
+    if (isExpandAccountRow) expandAccountsShown.add(expandAccountKey);
+
+    const toggleCells = tr.querySelectorAll('.col-toggle');
+
+    if (isExpandAccountRow) {
+      tr.dataset.sectionId = c.sectionId;
+      tr.dataset.account = c.account;
+
+      const entry = getExpandEntry(expandConfig, c.sectionId, c.account);
+      const isDefault = !Object.prototype.hasOwnProperty.call(
+        expandConfig,
+        expandConfigKey(c.sectionId, c.account),
+      );
+      const forceExpanded = ALWAYS_EXPAND_SECTION_IDS.has(c.sectionId);
+
+      const collapsibleCheckbox = appendExpandSettingsCheckbox(toggleCells[0], {
+        checked: entry.collapsible,
+        labelText: '折りたたむ',
+        disabled: forceExpanded,
+        onChange: () => {
+          expandConfig = setExpandEntry(expandConfig, c.sectionId, c.account, {
+            collapsible: collapsibleCheckbox.checked,
+          });
+          saveExpandConfig(expandConfig);
+          rebuildPlanData();
+          renderVisibilitySettings();
+        },
+      });
+
+      const hideTotalCheckbox = appendExpandSettingsCheckbox(toggleCells[1], {
+        checked: entry.hideTotalWhenExpanded,
+        labelText: '展開時に合計非表示',
+        disabled: forceExpanded || !entry.collapsible,
+        onChange: () => {
+          expandConfig = setExpandEntry(expandConfig, c.sectionId, c.account, {
+            hideTotalWhenExpanded: hideTotalCheckbox.checked,
+          });
+          saveExpandConfig(expandConfig);
+        },
+      });
+
+      if (isDefault) {
+        const hint = document.createElement('span');
+        hint.className = 'expand-default-hint';
+        hint.textContent = '（初期）';
+        toggleCells[0].querySelector('.expand-toggle-label').appendChild(hint);
+      }
+    }
+
+    const toggleCell = toggleCells[2];
     const label = document.createElement('label');
     label.className = 'expand-toggle-label';
     const checkbox = document.createElement('input');
@@ -3209,9 +3151,8 @@ function renderVisibilitySettings() {
     const rowRef = { type: c.rowType, label: c.account, subLabel: c.subLabel };
     const hasFixedDisplayStyle = planRowHasAccentBackground({ id: c.sectionId }, rowRef)
       || rowRef?.type === 'plan';
-    const toggleCells = tr.querySelectorAll('.col-toggle');
 
-    appendDisplayCheckbox(toggleCells[1], {
+    appendDisplayCheckbox(toggleCells[3], {
       checked: hasFixedDisplayStyle ? false : displayEntry.largeDisplay,
       ariaLabel: '大きく表示',
       disabled: hasFixedDisplayStyle,
@@ -3228,7 +3169,7 @@ function renderVisibilitySettings() {
       },
     });
 
-    appendDisplayCheckbox(toggleCells[2], {
+    appendDisplayCheckbox(toggleCells[4], {
       checked: hasFixedDisplayStyle ? false : displayEntry.fillColor1,
       ariaLabel: '塗り色１（注目）',
       disabled: hasFixedDisplayStyle,
@@ -3245,7 +3186,7 @@ function renderVisibilitySettings() {
       },
     });
 
-    appendDisplayCheckbox(toggleCells[3], {
+    appendDisplayCheckbox(toggleCells[5], {
       checked: hasFixedDisplayStyle ? false : displayEntry.fillColor2,
       ariaLabel: '塗り色２（注意）',
       disabled: hasFixedDisplayStyle,
@@ -3267,6 +3208,7 @@ function renderVisibilitySettings() {
 
   table.appendChild(tbody);
   wrap.appendChild(table);
+  bindExpandSettingsContextMenu(wrap, table);
 
   bindVisibilitySettingsHeaderActions();
 
@@ -4112,24 +4054,32 @@ function renderUiColorPanel(container) {
   });
 }
 
-function renderCsvNameSettings() {
-  setPlanKpi(null);
+function appendCsvNameSettingsPanel(wrap) {
+  const section = document.createElement('div');
+  section.className = 'app-settings-section csv-name-settings-wrap';
 
-  const wrap = document.createElement('div');
-  wrap.className = 'expand-settings-wrap csv-name-settings-wrap';
+  const title = document.createElement('h2');
+  title.className = 'ui-color-panel-title';
+  title.textContent = 'CSV名定義';
+  section.appendChild(title);
 
-  const header = document.createElement('div');
-  header.className = 'expand-settings-header';
-  header.innerHTML = `
-    <p class="expand-settings-desc">
-      フォルダ読み込み時に対象とする CSV ファイル名を、種類ごとに<strong>正規表現</strong>で定義します。
-      例のファイル名でパターンをテストできます。変更後は <strong>CSV再読込</strong> で反映されます。
-    </p>
-    <div class="expand-settings-header-actions">
-      <button type="button" class="expand-reset-btn" id="csvname-reset-btn">デフォルトに戻す</button>
-    </div>
+  const desc = document.createElement('p');
+  desc.className = 'app-settings-hint';
+  desc.innerHTML = `
+    フォルダ読み込み時に対象とする CSV ファイル名を、種類ごとに<strong>正規表現</strong>で定義します。
+    例のファイル名でパターンをテストできます。変更後は <strong>CSV再読込</strong> で反映されます。
   `;
-  wrap.appendChild(header);
+  section.appendChild(desc);
+
+  const resetRow = document.createElement('div');
+  resetRow.className = 'expand-settings-header-actions';
+  const resetBtn = document.createElement('button');
+  resetBtn.type = 'button';
+  resetBtn.className = 'expand-reset-btn';
+  resetBtn.id = 'csvname-reset-btn';
+  resetBtn.textContent = 'CSV名定義をデフォルトに戻す';
+  resetRow.appendChild(resetBtn);
+  section.appendChild(resetRow);
 
   const table = document.createElement('table');
   table.className = 'expand-settings-table csv-name-settings-table';
@@ -4203,14 +4153,14 @@ function renderCsvNameSettings() {
   }
 
   table.appendChild(tbody);
-  wrap.appendChild(table);
+  section.appendChild(table);
 
-  wrap.querySelector('#csvname-reset-btn').addEventListener('click', () => {
+  resetBtn.addEventListener('click', () => {
     csvNameConfig = resetCsvNameConfig();
-    renderCsvNameSettings();
+    if (activeTab === 'settings') renderOtherSettings();
   });
 
-  replaceRootPanel(wrap);
+  wrap.appendChild(section);
 }
 
 function filterTaxRateIntegerInput(value) {
@@ -4443,64 +4393,68 @@ function renderTaxRateSettings() {
   const form = document.createElement('div');
   form.className = 'app-settings-form tax-rate-settings-form';
   form.innerHTML = `
-    <div class="app-settings-section tax-rate-section">
-      <div class="tax-rate-section-head">
-        <span class="app-settings-label">消費税税率</span>
-        <span class="app-settings-hint tax-rate-section-hint">適用開始年月以降に有効な消費税税率（％）</span>
+    <div class="tax-rate-settings-column tax-rate-settings-column-left">
+      <div class="app-settings-section tax-rate-section">
+        <div class="tax-rate-section-head">
+          <span class="app-settings-label">消費税税率</span>
+          <span class="app-settings-hint tax-rate-section-hint">適用開始年月以降に有効な消費税税率（％）</span>
+        </div>
+        <table class="expand-settings-table tax-rate-table">
+          <thead>
+            <tr>
+              <th>年</th>
+              <th>月</th>
+              <th>税率（%）</th>
+              <th class="col-tax-rate-actions"></th>
+            </tr>
+          </thead>
+          <tbody id="consumption-tax-rate-tbody"></tbody>
+        </table>
+        <button type="button" class="expand-reset-btn tax-rate-add-btn" id="consumption-tax-rate-add">行を追加</button>
       </div>
-      <table class="expand-settings-table tax-rate-table">
-        <thead>
-          <tr>
-            <th>年</th>
-            <th>月</th>
-            <th>税率（%）</th>
-            <th class="col-tax-rate-actions"></th>
-          </tr>
-        </thead>
-        <tbody id="consumption-tax-rate-tbody"></tbody>
-      </table>
-      <button type="button" class="expand-reset-btn tax-rate-add-btn" id="consumption-tax-rate-add">行を追加</button>
+      <div class="app-settings-section tax-rate-section tax-rate-section--legal-welfare">
+        <div class="tax-rate-section-head">
+          <span class="app-settings-label">法定福利費（予測）</span>
+          <span class="app-settings-hint tax-rate-section-hint">round((役員報酬月次合計 ＋ 給料手当月次合計) × 率)。CSV実績＋人件費計画のマージ合計（給料手当は残業手当除く）</span>
+        </div>
+        <div class="legal-welfare-rate-inline">
+          <label class="legal-welfare-rate-field" for="legal-welfare-rate-input">
+            <span class="app-settings-label">率</span>
+            <input
+              type="number"
+              class="app-settings-input tax-rate-input legal-welfare-rate-input"
+              id="legal-welfare-rate-input"
+              min="0"
+              max="1"
+              step="0.01"
+              aria-describedby="legal-welfare-rate-note"
+            />
+          </label>
+          <span class="app-settings-hint tax-rate-section-hint" id="legal-welfare-rate-note"></span>
+        </div>
+      </div>
     </div>
-    <div class="app-settings-section tax-rate-section tax-rate-section--legal-welfare">
-      <div class="tax-rate-section-head">
-        <span class="app-settings-label">法定福利費（予測）</span>
-        <span class="app-settings-hint tax-rate-section-hint">round((役員報酬月次合計 ＋ 給料手当月次合計) × 率)。CSV実績＋人件費計画のマージ合計（給料手当は残業手当除く）</span>
+    <div class="tax-rate-settings-column tax-rate-settings-column-withholding">
+      <div class="app-settings-section tax-rate-section">
+        <div class="tax-rate-section-head">
+          <span class="app-settings-label">源泉所得税（個人事業主・報酬・料金等）</span>
+          <span class="app-settings-hint tax-rate-section-hint">閾値以下は基準税率、超過分は超過税率。税額 = 閾値以下 × 基準 ＋ 超過 × 超過（1円未満切捨て）。例: 150万・10.21%／20.42% → 204,200円</span>
+        </div>
+        <table class="expand-settings-table tax-rate-table withholding-tax-rate-table">
+          <thead>
+            <tr>
+              <th>年</th>
+              <th>月</th>
+              <th>閾値（円）</th>
+              <th>基準税率（%）</th>
+              <th>超過税率（%）</th>
+              <th class="col-tax-rate-actions"></th>
+            </tr>
+          </thead>
+          <tbody id="withholding-tax-rate-tbody"></tbody>
+        </table>
+        <button type="button" class="expand-reset-btn tax-rate-add-btn" id="withholding-tax-rate-add">行を追加</button>
       </div>
-      <div class="legal-welfare-rate-inline">
-        <label class="legal-welfare-rate-field" for="legal-welfare-rate-input">
-          <span class="app-settings-label">率</span>
-          <input
-            type="number"
-            class="app-settings-input tax-rate-input legal-welfare-rate-input"
-            id="legal-welfare-rate-input"
-            min="0"
-            max="1"
-            step="0.01"
-            aria-describedby="legal-welfare-rate-note"
-          />
-        </label>
-        <span class="app-settings-hint tax-rate-section-hint" id="legal-welfare-rate-note"></span>
-      </div>
-    </div>
-    <div class="app-settings-section tax-rate-section tax-rate-section--wide">
-      <div class="tax-rate-section-head">
-        <span class="app-settings-label">源泉所得税（個人事業主・報酬・料金等）</span>
-        <span class="app-settings-hint tax-rate-section-hint">閾値以下は基準税率、超過分は超過税率。税額 = 閾値以下 × 基準 ＋ 超過 × 超過（1円未満切捨て）。例: 150万・10.21%／20.42% → 204,200円</span>
-      </div>
-      <table class="expand-settings-table tax-rate-table withholding-tax-rate-table">
-        <thead>
-          <tr>
-            <th>年</th>
-            <th>月</th>
-            <th>閾値（円）</th>
-            <th>基準税率（%）</th>
-            <th>超過税率（%）</th>
-            <th class="col-tax-rate-actions"></th>
-          </tr>
-        </thead>
-        <tbody id="withholding-tax-rate-tbody"></tbody>
-      </table>
-      <button type="button" class="expand-reset-btn tax-rate-add-btn" id="withholding-tax-rate-add">行を追加</button>
     </div>
   `;
   wrap.appendChild(form);
@@ -4581,18 +4535,13 @@ function renderTaxPaymentSettings() {
   wrap.className = 'expand-settings-wrap tax-payment-settings-wrap';
 
   const header = document.createElement('div');
-  header.className = 'expand-settings-header';
+  header.className = 'expand-settings-header tax-payment-settings-header';
   header.innerHTML = `
-    <p class="expand-settings-desc">
-      租税公課・保険積立金・長期未払金・未払消費税・未払法人税等・住民税・役員借入金の支払い計画を設定します。住民税は市区町村ごとに入力し、合計が予実表に反映されます。
-      今期の支払済み月は仕訳実績を表示します（編集不可）。未来の月のみダブルクリックで編集できます。住民税のみ過去月も入力でき、予実表にもその値が反映されます。Shift+Enter で入力した月以降の同額を後続月に反映します。
-    </p>
-    <div class="expand-settings-header-actions employee-settings-actions">
-      <button type="button" class="expand-reset-btn" id="resident-tax-add-toggle-btn">市区町村を追加</button>
-    </div>
+    <p class="expand-settings-desc">租税公課・保険積立金・長期未払金・未払消費税・未払法人税等・住民税・役員借入金の支払い計画を設定します。住民税は市区町村ごとに入力し、合計が予実表に反映されます。今期の支払済み月は仕訳実績を表示します（編集不可）。未来の月のみダブルクリックで編集できます。住民税のみ過去月も入力でき、予実表にもその値が反映されます。Shift+Enter で入力した月以降の同額を後続月に反映します。</p>
     <div class="tax-payment-settings-controls">
-      <label class="app-settings-field">
+      <div class="tax-payment-plan-years-row">
         <span class="app-settings-label">計画年数</span>
+        <p class="tax-payment-plan-years-hint">今期を含む年数です。デフォルトは ${DEFAULT_PAYMENT_PLAN_YEARS} 年です。</p>
         <input
           type="number"
           class="app-settings-input tax-payment-plan-years-input"
@@ -4603,34 +4552,12 @@ function renderTaxPaymentSettings() {
           inputmode="numeric"
           autocomplete="off"
           spellcheck="false"
+          aria-label="計画年数"
         />
-      </label>
-      <p class="tax-payment-plan-years-hint">今期を含む年数です。デフォルトは ${DEFAULT_PAYMENT_PLAN_YEARS} 年です。</p>
+      </div>
     </div>
   `;
   wrap.appendChild(header);
-
-  const statusEl = document.createElement('p');
-  statusEl.className = 'employee-status-msg';
-  statusEl.hidden = true;
-  wrap.appendChild(statusEl);
-
-  const addMunicipalityForm = document.createElement('div');
-  addMunicipalityForm.className = 'employee-add-form';
-  addMunicipalityForm.hidden = true;
-  addMunicipalityForm.innerHTML = `
-    <div class="employee-add-form-grid">
-      <label class="app-settings-field">
-        <span class="app-settings-label">市区町村名</span>
-        <input type="text" class="app-settings-input" id="resident-tax-add-name" autocomplete="off" spellcheck="false" />
-      </label>
-    </div>
-    <div class="employee-add-form-actions">
-      <button type="button" class="plan-csv-btn" id="resident-tax-add-submit-btn">追加</button>
-      <button type="button" class="expand-reset-btn" id="resident-tax-add-cancel-btn">キャンセル</button>
-    </div>
-  `;
-  wrap.appendChild(addMunicipalityForm);
 
   const planYearsInput = header.querySelector('#tax-payment-plan-years-input');
   planYearsInput.value = String(getPaymentPlanYears(paymentPlanSettings));
@@ -4682,12 +4609,6 @@ function renderTaxPaymentSettings() {
       currentPeriod,
       fiscalMonths,
     );
-  }
-
-  function showStatus(message, isError = false) {
-    statusEl.textContent = message;
-    statusEl.hidden = !message;
-    statusEl.classList.toggle('employee-status-error', isError);
   }
 
   function refreshPlanTableIfNeeded() {
@@ -4815,7 +4736,11 @@ function renderTaxPaymentSettings() {
       if (editClosed) return;
       editClosed = true;
       if (save) {
-        const parsed = parseSalaryPlanAmountInput(input.value);
+        const parsed = parseSalaryPlanAmountInputWithFillForward(
+          input.value,
+          fillForward,
+          rawValue,
+        );
         const pastMonths = getPastMonthsForPeriod(fiscalPeriod);
         const next = fillForward
           ? applyAmountFromMonthForwardSkippingPast(
@@ -4875,7 +4800,11 @@ function renderTaxPaymentSettings() {
       if (editClosed) return;
       editClosed = true;
       if (save) {
-        const parsed = parseSalaryPlanAmountInput(input.value);
+        const parsed = parseSalaryPlanAmountInputWithFillForward(
+          input.value,
+          fillForward,
+          rawValue,
+        );
         const nextMonthly = fillForward
           ? applyAmountFromMonthForward(
             entry.monthly,
@@ -5168,63 +5097,6 @@ function renderTaxPaymentSettings() {
     wrap.appendChild(section);
   }
 
-  header.querySelector('#resident-tax-add-toggle-btn').addEventListener('click', () => {
-    addMunicipalityForm.hidden = !addMunicipalityForm.hidden;
-    if (!addMunicipalityForm.hidden) {
-      addMunicipalityForm.querySelector('#resident-tax-add-name').focus();
-    }
-  });
-  addMunicipalityForm.querySelector('#resident-tax-add-cancel-btn').addEventListener('click', () => {
-    addMunicipalityForm.hidden = true;
-    addMunicipalityForm.querySelector('#resident-tax-add-name').value = '';
-  });
-  addMunicipalityForm.querySelector('#resident-tax-add-submit-btn').addEventListener('click', () => {
-    const municipality = addMunicipalityForm.querySelector('#resident-tax-add-name').value.trim();
-    if (!municipality) {
-      showStatus('市区町村名を入力してください。', true);
-      return;
-    }
-    const created = createManualResidentTaxMunicipality({ municipality });
-    if (!created) {
-      showStatus('市区町村名を入力してください。', true);
-      return;
-    }
-    const allEntries = getResidentTaxMunicipalityEntries(taxPaymentPlans, currentPeriod, fiscalMonths);
-    const existingEntry = allEntries.find((entry) => entry.municipality === municipality);
-    if (existingEntry) {
-      if (existingEntry.manual || getMunicipalitiesForPeriod(currentPeriod).some((e) => e.municipality === municipality)) {
-        showStatus('同じ市区町村が既に登録されています。', true);
-        return;
-      }
-      taxPaymentPlans = setResidentTaxMunicipalityEntry(
-        taxPaymentPlans,
-        currentPeriod,
-        { ...existingEntry, manual: true },
-        fiscalMonths,
-      );
-    } else {
-      taxPaymentPlans = setResidentTaxMunicipalityEntry(
-        taxPaymentPlans,
-        currentPeriod,
-        created,
-        fiscalMonths,
-      );
-    }
-    for (const { period } of planPeriodEntries()) {
-      if (period === currentPeriod) continue;
-      taxPaymentPlans = syncResidentTaxMunicipalitiesFromReference(
-        taxPaymentPlans,
-        period,
-        currentPeriod,
-        fiscalMonths,
-      );
-    }
-    addMunicipalityForm.hidden = true;
-    addMunicipalityForm.querySelector('#resident-tax-add-name').value = '';
-    showStatus(`${municipality} を追加しました。`);
-    renderPlanSection();
-  });
-
   renderPlanSection();
   replaceRootPanel(wrap);
 }
@@ -5241,12 +5113,8 @@ function renderEmployeeSettings() {
     <p class="expand-settings-desc">
       従業員マスタを管理します。マネーフォワード給与の「従業員情報」CSVを読み込むと一覧を生成できます。
       同じ従業員識別子の行は上書き更新されます。手動追加・削除も可能で、設定はブラウザに保存されます。
+      「非表示」にチェックした社員は給与支払い計画表に表示されず、住民税の支払対象からも除外されます。
     </p>
-    <div class="expand-settings-header-actions employee-settings-actions">
-      <input type="file" accept=".csv,text/csv" class="employee-csv-input" id="employee-csv-input" hidden />
-      <button type="button" class="plan-csv-btn" id="employee-csv-btn">CSV読み込み</button>
-      <button type="button" class="expand-reset-btn" id="employee-add-toggle-btn">社員を追加</button>
-    </div>
   `;
   wrap.appendChild(header);
 
@@ -5290,12 +5158,34 @@ function renderEmployeeSettings() {
       <button type="button" class="expand-reset-btn" id="employee-add-cancel-btn">キャンセル</button>
     </div>
   `;
-  wrap.appendChild(addForm);
+
+  const listToolbar = document.createElement('div');
+  listToolbar.className = 'employee-list-toolbar employee-settings-actions';
+  listToolbar.innerHTML = `
+    <input type="file" accept=".csv,text/csv" class="employee-csv-input" id="employee-csv-input" hidden />
+    <button type="button" class="plan-csv-btn" id="employee-csv-btn">CSV読み込み</button>
+    <button type="button" class="expand-reset-btn" id="employee-add-toggle-btn">社員を追加</button>
+  `;
+
+  const columns = document.createElement('div');
+  columns.className = 'employee-settings-columns';
+  const listColumn = document.createElement('div');
+  listColumn.className = 'employee-settings-column-list';
+  listColumn.append(listToolbar, addForm);
+  const travelColumn = document.createElement('div');
+  travelColumn.className = 'employee-settings-column-travel';
+  columns.append(listColumn, travelColumn);
+  wrap.appendChild(columns);
 
   function showStatus(message, isError = false) {
     statusEl.textContent = message;
     statusEl.hidden = !message;
     statusEl.classList.toggle('employee-status-error', isError);
+  }
+
+  function refreshPlanTableIfNeeded() {
+    refreshSectionColors();
+    if (activeTab === 'plan' && data) refreshPlanTable();
   }
 
   function refreshEmployeeLiveCells() {
@@ -5307,20 +5197,21 @@ function renderEmployeeSettings() {
   }
 
   function renderEmployeeTable() {
-    const existingTable = wrap.querySelector('.employee-settings-table');
-    if (existingTable) existingTable.remove();
+    const listColumnEl = wrap.querySelector('.employee-settings-column-list');
+    if (!listColumnEl) return;
 
-    const emptyEl = wrap.querySelector('.employee-settings-empty');
-    if (emptyEl) emptyEl.remove();
-
+    listColumnEl.querySelector('.employee-settings-table')?.remove();
+    listColumnEl.querySelector('.employee-settings-empty')?.remove();
     wrap.querySelector('.salary-plan-section')?.remove();
+
+    renderTravelAllowanceSection();
 
     const activeEmployees = employees.filter(isActiveEmployee);
     if (activeEmployees.length === 0) {
       const empty = document.createElement('p');
       empty.className = 'expand-settings-empty employee-settings-empty';
       empty.textContent = '従業員が登録されていません。CSVを読み込むか、手動で追加してください。';
-      wrap.appendChild(empty);
+      listColumnEl.appendChild(empty);
       return;
     }
 
@@ -5348,7 +5239,27 @@ function renderEmployeeSettings() {
         const td = document.createElement('td');
         td.className = col.className;
 
-        if (col.kind === 'actions') {
+        if (col.kind === 'salaryPlanExclude') {
+          const excludeLabel = document.createElement('label');
+          excludeLabel.className = 'employee-salary-plan-exclude';
+          const checkbox = document.createElement('input');
+          checkbox.type = 'checkbox';
+          checkbox.checked = emp.excludedFromSalaryPlan === true;
+          checkbox.title = '給与支払い計画表に表示しない（住民税の支払対象外）';
+          checkbox.addEventListener('change', () => {
+            employees = saveEmployees(
+              employees.map((e) => (
+                e.id === emp.id
+                  ? { ...e, excludedFromSalaryPlan: checkbox.checked }
+                  : e
+              )),
+            );
+            renderEmployeeTable();
+            refreshPlanTableIfNeeded();
+          });
+          excludeLabel.appendChild(checkbox);
+          td.appendChild(excludeLabel);
+        } else if (col.kind === 'actions') {
           const actionsWrap = document.createElement('div');
           actionsWrap.className = 'employee-actions-wrap';
 
@@ -5426,9 +5337,9 @@ function renderEmployeeSettings() {
     tfoot.appendChild(totalRow);
     table.appendChild(tbody);
     table.appendChild(tfoot);
-    wrap.appendChild(table);
+    listColumnEl.appendChild(table);
     refreshEmployeeLiveCells();
-    renderSalaryPlanSection(activeEmployees);
+    renderSalaryPlanSection(activeEmployees.filter(isSalaryPlanEmployee));
   }
 
   function getSalaryPlanForEmployee(emp, fiscalMonths, fiscalPeriod) {
@@ -5466,39 +5377,55 @@ function renderEmployeeSettings() {
     input.spellcheck = false;
     input.value = rawValue != null && rawValue !== 0 ? String(rawValue) : '';
 
-    const finish = (save) => {
+    let editClosed = false;
+
+    const finish = (save, fillForward = false) => {
+      if (editClosed) return;
+      editClosed = true;
       if (save) {
-        const parsed = parseSalaryPlanAmountInput(input.value);
+        const parsed = parseSalaryPlanAmountInputWithFillForward(
+          input.value,
+          fillForward,
+          rawValue,
+        );
         const nextPlan = {
           monthly: { ...plan.monthly },
           bonusMonthly: { ...plan.bonusMonthly },
         };
         if (rowKind === 'monthly') {
-          nextPlan.monthly = applyAmountFromMonthForward(
-            nextPlan.monthly,
-            fiscalMonths,
-            month,
-            parsed,
-          );
+          nextPlan.monthly = fillForward
+            ? applyAmountFromMonthForward(
+              nextPlan.monthly,
+              fiscalMonths,
+              month,
+              parsed,
+            )
+            : { ...nextPlan.monthly, [month]: parsed };
         } else {
           nextPlan.bonusMonthly[month] = parsed;
         }
         persistSalaryPlan(emp, nextPlan, fiscalPeriod);
       }
-      renderSalaryPlanSection(employees.filter(isActiveEmployee));
+      renderSalaryPlanSection(employees.filter(isSalaryPlanEmployee));
     };
 
     input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
+      if (e.isComposing) return;
+      if (e.key === 'Enter' || e.code === 'NumpadEnter') {
         e.preventDefault();
-        finish(true);
+        finish(true, e.shiftKey && rowKind === 'monthly');
+        return;
       }
       if (e.key === 'Escape') {
         e.preventDefault();
         finish(false);
       }
     });
-    input.addEventListener('blur', () => finish(true));
+    input.addEventListener('blur', () => {
+      setTimeout(() => {
+        if (!editClosed) finish(true, false);
+      }, 0);
+    });
 
     td.textContent = '';
     td.appendChild(input);
@@ -5523,7 +5450,9 @@ function renderEmployeeSettings() {
     }
     if (editable) {
       td.classList.add('salary-plan-cell-editable');
-      td.title = 'ダブルクリックで編集';
+      td.title = rowKind === 'monthly'
+        ? 'ダブルクリックで編集（Shift+Enter で後続月へ同額反映）'
+        : 'ダブルクリックで編集';
       td.textContent = formatSalaryPlanYen(value);
       if (prevValue !== undefined && salaryPlanAmountDiffersFromPrevious(prevValue, value)) {
         td.classList.add('salary-plan-amount-changed');
@@ -5624,31 +5553,47 @@ function renderEmployeeSettings() {
     input.spellcheck = false;
     input.value = rawValue != null && rawValue !== 0 ? String(rawValue) : '';
 
-    const finish = (save) => {
+    let editClosed = false;
+
+    const finish = (save, fillForward = false) => {
+      if (editClosed) return;
+      editClosed = true;
       if (save) {
-        const parsed = parseSalaryPlanAmountInput(input.value);
-        const next = applyAmountFromMonthForward(
-          { ...overtime },
-          fiscalMonths,
-          month,
-          parsed,
+        const parsed = parseSalaryPlanAmountInputWithFillForward(
+          input.value,
+          fillForward,
+          rawValue,
         );
+        const next = fillForward
+          ? applyAmountFromMonthForward(
+            { ...overtime },
+            fiscalMonths,
+            month,
+            parsed,
+          )
+          : { ...overtime, [month]: parsed };
         persistOvertimePlan(next, fiscalPeriod, fiscalMonths);
       }
-      renderSalaryPlanSection(employees.filter(isActiveEmployee));
+      renderSalaryPlanSection(employees.filter(isSalaryPlanEmployee));
     };
 
     input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
+      if (e.isComposing) return;
+      if (e.key === 'Enter' || e.code === 'NumpadEnter') {
         e.preventDefault();
-        finish(true);
+        finish(true, e.shiftKey);
+        return;
       }
       if (e.key === 'Escape') {
         e.preventDefault();
         finish(false);
       }
     });
-    input.addEventListener('blur', () => finish(true));
+    input.addEventListener('blur', () => {
+      setTimeout(() => {
+        if (!editClosed) finish(true, false);
+      }, 0);
+    });
 
     td.textContent = '';
     td.appendChild(input);
@@ -5669,7 +5614,7 @@ function renderEmployeeSettings() {
       td.classList.add('salary-plan-amount-start-month');
     }
     td.classList.add('salary-plan-cell-editable');
-    td.title = 'ダブルクリックで編集';
+    td.title = 'ダブルクリックで編集（Shift+Enter で後続月へ同額反映）';
     td.textContent = formatSalaryPlanYen(value);
     if (prevValue !== undefined && salaryPlanAmountDiffersFromPrevious(prevValue, value)) {
       td.classList.add('salary-plan-amount-changed');
@@ -6011,6 +5956,27 @@ function renderEmployeeSettings() {
     return table;
   }
 
+  function renderTravelAllowanceSection() {
+    const travelColumnEl = wrap.querySelector('.employee-settings-column-travel');
+    if (!travelColumnEl) return;
+
+    travelColumnEl.replaceChildren();
+
+    const currentPeriod = appSettings.fiscalPeriod;
+    const nextPeriod = appSettings.fiscalPeriod + 1;
+
+    const travelHeader = document.createElement('div');
+    travelHeader.className = 'salary-plan-header employee-travel-header';
+    travelHeader.innerHTML = `
+      <h3 class="salary-plan-title">旅費交通費</h3>
+      <p class="salary-plan-desc">
+        一人あたりに支給する月額です。デフォルトは ${formatSalaryPlanYen(DEFAULT_TRAVEL_ALLOWANCE_PER_PERSON)} です。
+      </p>
+    `;
+    travelColumnEl.appendChild(travelHeader);
+    travelColumnEl.appendChild(buildTravelAllowanceConfig(currentPeriod, nextPeriod));
+  }
+
   function renderSalaryPlanSection(activeEmployees) {
     wrap.querySelector('.salary-plan-section')?.remove();
     if (activeEmployees.length === 0) return;
@@ -6022,24 +5988,13 @@ function renderEmployeeSettings() {
     const section = document.createElement('div');
     section.className = 'salary-plan-section';
 
-    const travelHeader = document.createElement('div');
-    travelHeader.className = 'salary-plan-header';
-    travelHeader.innerHTML = `
-      <h3 class="salary-plan-title">旅費交通費</h3>
-      <p class="salary-plan-desc">
-        一人あたりに支給する月額です。デフォルトは ${formatSalaryPlanYen(DEFAULT_TRAVEL_ALLOWANCE_PER_PERSON)} です。
-      </p>
-    `;
-    section.appendChild(travelHeader);
-    section.appendChild(buildTravelAllowanceConfig(currentPeriod, nextPeriod));
-
     const overtimeHeader = document.createElement('div');
-    overtimeHeader.className = 'salary-plan-header salary-plan-header-spaced';
+    overtimeHeader.className = 'salary-plan-header';
     overtimeHeader.innerHTML = `
       <h3 class="salary-plan-title">残業手当支払い計画表</h3>
       <p class="salary-plan-desc">
         決算月 ${appSettings.fiscalEndMonth}月 を基準とした12か月分です。
-        各セルをダブルクリックで編集できます。入力した月以降の同額は自動で引き継がれます。
+        各セルをダブルクリックで編集できます。Shift+Enter で入力した月以降の同額を後続月に反映します（0円も可）。Enter はその月のみ反映します。
       </p>
     `;
     section.appendChild(overtimeHeader);
@@ -6070,7 +6025,7 @@ function renderEmployeeSettings() {
       <h3 class="salary-plan-title">給与支払い計画表</h3>
       <p class="salary-plan-desc">
         決算月 ${appSettings.fiscalEndMonth}月 を基準とした12か月分です。
-        月額・賞与の各セルをダブルクリックで編集できます。役員は賞与の入力がありません。来期の昇給率は月額合計のみを今期と比較します（賞与は含みません）。
+        月額・賞与の各セルをダブルクリックで編集できます。月額は Shift+Enter で後続月へ同額を反映します（0円も可）。Enter はその月のみ反映します。役員は賞与の入力がありません。来期の昇給率は月額合計のみを今期と比較します（賞与は含みません）。
       </p>
     `;
     section.appendChild(salaryHeader);
@@ -6113,8 +6068,8 @@ function renderEmployeeSettings() {
   clearEmployeeTenureTimer();
   employeeTenureTimerId = setInterval(refreshEmployeeLiveCells, 60000);
 
-  const csvInput = header.querySelector('#employee-csv-input');
-  header.querySelector('#employee-csv-btn').addEventListener('click', () => {
+  const csvInput = wrap.querySelector('#employee-csv-input');
+  wrap.querySelector('#employee-csv-btn').addEventListener('click', () => {
     csvInput.value = '';
     csvInput.click();
   });
@@ -6147,7 +6102,7 @@ function renderEmployeeSettings() {
     }
   });
 
-  const addToggleBtn = header.querySelector('#employee-add-toggle-btn');
+  const addToggleBtn = wrap.querySelector('#employee-add-toggle-btn');
   addToggleBtn.addEventListener('click', () => {
     addForm.hidden = !addForm.hidden;
     if (!addForm.hidden) {
@@ -6229,6 +6184,17 @@ function renderOutsourcingSettings() {
     fiscalMonths,
   );
 
+  const journalVendorKeys = new Set();
+  if (rawPlanData) {
+    const subaccounts = collectOutsourcingSubaccountsFromPlanData(rawPlanData);
+    for (const { accountLabel, subLabel } of subaccounts) {
+      const account = String(accountLabel ?? '').trim();
+      const sub = String(subLabel ?? '').trim();
+      if (!account || !sub) continue;
+      journalVendorKeys.add(`${account}\x00${sub}`);
+    }
+  }
+
   const wrap = document.createElement('div');
   wrap.className = 'expand-settings-wrap outsourcing-settings-wrap';
 
@@ -6239,9 +6205,6 @@ function renderOutsourcingSettings() {
       外注費の支払い計画を設定します。今期の仕訳に存在する補助科目は自動で一覧に追加されます。
       今期の支払済み月は仕訳実績を表示します（編集不可）。未来の月のみダブルクリックで編集でき、入力した月以降の同額は自動で引き継がれます。設定はブラウザに保存され、予実表の「外注費」セクションに反映されます。
     </p>
-    <div class="expand-settings-header-actions employee-settings-actions">
-      <button type="button" class="expand-reset-btn" id="outsourcing-add-toggle-btn">取引先を追加</button>
-    </div>
   `;
   wrap.appendChild(header);
 
@@ -6249,27 +6212,6 @@ function renderOutsourcingSettings() {
   statusEl.className = 'employee-status-msg';
   statusEl.hidden = true;
   wrap.appendChild(statusEl);
-
-  const addForm = document.createElement('div');
-  addForm.className = 'employee-add-form';
-  addForm.hidden = true;
-  addForm.innerHTML = `
-    <div class="employee-add-form-grid">
-      <label class="app-settings-field">
-        <span class="app-settings-label">勘定科目</span>
-        <input type="text" class="app-settings-input" id="outsourcing-add-account" autocomplete="off" spellcheck="false" placeholder="外注費" />
-      </label>
-      <label class="app-settings-field">
-        <span class="app-settings-label">補助科目</span>
-        <input type="text" class="app-settings-input" id="outsourcing-add-sub" autocomplete="off" spellcheck="false" />
-      </label>
-    </div>
-    <div class="employee-add-form-actions">
-      <button type="button" class="plan-csv-btn" id="outsourcing-add-submit-btn">追加</button>
-      <button type="button" class="expand-reset-btn" id="outsourcing-add-cancel-btn">キャンセル</button>
-    </div>
-  `;
-  wrap.appendChild(addForm);
 
   function showStatus(message, isError = false) {
     statusEl.textContent = message;
@@ -6422,12 +6364,81 @@ function renderOutsourcingSettings() {
     tr.appendChild(td);
   }
 
+  function canDeleteVendor(vendor) {
+    if (vendor.manual) return true;
+    const key = `${vendor.accountLabel}\x00${vendor.subLabel}`;
+    return !journalVendorKeys.has(key);
+  }
+
+  function deleteVendor(vendor, fiscalPeriod) {
+    outsourcingPlans = removeVendorEntry(
+      outsourcingPlans,
+      fiscalPeriod,
+      vendor.id,
+      fiscalMonths,
+    );
+    showStatus(`${vendor.subLabel} を削除しました。`);
+    renderPlanSection();
+    refreshPlanTableIfNeeded();
+  }
+
+  function appendVendorDeleteCell(tr, vendor, fiscalPeriod) {
+    const td = document.createElement('td');
+    td.className = 'col-out-actions';
+
+    if (!canDeleteVendor(vendor)) {
+      tr.appendChild(td);
+      return;
+    }
+
+    const actionsWrap = document.createElement('div');
+    actionsWrap.className = 'employee-actions-wrap';
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.type = 'button';
+    deleteBtn.className = 'employee-delete-btn';
+    deleteBtn.textContent = '削除';
+    deleteBtn.addEventListener('click', () => {
+      actionsWrap.replaceChildren();
+      actionsWrap.classList.add('employee-actions-confirm');
+
+      const prompt = document.createElement('span');
+      prompt.className = 'employee-delete-prompt';
+      prompt.textContent = '削除しますか？';
+
+      const confirmBtn = document.createElement('button');
+      confirmBtn.type = 'button';
+      confirmBtn.className = 'employee-delete-confirm-btn';
+      confirmBtn.textContent = '削除する';
+
+      const cancelBtn = document.createElement('button');
+      cancelBtn.type = 'button';
+      cancelBtn.className = 'employee-delete-cancel-btn';
+      cancelBtn.textContent = 'キャンセル';
+
+      confirmBtn.addEventListener('click', () => {
+        deleteVendor(vendor, fiscalPeriod);
+      });
+
+      cancelBtn.addEventListener('click', () => {
+        actionsWrap.classList.remove('employee-actions-confirm');
+        actionsWrap.replaceChildren(deleteBtn);
+      });
+
+      actionsWrap.append(prompt, confirmBtn, cancelBtn);
+    });
+
+    actionsWrap.appendChild(deleteBtn);
+    td.appendChild(actionsWrap);
+    tr.appendChild(td);
+  }
+
   function buildOutsourcingPlanTable(fiscalPeriod) {
     const vendors = getVendorsForPeriod(fiscalPeriod);
     const table = document.createElement('table');
     table.className = 'expand-settings-table salary-plan-table';
 
-    const headerLabels = ['勘定科目', '補助科目', ...fiscalMonths, '合計'];
+    const headerLabels = ['勘定科目', '補助科目', ...fiscalMonths, '合計', ''];
 
     const thead = document.createElement('thead');
     const headerRow = document.createElement('tr');
@@ -6437,6 +6448,7 @@ function renderOutsourcingSettings() {
       if (label === '勘定科目') th.className = 'salary-plan-col-name';
       else if (label === '補助科目') th.className = 'salary-plan-col-sub';
       else if (label === '合計') th.className = 'salary-plan-col-total';
+      else if (label === '') th.className = 'col-out-actions';
       else th.className = 'salary-plan-col-month';
       headerRow.appendChild(th);
     }
@@ -6494,6 +6506,8 @@ function renderOutsourcingSettings() {
       totalTd.textContent = formatSalaryPlanYen(sumDisplayMonthlyTotal(displayMonthly));
       tr.appendChild(totalTd);
 
+      appendVendorDeleteCell(tr, vendor, fiscalPeriod);
+
       tbody.appendChild(tr);
     }
 
@@ -6528,6 +6542,10 @@ function renderOutsourcingSettings() {
     grandTd.textContent = formatSalaryPlanYen(grand);
     trTotal.appendChild(grandTd);
 
+    const actionsTd = document.createElement('td');
+    actionsTd.className = 'col-out-actions';
+    trTotal.appendChild(actionsTd);
+
     tbody.appendChild(trTotal);
     table.appendChild(tbody);
     return table;
@@ -6539,22 +6557,111 @@ function renderOutsourcingSettings() {
     return totals;
   }
 
+  function buildPeriodAddForm(fiscalPeriod) {
+    const form = document.createElement('div');
+    form.className = 'employee-add-form outsourcing-add-form outsourcing-period-add-form';
+
+    const row = document.createElement('div');
+    row.className = 'outsourcing-add-form-row';
+
+    const label = document.createElement('span');
+    label.className = 'outsourcing-add-label';
+    label.textContent = '取引先名';
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'app-settings-input outsourcing-add-input';
+    input.autocomplete = 'off';
+    input.spellcheck = false;
+
+    const submitBtn = document.createElement('button');
+    submitBtn.type = 'button';
+    submitBtn.className = 'plan-csv-btn';
+    submitBtn.textContent = '追加';
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.className = 'expand-reset-btn';
+    cancelBtn.textContent = 'キャンセル';
+
+    cancelBtn.addEventListener('click', () => {
+      input.value = '';
+      input.focus();
+    });
+
+    submitBtn.addEventListener('click', () => {
+      const subLabel = input.value.trim();
+      if (!subLabel) {
+        showStatus('取引先名を入力してください。', true);
+        input.focus();
+        return;
+      }
+      const vendor = createManualVendor({ accountLabel: '外注費', subLabel });
+      if (!vendor) {
+        showStatus('取引先の追加に失敗しました。', true);
+        return;
+      }
+      const existing = getVendorsForPeriod(fiscalPeriod).some(
+        (v) => v.accountLabel === vendor.accountLabel && v.subLabel === vendor.subLabel,
+      );
+      if (existing) {
+        showStatus('同じ補助科目が既に登録されています。', true);
+        input.focus();
+        return;
+      }
+      outsourcingPlans = setVendorEntry(
+        outsourcingPlans,
+        fiscalPeriod,
+        vendor,
+        fiscalMonths,
+      );
+      input.value = '';
+      const periodLabel = fiscalPeriod === currentPeriod ? '今期' : '来期';
+      showStatus(`${periodLabel}に ${subLabel} を追加しました。`);
+      renderPlanSection();
+      refreshPlanTableIfNeeded();
+    });
+
+    input.addEventListener('keydown', (e) => {
+      if (e.isComposing) return;
+      if (e.key === 'Enter' || e.code === 'NumpadEnter') {
+        e.preventDefault();
+        submitBtn.click();
+      }
+    });
+
+    row.append(label, input, submitBtn, cancelBtn);
+    form.appendChild(row);
+    return form;
+  }
+
   function renderPlanSection() {
-    wrap.querySelector('.salary-plan-section')?.remove();
+    let section = wrap.querySelector('.salary-plan-section');
+    let periodsContainer = wrap.querySelector('.outsourcing-plan-periods');
 
-    const section = document.createElement('div');
-    section.className = 'salary-plan-section';
+    if (!section) {
+      section = document.createElement('div');
+      section.className = 'salary-plan-section';
 
-    const planHeader = document.createElement('div');
-    planHeader.className = 'salary-plan-header';
-    planHeader.innerHTML = `
-      <h3 class="salary-plan-title">外注費支払い計画表</h3>
-      <p class="salary-plan-desc">
-        決算月 ${appSettings.fiscalEndMonth}月 を基準とした12か月分です。
-        今期の支払済み月は仕訳実績を表示します（編集不可）。未来の月のみダブルクリックで編集できます。
-      </p>
-    `;
-    section.appendChild(planHeader);
+      const planHeader = document.createElement('div');
+      planHeader.className = 'salary-plan-header';
+      planHeader.innerHTML = `
+        <h3 class="salary-plan-title">外注費支払い計画表</h3>
+        <p class="salary-plan-desc">
+          決算月 ${appSettings.fiscalEndMonth}月 を基準とした12か月分です。
+          今期の支払済み月は仕訳実績を表示します（編集不可）。未来の月のみダブルクリックで編集できます。
+        </p>
+      `;
+      section.appendChild(planHeader);
+
+      periodsContainer = document.createElement('div');
+      periodsContainer.className = 'outsourcing-plan-periods';
+      section.appendChild(periodsContainer);
+
+      wrap.appendChild(section);
+    }
+
+    periodsContainer.replaceChildren();
 
     for (const { period, label } of [
       { period: currentPeriod, label: '今期' },
@@ -6568,64 +6675,18 @@ function renderOutsourcingSettings() {
       blockTitle.textContent = `${label}（${formatFiscalPeriodLabel(period)}）`;
       block.appendChild(blockTitle);
 
+      block.appendChild(buildPeriodAddForm(period));
+
       const tableWrap = document.createElement('div');
       tableWrap.className = 'salary-plan-table-wrap';
       tableWrap.appendChild(buildOutsourcingPlanTable(period));
       block.appendChild(tableWrap);
 
-      section.appendChild(block);
+      periodsContainer.appendChild(block);
     }
-
-    wrap.appendChild(section);
   }
 
   renderPlanSection();
-
-  header.querySelector('#outsourcing-add-toggle-btn').addEventListener('click', () => {
-    addForm.hidden = !addForm.hidden;
-    if (!addForm.hidden) {
-      addForm.querySelector('#outsourcing-add-sub')?.focus();
-    }
-  });
-
-  addForm.querySelector('#outsourcing-add-cancel-btn').addEventListener('click', () => {
-    addForm.hidden = true;
-    addForm.querySelector('#outsourcing-add-account').value = '';
-    addForm.querySelector('#outsourcing-add-sub').value = '';
-  });
-
-  addForm.querySelector('#outsourcing-add-submit-btn').addEventListener('click', () => {
-    const accountLabel = addForm.querySelector('#outsourcing-add-account').value.trim() || '外注費';
-    const subLabel = addForm.querySelector('#outsourcing-add-sub').value.trim();
-    if (!subLabel) {
-      showStatus('補助科目を入力してください。', true);
-      return;
-    }
-    const vendor = createManualVendor({ accountLabel, subLabel });
-    if (!vendor) {
-      showStatus('取引先の追加に失敗しました。', true);
-      return;
-    }
-    const existing = getVendorsForPeriod(currentPeriod).some(
-      (v) => v.accountLabel === vendor.accountLabel && v.subLabel === vendor.subLabel,
-    );
-    if (existing) {
-      showStatus('同じ補助科目が既に登録されています。', true);
-      return;
-    }
-    outsourcingPlans = setVendorEntry(
-      outsourcingPlans,
-      currentPeriod,
-      vendor,
-      fiscalMonths,
-    );
-    addForm.hidden = true;
-    addForm.querySelector('#outsourcing-add-account').value = '';
-    addForm.querySelector('#outsourcing-add-sub').value = '';
-    showStatus(`${subLabel} を追加しました。`);
-    renderPlanSection();
-    refreshPlanTableIfNeeded();
-  });
 
   replaceRootPanel(wrap);
 }
@@ -6639,71 +6700,64 @@ function renderOtherSettings() {
   const header = document.createElement('div');
   header.className = 'expand-settings-header';
   header.innerHTML = `
-    <p class="expand-settings-desc">
-      アプリ全体の設定です。事業開始年は予実表ヘッダーの年表示（12月〜11月）の算出に使います。
-      選択中の期（例: 第8期）と組み合わせて、各月の年ラベルを決定します。
-      決算月は会計期の最終月（1〜12）です。
-      法人判定文字は外注費の補助科目が法人か個人事業主かを判別する際に使います。
-      ブランド表示はヘッダー左上のアイコン・会社名に反映されます。
-    </p>
-    <div class="expand-settings-header-actions">
-      <button type="button" class="expand-reset-btn" id="app-settings-reset-btn">デフォルトに戻す</button>
-    </div>
+    <p class="expand-settings-desc">アプリ全体の設定です。事業開始年は予実表ヘッダーの年表示（12月〜11月）の算出に使います。選択中の期（例: 第8期）と組み合わせて、各月の年ラベルを決定します。決算月は会計期の最終月（1〜12）です。法人判定文字は外注費の補助科目が法人か個人事業主かを判別する際に使います。ブランド表示はヘッダー左上のアイコン・会社名に反映されます。</p>
   `;
   wrap.appendChild(header);
 
   const form = document.createElement('div');
-  form.className = 'app-settings-form app-settings-form-fields';
+  form.className = 'app-settings-form app-settings-form-fields other-settings-form';
   form.innerHTML = `
-    <div class="app-settings-field-row">
-      <label class="app-settings-field">
-        <span class="app-settings-label">事業開始年</span>
-        <input type="text" class="app-settings-input app-settings-input-year" id="business-start-year"
-          inputmode="numeric" autocomplete="off" spellcheck="false" />
-      </label>
-      <label class="app-settings-field">
-        <span class="app-settings-label">決算月</span>
-        <select class="app-settings-input app-settings-input-fiscal-month" id="fiscal-end-month"></select>
-      </label>
-    </div>
-    <p class="app-settings-hint" id="app-settings-preview"></p>
-    <label class="app-settings-field">
-      <span class="app-settings-label">法人判定文字</span>
-      <input type="text" class="app-settings-input app-settings-input-wide" id="corp-entity-markers"
-        spellcheck="false" autocomplete="off" />
-    </label>
-    <p class="app-settings-hint app-settings-hint-nowrap">外注費の補助科目名に含まれる場合、法人と判定します。カンマ区切りで入力。</p>
-    <div class="app-settings-section brand-settings-section">
+    <div class="app-settings-section brand-settings-section other-settings-brand">
       <h2 class="ui-color-panel-title">ブランド表示</h2>
-      <p class="app-settings-hint">予実表ヘッダー左上のアイコンと会社名に反映されます。</p>
-      <label class="app-settings-field">
-        <span class="app-settings-label">会社名</span>
-        <input type="text" class="app-settings-input app-settings-input-wide" id="brand-company-name"
-          spellcheck="false" autocomplete="off" />
-      </label>
-      <label class="app-settings-field">
-        <span class="app-settings-label">アイコン表示</span>
-        <input type="text" class="app-settings-input app-settings-input-wide" id="brand-icon-text"
-          spellcheck="false" autocomplete="off" placeholder="MGA や ⚖️ など" />
-      </label>
-      <p class="app-settings-hint app-settings-hint-nowrap">テキストまたは絵文字を入力。幅は内容に応じて自動調整されます。</p>
-      <div class="app-settings-field-row brand-color-row">
-        <label class="app-settings-field">
-          <span class="app-settings-label">コーポレートカラー（塗り）</span>
+      <div class="other-settings-brand-row">
+        <label class="app-settings-field other-settings-brand-field other-settings-brand-company-field">
+          <span class="app-settings-label">会社名</span>
+          <input type="text" class="app-settings-input" id="brand-company-name"
+            spellcheck="false" autocomplete="off" />
+        </label>
+        <label class="app-settings-field other-settings-brand-field">
+          <span class="app-settings-label">アイコン表示</span>
+          <input type="text" class="app-settings-input" id="brand-icon-text"
+            spellcheck="false" autocomplete="off" placeholder="MGA や ⚖️ など" />
+        </label>
+        <label class="app-settings-field other-settings-brand-color-field">
+          <span class="app-settings-label">塗り</span>
           <input type="color" class="section-color-input" id="brand-fill-color" />
         </label>
-        <label class="app-settings-field">
-          <span class="app-settings-label">コーポレートカラー（文字）</span>
+        <label class="app-settings-field other-settings-brand-color-field">
+          <span class="app-settings-label">文字</span>
           <input type="color" class="section-color-input" id="brand-text-color" />
         </label>
+        <div class="brand-settings-preview" id="brand-settings-preview" aria-hidden="true">
+          <span class="plan-logo brand-settings-preview-logo" id="brand-preview-logo"></span>
+          <span class="plan-company brand-settings-preview-company" id="brand-preview-company"></span>
+        </div>
+        <button type="button" class="expand-reset-btn other-settings-brand-reset-btn" id="app-settings-reset-btn">基本・ブランドをデフォルトに戻す</button>
       </div>
-      <div class="brand-settings-preview" id="brand-settings-preview" aria-hidden="true">
-        <span class="plan-logo brand-settings-preview-logo" id="brand-preview-logo"></span>
-        <span class="plan-company brand-settings-preview-company" id="brand-preview-company"></span>
+    </div>
+    <div class="app-settings-section other-settings-general">
+      <div class="app-settings-field-row other-settings-general-row">
+        <label class="app-settings-field">
+          <span class="app-settings-label">事業開始年</span>
+          <input type="text" class="app-settings-input app-settings-input-year" id="business-start-year"
+            inputmode="numeric" autocomplete="off" spellcheck="false" />
+        </label>
+        <label class="app-settings-field">
+          <span class="app-settings-label">決算月</span>
+          <select class="app-settings-input app-settings-input-fiscal-month" id="fiscal-end-month"></select>
+        </label>
+        <label class="app-settings-field other-settings-corp-field">
+          <span class="app-settings-label">法人判定文字</span>
+          <input type="text" class="app-settings-input" id="corp-entity-markers"
+            spellcheck="false" autocomplete="off" placeholder="株式会社,（株） など" />
+        </label>
+        <p class="app-settings-hint other-settings-preview-hint" id="app-settings-preview"></p>
       </div>
     </div>
   `;
   wrap.appendChild(form);
+
+  appendCsvNameSettingsPanel(wrap);
 
   const yearInput = form.querySelector('#business-start-year');
   const preview = form.querySelector('#app-settings-preview');
@@ -6825,12 +6879,10 @@ function renderOtherSettings() {
 }
 
 function renderSectionColorSettings() {
-  if (!rawPlanData) return;
-
   setPlanKpi(null);
 
   const wrap = document.createElement('div');
-  wrap.className = 'expand-settings-wrap';
+  wrap.className = 'expand-settings-wrap color-settings-wrap';
 
   const header = document.createElement('div');
   header.className = 'expand-settings-header';
@@ -6846,19 +6898,31 @@ function renderSectionColorSettings() {
   `;
   wrap.appendChild(header);
 
-  renderUiColorPanel(wrap);
+  const columns = document.createElement('div');
+  columns.className = 'color-settings-columns';
+
+  const uiColumn = document.createElement('div');
+  uiColumn.className = 'color-settings-column color-settings-column-ui';
+  renderUiColorPanel(uiColumn);
+  columns.appendChild(uiColumn);
+
+  const sectionColumn = document.createElement('div');
+  sectionColumn.className = 'color-settings-column color-settings-column-sections';
+
+  const sectionPanel = document.createElement('div');
+  sectionPanel.className = 'section-color-panel';
 
   const sectionTitle = document.createElement('h2');
   sectionTitle.className = 'ui-color-panel-title';
   sectionTitle.textContent = '大項目';
-  wrap.appendChild(sectionTitle);
+  sectionPanel.appendChild(sectionTitle);
 
-  const defs = collectSectionColorDefs(rawPlanData.sections, sectionColorConfig);
+  const defs = collectSectionColorDefs(data?.sections ?? rawPlanData?.sections ?? [], sectionColorConfig);
   if (defs.length === 0) {
     const empty = document.createElement('p');
     empty.className = 'expand-settings-empty';
     empty.textContent = '大項目がありません。';
-    wrap.appendChild(empty);
+    sectionPanel.appendChild(empty);
   } else {
   const table = document.createElement('table');
   table.className = 'expand-settings-table section-color-table';
@@ -6967,8 +7031,12 @@ function renderSectionColorSettings() {
   }
 
   table.appendChild(tbody);
-  wrap.appendChild(table);
+  sectionPanel.appendChild(table);
   }
+
+  sectionColumn.appendChild(sectionPanel);
+  columns.appendChild(sectionColumn);
+  wrap.appendChild(columns);
 
   wrap.querySelector('#ui-color-reset-btn').addEventListener('click', () => {
     uiColorConfig = {};
@@ -7138,6 +7206,7 @@ async function handleReloadCsv() {
   if (isPlanOnlyPeriod(appSettings.businessStartYear, appSettings.fiscalPeriod)) {
     showPlanLoadingOverlay({ awaitLayout: true });
     loadPlanOnlyPeriodData();
+    switchMainTab('plan');
     return;
   }
 
@@ -7148,6 +7217,7 @@ async function handleReloadCsv() {
       forceRefresh: true,
     });
     loadData(loaded);
+    switchMainTab('plan');
   } catch (err) {
     cancelPlanLoadingOverlay();
     if (err?.code === 'NEEDS_PERMISSION' && err.handle) {
@@ -7158,11 +7228,92 @@ async function handleReloadCsv() {
   }
 }
 
-function bindCsvReloadButton() {
-  const reloadBtn = document.getElementById('plan-reload-csv');
-  const folderBtn = document.getElementById('plan-change-folder');
-  reloadBtn?.addEventListener('click', handleReloadCsv);
-  folderBtn?.addEventListener('click', handlePickCsvFolder);
+function handleMainMenuAction(value) {
+  switch (value) {
+    case 'action:settings-export':
+      downloadSettingsExport();
+      break;
+    case 'action:settings-import':
+      document.getElementById('plan-settings-import-input')?.click();
+      break;
+    case 'action:reload-csv':
+      handleReloadCsv();
+      break;
+    case 'action:change-folder':
+      handlePickCsvFolder();
+      break;
+    default:
+      switchMainTab(value);
+  }
+}
+
+function closeMainMenu() {
+  const trigger = document.getElementById('plan-main-menu-trigger');
+  const panel = document.getElementById('plan-main-menu-panel');
+  if (!trigger || !panel) return;
+  panel.hidden = true;
+  trigger.setAttribute('aria-expanded', 'false');
+}
+
+function buildMainMenu() {
+  const panel = document.getElementById('plan-main-menu-panel');
+  if (!panel) return;
+
+  panel.innerHTML = '';
+  for (const entry of MAIN_MENU_ENTRIES) {
+    if (entry.kind === 'heading') {
+      const sep = document.createElement('div');
+      sep.className = 'plan-main-menu-sep';
+      sep.setAttribute('role', 'separator');
+      panel.appendChild(sep);
+
+      const heading = document.createElement('div');
+      heading.className = 'plan-main-menu-heading';
+      heading.textContent = entry.label;
+      panel.appendChild(heading);
+      continue;
+    }
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'plan-main-menu-item';
+    if (entry.indented) btn.classList.add('plan-main-menu-item--indented');
+    else btn.classList.add('plan-main-menu-item--top');
+    btn.role = 'menuitem';
+    btn.textContent = entry.label;
+    btn.addEventListener('click', () => {
+      handleMainMenuAction(entry.value);
+      closeMainMenu();
+    });
+    panel.appendChild(btn);
+  }
+}
+
+function bindMainMenu() {
+  const menu = document.getElementById('plan-main-menu');
+  const trigger = document.getElementById('plan-main-menu-trigger');
+  const panel = document.getElementById('plan-main-menu-panel');
+  if (!menu || !trigger || !panel) return;
+
+  buildMainMenu();
+
+  trigger.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const willOpen = panel.hidden;
+    closeMainMenu();
+    if (willOpen) {
+      panel.hidden = false;
+      trigger.setAttribute('aria-expanded', 'true');
+    }
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!menu.contains(e.target)) closeMainMenu();
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeMainMenu();
+  });
 }
 
 function reloadAllSettingsFromStorage() {
@@ -7203,17 +7354,7 @@ function reloadAllSettingsFromStorage() {
 }
 
 function bindSettingsImportExport() {
-  const exportBtn = document.getElementById('plan-settings-export');
-  const importBtn = document.getElementById('plan-settings-import');
   const importInput = document.getElementById('plan-settings-import-input');
-
-  exportBtn?.addEventListener('click', () => {
-    downloadSettingsExport();
-  });
-
-  importBtn?.addEventListener('click', () => {
-    importInput?.click();
-  });
 
   importInput?.addEventListener('change', async () => {
     const file = importInput.files?.[0];
@@ -7292,13 +7433,8 @@ async function init() {
   mountPlanFontScaleControl();
   mountPlanRowPaddingScaleControl();
   bindPeriodControls();
-  bindCsvReloadButton();
+  bindMainMenu();
   bindSettingsImportExport();
-
-  const mainTabSelect = mainTabs?.querySelector('.plan-main-tab-select');
-  mainTabSelect?.addEventListener('change', () => {
-    switchMainTab(mainTabSelect.value);
-  });
 
   root.innerHTML = '';
 

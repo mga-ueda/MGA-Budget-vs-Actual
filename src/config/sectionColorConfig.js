@@ -24,7 +24,34 @@ export const DEFAULT_SECTION_COLORS = {
   cfIn: { color: '#548235', barColor: '#548235', textColor: DEFAULT_TEXT_COLOR },
   cfOut: { color: '#c65911', barColor: '#c65911', textColor: DEFAULT_TEXT_COLOR },
   cashBalance: { color: '#203764', barColor: '#203764', textColor: DEFAULT_TEXT_COLOR },
+  sgaTaxable: { color: '#375623', barColor: '#375623', textColor: DEFAULT_TEXT_COLOR },
+  sgaTotal: { color: '#375623', barColor: '#375623', textColor: DEFAULT_TEXT_COLOR },
 };
+
+/** 色設定に常に表示する大項目（予実表の並びに準拠） */
+export const SECTION_COLOR_SECTION_DEFS = [
+  { id: 'revenue', label: '売上高' },
+  { id: 'revenueVariance', label: '売上高差異（売掛金）' },
+  { id: 'nonOperating', label: '営業外収益' },
+  { id: 'nonOperatingExpense', label: '営業外費用' },
+  { id: 'personnel', label: '人件費' },
+  { id: 'expense', label: '諸経費' },
+  { id: 'outsourcing', label: '外注費' },
+  { id: 'sgaTaxable', label: '消費税対象販管費合計' },
+  { id: 'other', label: 'その他' },
+  { id: 'sgaTotal', label: '販管費合計' },
+  { id: 'tax', label: '法人税' },
+  { id: 'profit', label: '利益' },
+  { id: 'currentAssets', label: '流動資産' },
+  { id: 'fixedAssets', label: '固定資産' },
+  { id: 'currentLiab', label: '流動負債' },
+  { id: 'fixedLiab', label: '固定負債' },
+  { id: 'equity', label: '純資産' },
+  { id: 'otherPay', label: 'その他支払' },
+  { id: 'cfIn', label: '入金' },
+  { id: 'cfOut', label: '出金' },
+  { id: 'cashBalance', label: '現預金' },
+];
 
 const FALLBACK = { color: '#44403c', barColor: '#292524', textColor: DEFAULT_TEXT_COLOR };
 
@@ -97,17 +124,44 @@ export function applySectionColors(sections, config) {
   });
 }
 
-export function collectSectionColorDefs(sections, config = {}) {
-  const seen = new Set();
-  const defs = [];
+function resolveSectionColorLabel(section) {
+  if (section.label) return section.label;
+  const totalRow = section.rows?.find((r) => r.type === 'total');
+  if (totalRow?.label) return totalRow.label;
+  const registry = SECTION_COLOR_SECTION_DEFS.find((d) => d.id === section.id);
+  return registry?.label ?? section.id;
+}
+
+export function collectSectionColorDefs(sections = [], config = {}) {
+  const labels = new Map(SECTION_COLOR_SECTION_DEFS.map((d) => [d.id, d.label]));
   for (const s of sections) {
-    if (seen.has(s.id)) continue;
-    seen.add(s.id);
+    labels.set(s.id, resolveSectionColorLabel(s));
+  }
+
+  const registryIds = new Set(SECTION_COLOR_SECTION_DEFS.map((d) => d.id));
+  const defs = SECTION_COLOR_SECTION_DEFS.map(({ id }) => {
+    const defaults = DEFAULT_SECTION_COLORS[id] ?? FALLBACK;
+    const current = getSectionColors(id, config);
+    return {
+      sectionId: id,
+      label: labels.get(id) ?? id,
+      color: current.color,
+      barColor: current.barColor,
+      textColor: current.textColor,
+      defaultColor: defaults.color,
+      defaultBarColor: defaults.barColor,
+      defaultTextColor: defaults.textColor,
+      isCustom: Object.prototype.hasOwnProperty.call(config, id),
+    };
+  });
+
+  for (const s of sections) {
+    if (registryIds.has(s.id)) continue;
     const defaults = DEFAULT_SECTION_COLORS[s.id] ?? FALLBACK;
     const current = getSectionColors(s.id, config);
     defs.push({
       sectionId: s.id,
-      label: s.label,
+      label: resolveSectionColorLabel(s),
       color: current.color,
       barColor: current.barColor,
       textColor: current.textColor,
@@ -117,6 +171,7 @@ export function collectSectionColorDefs(sections, config = {}) {
       isCustom: Object.prototype.hasOwnProperty.call(config, s.id),
     });
   }
+
   return defs;
 }
 

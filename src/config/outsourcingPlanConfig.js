@@ -29,7 +29,9 @@ export function normalizeVendorEntry(entry, fiscalMonths) {
       monthly[month] = normalizeAmount(entry.monthly[month]);
     }
   }
-  return { id, accountLabel, subLabel, monthly };
+  const result = { id, accountLabel, subLabel, monthly };
+  if (entry.manual) result.manual = true;
+  return result;
 }
 
 export function loadOutsourcingPlans() {
@@ -63,12 +65,47 @@ export function getPeriodVendorEntries(plans, fiscalPeriod, fiscalMonths) {
 
 export function setPeriodVendorEntries(plans, fiscalPeriod, vendors, fiscalMonths) {
   const periodKey = String(fiscalPeriod);
+  const prev = plans[periodKey] ?? {};
   const normalized = vendors
     .map((e) => normalizeVendorEntry(e, fiscalMonths))
     .filter(Boolean);
   return saveOutsourcingPlans({
     ...plans,
-    [periodKey]: { vendors: normalized },
+    [periodKey]: {
+      ...prev,
+      vendors: normalized,
+    },
+  });
+}
+
+function vendorEntryKey(accountLabel, subLabel) {
+  return `${accountLabel}\x00${subLabel}`;
+}
+
+function getPeriodExcludedKeys(plans, fiscalPeriod) {
+  const periodKey = String(fiscalPeriod);
+  const raw = plans[periodKey];
+  if (!raw || typeof raw !== 'object') return new Set();
+  const keys = Array.isArray(raw.excludedKeys) ? raw.excludedKeys : [];
+  return new Set(keys);
+}
+
+function addExcludedVendorKey(plans, fiscalPeriod, accountLabel, subLabel) {
+  const account = String(accountLabel ?? '').trim();
+  const sub = String(subLabel ?? '').trim();
+  if (!account || !sub) return plans;
+  const key = vendorEntryKey(account, sub);
+  const excluded = getPeriodExcludedKeys(plans, fiscalPeriod);
+  if (excluded.has(key)) return plans;
+  excluded.add(key);
+  const periodKey = String(fiscalPeriod);
+  const prev = plans[periodKey] ?? {};
+  return saveOutsourcingPlans({
+    ...plans,
+    [periodKey]: {
+      ...prev,
+      excludedKeys: [...excluded],
+    },
   });
 }
 
@@ -90,12 +127,22 @@ export function setVendorEntry(plans, fiscalPeriod, entry, fiscalMonths) {
 
 export function removeVendorEntry(plans, fiscalPeriod, vendorId, fiscalMonths) {
   const entries = getPeriodVendorEntries(plans, fiscalPeriod, fiscalMonths);
-  return setPeriodVendorEntries(
+  const removed = entries.find((e) => e.id === vendorId);
+  let next = setPeriodVendorEntries(
     plans,
     fiscalPeriod,
     entries.filter((e) => e.id !== vendorId),
     fiscalMonths,
   );
+  if (removed) {
+    next = addExcludedVendorKey(
+      next,
+      fiscalPeriod,
+      removed.accountLabel,
+      removed.subLabel,
+    );
+  }
+  return next;
 }
 
 export function createManualVendor({ accountLabel, subLabel }) {
@@ -107,6 +154,7 @@ export function createManualVendor({ accountLabel, subLabel }) {
     accountLabel: account,
     subLabel: sub,
     monthly: {},
+    manual: true,
   };
 }
 
@@ -117,6 +165,7 @@ export function mergeVendorsFromSubaccounts(plans, fiscalPeriod, subaccounts, fi
   const existingKeys = new Set(
     entries.map((e) => `${e.accountLabel}\x00${e.subLabel}`),
   );
+  const excludedKeys = getPeriodExcludedKeys(plans, fiscalPeriod);
   let changed = false;
   const next = [...entries];
   for (const { accountLabel, subLabel } of subaccounts) {
@@ -124,11 +173,15 @@ export function mergeVendorsFromSubaccounts(plans, fiscalPeriod, subaccounts, fi
     const sub = String(subLabel ?? '').trim();
     if (!account || !sub || sub === '補助科目なし') continue;
     const key = `${account}\x00${sub}`;
-    if (existingKeys.has(key)) continue;
+    if (existingKeys.has(key) || excludedKeys.has(key)) continue;
     existingKeys.add(key);
-    const vendor = createManualVendor({ accountLabel: account, subLabel: sub });
+    const vendor = normalizeVendorEntry({
+      accountLabel: account,
+      subLabel: sub,
+      monthly: {},
+    }, fiscalMonths);
     if (vendor) {
-      next.push(normalizeVendorEntry(vendor, fiscalMonths));
+      next.push(vendor);
       changed = true;
     }
   }
@@ -143,18 +196,20 @@ export function syncVendorListFromReference(plans, targetPeriod, referencePeriod
   const targetKeys = new Set(
     targetVendors.map((v) => `${v.accountLabel}\x00${v.subLabel}`),
   );
+  const targetExcluded = getPeriodExcludedKeys(plans, targetPeriod);
   let changed = false;
   const next = [...targetVendors];
   for (const ref of refVendors) {
     const key = `${ref.accountLabel}\x00${ref.subLabel}`;
-    if (targetKeys.has(key)) continue;
+    if (targetKeys.has(key) || targetExcluded.has(key)) continue;
     targetKeys.add(key);
-    const vendor = createManualVendor({
+    const vendor = normalizeVendorEntry({
       accountLabel: ref.accountLabel,
       subLabel: ref.subLabel,
-    });
+      monthly: {},
+    }, fiscalMonths);
     if (vendor) {
-      next.push(normalizeVendorEntry(vendor, fiscalMonths));
+      next.push(vendor);
       changed = true;
     }
   }

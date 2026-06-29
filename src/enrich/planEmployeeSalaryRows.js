@@ -9,6 +9,7 @@ import { DEFAULT_SECTION_COLORS } from '../config/sectionColorConfig.js';
 import {
   formatEmployeeName,
   isActiveEmployee,
+  isSalaryPlanEmployee,
   isDirectorEmployee,
 } from '../config/employeeConfig.js';
 import {
@@ -472,7 +473,7 @@ export function enrichPlanDataWithEmployeeSalaryRows(planData, {
     return planData;
   }
 
-  const activeEmployees = employees.filter(isActiveEmployee);
+  const activeEmployees = employees.filter(isSalaryPlanEmployee);
   const fiscalMonths = buildFiscalYearMonths(fiscalEndMonth);
   const { directorRows, salaryRows, directorPlanTotal, staffPlanTotal } = activeEmployees.length > 0
     ? buildEmployeePlanRows(activeEmployees, salaryPlans, fiscalPeriod, fiscalMonths)

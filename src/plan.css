@@ -214,15 +214,25 @@ html {
 }
 
 .plan-period-mode {
-  margin-left: 0.35rem;
-  padding: 0.1rem 0.55rem;
+  position: absolute;
+  left: 50%;
+  top: 1.4rem;
+  transform: translateX(-50%);
+  margin-left: 0;
+  padding: 0.45rem 3rem;
   border-radius: var(--plan-radius-sm);
-  font-size: 1.125rem;
+  font-size: calc(1.125rem * 1.25);
   font-weight: 700;
   line-height: 1.2;
   white-space: nowrap;
   color: #ffffff;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), var(--plan-shadow-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  z-index: 1;
+  pointer-events: none;
 }
 
 .plan-period-mode--budget-actual {
@@ -238,53 +248,20 @@ html {
 }
 
 .plan-meta {
-  text-align: right;
+  display: flex;
+  justify-content: flex-end;
+  align-items: flex-start;
   font-size: 0.7rem;
   color: var(--plan-muted);
-}
-
-.plan-meta-buttons {
-  display: flex;
-  flex-direction: row;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  align-items: center;
-  gap: 0.35rem;
-  margin-bottom: 0.35rem;
-}
-
-.plan-meta-buttons .plan-csv-reload-btn {
-  margin-bottom: 0;
-}
-
-.plan-csv-reload-btn {
-  display: inline-block;
-  margin-bottom: 0.35rem;
-  padding: 0.25rem 0.6rem;
-  border: 1px solid var(--plan-border);
-  border-radius: var(--plan-radius-sm);
-  background: var(--plan-cell-bg);
-  color: var(--plan-text);
-  font-size: 0.68rem;
-  cursor: pointer;
-  transition: background var(--plan-duration) var(--plan-ease), border-color var(--plan-duration) var(--plan-ease), box-shadow var(--plan-duration) var(--plan-ease);
-}
-
-.plan-csv-reload-btn:hover {
-  background: var(--plan-hover-surface);
-  box-shadow: var(--plan-shadow-sm);
-}
-
-.plan-csv-reload-btn:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px var(--plan-editor-focus-ring);
 }
 
 .plan-kpi {
   font-size: 1.25rem;
   font-weight: 700;
   color: var(--plan-text);
-  margin-top: 0.15rem;
+  margin-top: 0;
+  margin-left: auto;
+  flex: 0 0 auto;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;
 }
@@ -325,8 +302,11 @@ html {
   display: flex;
   align-items: center;
   margin-bottom: 0;
-  margin-left: auto;
   flex: 0 0 auto;
+}
+
+.plan-main-menu {
+  position: relative;
 }
 
 .plan-main-tab-select {
@@ -360,6 +340,77 @@ html {
   box-shadow: 0 0 0 2px var(--plan-editor-focus-ring);
 }
 
+.plan-main-menu-trigger[aria-expanded='true'] {
+  border-color: var(--plan-editor-border-focus);
+  box-shadow: 0 0 0 2px var(--plan-editor-focus-ring);
+}
+
+.plan-main-menu-panel {
+  position: absolute;
+  top: calc(100% + 0.35rem);
+  right: 0;
+  z-index: 120;
+  min-width: 10.5rem;
+  padding: 0.25rem 0;
+  background: var(--plan-cell-bg);
+  border: 1px solid color-mix(in srgb, var(--plan-border) 80%, var(--plan-text) 8%);
+  border-radius: var(--plan-radius-md);
+  box-shadow: var(--plan-shadow-md);
+}
+
+.plan-main-menu-sep {
+  height: 1px;
+  margin: 0.25rem 0.45rem;
+  background: var(--plan-border);
+}
+
+.plan-main-menu-heading {
+  padding: 0.3rem 0.85rem 0.18rem;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--plan-text-dim);
+  cursor: default;
+  user-select: none;
+  pointer-events: none;
+}
+
+.plan-main-menu-item {
+  display: block;
+  box-sizing: border-box;
+  width: calc(100% - 0.5rem);
+  margin: 0 0.25rem;
+  padding: 0.36rem 0.75rem;
+  border: none;
+  border-radius: var(--plan-radius-sm);
+  background: transparent;
+  color: var(--plan-text);
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--plan-duration) var(--plan-ease), box-shadow var(--plan-duration) var(--plan-ease);
+}
+
+.plan-main-menu-item--top {
+  margin-top: 0.05rem;
+  font-weight: 700;
+}
+
+.plan-main-menu-item--indented {
+  padding-left: 1.45rem;
+  font-weight: 500;
+  color: color-mix(in srgb, var(--plan-text) 92%, var(--plan-bg));
+}
+
+.plan-main-menu-item:hover,
+.plan-main-menu-item:focus-visible {
+  outline: none;
+  background: var(--plan-hover-surface);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
 .expand-settings-wrap {
   padding: 1rem 1rem 2rem;
 }
@@ -387,23 +438,63 @@ html {
   line-height: 1.5;
 }
 
+.visibility-settings-wrap .expand-settings-header {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.visibility-settings-wrap .expand-settings-desc {
+  max-width: none;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.visibility-settings-wrap .expand-settings-header-actions {
+  justify-content: flex-end;
+}
+
 .tax-payment-settings-controls {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-end;
+  align-items: center;
   gap: 0.75rem 1.25rem;
-  margin-top: 0.75rem;
+  margin-top: 0;
+}
+
+.tax-payment-plan-years-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.75rem;
+}
+
+.tax-payment-plan-years-row .app-settings-label {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.tax-payment-plan-years-hint {
+  margin: 0;
+  flex: 0 1 auto;
+  font-size: 0.7rem;
+  color: rgba(255, 255, 255, 0.55);
+  line-height: 1.4;
+  white-space: nowrap;
 }
 
 .tax-payment-plan-years-input {
   width: 5rem;
 }
 
-.tax-payment-plan-years-hint {
-  margin: 0;
-  font-size: 0.7rem;
-  color: rgba(255, 255, 255, 0.55);
-  line-height: 1.4;
+.tax-payment-settings-header {
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+}
+
+.tax-payment-settings-header .expand-settings-desc {
+  max-width: none;
+  white-space: nowrap;
 }
 
 .expand-reset-btn {
@@ -633,8 +724,87 @@ select.app-settings-input {
 }
 
 .brand-settings-section {
-  margin-top: 0.75rem;
-  padding-top: 0.75rem;
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+.other-settings-form {
+  max-width: none;
+  width: 100%;
+  gap: 1rem;
+}
+
+.other-settings-brand-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.65rem 1rem;
+}
+
+.other-settings-brand-field {
+  flex: 0 1 11rem;
+  min-width: 8rem;
+}
+
+.other-settings-brand-company-field {
+  flex: 0 1 16.5rem;
+  min-width: 12rem;
+}
+
+.other-settings-brand-field .app-settings-input,
+.other-settings-corp-field .app-settings-input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.other-settings-brand-color-field {
+  flex: 0 0 auto;
+  min-width: 3.5rem;
+}
+
+.other-settings-brand .brand-settings-preview {
+  margin-top: 0;
+  flex: 0 0 auto;
+}
+
+.other-settings-brand-reset-btn {
+  flex: 0 0 auto;
+  align-self: center;
+}
+
+.app-settings-wrap .expand-settings-header .expand-settings-desc {
+  max-width: none;
+  white-space: nowrap;
+}
+
+.other-settings-general {
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--plan-border);
+}
+
+.other-settings-general-row {
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.other-settings-corp-field {
+  flex: 0 1 14rem;
+  min-width: 12rem;
+  max-width: 18rem;
+}
+
+.other-settings-preview-hint {
+  flex: 1 1 auto;
+  margin: 0;
+  align-self: center;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.app-settings-wrap .csv-name-settings-wrap {
+  margin-top: 0.85rem;
+  padding-top: 0.85rem;
   border-top: 1px solid var(--plan-border);
 }
 
@@ -668,6 +838,10 @@ select.app-settings-input {
 .tax-rate-settings-wrap .app-settings-form {
   max-width: none;
   width: 100%;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.85rem 2rem;
 }
 
 .tax-rate-settings-wrap .expand-settings-desc {
@@ -675,20 +849,30 @@ select.app-settings-input {
   flex: 1 1 36rem;
 }
 
-.tax-rate-settings-form {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
-  gap: 0.85rem 2rem;
-  align-items: start;
+.tax-rate-settings-column-left {
+  flex: 0 0 22rem;
+  max-width: 22rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
 }
 
-.tax-rate-settings-form .tax-rate-section--wide {
-  grid-column: 1 / -1;
+.tax-rate-settings-column-withholding {
+  flex: 1 1 32rem;
+  min-width: 28rem;
+  max-width: 100%;
 }
 
 @media (max-width: 720px) {
-  .tax-rate-settings-form {
-    grid-template-columns: 1fr;
+  .tax-rate-settings-wrap .app-settings-form {
+    flex-direction: column;
+  }
+
+  .tax-rate-settings-column-left,
+  .tax-rate-settings-column-withholding {
+    flex: 1 1 100%;
+    max-width: 100%;
+    min-width: 0;
   }
 }
 
@@ -710,6 +894,16 @@ select.app-settings-input {
   flex: 1 1 12rem;
   min-width: 0;
   line-height: 1.45;
+}
+
+.tax-rate-section--legal-welfare .tax-rate-section-head {
+  flex-wrap: nowrap;
+}
+
+.tax-rate-section--legal-welfare .tax-rate-section-head .tax-rate-section-hint {
+  flex: 0 1 auto;
+  min-width: 0;
+  white-space: nowrap;
 }
 
 .legal-welfare-rate-inline {
@@ -897,6 +1091,34 @@ select.app-settings-input {
   margin-bottom: 1.25rem;
   padding-bottom: 1.25rem;
   border-bottom: 1px solid var(--plan-border);
+}
+
+.color-settings-columns {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 1.25rem 1.5rem;
+}
+
+.color-settings-column-ui {
+  flex: 0 1 28rem;
+  min-width: min(100%, 22rem);
+}
+
+.color-settings-column-sections {
+  flex: 1 1 24rem;
+  min-width: min(100%, 22rem);
+}
+
+.color-settings-columns .ui-color-panel,
+.color-settings-columns .section-color-panel {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.section-color-panel {
+  margin-bottom: 1.25rem;
 }
 
 .ui-color-panel-title {
@@ -1959,6 +2181,116 @@ tr.row-sub-variance .col-amount.has-variance {
   align-items: center;
 }
 
+.employee-settings-columns {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 1rem 1.25rem;
+}
+
+.employee-settings-column-list {
+  flex: 0 1 auto;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.employee-list-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.employee-settings-column-list .employee-add-form {
+  margin-bottom: 0.75rem;
+}
+
+.salary-plan-section .employee-add-form {
+  margin-bottom: 0.75rem;
+}
+
+.outsourcing-settings-table .col-out-actions,
+.salary-plan-table .col-out-actions {
+  width: 3.5rem;
+  min-width: 3.5rem;
+  max-width: 3.5rem;
+  padding: 0.2rem 0.25rem;
+  text-align: center;
+  vertical-align: middle;
+  line-height: 1;
+}
+
+.salary-plan-table td.col-out-actions .employee-actions-wrap {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  justify-content: center;
+  align-items: center;
+  gap: 0;
+  line-height: 1;
+}
+
+.salary-plan-table td.col-out-actions .employee-delete-btn {
+  padding: 0.08rem 0.3rem;
+  font-size: 0.62rem;
+  line-height: 1.2;
+}
+
+.outsourcing-period-add-form {
+  width: fit-content;
+  max-width: 100%;
+  margin-bottom: 0.5rem;
+  padding: 0.35rem 0.45rem;
+  box-shadow: none;
+}
+
+.outsourcing-add-form-row {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.outsourcing-add-label {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--plan-text);
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+.outsourcing-add-input {
+  width: 10rem;
+  min-width: 7rem;
+  max-width: 12rem;
+  flex: 0 0 auto;
+  padding: 0.28rem 0.45rem;
+  font-size: 0.75rem;
+}
+
+.outsourcing-add-form-row .plan-csv-btn,
+.outsourcing-add-form-row .expand-reset-btn {
+  flex: 0 0 auto;
+  padding: 0.28rem 0.55rem;
+  font-size: 0.68rem;
+}
+
+.employee-settings-column-travel {
+  flex: 0 0 18rem;
+  width: 18rem;
+  max-width: 100%;
+}
+
+.employee-settings-column-travel .salary-plan-header {
+  margin-bottom: 0.65rem;
+}
+
+.employee-settings-column-travel .salary-plan-travel-allowance-config {
+  flex-direction: column;
+  align-items: stretch;
+  margin-top: 0;
+}
+
 .employee-status-msg {
   margin: 0 0 1rem;
   font-size: 0.75rem;
@@ -2038,6 +2370,18 @@ tr.row-sub-variance .col-amount.has-variance {
 .employee-settings-table .col-emp-actions {
   width: 7.5rem;
   text-align: center;
+}
+
+.employee-settings-table .col-emp-exclude {
+  width: 2.75rem;
+  text-align: center;
+}
+
+.employee-salary-plan-exclude {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin: 0;
 }
 
 .employee-actions-wrap {

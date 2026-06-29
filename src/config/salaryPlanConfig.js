@@ -187,6 +187,14 @@ export function parseSalaryPlanAmountInput(raw) {
   return Number.isFinite(num) ? num : null;
 }
 
+/** Shift+Enter 反映時、入力が空でもセルに 0 など既存値がある場合はその値を使う */
+export function parseSalaryPlanAmountInputWithFillForward(raw, fillForward, existingValue) {
+  const parsed = parseSalaryPlanAmountInput(raw);
+  if (!fillForward || parsed !== null || String(raw ?? '').trim() !== '') return parsed;
+  if (existingValue === null || existingValue === undefined) return null;
+  return existingValue;
+}
+
 export function formatSalaryPlanYen(value) {
   if (value === null || value === undefined || value === 0) return '';
   return `\u00a5${value.toLocaleString('ja-JP')}`;
@@ -261,7 +269,6 @@ export function applyAmountFromMonthForward(source, fiscalMonths, startMonth, am
   const startIndex = fiscalMonths.indexOf(startMonth);
   if (startIndex < 0) return next;
   next[startMonth] = amount;
-  if (amount == null || amount === 0) return next;
   for (let i = startIndex + 1; i < fiscalMonths.length; i += 1) {
     next[fiscalMonths[i]] = amount;
   }

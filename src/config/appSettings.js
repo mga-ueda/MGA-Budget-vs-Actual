@@ -246,11 +246,11 @@ export function getFiscalPeriodDisplayMode(businessStartYear, fiscalPeriod, date
 export function getFiscalPeriodDisplayModeLabel(mode) {
   switch (mode) {
     case 'plan':
-      return '計画表示モード';
+      return '計画表示';
     case 'budget-actual':
-      return '予実表示モード';
+      return '予実表示';
     case 'actual':
-      return '実績表示モード';
+      return '実績表示';
     default:
       return '';
   }
