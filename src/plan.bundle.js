@@ -26,117 +26,9 @@ function parseNumber(value) {
   return Number.isFinite(num) ? num : null;
 }
 
-function detectSection(label) {
-  if (label.includes('資産')) return 'assets';
-  if (label.includes('負債')) return 'liabilities';
-  if (
-    label.includes('純資産') ||
-    label.includes('株主資本') ||
-    label.includes('資本金') ||
-    label.includes('利益剰余金') ||
-    label.includes('評価・換算') ||
-    label.includes('新株予約権')
-  ) {
-    return 'equity';
-  }
-  return 'unknown';
-}
-
-function inferLevel(label, type) {
-  if (type === 'total') {
-    if (label.endsWith('合計') && !label.includes('の部')) {
-      const base = label.replace('合計', '');
-      if (base.length <= 6) return 2;
-      return 1;
-    }
-    return 0;
-  }
-  if (type === 'subaccount') return 4;
-  if (type === 'account') return 3;
-  if (label.endsWith('の部') || label === '諸口') return 0;
-  return 1;
-}
-
-function parseBalanceSheetCsv(text) {
-  const lines = text.split(/\r?\n/).filter((line) => line.trim());
-  if (lines.length === 0) return { months: [], rows: [] };
-
-  const headerCells = parseCsvLine(lines[0]);
-  const months = headerCells.slice(3).filter(Boolean);
-
-  let currentSection = 'unknown';
-  let sectionDepth = 0;
-  const rows = [];
-
-  for (let i = 1; i < lines.length; i++) {
-    const cells = parseCsvLine(lines[i]);
-    const col0 = cells[0]?.trim() ?? '';
-    const col1 = cells[1]?.trim() ?? '';
-    const col2 = cells[2]?.trim() ?? '';
-    const valueCells = cells.slice(3);
-
-    const values = {};
-    let hasValues = false;
-    months.forEach((month, idx) => {
-      const num = parseNumber(valueCells[idx] ?? '');
-      if (num !== null) {
-        values[month] = num;
-        hasValues = true;
-      }
-    });
-
-    const label = col2 || col1 || col0;
-    if (!label && !hasValues) continue;
-
-    const sectionFromLabel = detectSection(label);
-    if (sectionFromLabel !== 'unknown') currentSection = sectionFromLabel;
-    else if (col0.includes('資産の部')) currentSection = 'assets';
-    else if (col0.includes('負債の部')) currentSection = 'liabilities';
-    else if (col0.includes('純資産の部')) currentSection = 'equity';
-
-    const isTotal = label.endsWith('合計') || label.includes('合計');
-    let type;
-    if (isTotal && hasValues) type = 'total';
-    else if (hasValues) {
-      if (col2) type = 'subaccount';
-      else if (col1) type = 'account';
-      else type = 'total';
-    } else {
-      type = 'section';
-      sectionDepth++;
-    }
-
-    const level =
-      type === 'section' ? Math.min(sectionDepth, 2) : inferLevel(label, type);
-
-    rows.push({
-      id: `row-${i}`,
-      label,
-      type,
-      level,
-      section: currentSection,
-      values,
-    });
-  }
-
-  return { months, rows };
-}
-
 function formatYen(value) {
   if (value === undefined || value === null) return '—';
   return value.toLocaleString('ja-JP');
-}
-
-function splitBalanceSheetRows(rows) {
-  const assets = [];
-  const liabilitiesAndEquity = [];
-  for (const row of rows) {
-    if (row.section === 'assets') assets.push(row);
-    else if (row.section === 'liabilities' || row.section === 'equity') {
-      liabilitiesAndEquity.push(row);
-    }
-  }
-  return { assets, liabilitiesAndEquity };
 }
 
 /** UTF-8 / Shift-JIS を自動判定して CSV テキストを取得 */
@@ -157,19 +49,37 @@ async function readCsvFile(file) {
 /* config/expandConfig.js */
 const EXPAND_STORAGE_KEY = 'mga-sub-expand-config';
 
-/** 補助科目1件でも常に展開表示する大項目 */
-const ALWAYS_EXPAND_SECTION_IDS = new Set(['revenue', 'revenueVariance']);
+/** 補助科目1件でも常に展開表示する大項目（折りたたみ不可） */
+const ALWAYS_EXPAND_SECTION_IDS = new Set(['revenue', 'revenueVariance', 'outsourcing']);
+
+/** 展開設定タブに表示しない大項目（折りたたみ不可のため設定不要） */
+const EXPAND_SETTINGS_EXCLUDED_SECTION_IDS = new Set(['outsourcing']);
+
+function isExpandSettingsSection(sectionId) {
+  return !EXPAND_SETTINGS_EXCLUDED_SECTION_IDS.has(sectionId);
+}
 
 function expandConfigKey(sectionId, account) {
   return `${sectionId}|${account}`;
 }
 
-function defaultExpandEntry() {
-  return { collapsible: false, hideTotalWhenExpanded: false };
+/** 未設定時デフォルトで折りたたむ大項目 */
+const DEFAULT_COLLAPSIBLE_SECTION_IDS = new Set(['expense']);
+
+/** 未設定時デフォルトで折りたたむ勘定科目（sectionId|account） */
+const DEFAULT_COLLAPSIBLE_ACCOUNT_KEYS = new Set([
+  'currentAssets|普通預金',
+]);
+
+function defaultExpandEntry(sectionId, account) {
+  const key = expandConfigKey(sectionId, account);
+  const collapsible = DEFAULT_COLLAPSIBLE_SECTION_IDS.has(sectionId)
+    || DEFAULT_COLLAPSIBLE_ACCOUNT_KEYS.has(key);
+  return { collapsible, hideTotalWhenExpanded: false };
 }
 
-function normalizeExpandEntry(value) {
-  if (value == null) return defaultExpandEntry();
+function normalizeExpandEntry(value, sectionId, account) {
+  if (value == null) return defaultExpandEntry(sectionId, account);
   if (typeof value === 'boolean') {
     return { collapsible: value, hideTotalWhenExpanded: false };
   }
@@ -179,13 +89,16 @@ function normalizeExpandEntry(value) {
       hideTotalWhenExpanded: Boolean(value.hideTotalWhenExpanded),
     };
   }
-  return defaultExpandEntry();
+  return defaultExpandEntry(sectionId, account);
 }
 
 function normalizeExpandConfig(config) {
   const result = {};
   for (const [key, val] of Object.entries(config ?? {})) {
-    result[key] = normalizeExpandEntry(val);
+    const sep = key.indexOf('|');
+    const sectionId = sep >= 0 ? key.slice(0, sep) : '';
+    const account = sep >= 0 ? key.slice(sep + 1) : '';
+    result[key] = normalizeExpandEntry(val, sectionId, account);
   }
   return result;
 }
@@ -206,9 +119,9 @@ function saveExpandConfig(config) {
 function getExpandEntry(config, sectionId, account) {
   const key = expandConfigKey(sectionId, account);
   if (Object.prototype.hasOwnProperty.call(config, key)) {
-    return normalizeExpandEntry(config[key]);
+    return normalizeExpandEntry(config[key], sectionId, account);
   }
-  return defaultExpandEntry();
+  return defaultExpandEntry(sectionId, account);
 }
 
 function setExpandEntry(config, sectionId, account, patch) {
@@ -233,11 +146,22 @@ function isHideTotalWhenExpanded(sectionId, account, config) {
 /* config/visibilityConfig.js */
 const VISIBILITY_STORAGE_KEY = 'mga-row-visibility';
 
-/** 表示設定の対象外（常に表示・大きく表示） */
-const VISIBILITY_FIXED_SECTION_IDS = new Set(['revenue', 'revenueVariance']);
+/** 表示設定の対象外（常に表示・大きく表示。外注費は塗り色１も固定） */
+const VISIBILITY_FIXED_SECTION_IDS = new Set(['revenue', 'revenueVariance', 'outsourcing']);
+
+const OUTSOURCING_SECTION_ID = 'outsourcing';
 
 function isVisibilityFixedSection(sectionId) {
   return VISIBILITY_FIXED_SECTION_IDS.has(sectionId);
+}
+
+function isOutsourcingFixedDisplaySection(sectionId) {
+  return sectionId === OUTSOURCING_SECTION_ID;
+}
+
+/** 個人事業主向け源泉内訳（報酬金額・消費税額など）。表示スタイル固定の対象外 */
+function isOutsourcingBreakdownRow(sectionId, row) {
+  return isOutsourcingFixedDisplaySection(sectionId) && row?.type === 'breakdown';
 }
 
 const ROW_TYPE_LABELS = {
@@ -315,6 +239,106 @@ const DEFAULT_ROW_DISPLAY = {
   fillColor2: false,
 };
 
+/** 流動資産・固定資産: 中間合計行（大項目合計以外）をデフォルト注目 */
+const BS_CURRENT_ASSETS_SECTION_ID = 'currentAssets';
+const BS_FIXED_ASSETS_SECTION_ID = 'fixedAssets';
+
+function defaultBsAssetRowDisplay(sectionId, row) {
+  if (sectionId !== BS_CURRENT_ASSETS_SECTION_ID
+    && sectionId !== BS_FIXED_ASSETS_SECTION_ID) {
+    return null;
+  }
+  if (row?.type === 'total' && !row?.accentTotal) {
+    return { largeDisplay: false, fillColor1: true, fillColor2: false };
+  }
+  return null;
+}
+
+/** 流動資産・現預金: 普通預金（補助科目なし）をデフォルト注意 */
+const ORDINARY_DEPOSIT_ACCOUNT = '普通預金';
+const ORDINARY_DEPOSIT_NO_SUB_LABEL = '補助科目なし';
+const CASH_BALANCE_SECTION_ID = 'cashBalance';
+
+function isOrdinaryDepositNoSubRow(sectionId, row) {
+  if (sectionId !== BS_CURRENT_ASSETS_SECTION_ID
+    && sectionId !== CASH_BALANCE_SECTION_ID) {
+    return false;
+  }
+  if (row?.label !== ORDINARY_DEPOSIT_ACCOUNT) return false;
+  if (row?.type !== 'item' && row?.type !== 'sub') return false;
+  const sub = row?.subLabel ?? '';
+  return sub === '' || sub === ORDINARY_DEPOSIT_NO_SUB_LABEL;
+}
+
+function defaultOrdinaryDepositNoSubDisplay(sectionId, row) {
+  if (!isOrdinaryDepositNoSubRow(sectionId, row)) return null;
+  return { largeDisplay: false, fillColor1: false, fillColor2: true };
+}
+
+/** 人件費: 旅費交通費以外の明細行をデフォルト注目・大きく表示 */
+const PERSONNEL_SECTION_ID = 'personnel';
+const PERSONNEL_TRAVEL_ACCOUNT = '旅費交通費';
+const PERSONNEL_TRAVEL_ROW_PATTERN = /旅費交通費|通勤手当/;
+
+/** 純資産: 繰越利益剰余金＝注目＋大きく表示、(うち…)＝注目のみ、資本金など＝通常 */
+const EQUITY_SECTION_ID = 'equity';
+const RETAINED_EARNINGS_ACCOUNT = '繰越利益剰余金';
+const BS_INFORMATIONAL_SUB_PATTERN = /^[（(]うち/;
+
+function isPersonnelTravelRow(row) {
+  const label = row?.label ?? '';
+  const sub = row?.subLabel ?? '';
+  return label === PERSONNEL_TRAVEL_ACCOUNT
+    || PERSONNEL_TRAVEL_ROW_PATTERN.test(label)
+    || PERSONNEL_TRAVEL_ROW_PATTERN.test(sub);
+}
+
+function isBsInformationalSubRow(row) {
+  const label = row?.label ?? '';
+  const sub = row?.subLabel ?? '';
+  return BS_INFORMATIONAL_SUB_PATTERN.test(label)
+    || BS_INFORMATIONAL_SUB_PATTERN.test(sub);
+}
+
+function defaultEquityRowDisplay(sectionId, row) {
+  if (sectionId !== EQUITY_SECTION_ID || row?.type === 'total') return null;
+  if (isBsInformationalSubRow(row)) {
+    return { largeDisplay: false, fillColor1: true, fillColor2: false };
+  }
+  if (row?.label === RETAINED_EARNINGS_ACCOUNT) {
+    return { largeDisplay: true, fillColor1: true, fillColor2: false };
+  }
+  return null;
+}
+
+function defaultRowDisplayEntry(sectionId, row) {
+  const bsAssetDefault = defaultBsAssetRowDisplay(sectionId, row);
+  if (bsAssetDefault) return bsAssetDefault;
+  const equityDefault = defaultEquityRowDisplay(sectionId, row);
+  if (equityDefault) return equityDefault;
+  const ordinaryDepositDefault = defaultOrdinaryDepositNoSubDisplay(sectionId, row);
+  if (ordinaryDepositDefault) return ordinaryDepositDefault;
+  if (sectionId === PERSONNEL_SECTION_ID) {
+    if (row?.type === 'total' || row?.type === 'plan') {
+      return { ...DEFAULT_ROW_DISPLAY };
+    }
+    if (isPersonnelTravelRow(row)) {
+      return { ...DEFAULT_ROW_DISPLAY };
+    }
+    return { largeDisplay: true, fillColor1: true, fillColor2: false };
+  }
+  return { ...DEFAULT_ROW_DISPLAY };
+}
+
+function isRowDisplayDefault(sectionId, row, entry) {
+  const def = defaultRowDisplayEntry(sectionId, row);
+  return (
+    Boolean(entry.largeDisplay) === def.largeDisplay
+    && Boolean(entry.fillColor1) === def.fillColor1
+    && Boolean(entry.fillColor2) === def.fillColor2
+  );
+}
+
 function loadRowDisplayConfig() {
   try {
     const raw = localStorage.getItem(ROW_DISPLAY_STORAGE_KEY);
@@ -329,13 +353,19 @@ function saveRowDisplayConfig(config) {
 }
 
 function getRowDisplayEntry(config, sectionId, row) {
-  const key = visibilityRowKey(sectionId, row);
-  const entry = config[key];
-  if (!entry) return { ...DEFAULT_ROW_DISPLAY };
+  const def = defaultRowDisplayEntry(sectionId, row);
+  const entry = config[visibilityRowKey(sectionId, row)];
+  if (!entry) return { ...def };
   return {
-    largeDisplay: Boolean(entry.largeDisplay),
-    fillColor1: Boolean(entry.fillColor1),
-    fillColor2: Boolean(entry.fillColor2),
+    largeDisplay: entry.largeDisplay !== undefined
+      ? Boolean(entry.largeDisplay)
+      : def.largeDisplay,
+    fillColor1: entry.fillColor1 !== undefined
+      ? Boolean(entry.fillColor1)
+      : def.fillColor1,
+    fillColor2: entry.fillColor2 !== undefined
+      ? Boolean(entry.fillColor2)
+      : def.fillColor2,
   };
 }
 
@@ -343,13 +373,244 @@ function setRowDisplayEntry(config, sectionId, row, patch) {
   const key = visibilityRowKey(sectionId, row);
   const current = getRowDisplayEntry(config, sectionId, row);
   const next = { ...current, ...patch };
-  const isDefault = (
-    !next.largeDisplay && !next.fillColor1 && !next.fillColor2
-  );
   const newConfig = { ...config };
-  if (isDefault) delete newConfig[key];
+  if (isRowDisplayDefault(sectionId, row, next)) delete newConfig[key];
   else newConfig[key] = next;
   return newConfig;
+}
+
+/* config/expenseAccountConfig.js */
+/**
+ * 諸経費セクションで常時表示する勘定科目一覧（仕訳がなくても 0円で表示）。
+ * 科目名は仕訳 CSVの表記を優先（scripts/scan-expense-accounts.mjs）。
+ */
+const EXPENSE_SECTION_ACCOUNTS = [
+  '福利厚生費',
+  '荷造運賃',
+  '広告費',
+  '交際費',
+  '旅費交通費',
+  '通信費',
+  '水道光熱費',
+  '修繕費',
+  '車両費',
+  '賃借料',
+  '地代家賃',
+  '保険料',
+  '支払手数料',
+  '会議費',
+  '新聞図書費',
+  '消耗品費',
+  '諸会費',
+  '研修費',
+  '支払顧問料',
+];
+
+const EXPENSE_SECTION_ACCOUNT_SET = new Set(EXPENSE_SECTION_ACCOUNTS);
+
+/** 表記差を正し、一覧の表記に寄せる */
+function canonicalExpenseAccount(account) {
+  if (!account) return account;
+  if (EXPENSE_SECTION_ACCOUNT_SET.has(account)) return account;
+  const normalized = account.normalize('NFKC');
+  for (const canonical of EXPENSE_SECTION_ACCOUNTS) {
+    if (canonical.normalize('NFKC') === normalized) return canonical;
+  }
+  return account;
+}
+
+function combineExpenseJournalItems(items) {
+  if (items.length === 1) return items[0];
+  const combined = { ...items[0], sub: items[0].sub ?? '', values: { ...items[0].values } };
+  for (let i = 1; i < items.length; i += 1) {
+    for (const [month, amount] of Object.entries(items[i].values ?? {})) {
+      combined.values[month] = (combined.values[month] ?? 0) + (amount ?? 0);
+    }
+  }
+  return combined;
+}
+
+/** 仕訳と一覧をマージする（一覧外は末尾に出力） */
+function mergeExpenseSectionItems(journalItems, emptyMonthValues) {
+  const journalByAccount = new Map();
+  for (const item of journalItems) {
+    const account = canonicalExpenseAccount(item.account);
+    const normalized = { ...item, account };
+    if (!journalByAccount.has(account)) journalByAccount.set(account, []);
+    journalByAccount.get(account).push(normalized);
+  }
+
+  const merged = [];
+
+  for (const account of EXPENSE_SECTION_ACCOUNTS) {
+    const items = journalByAccount.get(account);
+    if (items?.length) {
+      const bySub = new Map();
+      for (const item of items) {
+        const subKey = item.sub ?? '';
+        if (!bySub.has(subKey)) bySub.set(subKey, []);
+        bySub.get(subKey).push(item);
+      }
+      for (const subItems of bySub.values()) {
+        merged.push(combineExpenseJournalItems(subItems));
+      }
+    } else {
+      merged.push({ account, sub: '', values: emptyMonthValues() });
+    }
+  }
+
+  for (const item of journalItems) {
+    const account = canonicalExpenseAccount(item.account);
+    if (EXPENSE_SECTION_ACCOUNT_SET.has(account)) continue;
+    merged.push({ ...item, account });
+  }
+
+  return merged;
+}
+
+/* config/expenseSortConfig.js */
+const EXPENSE_SORT_STORAGE_KEY = 'mga-expense-sort-order';
+
+/** 諸経費の並び順（数値が小さいほど上）。未設定時は EXPENSE_SECTION_ACCOUNTSの順序 */
+const DEFAULT_EXPENSE_SORT_ORDER = Object.fromEntries(
+  EXPENSE_SECTION_ACCOUNTS.map((account, index) => [account, index + 1]),
+);
+
+const DEFAULT_EXPENSE_ACCOUNT_ORDER = [...EXPENSE_SECTION_ACCOUNTS];
+
+const UNKNOWN_ACCOUNT_SORT_BASE = DEFAULT_EXPENSE_ACCOUNT_ORDER.length + 1000;
+
+function expenseSortConfigKey(account) {
+  return `expense|sort|${account}`;
+}
+
+function loadExpenseSortConfig() {
+  try {
+    const raw = localStorage.getItem(EXPENSE_SORT_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveExpenseSortConfig(config) {
+  localStorage.setItem(EXPENSE_SORT_STORAGE_KEY, JSON.stringify(config));
+}
+
+function getDefaultExpenseAccountSortOrder(account) {
+  const order = DEFAULT_EXPENSE_SORT_ORDER[account];
+  return order != null ? order : null;
+}
+
+function getExpenseAccountSortOrder(config, account) {
+  const key = expenseSortConfigKey(account);
+  const custom = config[key];
+  if (custom != null && Number.isFinite(Number(custom))) {
+    return Number(custom);
+  }
+  const defaultOrder = getDefaultExpenseAccountSortOrder(account);
+  if (defaultOrder != null) return defaultOrder;
+  return UNKNOWN_ACCOUNT_SORT_BASE;
+}
+
+function getExpenseAccountSortOrderDisplay(config, account) {
+  const key = expenseSortConfigKey(account);
+  if (config[key] != null) return String(config[key]);
+  const defaultOrder = getDefaultExpenseAccountSortOrder(account);
+  return defaultOrder != null ? String(defaultOrder) : '';
+}
+
+function setExpenseAccountSortOrder(config, account, rawValue) {
+  const key = expenseSortConfigKey(account);
+  const newConfig = { ...config };
+  const trimmed = String(rawValue ?? '').trim();
+  if (!trimmed) {
+    delete newConfig[key];
+    return newConfig;
+  }
+  const num = parseInt(trimmed, 10);
+  if (!Number.isFinite(num)) {
+    delete newConfig[key];
+    return newConfig;
+  }
+  const defaultOrder = getDefaultExpenseAccountSortOrder(account);
+  if (defaultOrder != null && num === defaultOrder) {
+    delete newConfig[key];
+    return newConfig;
+  }
+  newConfig[key] = num;
+  return newConfig;
+}
+
+function collectAccountBlock(rows, startIndex) {
+  const first = rows[startIndex];
+  if (first.type === 'total') {
+    return { blockRows: [first], nextIndex: startIndex + 1, account: null, isTotal: true };
+  }
+
+  const account = first.label;
+  const blockRows = [first];
+  const blockIds = new Set([first.id]);
+  let i = startIndex + 1;
+
+  while (i < rows.length) {
+    const next = rows[i];
+    if (next.type === 'total') break;
+    if (next.parentId && blockIds.has(next.parentId)) {
+      blockRows.push(next);
+      blockIds.add(next.id);
+      i += 1;
+      continue;
+    }
+    if (!next.parentId && next.label === account) {
+      blockRows.push(next);
+      if (next.id) blockIds.add(next.id);
+      i += 1;
+      continue;
+    }
+    break;
+  }
+
+  return { blockRows, nextIndex: i, account, isTotal: false };
+}
+
+/** 諸経費セクションの行を勘定科目ブロック単位で並び替える */
+function sortExpenseSectionRows(rows, config) {
+  const blocks = [];
+  let i = 0;
+  while (i < rows.length) {
+    const block = collectAccountBlock(rows, i);
+    blocks.push(block);
+    i = block.nextIndex;
+  }
+
+  const totalBlocks = blocks.filter((b) => b.isTotal);
+  const accountBlocks = blocks
+    .filter((b) => !b.isTotal)
+    .map((block, index) => ({ block, index }));
+
+  accountBlocks.sort((a, b) => {
+    const orderA = getExpenseAccountSortOrder(config, a.block.account);
+    const orderB = getExpenseAccountSortOrder(config, b.block.account);
+    if (orderA !== orderB) return orderA - orderB;
+    return a.index - b.index;
+  });
+
+  return [
+    ...accountBlocks.flatMap(({ block }) => block.blockRows),
+    ...totalBlocks.flatMap((block) => block.blockRows),
+  ];
+}
+
+function applyExpenseSortToPlanData(planData, config) {
+  if (!planData?.sections) return planData;
+  return {
+    ...planData,
+    sections: planData.sections.map((section) => {
+      if (section.id !== 'expense') return section;
+      return { ...section, rows: sortExpenseSectionRows(section.rows, config) };
+    }),
+  };
 }
 
 /* config/sectionColorConfig.js */
@@ -605,7 +866,6 @@ function applyUiColors(config = {}) {
 
   root.style.setProperty('--plan-bg', appBg);
   root.style.setProperty('--plan-cell-bg', cellBg);
-  root.style.setProperty('--plan-cell-bg-sub', darkenHex(cellBg, 0.12));
   root.style.setProperty('--plan-text', textColor);
   root.style.setProperty('--plan-muted', textColor);
   root.style.setProperty('--plan-text-dim', hexToRgba(textColor, 0.5));
@@ -681,11 +941,16 @@ const PERSONNEL_PATTERNS = [
 const OUTSOURCING_PATTERNS = [/^外注費/];
 const OTHER_PATTERNS = [/^租税公課/, /^減価償却費/];
 const NON_OPERATING_EXPENSE_PATTERNS = [/^支払利息/, /^雑損失/, /^貸倒引当金繰入/];
-const TAX_PATTERNS = [/^法人税等$/, /^未払法人税等$/];
+const TAX_PATTERNS = [/^法人税等$/];
 
 const BS_SKIP = new Set([
   '諸口合計', '資産の部合計', '負債の部合計', '純資産の部合計', '負債・純資産の部合計',
 ]);
+
+/** BS の参考表示行（合計に含めない内訳） */
+function isBsInformationalSub(sub) {
+  return /^（うち/.test(sub ?? '');
+}
 
 const PAYMENT_COUNTERPARTS = new Set([
   '長期未払金', '保険積立金', '役員借入金', '短期借入金', '未払法人税等', '未払消費税',
@@ -731,12 +996,13 @@ function appAggregateLabel(label) {
   return `${APP_AGGREGATE_LABEL_PREFIX}${label}`;
 }
 
-function makeRow(id, label, subLabel, values, type = 'item', parentId = null, valueMode = 'flow') {
+function makeRow(id, label, subLabel, values, type = 'item', parentId = null, valueMode = 'flow', aggregateFormula = null) {
   const displayLabel = type === 'profit' || type === 'variance'
     ? appAggregateLabel(label)
     : label;
   const row = { id, label: displayLabel, subLabel, type, values: enrichRowValues({ ...values }, valueMode) };
   if (parentId) row.parentId = parentId;
+  if (aggregateFormula) row.aggregateFormula = aggregateFormula;
   return row;
 }
 
@@ -774,55 +1040,8 @@ function sumRawValues(items) {
   return total;
 }
 
-/** 年間合計（会計年度の月次合算） */
-function annualTotal(values) {
-  return FISCAL_MONTHS.reduce((s, m) => s + (values[m] ?? 0), 0);
-}
-
-/** 勘定科目ソート用: 年間合計の絶対値 */
-function sortByAnnualTotal(values) {
-  return Math.abs(annualTotal(values));
-}
-
-function accountGroupTotal(items) {
-  return sortByAnnualTotal(sumRawValues(items));
-}
-
-function itemSortTotal(item) {
-  return sortByAnnualTotal(item.values);
-}
-
 function subSortKey(sub) {
   return sub || '補助科目なし';
-}
-
-/** 金額降順 → 勘定科目 → 補助科目 */
-function compareByAmountThenLabels(amountA, amountB, accountA, accountB, subA = '', subB = '') {
-  const byAmount = amountB - amountA;
-  if (byAmount !== 0) return byAmount;
-  const byAccount = accountA.localeCompare(accountB, 'ja');
-  if (byAccount !== 0) return byAccount;
-  return subSortKey(subA).localeCompare(subSortKey(subB), 'ja');
-}
-
-function compareItemsBySortTotal(a, b) {
-  return compareByAmountThenLabels(
-    itemSortTotal(a),
-    itemSortTotal(b),
-    a.account,
-    b.account,
-    a.sub,
-    b.sub,
-  );
-}
-
-function compareAccountGroups(a, b) {
-  return compareByAmountThenLabels(
-    accountGroupTotal(a[1]),
-    accountGroupTotal(b[1]),
-    a[0],
-    b[0],
-  );
 }
 
 /** 補助科目1件のみのときは非表示（売上高・売掛金は除く）。2件以上で空欄は「補助科目なし」 */
@@ -833,6 +1052,7 @@ function formatSubLabel(rawSub, subCount, sectionId) {
 
 /** 展開設定タブ用: 補助科目を持つ勘定科目一覧 */
 function collectExpandCandidatesFromItems(sectionId, sectionLabel, rawItems) {
+  if (!isExpandSettingsSection(sectionId)) return [];
   const groups = new Map();
   for (const r of rawItems) {
     if (!groups.has(r.account)) groups.set(r.account, []);
@@ -848,7 +1068,43 @@ function collectExpandCandidatesFromItems(sectionId, sectionLabel, rawItems) {
   return candidates;
 }
 
-/** 勘定科目でグループ化。合計金額の大きい順。折りたたみ設定に従い表示 */
+/** 展開設定タブ用: 諸経費はハードコード一覧の全科目を表示（補助科目1件以下も含む） */
+function collectExpenseExpandCandidates(sectionId, sectionLabel, rawItems) {
+  const groups = new Map();
+  for (const r of rawItems) {
+    if (!groups.has(r.account)) groups.set(r.account, []);
+    groups.get(r.account).push(r);
+  }
+
+  const candidates = [];
+  const listed = new Set(EXPENSE_SECTION_ACCOUNTS);
+
+  for (const account of EXPENSE_SECTION_ACCOUNTS) {
+    const items = groups.get(account) ?? [{ account, sub: '' }];
+    candidates.push({
+      sectionId,
+      sectionLabel,
+      account,
+      subCount: items.length,
+      subLabels: items.map((i) => i.sub || '補助科目なし'),
+    });
+  }
+
+  for (const [account, items] of groups) {
+    if (listed.has(account) || items.length <= 1) continue;
+    candidates.push({
+      sectionId,
+      sectionLabel,
+      account,
+      subCount: items.length,
+      subLabels: items.map((i) => i.sub || '補助科目なし'),
+    });
+  }
+
+  return candidates;
+}
+
+/** 勘定科目でグループ化。入力順（MF CSV の並び）を維持し、折りたたみ設定に従い表示 */
 function buildGroupedAccountRows(rawItems, idPrefix, sectionId, expandConfig = {}, valueMode = 'flow') {
   const groups = new Map();
   for (const r of rawItems) {
@@ -856,45 +1112,69 @@ function buildGroupedAccountRows(rawItems, idPrefix, sectionId, expandConfig = {
     groups.get(r.account).push(r);
   }
 
-  const sorted = [...groups.entries()].sort(compareAccountGroups);
   const rows = [];
   let idx = 0;
 
-  for (const [account, items] of sorted) {
-    const subCount = items.length;
+  const appendInformationalBreakdowns = (account, items, parentRowId) => {
+    if (!parentRowId) return;
+    for (const item of items) {
+      rows.push(makeRow(
+        `${idPrefix}-${idx++}`,
+        account,
+        item.sub,
+        item.values,
+        'breakdown',
+        parentRowId,
+        valueMode,
+      ));
+    }
+  };
+
+  for (const [account, items] of groups) {
+    const informational = items.filter((i) => isBsInformationalSub(i.sub));
+    const regular = items.filter((i) => !isBsInformationalSub(i.sub));
+    const subCount = regular.length;
     const collapsible = isCollapsibleGroup(sectionId, account, subCount, expandConfig);
 
     if (!collapsible) {
-      const subs = [...items].sort(compareItemsBySortTotal);
-      for (const item of subs) {
+      let parentRowId = null;
+      for (const item of regular) {
+        const rowId = `${idPrefix}-${idx++}`;
+        parentRowId = rowId;
         rows.push(makeRow(
-          `${idPrefix}-${idx++}`,
+          rowId,
           account,
           formatSubLabel(item.sub, subCount, sectionId),
           item.values,
           'item',
+          null,
+          valueMode,
         ));
       }
+      appendInformationalBreakdowns(account, informational, parentRowId);
       continue;
     }
 
     if (subCount === 1) {
-      const item = items[0];
+      const item = regular[0];
+      const rowId = `${idPrefix}-${idx++}`;
       rows.push(makeRow(
-        `${idPrefix}-${idx++}`,
+        rowId,
         account,
         formatSubLabel(item.sub, 1, sectionId),
         item.values,
         'item',
+        null,
+        valueMode,
       ));
+      appendInformationalBreakdowns(account, informational, rowId);
       continue;
     }
 
     const groupId = `${idPrefix}-g-${idx++}`;
-    rows.push(makeRow(groupId, account, '', sumRawValues(items), 'group'));
+    rows.push(makeRow(groupId, account, '', sumRawValues(regular), 'group', null, valueMode));
 
-    const subs = [...items].sort(compareItemsBySortTotal);
-    subs.forEach((item, j) => {
+    regular.forEach((item, j) => {
       rows.push(makeRow(
         `${groupId}-s-${j}`,
         account,
@@ -902,8 +1182,10 @@ function buildGroupedAccountRows(rawItems, idPrefix, sectionId, expandConfig = {
         item.values,
         'sub',
         groupId,
+        valueMode,
       ));
     });
+    appendInformationalBreakdowns(account, informational, groupId);
   }
   return rows;
 }
@@ -912,9 +1194,11 @@ function sumTopLevelRows(rows) {
   return sumValues(rows.filter((r) => r.type === 'item' || r.type === 'group'));
 }
 
-function makeTotalRow(id, label, values, valueMode = 'flow') {
+function makeTotalRow(id, label, values, valueMode = 'flow', aggregateFormula = 'sectionSum') {
   const displayLabel = valueMode === 'balance' ? label : appAggregateLabel(label);
-  return makeRow(id, displayLabel, '', values, 'total', null, valueMode);
+  const row = makeRow(id, displayLabel, '', values, 'total', null, valueMode);
+  if (valueMode !== 'balance' && aggregateFormula) row.aggregateFormula = aggregateFormula;
+  return row;
 }
 
 function sumValues(rows) {
@@ -957,7 +1241,7 @@ function categorizeAccount(key) {
     '普通預金', '売掛金', '貸倒引当金', '未払金', '未払費用', '前払金', '前払費用',
     '長期前払費用', '保険積立金', '資本金', '繰越利益剰余金', '長期未払金',
     '工具器具備品', '車両運搬具', 'ソフトウェア', '貯蔵品', '少額資産', '仮払消費税',
-    '未払消費税', '役員借入金', '預り金', '仮受消費税', '仮払金', '立替金', '未収還付法人税等',
+    '未払消費税', '未払法人税等', '役員借入金', '預り金', '仮受消費税', '仮払金', '立替金', '未収還付法人税等',
   ]);
   if (skip.has(account)) return null;
   return 'expense';
@@ -1046,14 +1330,6 @@ function buildPlSections(aggregated, expandConfig, expandCandidates) {
     bySection[category].push({ account, sub: sub ?? '', values });
   }
 
-  for (const cat of Object.keys(bySection)) {
-    bySection[cat].sort((a, b) => {
-      const ta = FISCAL_MONTHS.reduce((s, m) => s + Math.abs(a.values[m] ?? 0), 0);
-      const tb = FISCAL_MONTHS.reduce((s, m) => s + Math.abs(b.values[m] ?? 0), 0);
-      return compareByAmountThenLabels(ta, tb, a.account, b.account, a.sub, b.sub);
-    });
-  }
-
   const sections = [];
   const plDefs = [
     { id: 'revenue', label: '売上高', filter: 'income', key: 'revenue', prefix: 'rev', totalLabel: '売上高合計' },
@@ -1063,13 +1339,18 @@ function buildPlSections(aggregated, expandConfig, expandCandidates) {
     { id: 'expense', label: '諸経費', filter: 'expense', key: 'expense', prefix: 'exp', totalLabel: '諸経費合計' },
     { id: 'outsourcing', label: '外注費', filter: 'outsourcing', key: 'outsourcing', prefix: 'out', totalLabel: '外注費合計' },
     { id: 'other', label: 'その他', filter: 'other', key: 'other', prefix: 'oth', totalLabel: 'その他合計' },
-    { id: 'tax', label: '税金', filter: 'tax', key: 'tax', prefix: 'tax', totalLabel: '税金合計' },
+    { id: 'tax', label: '法人税', filter: 'tax', key: 'tax', prefix: 'tax', totalLabel: '法人税合計' },
   ];
 
   for (const def of plDefs) {
-    const raw = bySection[def.key];
-    if (!raw.length) continue;
-    expandCandidates.push(...collectExpandCandidatesFromItems(def.id, def.label, raw));
+    let raw = bySection[def.key];
+    if (def.key === 'expense') {
+      raw = mergeExpenseSectionItems(raw, emptyMonthValues);
+      expandCandidates.push(...collectExpenseExpandCandidates(def.id, def.label, raw));
+    } else {
+      if (!raw.length) continue;
+      expandCandidates.push(...collectExpandCandidatesFromItems(def.id, def.label, raw));
+    }
     const items = buildGroupedAccountRows(raw, def.prefix, def.id, expandConfig);
     pushSection(sections, {
       id: def.id, label: def.label, filter: def.filter, ...sectionColors(def.id),
@@ -1295,7 +1576,8 @@ function buildProfitSection(sections) {
 
   const operating = subtractValues(revV, costV);
   const ordinary = subtractValues(addValues(operating, nonOpV), nonOpExpV);
-  const net = subtractValues(ordinary, tax?.values ?? enrichRowValues(emptyMonthValues()));
+  const preTaxNet = ordinary;
+  const net = subtractValues(preTaxNet, tax?.values ?? enrichRowValues(emptyMonthValues()));
 
   return {
     id: 'profit',
@@ -1303,12 +1585,70 @@ function buildProfitSection(sections) {
     filter: 'trends',
     ...sectionColors('profit'),
     rows: [
-      makeTotalRow('sga-total', '販管費', costV),
-      makeRow('op-profit', '営業利益', '', operating, 'profit'),
-      makeRow('ord-profit', '経常利益', '', ordinary, 'profit'),
-      makeRow('net-profit', '当期純利益', '', net, 'profit'),
+      makeRow('op-profit', '営業利益', '', operating, 'profit', null, 'flow', 'profitOperating'),
+      makeRow('ord-profit', '経常利益', '', ordinary, 'profit', null, 'flow', 'profitOrdinary'),
+      makeRow('pre-tax-net', '税引前当期純利益', '', preTaxNet, 'profit', null, 'flow', 'profitPreTax'),
+      { ...makeRow('net-profit', '当期純利益', '', net, 'profit', null, 'flow', 'profitNet'), accentTotal: true },
     ],
   };
+}
+
+/** 消費税対象販管費（人件費＋諸経費＋外注費）と販管費合計をその他セクション前後に挿入する */
+function insertSgaSummarySections(planData) {
+  if (!planData?.sections) return planData;
+  if (planData.sections.some((s) => s.id === 'sgaTaxable')) return planData;
+
+  const per = getTotalRow(planData.sections.find((s) => s.id === 'personnel'));
+  const exp = getTotalRow(planData.sections.find((s) => s.id === 'expense'));
+  const out = getTotalRow(planData.sections.find((s) => s.id === 'outsourcing'));
+  const otherSec = planData.sections.find((s) => s.id === 'other');
+  const other = getTotalRow(otherSec);
+
+  const empty = enrichRowValues(emptyMonthValues());
+  const taxableV = addValues(
+    addValues(per?.values ?? empty, exp?.values ?? empty),
+    out?.values ?? empty,
+  );
+  const sgaV = addValues(taxableV, other?.values ?? empty);
+
+  const hasSga = [taxableV, sgaV].some((v) => (v.合計 ?? 0) !== 0);
+  if (!hasSga) return planData;
+
+  const summaryColors = sectionColors('expense');
+  const makeSummarySection = (id, totalLabel, values, aggregateFormula) => ({
+    id,
+    label: '',
+    hideCategory: true,
+    filter: 'other',
+    ...summaryColors,
+    rows: [makeTotalRow(`${id}-row`, totalLabel, values, 'flow', aggregateFormula)],
+  });
+
+  const taxableSection = makeSummarySection('sgaTaxable', '消費税対象販管費合計', taxableV, 'sgaTaxable');
+  const sgaTotalSection = makeSummarySection('sgaTotal', '販管費合計', sgaV, 'sgaTotal');
+
+  const sections = [];
+  for (const section of planData.sections) {
+    if (section.id === 'other') {
+      sections.push(taxableSection);
+      sections.push({
+        ...section,
+        hideSectionTotal: true,
+        categorySpanExcludesTotal: true,
+      });
+      sections.push(sgaTotalSection);
+      continue;
+    }
+    sections.push(section);
+  }
+
+  if (!otherSec) {
+    const taxIdx = sections.findIndex((s) => s.id === 'tax');
+    const insertAt = taxIdx >= 0 ? taxIdx : sections.length;
+    sections.splice(insertAt, 0, taxableSection, sgaTotalSection);
+  }
+
+  return { ...planData, sections };
 }
 
 function extractBsRows(text, startMarkers, endMarker, includeTotals = true) {
@@ -1366,6 +1706,13 @@ function extractBsRows(text, startMarkers, endMarker, includeTotals = true) {
   return result;
 }
 
+/** BS セクション末尾の最終合計行のみ取得（明細は含めない） */
+function extractBsEndTotalRow(text, startMarkers, endMarker) {
+  const rows = extractBsRows(text, startMarkers, endMarker, true);
+  const total = rows.find((r) => r.isTotal && r.account === endMarker);
+  return total ? [total] : [];
+}
+
 function readMonthValues(cells, months) {
   const valueCells = cells.slice(3);
   const values = {};
@@ -1377,10 +1724,29 @@ function readMonthValues(cells, months) {
   return hasValues ? values : null;
 }
 
+const BS_SECTION_ACCENT_TOTAL = {
+  currentAssets: '流動資産合計',
+  fixedAssets: ['固定資産合計', '有形固定資産合計'],
+  currentLiab: '流動負債合計',
+  fixedLiab: '固定負債合計',
+  equity: '純資産の部合計',
+  cashBalance: '現金及び預金合計',
+};
+
+function resolveBsAccentTotalLabel(sectionId, totals) {
+  const preferred = BS_SECTION_ACCENT_TOTAL[sectionId];
+  if (!preferred) return null;
+  const labels = Array.isArray(preferred) ? preferred : [preferred];
+  for (const label of labels) {
+    if (totals.some((r) => r.account === label)) return label;
+  }
+  return null;
+}
+
 function filterBsDuplicateParents(rows) {
   const accountsWithSubs = new Set();
   for (const r of rows) {
-    if (r.sub && !r.isTotal) accountsWithSubs.add(r.account);
+    if (r.sub && !r.isTotal && !isBsInformationalSub(r.sub)) accountsWithSubs.add(r.account);
   }
   return rows.filter((r) => {
     if (r.isTotal) return true;
@@ -1400,11 +1766,14 @@ function bsRowsToSection(id, label, filter, rawRows, expandConfig, expandCandida
   }));
   expandCandidates.push(...collectExpandCandidatesFromItems(id, label, rawItems));
   const items = buildGroupedAccountRows(rawItems, id, id, expandConfig, 'balance');
+  const accentLabel = resolveBsAccentTotalLabel(id, totals);
   const rows = [
     ...items.map((r) => ({ ...r, values: enrichRowValues(r.values, 'balance') })),
-    ...totals.map((r, i) =>
-      makeTotalRow(`${id}-t-${i}`, r.account, r.values, 'balance'),
-    ),
+    ...totals.map((r, i) => {
+      const row = makeTotalRow(`${id}-t-${i}`, r.account, r.values, 'balance');
+      if (accentLabel && r.account === accentLabel) row.accentTotal = true;
+      return row;
+    }),
   ];
   return { id, label, filter, ...sectionColors(id), rows };
 }
@@ -1423,6 +1792,7 @@ function buildBsSections(bsText, expandConfig, expandCandidates) {
     ...extractBsRows(bsText, ['有形固定資産'], '有形固定資産合計'),
     ...extractBsRows(bsText, ['無形固定資産'], '無形固定資産合計', false),
     ...extractBsRows(bsText, ['投資その他の資産'], '投資その他の資産合計'),
+    ...extractBsEndTotalRow(bsText, ['固定資産'], '固定資産合計'),
   ];
   if (fixedAssets.length) {
     sections.push(bsRowsToSection(
@@ -1472,12 +1842,12 @@ function buildCashFlowSections(cashFlow, otherPayments, corpTax, bsText, expandC
 
   pushSection(sections, {
     id: 'cfIn', label: '入金', filter: 'cashflow', ...sectionColors('cfIn'),
-    rows: [makeRow('cf-in', appAggregateLabel('入金実績'), '', cashFlow.inflow, 'item')],
+    rows: [makeRow('cf-in', appAggregateLabel('入金実績'), '', cashFlow.inflow, 'item', null, 'flow', 'cashInflow')],
   });
 
   pushSection(sections, {
     id: 'cfOut', label: '出金', filter: 'cashflow', ...sectionColors('cfOut'),
-    rows: [makeRow('cf-out', appAggregateLabel('出金実績'), '', cashFlow.outflow, 'item')],
+    rows: [makeRow('cf-out', appAggregateLabel('出金実績'), '', cashFlow.outflow, 'item', null, 'flow', 'cashOutflow')],
   });
 
   const cashBalance = extractBsRows(bsText, ['現金及び預金'], '現金及び預金合計', true);
@@ -1492,7 +1862,7 @@ function buildCashFlowSections(cashFlow, otherPayments, corpTax, bsText, expandC
   if (taxTotal.合計 !== 0) {
     pushSection(sections, {
       id: 'corpTax', label: '法人税・消費税', filter: 'tax', ...sectionColors('corpTax'),
-      rows: [makeTotalRow('corp-tax-total', '法人税・消費税合計', corpTax)],
+      rows: [makeTotalRow('corp-tax-total', '法人税・消費税合計', corpTax, 'flow', 'corpTax')],
     });
   }
 
@@ -1565,6 +1935,215 @@ function calcTotalProfitMargin(data) {
 
   const ordinary = ordinaryProfit?.values.合計 ?? 0;
   return (ordinary / denominator) * 100;
+}
+
+/* parse/aggregateFormula.js */
+const MINUS = '\u2212';
+const YEN = '\u00a5';
+
+const FORMULA_LABELS = {
+  sectionSum: 'セクション内の勘定科目行の合計',
+  sectionSumExcludePlan: 'セクション内の勘定科目行の合計（計画行を除く）',
+  profitOperating: `売上高合計 ${MINUS} (人件費合計 + 諸経費合計 + 外注費合計 + その他合計)`,
+  profitOrdinary: `営業利益 + 営業外収益合計 ${MINUS} 営業外費用合計`,
+  profitPreTax: '経常利益',
+  profitNet: `税引前当期純利益 ${MINUS} 法人税合計`,
+  sgaTaxable: '人件費合計 + 諸経費合計 + 外注費合計',
+  sgaTotal: '消費税対象販管費合計 + その他合計',
+  cashInflow: '仕訳の借方「普通預金」の合計',
+  cashOutflow: '仕訳の貸方「普通預金」の合計',
+  corpTax: '仕訳の法人税・消費税勘定の合計',
+};
+
+const LABEL_REVENUE_TOTAL = '売上高合計';
+const LABEL_PERSONNEL_TOTAL = '人件費合計';
+const LABEL_EXPENSE_TOTAL = '諸経費合計';
+const LABEL_OUTSOURCING_TOTAL = '外注費合計';
+const LABEL_OTHER_TOTAL = 'その他合計';
+const LABEL_OPERATING_PROFIT = '営業利益';
+const LABEL_NON_OPERATING_REVENUE_TOTAL = '営業外収益合計';
+const LABEL_NON_OPERATING_EXPENSE_TOTAL = '営業外費用合計';
+const LABEL_ORDINARY_PROFIT = '経常利益';
+const LABEL_PRE_TAX_NET_PROFIT = '税引前当期純利益';
+const LABEL_TAX_TOTAL = '法人税合計';
+const LABEL_SGA_TAXABLE_TOTAL = '消費税対象販管費合計';
+const NO_BREAKDOWN = '（内訳なし）';
+
+function isAggregateRow(row) {
+  return Boolean(row?.aggregateFormula || isAggregateLabel(row?.label));
+}
+
+function isAggregateLabel(label) {
+  return label?.startsWith(APP_AGGREGATE_LABEL_PREFIX) ?? false;
+}
+
+function formatYenAmount(val) {
+  if (val === undefined || val === null || val === 0) return `${YEN}0`;
+  const sign = val < 0 ? MINUS : '';
+  return `${sign}${YEN}${formatYen(Math.abs(val))}`;
+}
+
+function stripAggregatePrefix(label) {
+  return (label ?? '').replace(APP_AGGREGATE_LABEL_PREFIX, '').trim();
+}
+
+function getRowValue(row, columnKey) {
+  return row?.values?.[columnKey] ?? 0;
+}
+
+function getSectionTotalRow(sections, sectionId) {
+  const section = sections.find((s) => s.id === sectionId);
+  return section?.rows.find((r) => r.type === 'total');
+}
+
+function getSectionTotalValue(sections, sectionId, columnKey) {
+  return getRowValue(getSectionTotalRow(sections, sectionId), columnKey);
+}
+
+function getSectionRowById(sections, sectionId, rowId) {
+  const section = sections.find((s) => s.id === sectionId);
+  return section?.rows.find((r) => r.id === rowId);
+}
+
+function formatTerm(label, val) {
+  return `${label}(${formatYenAmount(val)})`;
+}
+
+function formatSumDetail(terms) {
+  const nonZero = terms.filter((t) => t.val !== 0);
+  if (nonZero.length === 0) return NO_BREAKDOWN;
+  const sum = nonZero.reduce((s, t) => s + t.val, 0);
+  const expr = nonZero.map((t) => formatTerm(t.label, t.val)).join(' + ');
+  return `${expr} = ${formatYenAmount(sum)}`;
+}
+
+function formatSubtractDetail(minuendLabel, minuendVal, subtrahendTerms) {
+  const subSum = subtrahendTerms.reduce((s, t) => s + t.val, 0);
+  const subExpr = subtrahendTerms.map((t) => formatTerm(t.label, t.val)).join(' + ');
+  const result = minuendVal - subSum;
+  if (subtrahendTerms.length === 1) {
+    return `${formatTerm(minuendLabel, minuendVal)} ${MINUS} ${formatTerm(subtrahendTerms[0].label, subtrahendTerms[0].val)} = ${formatYenAmount(result)}`;
+  }
+  return `${formatTerm(minuendLabel, minuendVal)} ${MINUS} (${subExpr}) = ${formatYenAmount(result)}`;
+}
+
+function formatSectionSumDetail(section, columnKey, { excludeTypes = ['plan', 'total', 'breakdown'] } = {}) {
+  const terms = [];
+  for (const r of section.rows) {
+    if (excludeTypes.includes(r.type)) continue;
+    if (r.type !== 'item' && r.type !== 'group') continue;
+    const val = getRowValue(r, columnKey);
+    if (val === 0) continue;
+    let label = stripAggregatePrefix(r.label);
+    if (r.type === 'sub') label = r.subLabel || label;
+    else if (r.subLabel) label = `${label}（${r.subLabel}）`;
+    terms.push({ label, val });
+  }
+  return formatSumDetail(terms);
+}
+
+function formatProfitOperatingDetail(sections, columnKey) {
+  const rev = getSectionTotalValue(sections, 'revenue', columnKey);
+  const costs = [
+    { label: LABEL_PERSONNEL_TOTAL, val: getSectionTotalValue(sections, 'personnel', columnKey) },
+    { label: LABEL_EXPENSE_TOTAL, val: getSectionTotalValue(sections, 'expense', columnKey) },
+    { label: LABEL_OUTSOURCING_TOTAL, val: getSectionTotalValue(sections, 'outsourcing', columnKey) },
+    { label: LABEL_OTHER_TOTAL, val: getSectionTotalValue(sections, 'other', columnKey) },
+  ];
+  return formatSubtractDetail(LABEL_REVENUE_TOTAL, rev, costs);
+}
+
+function formatProfitOrdinaryDetail(sections, columnKey) {
+  const operating = getRowValue(getSectionRowById(sections, 'profit', 'op-profit'), columnKey);
+  const nonOp = getSectionTotalValue(sections, 'nonOperating', columnKey);
+  const nonOpExp = getSectionTotalValue(sections, 'nonOperatingExpense', columnKey);
+  const afterNonOp = operating + nonOp;
+  const nonOpPart = nonOp !== 0
+    ? `${formatTerm(LABEL_OPERATING_PROFIT, operating)} + ${formatTerm(LABEL_NON_OPERATING_REVENUE_TOTAL, nonOp)}`
+    : formatTerm(LABEL_OPERATING_PROFIT, operating);
+  if (nonOpExp === 0) {
+    return `${nonOpPart} = ${formatYenAmount(afterNonOp)}`;
+  }
+  return `${nonOpPart} ${MINUS} ${formatTerm(LABEL_NON_OPERATING_EXPENSE_TOTAL, nonOpExp)} = ${formatYenAmount(afterNonOp - nonOpExp)}`;
+}
+
+function formatProfitPreTaxDetail(sections, columnKey) {
+  const ordinary = getRowValue(getSectionRowById(sections, 'profit', 'ord-profit'), columnKey);
+  return `${formatTerm(LABEL_ORDINARY_PROFIT, ordinary)} = ${formatYenAmount(ordinary)}`;
+}
+
+function formatProfitNetDetail(sections, columnKey) {
+  const preTaxNet = getRowValue(getSectionRowById(sections, 'profit', 'pre-tax-net'), columnKey);
+  const tax = getSectionTotalValue(sections, 'tax', columnKey);
+  return formatSubtractDetail(LABEL_PRE_TAX_NET_PROFIT, preTaxNet, [{ label: LABEL_TAX_TOTAL, val: tax }]);
+}
+
+function formatSgaTaxableDetail(sections, columnKey) {
+  const terms = [
+    { label: LABEL_PERSONNEL_TOTAL, val: getSectionTotalValue(sections, 'personnel', columnKey) },
+    { label: LABEL_EXPENSE_TOTAL, val: getSectionTotalValue(sections, 'expense', columnKey) },
+    { label: LABEL_OUTSOURCING_TOTAL, val: getSectionTotalValue(sections, 'outsourcing', columnKey) },
+  ];
+  return formatSumDetail(terms);
+}
+
+function formatSgaTotalDetail(sections, columnKey) {
+  const taxable = getRowValue(getSectionRowById(sections, 'sgaTaxable', 'sgaTaxable-row'), columnKey);
+  const other = getSectionTotalValue(sections, 'other', columnKey);
+  return formatSumDetail([
+    { label: LABEL_SGA_TAXABLE_TOTAL, val: taxable },
+    { label: LABEL_OTHER_TOTAL, val: other },
+  ]);
+}
+
+function formatStaticValueDetail(label, columnKey, row) {
+  const val = getRowValue(row, columnKey);
+  return `${label} = ${formatYenAmount(val)}`;
+}
+
+function getAggregateFormulaLabel(row) {
+  if (row?.aggregateFormula && FORMULA_LABELS[row.aggregateFormula]) {
+    return FORMULA_LABELS[row.aggregateFormula];
+  }
+  if (isAggregateLabel(row?.label)) {
+    return FORMULA_LABELS.sectionSum;
+  }
+  return null;
+}
+
+function getAggregateFormulaDetail(row, section, planData, columnKey) {
+  const sections = planData?.sections ?? [];
+  const key = row?.aggregateFormula;
+
+  switch (key) {
+    case 'sectionSum':
+      return formatSectionSumDetail(section, columnKey);
+    case 'sectionSumExcludePlan':
+      return formatSectionSumDetail(section, columnKey, { excludeTypes: ['plan', 'total', 'breakdown'] });
+    case 'profitOperating':
+      return formatProfitOperatingDetail(sections, columnKey);
+    case 'profitOrdinary':
+      return formatProfitOrdinaryDetail(sections, columnKey);
+    case 'profitPreTax':
+      return formatProfitPreTaxDetail(sections, columnKey);
+    case 'profitNet':
+      return formatProfitNetDetail(sections, columnKey);
+    case 'sgaTaxable':
+      return formatSgaTaxableDetail(sections, columnKey);
+    case 'sgaTotal':
+      return formatSgaTotalDetail(sections, columnKey);
+    case 'cashInflow':
+      return formatStaticValueDetail(FORMULA_LABELS.cashInflow, columnKey, row);
+    case 'cashOutflow':
+      return formatStaticValueDetail(FORMULA_LABELS.cashOutflow, columnKey, row);
+    case 'corpTax':
+      return formatStaticValueDetail(FORMULA_LABELS.corpTax, columnKey, row);
+    default:
+      if (isAggregateLabel(row?.label) && section) {
+        return formatSectionSumDetail(section, columnKey);
+      }
+      return getAggregateFormulaLabel(row);
+  }
 }
 
 /* parse/journalDrilldown.js */
@@ -1831,23 +2410,23 @@ function formatEntryAmount(n) {
 const STORAGE_KEY = 'mga-csv-name-config';
 
 const CSV_KINDS = [
-  { id: 'journal', label: '\u4ed5\u8a33\u30c7\u30fc\u30bf', required: true },
-  { id: 'balanceSheet', label: '\u8cb8\u501f\u5bfe\u7167\u8868', required: true },
-  { id: 'generalLedger', label: '\u7dcf\u52d8\u5b9a\u5143\u5e33', required: true },
+  { id: 'journal', label: '仕訳データ', required: true },
+  { id: 'balanceSheet', label: '貸借対照表', required: true },
+  { id: 'generalLedger', label: '総勘定元帳', required: true },
 ];
 
 const DEFAULT_CSV_NAME_CONFIG = {
   journal: {
-    pattern: '^\u4ed5\u8a33\u30c7\u30fc\u30bf_\\d{4}-\\d{2}-\\d{2}_\\d{4}-\\d{2}-\\d{2}\\.csv$',
-    example: '\u4ed5\u8a33\u30c7\u30fc\u30bf_2018-12-07_2019-11-30.csv',
+    pattern: '^仕訳データ_\\d{4}-\\d{2}-\\d{2}_\\d{4}-\\d{2}-\\d{2}\\.csv$',
+    example: '仕訳データ_2018-12-07_2019-11-30.csv',
   },
   balanceSheet: {
-    pattern: '^\u8cb8\u501f\u5bfe\u7167\u8868_\u6708\u6b21\u63a8\u79fb_\\d{8}_\\d{4}\\.csv$',
-    example: '\u8cb8\u501f\u5bfe\u7167\u8868_\u6708\u6b21\u63a8\u79fb_20260627_0759.csv',
+    pattern: '^貸借対照表_月次推移_\\d{8}_\\d{4}\\.csv$',
+    example: '貸借対照表_月次推移_20260627_0759.csv',
   },
   generalLedger: {
-    pattern: '^\u7dcf\u52d8\u5b9a\u5143\u5e33_\\d{8}_\\d{4}\\.csv$',
-    example: '\u7dcf\u52d8\u5b9a\u5143\u5e33_20260627_0759.csv',
+    pattern: '^総勘定元帳_\\d{8}_\\d{4}\\.csv$',
+    example: '総勘定元帳_20260627_0759.csv',
   },
 };
 
@@ -1901,11 +2480,11 @@ function validateCsvNameConfig(config = loadCsvNameConfig()) {
     const entry = config[kind.id];
     const re = compileCsvPattern(entry?.pattern);
     if (!re) {
-      errors.push(`${kind.label}: \u6b63\u898f\u8868\u73fe\u304c\u4e0d\u6b63\u3067\u3059`);
+      errors.push(`${kind.label}: 正規表現が不正です`);
       continue;
     }
     if (entry.example && !re.test(entry.example)) {
-      errors.push(`${kind.label}: \u4f8b\u306e\u30d5\u30a1\u30a4\u30eb\u540d\u304c\u30d1\u30bf\u30fc\u30f3\u3068\u4e00\u81f4\u3057\u307e\u305b\u3093`);
+      errors.push(`${kind.label}: 例のファイル名がパターンと一致しません`);
     }
   }
   return { valid: errors.length === 0, errors };
@@ -1930,11 +2509,11 @@ function classifyCsvFile(name, config = loadCsvNameConfig()) {
 
 function testCsvNameExample(kindId, config = loadCsvNameConfig()) {
   const entry = config[kindId];
-  if (!entry) return { ok: false, error: '\u672a\u5b9a\u7fa9' };
+  if (!entry) return { ok: false, error: '未定義' };
   const re = compileCsvPattern(entry.pattern);
-  if (!re) return { ok: false, error: '\u6b63\u898f\u8868\u73fe\u304c\u4e0d\u6b63' };
-  if (!entry.example) return { ok: false, error: '\u4f8b\u304c\u3042\u308a\u307e\u305b\u3093' };
-  return { ok: re.test(entry.example), error: re.test(entry.example) ? null : '\u4e0d\u4e00\u81f4' };
+  if (!re) return { ok: false, error: '正規表現が不正' };
+  if (!entry.example) return { ok: false, error: '例がありません' };
+  return { ok: re.test(entry.example), error: re.test(entry.example) ? null : '不一致' };
 }
 
 function getCsvNameExamples(config = loadCsvNameConfig()) {
@@ -2173,13 +2752,13 @@ const EMPLOYEE_STORAGE_KEY = 'mga-employees';
 const RESIDENT_TAX_MONTH_KEYS = ['6', '7', '8', '9', '10', '11', '12', '1', '2', '3', '4', '5'];
 
 const EMPLOYEE_ALLOWANCE_COLUMNS = [
-  { key: 'directorSalary', label: '\u5f79\u54e1\u5831\u916c' },
-  { key: 'baseSalary', label: '\u57fa\u672c\u7d66' },
-  { key: 'positionAllowance', label: '\u5f79\u8077\u624b\u5f53' },
-  { key: 'fixedOvertimePay', label: '\u56fa\u5b9a\u6b8b\u696d\u4ee3' },
-  { key: 'childAllowance', label: '\u5b50\u5973\u624b\u5f53' },
-  { key: 'fixedOvertimeAllowance', label: '\u56fa\u5b9a\u6b8b\u696d\u624b\u5f53' },
-  { key: 'commutingAllowance', label: '\u901a\u52e4\u624b\u5f53' },
+  { key: 'directorSalary', label: '役員報酬' },
+  { key: 'baseSalary', label: '基本給' },
+  { key: 'positionAllowance', label: '役職手当' },
+  { key: 'fixedOvertimePay', label: '固定残業代' },
+  { key: 'childAllowance', label: '子女手当' },
+  { key: 'fixedOvertimeAllowance', label: '固定残業手当' },
+  { key: 'commutingAllowance', label: '通勤手当' },
 ];
 
 function normalizeSalary(value) {
@@ -2348,10 +2927,10 @@ function computeTenure(joinDateStr, leaveDateStr, refDate = new Date()) {
     months += 12;
   }
 
-  return `${years}\u5e74${months}\u30f6\u6708`;
+  return `${years}年${months}ヶ月`;
 }
 
-/** Monthly compensation (director salary or base + allowances). */
+/** 月額報酬（役員報酬または基本給＋手当）。 */
 function computeMonthlySalary(employee) {
   const director = employee.directorSalary ?? 0;
   const base = employee.baseSalary ?? 0;
@@ -2387,23 +2966,23 @@ function isDirectorEmployee(employee) {
   if ((employee.directorSalary ?? 0) > 0) return true;
   const contract = employee.contractType ?? '';
   const position = employee.position ?? '';
-  return /\u5f79\u54e1/.test(contract) || /\u5f79\u54e1/.test(position);
+  return /役員/.test(contract) || /役員/.test(position);
 }
 
 function buildEmployeeTableColumns() {
   return [
-    { kind: 'text', key: 'employeeNumber', label: '\u756a\u53f7', className: 'col-emp-no' },
-    { kind: 'text', key: 'name', label: '\u6c0f\u540d', className: 'col-emp-name' },
-    { kind: 'text', key: 'contractType', label: '\u5951\u7d04\u7a2e\u5225', className: 'col-emp-contract' },
-    { kind: 'text', key: 'joinDate', label: '\u5165\u793e\u65e5', className: 'col-emp-join' },
-    { kind: 'tenure', key: 'tenure', label: '\u52e4\u7d9a', className: 'col-emp-tenure' },
+    { kind: 'text', key: 'employeeNumber', label: '番号', className: 'col-emp-no' },
+    { kind: 'text', key: 'name', label: '氏名', className: 'col-emp-name' },
+    { kind: 'text', key: 'contractType', label: '契約種別', className: 'col-emp-contract' },
+    { kind: 'text', key: 'joinDate', label: '入社日', className: 'col-emp-join' },
+    { kind: 'tenure', key: 'tenure', label: '勤続', className: 'col-emp-tenure' },
     {
       kind: 'amount',
       key: 'monthlySalary',
-      label: '\u6708\u984d\u5831\u916c',
+      label: '月額報酬',
       className: 'col-emp-amount',
     },
-    { kind: 'actions', key: 'actions', label: '\u64cd\u4f5c', className: 'col-emp-actions' },
+    { kind: 'actions', key: 'actions', label: '操作', className: 'col-emp-actions' },
   ];
 }
 
@@ -2440,19 +3019,19 @@ function buildFiscalYearMonths(fiscalEndMonth) {
   const months = [];
   let m = start;
   for (let i = 0; i < 12; i += 1) {
-    months.push(`${m}\u6708`);
+    months.push(`${m}月`);
     m = (m % 12) + 1;
   }
   return months;
 }
 
 function monthLabelToNumber(label) {
-  const m = String(label).match(/^(\d{1,2})\u6708$/);
+  const m = String(label).match(/^(\d{1,2})月$/);
   return m ? parseInt(m[1], 10) : null;
 }
 
 function monthNumberToLabel(num) {
-  return `${num}\u6708`;
+  return `${num}月`;
 }
 
 function normalizeBonusPaymentMonths(raw, fiscalMonths) {
@@ -2918,7 +3497,7 @@ function createManualVendor({ accountLabel, subLabel }) {
   };
 }
 
-/** ???????????????A???o?^????????v??\???????? */
+/** 補助科目一覧から未登録の取引先だけ計画に追加する（金額は空のまま） */
 function mergeVendorsFromSubaccounts(plans, fiscalPeriod, subaccounts, fiscalMonths) {
   if (!Array.isArray(subaccounts) || subaccounts.length === 0) return plans;
   const entries = getPeriodVendorEntries(plans, fiscalPeriod, fiscalMonths);
@@ -2930,7 +3509,7 @@ function mergeVendorsFromSubaccounts(plans, fiscalPeriod, subaccounts, fiscalMon
   for (const { accountLabel, subLabel } of subaccounts) {
     const account = String(accountLabel ?? '').trim();
     const sub = String(subLabel ?? '').trim();
-    if (!account || !sub || sub === '???????') continue;
+    if (!account || !sub || sub === '補助科目なし') continue;
     const key = `${account}\x00${sub}`;
     if (existingKeys.has(key)) continue;
     existingKeys.add(key);
@@ -2944,7 +3523,7 @@ function mergeVendorsFromSubaccounts(plans, fiscalPeriod, subaccounts, fiscalMon
   return setPeriodVendorEntries(plans, fiscalPeriod, next, fiscalMonths);
 }
 
-/** �Q�Ɗ��̎����ꗗ���A���o�^�������Ώۊ��ɒǉ�����i���z�͋�j */
+/** 参照期の取引先一覧を、未登録分だけ対象期に追加する（金額は空） */
 function syncVendorListFromReference(plans, targetPeriod, referencePeriod, fiscalMonths) {
   const refVendors = getPeriodVendorEntries(plans, referencePeriod, fiscalMonths);
   const targetVendors = getPeriodVendorEntries(plans, targetPeriod, fiscalMonths);
@@ -3010,32 +3589,15 @@ function formatOutsourcingIncreaseRate(ratePercent) {
 }
 
 /* enrich/planEmployeeSalaryRows.js */
-const DIRECTOR_ACCOUNT = '\u5f79\u54e1\u5831\u916c';
-const SALARY_ACCOUNT = '\u7d66\u6599\u624b\u5f53';
-const OVERTIME_SUB_PATTERN = /\u6b8b\u696d\u624b\u5f53/;
-const TRAVEL_ACCOUNT = '\u65c5\u8cbb\u4ea4\u901a\u8cbb';
-const TRAVEL_ROW_PATTERN = /\u65c5\u8cbb\u4ea4\u901a\u8cbb|\u901a\u52e4\u624b\u5f53/;
-const LEGAL_WELFARE_ACCOUNT = '\u6cd5\u5b9a\u798f\u5229\u8cbb';
-const PERSONNEL_SECTION_LABEL = '\u4eba\u4ef6\u8cbb';
-const PERSONNEL_TOTAL_LABEL = '\u4eba\u4ef6\u8cbb\u5408\u8a08';
+const DIRECTOR_ACCOUNT = '役員報酬';
+const SALARY_ACCOUNT = '給料手当';
+const OVERTIME_SUB_PATTERN = /残業手当/;
+const TRAVEL_ACCOUNT = '旅費交通費';
+const TRAVEL_ROW_PATTERN = /旅費交通費|通勤手当/;
+const LEGAL_WELFARE_ACCOUNT = '法定福利費';
+const PERSONNEL_SECTION_LABEL = '人件費';
+const PERSONNEL_TOTAL_LABEL = '人件費合計';
 const TOTAL_COLUMN = EXTRA_COLUMNS[0];
-
-function planRowSortTotal(row) {
-  return Math.abs(row.values[TOTAL_COLUMN] ?? 0);
-}
-
-/** 金額降順 → 勘定科目 → 補助科目（氏名） */
-function comparePlanRowsByTotal(a, b) {
-  const byAmount = planRowSortTotal(b) - planRowSortTotal(a);
-  if (byAmount !== 0) return byAmount;
-  const byAccount = (a.label ?? '').localeCompare(b.label ?? '', 'ja');
-  if (byAccount !== 0) return byAccount;
-  return (a.subLabel ?? '').localeCompare(b.subLabel ?? '', 'ja');
-}
-
-function sortPlanRowsByTotal(rows) {
-  return [...rows].sort(comparePlanRowsByTotal);
-}
 
 function combineMonthlyAndBonusValues(plan, fiscalMonths) {
   const values = {};
@@ -3250,7 +3812,7 @@ function mergePlanIntoPrimaryCsvRow(
   if (csvRows.length === 0 || !planTotal) return csvRows;
   const planMonths = rawValuesFromRow({ values: planTotal });
   const primaryIdx = csvRows.findIndex(
-    (row) => !row.subLabel || row.subLabel === '\u88dc\u52a9\u79d1\u76ee\u306a\u3057',
+    (row) => !row.subLabel || row.subLabel === '補助科目なし',
   );
   const targetIdx = primaryIdx >= 0 ? primaryIdx : 0;
   return csvRows.map((row, index) => {
@@ -3260,8 +3822,7 @@ function mergePlanIntoPrimaryCsvRow(
 }
 
 /**
- * Order: director CSV, director plan rows, staff plan rows, salary CSV,
- * overtime CSV (plan-filled), travel CSV (plan-filled), rest.
+ * 並び順：役員CSV→役員計画行→一般職計画行→給与CSV→残業CSV（計画補完）→出張CSV（計画補完）→その他。
  */
 function rebuildPersonnelRows(
   rows,
@@ -3374,8 +3935,8 @@ function buildEmployeePlanRows(activeEmployees, salaryPlans, fiscalPeriod, fisca
   const hasStaffPlan = (staffPlanTotalEnriched[TOTAL_COLUMN] ?? 0) !== 0;
 
   return {
-    directorRows: sortPlanRowsByTotal(directorRows),
-    salaryRows: sortPlanRowsByTotal(salaryRows),
+    directorRows,
+    salaryRows,
     directorPlanTotal: hasDirectorPlan ? directorPlanTotalEnriched : null,
     staffPlanTotal: hasStaffPlan ? staffPlanTotalEnriched : null,
   };
@@ -3439,6 +4000,7 @@ function createPersonnelSection(rows) {
     subLabel: '',
     type: 'total',
     values: totalValues,
+    aggregateFormula: 'sectionSumExcludePlan',
   };
   return {
     id: 'personnel',
@@ -3463,7 +4025,7 @@ function collectPlanVisibilityCandidates(planRows) {
   }));
 }
 
-/** Merge employee salary plan rows into personnel (plan / budget-actual modes). */
+/** 人件費セクションに従業員給与計画行をマージ（予算・予実モード）。 */
 function enrichPlanDataWithEmployeeSalaryRows(planData, {
   employees,
   salaryPlans,
@@ -3548,6 +4110,7 @@ function enrichPlanDataWithEmployeeSalaryRows(planData, {
     rows[totalIdx] = {
       ...rows[totalIdx],
       values: sumNonPlanRows(rows),
+      aggregateFormula: 'sectionSumExcludePlan',
     };
   }
 
@@ -3567,10 +4130,10 @@ function enrichPlanDataWithEmployeeSalaryRows(planData, {
 }
 
 /* enrich/planTaxPaymentRows.js */
-const TAX_PAY_ACCOUNT = '\u79df\u7a0e\u516c\u8ab2';
-const TAX_PAY_OTHER_SECTION_LABEL = '\u305d\u306e\u4ed6';
-const TAX_PAY_OTHER_TOTAL_LABEL = '\u305d\u306e\u4ed6\u5408\u8a08';
-const NO_SUB_LABEL = '\u88dc\u52a9\u79d1\u76ee\u306a\u3057';
+const TAX_PAY_ACCOUNT = '租税公課';
+const TAX_PAY_OTHER_SECTION_LABEL = 'その他';
+const TAX_PAY_OTHER_TOTAL_LABEL = 'その他合計';
+const NO_SUB_LABEL = '補助科目なし';
 
 function taxPayEmptyRawMonthValues() {
   const values = {};
@@ -3720,6 +4283,7 @@ function taxPayCreateOtherSection(rows) {
     subLabel: '',
     type: 'total',
     values: totalValues,
+    aggregateFormula: 'sectionSumExcludePlan',
   };
   return {
     id: 'other',
@@ -3745,7 +4309,7 @@ function taxPayCollectPlanVisibilityCandidates(planRow) {
   }];
 }
 
-/** Merge tax public charge payment plan into other section (plan / budget-actual modes). */
+/** 税金・公租公課の支払計画をその他セクションにマージ（予算・予実モード）。 */
 function enrichPlanDataWithTaxPaymentRows(planData, {
   taxPaymentPlans,
   businessStartYear,
@@ -3802,6 +4366,7 @@ function enrichPlanDataWithTaxPaymentRows(planData, {
     rows[totalIdx] = {
       ...rows[totalIdx],
       values: taxPaySumNonPlanRows(rows),
+      aggregateFormula: 'sectionSumExcludePlan',
     };
   }
 
@@ -3821,13 +4386,13 @@ function enrichPlanDataWithTaxPaymentRows(planData, {
 }
 
 /* enrich/planOutsourcingRows.js */
-const OUT_NO_SUB_LABEL = '\u88dc\u52a9\u79d1\u76ee\u306a\u3057';
-const OUTSOURCING_SECTION_LABEL = '\u5916\u6ce8\u8cbb';
+const OUT_NO_SUB_LABEL = '補助科目なし';
+const OUTSOURCING_SECTION_LABEL = '外注費';
 const BREAKDOWN_LABELS = {
-  remuneration: '\u5831\u916c\u91d1\u984d',
-  consumptionTax: '\u6d88\u8cbb\u7a0e\u984d',
-  withholdingTax: '\u6e90\u6cc9\u6240\u5f97\u7a0e\u984d',
-  netReceived: '\u53d7\u3051\u53d6\u308b\u91d1\u984d',
+  remuneration: '報酬金額',
+  consumptionTax: '消費税額',
+  withholdingTax: '源泉所得税額',
+  netReceived: '受け取る金額',
 };
 const BREAKDOWN_DEFS = [
   { key: 'remuneration', label: BREAKDOWN_LABELS.remuneration },
@@ -3952,14 +4517,14 @@ function outSumNonPlanRows(rows) {
 }
 
 function outParseMonthLabelNumber(label) {
-  const m = String(label).match(/^(\d{1,2})\u6708$/);
+  const m = String(label).match(/^(\d{1,2})月$/);
   return m ? parseInt(m[1], 10) : null;
 }
 
 function outGetCalendarYearMonth(monthLabel, monthYearMap, fiscalEndMonth) {
   const year = monthYearMap[monthLabel];
   if (year == null) return null;
-  if (monthLabel === '\u6c7a\u7b97\u6574\u7406') {
+  if (monthLabel === '決算整理') {
     return { year, month: fiscalEndMonth };
   }
   const month = outParseMonthLabelNumber(monthLabel);
@@ -3974,7 +4539,7 @@ function outCalcRemunerationFromTaxInclusiveTotal(totalYen, ratePercent) {
   return Math.floor(total * 100 / (100 + ratePercent));
 }
 
-/** �ō��x���z����l���Ǝ�����O���������Z�o */
+/** 税込支払額から個人事業主向け源泉内訳を算出 */
 function calcOutsourcingBreakdownForMonth(
   totalYen,
   calendarYear,
@@ -4100,18 +4665,6 @@ function outInsertIndividualBreakdownRows(rows, {
   return result;
 }
 
-function outCollectBreakdownVisibilityCandidates(rows) {
-  return rows.filter((row) => row.type === 'breakdown').map((row) => ({
-    key: visibilityRowKey('outsourcing', row),
-    sectionId: 'outsourcing',
-    sectionLabel: OUTSOURCING_SECTION_LABEL,
-    account: '',
-    subLabel: row.subLabel || '',
-    rowType: row.type,
-    rowTypeLabel: rowTypeLabel(row.type),
-  }));
-}
-
 function outCollectPlanVisibilityCandidates(planRows) {
   return planRows.map((row) => ({
     key: visibilityRowKey('outsourcing', row),
@@ -4124,7 +4677,7 @@ function outCollectPlanVisibilityCandidates(planRows) {
   }));
 }
 
-/** Merge outsourcing payment plans into outsourcing section (plan / budget-actual modes). */
+/** 外注費セクションに支払計画をマージする（予算・予実モード） */
 function enrichPlanDataWithOutsourcingRows(planData, {
   outsourcingPlans,
   businessStartYear,
@@ -4148,24 +4701,14 @@ function enrichPlanDataWithOutsourcingRows(planData, {
     withholdingTaxRates,
   });
 
-  const mergeVisibilityCandidates = (sections, ...extraLists) => ({
-    ...planData,
-    sections,
-    visibilityCandidates: [
-      ...(planData.visibilityCandidates ?? []),
-      ...extraLists.flat(),
-    ],
-  });
-
   if (displayMode !== 'plan' && displayMode !== 'budget-actual') {
     if (outsourcingIdx < 0) return planData;
     const outsourcing = planData.sections[outsourcingIdx];
     const rows = applyBreakdown(outsourcing.rows);
-    const breakdownCandidates = outCollectBreakdownVisibilityCandidates(rows);
     const sections = planData.sections.map((section, idx) => (
       idx === outsourcingIdx ? { ...section, rows } : section
     ));
-    return mergeVisibilityCandidates(sections, breakdownCandidates);
+    return { ...planData, sections };
   }
 
   const vendors = getPeriodVendorEntries(outsourcingPlans ?? {}, fiscalPeriod, fiscalMonths);
@@ -4183,7 +4726,6 @@ function enrichPlanDataWithOutsourcingRows(planData, {
   if (outsourcingIdx < 0) {
     if (planRows.length === 0) return planData;
     const rows = applyBreakdown(planRows);
-    const breakdownCandidates = outCollectBreakdownVisibilityCandidates(rows);
     return {
       ...planData,
       sections: [...planData.sections, {
@@ -4195,7 +4737,6 @@ function enrichPlanDataWithOutsourcingRows(planData, {
       visibilityCandidates: [
         ...(planData.visibilityCandidates ?? []),
         ...extraCandidates,
-        ...breakdownCandidates,
       ],
     };
   }
@@ -4217,7 +4758,6 @@ function enrichPlanDataWithOutsourcingRows(planData, {
   }
 
   rows = applyBreakdown(rows);
-  const breakdownCandidates = outCollectBreakdownVisibilityCandidates(rows);
 
   const sections = planData.sections.map((section, idx) => {
     if (idx !== outsourcingIdx) return section;
@@ -4230,12 +4770,11 @@ function enrichPlanDataWithOutsourcingRows(planData, {
     visibilityCandidates: [
       ...(planData.visibilityCandidates ?? []),
       ...extraCandidates,
-      ...breakdownCandidates,
     ],
   };
 }
 
-/** ?\???\?f?[?^????O???????????????????o???? */
+/** 予実データから外注実績の月別金額を取引先ごとに抽出 */
 function collectOutsourcingActualAmountsFromPlanData(planData, fiscalMonths) {
   const section = planData?.sections?.find((s) => s.id === 'outsourcing');
   if (!section) return new Map();
@@ -4257,7 +4796,7 @@ function collectOutsourcingActualAmountsFromPlanData(planData, fiscalMonths) {
   return result;
 }
 
-/** ?\???\?f?[?^????O????????????o???? */
+/** 予実データから外注の補助科目一覧を抽出 */
 function collectOutsourcingSubaccountsFromPlanData(planData) {
   const section = planData?.sections?.find((s) => s.id === 'outsourcing');
   if (!section) return [];
@@ -4278,12 +4817,12 @@ function collectOutsourcingSubaccountsFromPlanData(planData) {
 }
 
 /* enrich/planPeriodAverageFill.js */
-const INTEREST_ACCOUNT = '\u53d7\u53d6\u5229\u606f';
+const INTEREST_ACCOUNT = '受取利息';
 const NON_OPERATING_SECTION_ID = 'nonOperating';
 const EXPENSE_SECTION_ID = 'expense';
 const OTHER_SECTION_ID = 'other';
-const AVERAGE_COLUMN = '\u5e73\u5747';
-const DEPRECIATION_ACCOUNT = '\u6e1b\u4fa1\u511f\u5374\u8cbb';
+const AVERAGE_COLUMN = '平均';
+const DEPRECIATION_ACCOUNT = '減価償却費';
 
 function emptyRawMonthValues() {
   const values = {};
@@ -4481,35 +5020,35 @@ function enrichPlanDataWithPeriodAverageFills(planData, {
 
 /* parse/parseEmployee.js */
 const COL = {
-  MF_ID: '\u5f93\u696d\u54e1\u8b58\u5225\u5b50',
-  EMPLOYEE_NUMBER: '\u5f93\u696d\u54e1\u756a\u53f7',
-  LAST_NAME: '\u59d3',
-  FIRST_NAME: '\u540d',
-  LAST_NAME_KANA: '\u59d3\uff08\u30d5\u30ea\u30ac\u30ca\uff09',
-  FIRST_NAME_KANA: '\u540d\uff08\u30d5\u30ea\u30ac\u30ca\uff09',
-  JOB_TYPE: '\u8077\u7a2e',
-  POSITION: '\u5f79\u8077',
-  CONTRACT_TYPE: '\u5951\u7d04\u7a2e\u5225',
-  JOIN_DATE: '\u5165\u793e\u5e74\u6708\u65e5',
-  LEAVE_DATE: '\u9000\u8077\u5e74\u6708\u65e5',
-  DIRECTOR_SALARY: '\u5f79\u54e1\u5831\u916c(\u6708\u7d66)',
-  BASE_SALARY: '\u57fa\u672c\u7d66(\u6708\u7d66)',
-  POSITION_ALLOWANCE: '\u5f79\u8077\u624b\u5f53(\u6708\u7d66)',
-  FIXED_OVERTIME_PAY: '\u56fa\u5b9a\u6b8b\u696d\u4ee3(\u6708\u7d66)',
-  CHILD_ALLOWANCE: '\u5b50\u5973\u624b\u5f53(\u6708\u7d66)',
-  FIXED_OVERTIME_ALLOWANCE: '\u56fa\u5b9a\u6b8b\u696d\u624b\u5f53\uff08\u307f\u306a\u3057\uff09(\u6708\u7d66)',
-  RESIDENT_TAX_MUNICIPALITY: '\u7d0d\u4ed8\u5148\u5e02\u533a\u753a\u6751\u540d(\u4f4f\u6c11\u7a0e)',
-  RESIDENT_TAX_YEAR: '\u5e74\u5ea6(\u4f4f\u6c11\u7a0e)',
+  MF_ID: '従業員識別子',
+  EMPLOYEE_NUMBER: '従業員番号',
+  LAST_NAME: '姓',
+  FIRST_NAME: '名',
+  LAST_NAME_KANA: '姓（フリガナ）',
+  FIRST_NAME_KANA: '名（フリガナ）',
+  JOB_TYPE: '職種',
+  POSITION: '役職',
+  CONTRACT_TYPE: '契約種別',
+  JOIN_DATE: '入社年月日',
+  LEAVE_DATE: '退職年月日',
+  DIRECTOR_SALARY: '役員報酬(月給)',
+  BASE_SALARY: '基本給(月給)',
+  POSITION_ALLOWANCE: '役職手当(月給)',
+  FIXED_OVERTIME_PAY: '固定残業代(月給)',
+  CHILD_ALLOWANCE: '子女手当(月給)',
+  FIXED_OVERTIME_ALLOWANCE: '固定残業手当（みなし）(月給)',
+  RESIDENT_TAX_MUNICIPALITY: '納付先市区町村名(住民税)',
+  RESIDENT_TAX_YEAR: '年度(住民税)',
 };
 
 const RESIDENT_TAX_MONTHS = ['6', '7', '8', '9', '10', '11', '12', '1', '2', '3', '4', '5'];
 
 function residentTaxColumn(month) {
-  return `${month}\u6708\u7d0d\u4ed8\u984d(\u4f4f\u6c11\u7a0e)`;
+  return `${month}月納付額(住民税)`;
 }
 
 function commutingAllowanceColumn(n) {
-  return `\u652f\u7d66\u984d(\u901a\u52e4\u624b\u5f53${n})`;
+  return `支給額(通勤手当${n})`;
 }
 
 function trimCell(value) {
@@ -4563,13 +5102,13 @@ function isEmployeeCsv(text) {
 function parseEmployeeCsv(text) {
   const lines = text.split(/\r?\n/).filter((line) => line.trim());
   if (lines.length < 2) {
-    return { employees: [], errors: ['\u30c7\u30fc\u30bf\u884c\u304c\u3042\u308a\u307e\u305b\u3093\u3002'] };
+    return { employees: [], errors: ['データ行がありません。'] };
   }
 
   if (!isEmployeeCsv(text)) {
     return {
       employees: [],
-      errors: ['\u30de\u30cd\u30fc\u30d5\u30a9\u30ef\u30fc\u30c9\u7d66\u4e0e\u306e\u5f93\u696d\u54e1\u60c5\u5831CSV\u3067\u306f\u3042\u308a\u307e\u305b\u3093\u3002'],
+      errors: ['マネーフォワード給与の従業員情報CSVではありません。'],
     };
   }
 
@@ -4588,7 +5127,7 @@ function parseEmployeeCsv(text) {
     if (!lastName && !firstName && !employeeNumber) continue;
 
     if (!lastName && !firstName) {
-      errors.push(`${i + 1}\u884c\u76ee: \u6c0f\u540d\u304c\u3042\u308a\u307e\u305b\u3093\u3002`);
+      errors.push(`${i + 1}行目: 氏名がありません。`);
       continue;
     }
 
@@ -4642,7 +5181,7 @@ const MIN_ROW_PADDING_SCALE = 0.5;
 const MAX_ROW_PADDING_SCALE = 1.5;
 
 /** 補助科目の法人等判定に使う文字列マーカー（カンマ区切り） */
-const DEFAULT_CORP_ENTITY_MARKERS = '\u3231,\u3232,(\u540c)';
+const DEFAULT_CORP_ENTITY_MARKERS = '㈱,㈲,(同)';
 
 const DEFAULT_COMPANY_NAME = 'MIYABI GAME AUDIO INC.';
 const DEFAULT_BRAND_ICON_TEXT = 'MGA';
@@ -4785,24 +5324,24 @@ function buildMonthYearMap(businessStartYear, fiscalPeriod) {
   const decYear = businessStartYear + fiscalPeriod - 1;
   const nextYear = decYear + 1;
   return {
-    '12\u6708': decYear,
-    '1\u6708': nextYear,
-    '2\u6708': nextYear,
-    '3\u6708': nextYear,
-    '4\u6708': nextYear,
-    '5\u6708': nextYear,
-    '6\u6708': nextYear,
-    '7\u6708': nextYear,
-    '8\u6708': nextYear,
-    '9\u6708': nextYear,
-    '10\u6708': nextYear,
-    '11\u6708': nextYear,
-    '\u6c7a\u7b97\u6574\u7406': nextYear,
+    '12月': decYear,
+    '1月': nextYear,
+    '2月': nextYear,
+    '3月': nextYear,
+    '4月': nextYear,
+    '5月': nextYear,
+    '6月': nextYear,
+    '7月': nextYear,
+    '8月': nextYear,
+    '9月': nextYear,
+    '10月': nextYear,
+    '11月': nextYear,
+    '決算整理': nextYear,
   };
 }
 
 function parseMonthLabelNumber(label) {
-  const m = String(label).match(/^(\d{1,2})\u6708$/);
+  const m = String(label).match(/^(\d{1,2})月$/);
   return m ? parseInt(m[1], 10) : null;
 }
 
@@ -4884,11 +5423,11 @@ function normalizeFiscalPeriod(businessStartYear, fiscalPeriod, date = new Date(
 }
 
 function formatFiscalPeriodLabel(fiscalPeriod) {
-  return `\u7b2c${fiscalPeriod}\u671f`;
+  return `第${fiscalPeriod}期`;
 }
 
 function parseFiscalPeriod(label) {
-  const m = String(label ?? '').match(/\u7b2c(\d+)\u671f/);
+  const m = String(label ?? '').match(/第(\d+)期/);
   return m ? parseInt(m[1], 10) : 8;
 }
 
@@ -4904,7 +5443,7 @@ function fiscalPeriodJournalBounds(businessStartYear, fiscalPeriod) {
 /** 仕訳 CSV の期間が選択期と一致するか */
 function journalFileMatchesFiscalPeriod(fileName, businessStartYear, fiscalPeriod) {
   const base = fileName.replace(/\\/g, '/').split('/').pop() ?? fileName;
-  const m = base.match(/^\u4ed5\u8a33\u30c7\u30fc\u30bf_(\d{4}-\d{2}-\d{2})_(\d{4}-\d{2}-\d{2})\.csv$/);
+  const m = base.match(/^仕訳データ_(\d{4}-\d{2}-\d{2})_(\d{4}-\d{2}-\d{2})\.csv$/);
   if (!m) return false;
   const { startPrefix, endPrefix } = fiscalPeriodJournalBounds(businessStartYear, fiscalPeriod);
   return m[1].startsWith(startPrefix) && m[2].startsWith(endPrefix);
@@ -5544,7 +6083,7 @@ const FILTERS = [
   { id: 'expense', label: '諸経費' },
   { id: 'outsourcing', label: '外注費' },
   { id: 'other', label: 'その他' },
-  { id: 'tax', label: '税金' },
+  { id: 'tax', label: '法人税' },
   { id: 'trends', label: '事業推移' },
 ];
 
@@ -5560,6 +6099,7 @@ let currentMonth = '6月';
 let expandConfig = loadExpandConfig();
 let visibilityConfig = loadVisibilityConfig();
 let rowDisplayConfig = loadRowDisplayConfig();
+let expenseSortConfig = loadExpenseSortConfig();
 let sectionColorConfig = loadSectionColorConfig();
 let uiColorConfig = loadUiColorConfig();
 let csvNameConfig = loadCsvNameConfig();
@@ -5577,12 +6117,15 @@ const expandedGroups = new Set();
 const rowHoverPlateControllers = new WeakMap();
 const rowSelectionPlateControllers = new WeakMap();
 const rowContextMenuControllers = new WeakMap();
+const expandSettingsContextMenuControllers = new WeakMap();
 const planTableColumnWidthControllers = new WeakMap();
 let activePlanTableColumnWidthAbort = null;
 let rowContextMenuEl = null;
 let rowContextMenuCleanup = null;
 /** 予実表の複数行選択（visibilityRowKey の Set） */
 const selectedPlanRowKeys = new Set();
+/** Shift+クリック範囲選択の起点 */
+let selectionAnchorRowKey = null;
 
 let planLoadingVisible = false;
 let planLoadingAwaitLayout = false;
@@ -5751,6 +6294,51 @@ function isTaxPublicChargeRow(row) {
   return /^租税公課/.test(row.label ?? '');
 }
 
+function sectionUsesCategoryCell(section) {
+  return Boolean(section.label) && !section.hideCategory;
+}
+
+function countCategoryRowSpan(section, visibleRows) {
+  const rows = section.categorySpanExcludesTotal
+    ? visibleRows.filter((r) => r.type !== 'total' && r.type !== 'warningSummary')
+    : visibleRows;
+  return rows.length;
+}
+
+function isCategoryColumnCoveredByRowSpan(sectionRowIndex, categoryRowSpan, usesCategoryCell, sectionCellAdded) {
+  return usesCategoryCell
+    && sectionCellAdded
+    && sectionRowIndex > 0
+    && sectionRowIndex < categoryRowSpan;
+}
+
+/** 区分列を常に1列分確保し、列ズレを防ぐ */
+function appendPlanTableCategoryCell(tr, {
+  section,
+  sectionRowIndex,
+  categoryRowSpan,
+  usesCategoryCell,
+  sectionCellAdded,
+}) {
+  if (isCategoryColumnCoveredByRowSpan(sectionRowIndex, categoryRowSpan, usesCategoryCell, sectionCellAdded)) {
+    return sectionCellAdded;
+  }
+
+  if (usesCategoryCell && sectionRowIndex === 0 && categoryRowSpan > 0) {
+    const category = document.createElement('td');
+    category.className = 'col-category';
+    category.rowSpan = categoryRowSpan;
+    appendSectionCategoryLabel(category, section);
+    tr.appendChild(category);
+    return true;
+  }
+
+  const category = document.createElement('td');
+  category.className = 'col-category col-category-placeholder';
+  tr.appendChild(category);
+  return sectionCellAdded;
+}
+
 /** 列内容に合わせた幅（空セル除外・計測モード中の scrollWidth） */
 function maxPlanCellScrollWidth(cells) {
   let max = 0;
@@ -5899,29 +6487,52 @@ function applyPlanTableColumnWidths(table, widths) {
   syncPlanTableStickyColumnOffsets(table);
 }
 
-/** セクション全体が大項目背景色（--section-bg）で行を塗るか（CF・利益セクション） */
+/** セクション全体が大項目背景色（--section-bg）で行を塗るか（CFセクション） */
 function sectionFillsRowWithAccentBackground(sectionId) {
-  return sectionId === 'cfIn' || sectionId === 'cfOut' || sectionId === 'profit';
+  return sectionId === 'cfIn' || sectionId === 'cfOut';
+}
+
+function isBsSectionForAccentTotal(sectionId) {
+  return (
+    sectionId === 'currentAssets' || sectionId === 'fixedAssets'
+    || sectionId === 'currentLiab' || sectionId === 'fixedLiab'
+    || sectionId === 'equity' || sectionId === 'cashBalance'
+  );
+}
+
+/** 大項目色付け行か（BS・利益は各セクションの最重要行のみ） */
+function planRowIsAccentRow(section, row) {
+  if (row.accentTotal === true) return true;
+  if (row.type !== 'total') return false;
+  if (isBsSectionForAccentTotal(section.id)) return false;
+  return true;
 }
 
 /**
  * 予実表行がアクセント背景色を持つか（row-accent-bg / 通常フォントサイズの判定）。
- * 大項目合計行・CF/利益セクションの行・差異行に該当。区分列（col-category）は行種別に関わらず常にアクセント。
+ * 大項目合計行・CFセクションの行・差異行に該当。区分列（col-category）は行種別に関わらず常にアクセント。
  */
 function planRowHasAccentBackground(section, row) {
   if (row.type === 'variance' || row.type === 'warningSummary') return true;
-  return row.type === 'total' || sectionFillsRowWithAccentBackground(section.id);
+  return planRowIsAccentRow(section, row) || sectionFillsRowWithAccentBackground(section.id);
+}
+
+function isOutsourcingFixedDisplayRow(section, row) {
+  return isOutsourcingFixedDisplaySection(section.id)
+    && row.type !== 'total'
+    && row.type !== 'breakdown';
 }
 
 function planRowUsesLargeDisplay(section, row) {
-  if (row.type === 'plan') return false;
+  if (isOutsourcingBreakdownRow(section.id, row)) return false;
+  if (row.type === 'plan' && !isOutsourcingFixedDisplayRow(section, row)) return false;
   if (isVisibilityFixedSection(section.id)) return true;
   if (planRowHasAccentBackground(section, row)) return true;
   return getRowDisplayEntry(rowDisplayConfig, section.id, row).largeDisplay;
 }
 
 function getRowFillColorClass(section, row) {
-  if (row.type === 'plan') return 'row-plan-amount';
+  if (isOutsourcingFixedDisplayRow(section, row)) return 'row-fill-1';
   if (planRowHasAccentBackground(section, row)) return '';
   if (isVisibilityFixedSection(section.id)) return '';
   const { fillColor1, fillColor2 } = getRowDisplayEntry(rowDisplayConfig, section.id, row);
@@ -5940,7 +6551,7 @@ function splitAggregateLabel(label) {
   };
 }
 
-function appendAggregateLabelContent(parent, label) {
+function appendAggregateLabelContent(parent, label, formulaLabel = null) {
   const { hasPrefix, text } = splitAggregateLabel(label);
   if (!hasPrefix) {
     parent.textContent = text;
@@ -5950,8 +6561,20 @@ function appendAggregateLabelContent(parent, label) {
   prefixSpan.className = 'aggregate-label-prefix';
   prefixSpan.textContent = APP_AGGREGATE_LABEL_PREFIX.trimEnd();
   prefixSpan.setAttribute('aria-hidden', 'true');
+  if (formulaLabel) {
+    prefixSpan.classList.add('aggregate-label-has-formula');
+    prefixSpan.title = formulaLabel;
+  }
   parent.appendChild(prefixSpan);
   parent.appendChild(document.createTextNode(` ${text}`));
+}
+
+function applyAggregateCellTooltip(td, row, section, columnKey, drilldownHint = '') {
+  if (!isAggregateRow(row)) return;
+  const detail = getAggregateFormulaDetail(row, section, data, columnKey);
+  if (!detail) return;
+  td.classList.add('aggregate-formula-cell');
+  td.title = drilldownHint ? `${detail}\n\n${drilldownHint}` : detail;
 }
 
 function appendSectionCategoryLabel(categoryTd, section) {
@@ -5970,13 +6593,18 @@ function appendSectionCategoryLabel(categoryTd, section) {
 
 function buildPlanRowTrClass(section, row) {
   const fillSectionColor = sectionFillsRowWithAccentBackground(section.id);
+  const isAccentRow = planRowIsAccentRow(section, row);
+  const rowKindClass = row.type === 'total' ? 'row-total' : 'row-item';
   return [
-    row.type === 'total' ? 'row-total row-section-total' : 'row-item',
+    `${rowKindClass}${isAccentRow ? ' row-section-total' : ''}`,
     fillSectionColor ? 'row-section-total' : '',
     planRowUsesLargeDisplay(section, row) ? 'row-accent-bg' : 'row-plain-bg',
     getRowFillColorClass(section, row),
+    row.type === 'plan' ? 'row-plan-amount' : '',
+    isTaxPublicChargeRow(row) && row.type !== 'total' ? 'row-tax-public-charge' : '',
     row.type === 'profit' && section.id !== 'profit' ? 'row-profit' : '',
     row.type === 'group' ? 'row-group' : '',
+    row.type === 'breakdown' ? 'row-breakdown' : '',
     row.type === 'sub' || row.type === 'breakdown' ? 'row-sub' : '',
     row.type === 'variance' ? 'row-variance' : '',
     row.type === 'warningSummary' ? 'row-warning-summary' : '',
@@ -6102,22 +6730,22 @@ function positionRowHoverPlate(wrap, plate, tr) {
 }
 
 function positionRowSelectionPlate(wrap, plate, tr) {
-  const firstCell = tr.querySelector('td:first-child');
+  const labelCell = tr.querySelector('.col-label');
   const lastCell = tr.querySelector('td:last-child');
-  if (!firstCell || !lastCell) {
+  if (!labelCell || !lastCell) {
     plate.hidden = true;
     return;
   }
 
   const wrapRect = wrap.getBoundingClientRect();
-  const firstRect = firstCell.getBoundingClientRect();
+  const labelRect = labelCell.getBoundingClientRect();
   const lastRect = lastCell.getBoundingClientRect();
 
   plate.hidden = false;
-  plate.style.top = `${firstRect.top - wrapRect.top + wrap.scrollTop}px`;
-  plate.style.left = `${firstRect.left - wrapRect.left + wrap.scrollLeft}px`;
-  plate.style.width = `${lastRect.right - firstRect.left}px`;
-  plate.style.height = `${firstRect.height}px`;
+  plate.style.top = `${labelRect.top - wrapRect.top + wrap.scrollTop}px`;
+  plate.style.left = `${labelRect.left - wrapRect.left + wrap.scrollLeft}px`;
+  plate.style.width = `${lastRect.right - labelRect.left}px`;
+  plate.style.height = `${labelRect.height}px`;
 }
 
 function updateRowSelectionPlates(wrap, table) {
@@ -6219,27 +6847,197 @@ function findPlanRow(sectionId, rowKey) {
   return { section, row };
 }
 
+function findPlanRowByKey(rowKey) {
+  if (!data?.sections || !rowKey) return null;
+  for (const section of data.sections) {
+    const row = section.rows.find((r) => visibilityRowKey(section.id, r) === rowKey);
+    if (row) return { section, row };
+  }
+  return null;
+}
+
+function dedupeTargetsByRowKey(targets) {
+  const seen = new Set();
+  const result = [];
+  for (const item of targets) {
+    const key = visibilityRowKey(item.section.id, item.row);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(item);
+  }
+  return result;
+}
+
+function applyRowDisplayPatch(targets, patch) {
+  if (!targets.length) return;
+  for (const { section, row } of targets) {
+    rowDisplayConfig = setRowDisplayEntry(rowDisplayConfig, section.id, row, patch);
+  }
+  saveRowDisplayConfig(rowDisplayConfig);
+}
+
+/** 行の見た目設定（大きく表示・塗り色）だけ DOM に反映（テーブル全再描画は行わない） */
+function applyPlanRowDisplayState(table, targets, { remeasureColumns = false } = {}) {
+  if (!table || !targets.length || !data) return;
+
+  const targetKeys = new Set(
+    targets.map(({ section, row }) => visibilityRowKey(section.id, row)),
+  );
+
+  for (const tr of table.querySelectorAll('tbody tr[data-row-key]')) {
+    if (!targetKeys.has(tr.dataset.rowKey)) continue;
+    const sectionId = tr.dataset.sectionId;
+    const rowKey = tr.dataset.rowKey;
+    const section = data.sections.find((s) => s.id === sectionId);
+    if (!section) continue;
+    const row = section.rows.find((r) => visibilityRowKey(sectionId, r) === rowKey);
+    if (!row) continue;
+
+    const usesLarge = planRowUsesLargeDisplay(section, row);
+    tr.classList.toggle('row-accent-bg', usesLarge);
+    tr.classList.toggle('row-plain-bg', !usesLarge);
+
+    tr.classList.remove('row-fill-1', 'row-fill-2');
+    const fillClass = getRowFillColorClass(section, row);
+    if (fillClass) tr.classList.add(fillClass);
+  }
+
+  if (remeasureColumns) {
+    fixPlanTableColumnWidths(table);
+  }
+}
+
 function findExpandCandidate(sectionId, account) {
   return data?.expandCandidates?.find(
     (c) => c.sectionId === sectionId && c.account === account,
   ) ?? null;
 }
 
+function resolveExpandAccountFromRow(row) {
+  if (row.type === 'group' || row.type === 'item' || row.type === 'sub') {
+    return row.label || null;
+  }
+  return null;
+}
+
+/** 展開設定対象を勘定科目単位にまとめる（補助科目行・常時表示行も含む） */
+function collectExpandMenuTargets(targets) {
+  const byKey = new Map();
+  for (const { section, row } of targets) {
+    const account = resolveExpandAccountFromRow(row);
+    if (!account || !findExpandCandidate(section.id, account)) continue;
+    const key = expandConfigKey(section.id, account);
+    if (!byKey.has(key)) {
+      byKey.set(key, { section, account, row });
+    }
+  }
+  return [...byKey.values()];
+}
+
+function findGroupRowForExpand(section, account) {
+  return section.rows.find((r) => r.type === 'group' && r.label === account) ?? null;
+}
+
 function clearRowSelection(table) {
   selectedPlanRowKeys.clear();
+  selectionAnchorRowKey = null;
   table?.querySelectorAll('tr.is-row-selected').forEach((tr) => {
     tr.classList.remove('is-row-selected');
   });
   refreshRowSelectionPlates(table);
 }
 
-function getSelectedPlanRows() {
-  const targets = [];
-  for (const rowKey of selectedPlanRowKeys) {
-    const sectionId = rowKey.split('|')[0];
-    const found = findPlanRow(sectionId, rowKey);
-    if (found) targets.push(found);
+function getVisibleSelectableRowTrs(tbody) {
+  return [...tbody.querySelectorAll('tr[data-row-key]')]
+    .filter((tr) => !tr.classList.contains('is-expand-collapsed'));
+}
+
+function selectPlanRowRange(fromKey, toKey, table) {
+  const tbody = table?.tBodies[0];
+  if (!tbody || !toKey) return;
+
+  const trs = getVisibleSelectableRowTrs(tbody);
+  if (!trs.length) return;
+
+  const keys = trs.map((tr) => tr.dataset.rowKey);
+  const fromIdx = fromKey ? keys.indexOf(fromKey) : -1;
+  const toIdx = keys.indexOf(toKey);
+  if (toIdx < 0) return;
+
+  const startIdx = fromIdx >= 0 ? Math.min(fromIdx, toIdx) : toIdx;
+  const endIdx = fromIdx >= 0 ? Math.max(fromIdx, toIdx) : toIdx;
+
+  selectedPlanRowKeys.clear();
+  tbody.querySelectorAll('tr.is-row-selected').forEach((tr) => {
+    tr.classList.remove('is-row-selected');
+  });
+
+  for (let i = startIdx; i <= endIdx; i += 1) {
+    selectedPlanRowKeys.add(keys[i]);
   }
+
+  for (const tr of trs) {
+    if (selectedPlanRowKeys.has(tr.dataset.rowKey)) {
+      tr.classList.add('is-row-selected');
+    }
+  }
+
+  selectionAnchorRowKey = toKey;
+  refreshRowSelectionPlates(table);
+}
+
+function handlePlanRowSelectClick(tr, table, e) {
+  const { rowKey } = tr.dataset;
+  if (!rowKey) return;
+
+  const ctrl = e.ctrlKey || e.metaKey;
+  const shift = e.shiftKey;
+
+  if (shift) {
+    e.preventDefault();
+    selectPlanRowRange(selectionAnchorRowKey ?? rowKey, rowKey, table);
+    return;
+  }
+
+  if (ctrl) {
+    e.preventDefault();
+    toggleRowSelection(tr);
+    selectionAnchorRowKey = rowKey;
+    return;
+  }
+
+  clearRowSelection(table);
+  selectionAnchorRowKey = rowKey;
+}
+
+function getSelectedPlanRows() {
+  const table = root.querySelector('.plan-table');
+  const targets = [];
+  const seenKeys = new Set();
+
+  const appendTarget = (item) => {
+    if (!item) return;
+    const key = visibilityRowKey(item.section.id, item.row);
+    if (seenKeys.has(key)) return;
+    seenKeys.add(key);
+    targets.push(item);
+  };
+
+  if (table?.tBodies[0]) {
+    for (const tr of table.tBodies[0].querySelectorAll('tr.is-row-selected')) {
+      const { sectionId, rowKey } = tr.dataset;
+      if (!rowKey) continue;
+      const found = (sectionId && findPlanRow(sectionId, rowKey))
+        || findPlanRowByKey(rowKey);
+      appendTarget(found);
+    }
+  }
+
+  for (const rowKey of selectedPlanRowKeys) {
+    if (seenKeys.has(rowKey)) continue;
+    appendTarget(findPlanRowByKey(rowKey));
+  }
+
   return targets;
 }
 
@@ -6271,6 +7069,7 @@ function ensureRowInSelection(tr, table) {
     tr.classList.add('is-row-selected');
     refreshRowSelectionPlates(table);
   }
+  selectionAnchorRowKey = rowKey;
 }
 
 function bulkToggleState(values) {
@@ -6382,10 +7181,10 @@ function showRowContextMenu(clientX, clientY, targets) {
     });
   }
 
-  const styleTargets = targets.filter(
+  const styleTargets = dedupeTargetsByRowKey(targets.filter(
     ({ section, row }) => !planRowHasAccentBackground(section, row)
       && !isVisibilityFixedSection(section.id),
-  );
+  ));
   const largeState = bulkToggleState(
     styleTargets.map(({ section, row }) =>
       getRowDisplayEntry(rowDisplayConfig, section.id, row).largeDisplay),
@@ -6407,16 +7206,10 @@ function showRowContextMenu(clientX, clientY, targets) {
     indeterminate: largeState.mixed,
     disabled: !styleTargets.length,
     onSelect: () => {
-      for (const { section, row } of styleTargets) {
-        rowDisplayConfig = setRowDisplayEntry(
-          rowDisplayConfig,
-          section.id,
-          row,
-          { largeDisplay: largeState.next },
-        );
-      }
-      saveRowDisplayConfig(rowDisplayConfig);
-      renderTable();
+      applyRowDisplayPatch(styleTargets, { largeDisplay: largeState.next });
+      applyPlanRowDisplayState(root.querySelector('.plan-table'), styleTargets, {
+        remeasureColumns: true,
+      });
     },
   });
   appendContextMenuItem(menu, {
@@ -6425,16 +7218,8 @@ function showRowContextMenu(clientX, clientY, targets) {
     indeterminate: fill1State.mixed,
     disabled: !styleTargets.length,
     onSelect: () => {
-      for (const { section, row } of styleTargets) {
-        rowDisplayConfig = setRowDisplayEntry(
-          rowDisplayConfig,
-          section.id,
-          row,
-          { fillColor1: fill1State.next },
-        );
-      }
-      saveRowDisplayConfig(rowDisplayConfig);
-      renderTable();
+      applyRowDisplayPatch(styleTargets, { fillColor1: fill1State.next });
+      applyPlanRowDisplayState(root.querySelector('.plan-table'), styleTargets);
     },
   });
   appendContextMenuItem(menu, {
@@ -6443,39 +7228,33 @@ function showRowContextMenu(clientX, clientY, targets) {
     indeterminate: fill2State.mixed,
     disabled: !styleTargets.length,
     onSelect: () => {
-      for (const { section, row } of styleTargets) {
-        rowDisplayConfig = setRowDisplayEntry(
-          rowDisplayConfig,
-          section.id,
-          row,
-          { fillColor2: fill2State.next },
-        );
-      }
-      saveRowDisplayConfig(rowDisplayConfig);
-      renderTable();
+      applyRowDisplayPatch(styleTargets, { fillColor2: fill2State.next });
+      applyPlanRowDisplayState(root.querySelector('.plan-table'), styleTargets);
     },
   });
 
-  const expandTargets = targets.filter(
-    ({ section, row }) => row.type === 'group' && findExpandCandidate(section.id, row.label),
-  );
-  const collapsibleTargets = expandTargets.filter(
+  const expandMenuTargets = collectExpandMenuTargets(targets);
+  const collapsibleTargets = expandMenuTargets.filter(
     ({ section }) => !ALWAYS_EXPAND_SECTION_IDS.has(section.id),
   );
 
-  if (expandTargets.length > 0) {
+  if (expandMenuTargets.length > 0) {
     const collapsibleState = bulkToggleState(
-      collapsibleTargets.map(({ section, row }) =>
-        getExpandEntry(expandConfig, section.id, row.label).collapsible),
+      collapsibleTargets.map(({ section, account }) =>
+        getExpandEntry(expandConfig, section.id, account).collapsible),
     );
-    const hideTotalTargets = collapsibleTargets.filter(({ section, row }) =>
-      getExpandEntry(expandConfig, section.id, row.label).collapsible);
+    const hideTotalTargets = collapsibleTargets.filter(({ section, account }) =>
+      getExpandEntry(expandConfig, section.id, account).collapsible);
     const hideTotalState = bulkToggleState(
-      hideTotalTargets.map(({ section, row }) =>
-        getExpandEntry(expandConfig, section.id, row.label).hideTotalWhenExpanded),
+      hideTotalTargets.map(({ section, account }) =>
+        getExpandEntry(expandConfig, section.id, account).hideTotalWhenExpanded),
     );
-    const sessionTargets = collapsibleTargets.filter(({ section, row }) =>
-      getExpandEntry(expandConfig, section.id, row.label).collapsible);
+    const sessionTargets = collapsibleTargets
+      .map(({ section, account }) => {
+        const groupRow = findGroupRowForExpand(section, account);
+        return groupRow ? { section, account, row: groupRow } : null;
+      })
+      .filter(Boolean);
     const expandedState = bulkToggleState(
       sessionTargets.map(({ row }) => expandedGroups.has(row.id)),
     );
@@ -6488,8 +7267,8 @@ function showRowContextMenu(clientX, clientY, targets) {
       indeterminate: collapsibleState.mixed,
       disabled: !collapsibleTargets.length,
       onSelect: () => {
-        for (const { section, row } of collapsibleTargets) {
-          expandConfig = setExpandEntry(expandConfig, section.id, row.label, {
+        for (const { section, account } of collapsibleTargets) {
+          expandConfig = setExpandEntry(expandConfig, section.id, account, {
             collapsible: collapsibleState.next,
           });
         }
@@ -6504,13 +7283,13 @@ function showRowContextMenu(clientX, clientY, targets) {
       indeterminate: hideTotalState.mixed,
       disabled: !hideTotalTargets.length,
       onSelect: () => {
-        for (const { section, row } of hideTotalTargets) {
-          expandConfig = setExpandEntry(expandConfig, section.id, row.label, {
+        for (const { section, account } of hideTotalTargets) {
+          expandConfig = setExpandEntry(expandConfig, section.id, account, {
             hideTotalWhenExpanded: hideTotalState.next,
           });
         }
         saveExpandConfig(expandConfig);
-        renderTable();
+        applyPlanGroupExpandState(root.querySelector('.plan-table'));
       },
     });
     if (sessionTargets.length > 0) {
@@ -6524,7 +7303,7 @@ function showRowContextMenu(clientX, clientY, targets) {
             if (expandedState.all) expandedGroups.delete(row.id);
             else expandedGroups.add(row.id);
           }
-          renderTable();
+          applyPlanGroupExpandState(root.querySelector('.plan-table'));
         },
       });
     }
@@ -6545,6 +7324,132 @@ function showRowContextMenu(clientX, clientY, targets) {
   window.addEventListener('resize', onDismiss, { signal });
 }
 
+function formatExpandSettingsContextMenuTitle(candidate) {
+  return `${candidate.sectionLabel} — ${candidate.account}`;
+}
+
+function showExpandSettingsContextMenu(clientX, clientY, candidates) {
+  closeRowContextMenu();
+  if (!candidates.length) return;
+
+  const menu = document.createElement('div');
+  menu.className = 'plan-row-context-menu';
+  menu.setAttribute('role', 'menu');
+
+  const title = document.createElement('div');
+  title.className = 'plan-row-context-menu-title';
+  if (candidates.length === 1) {
+    title.textContent = formatExpandSettingsContextMenuTitle(candidates[0]);
+  } else {
+    title.textContent = `${candidates.length}件を選択`;
+  }
+  menu.appendChild(title);
+
+  const multi = candidates.length > 1;
+  const collapsibleTargets = candidates.filter(
+    (c) => !ALWAYS_EXPAND_SECTION_IDS.has(c.sectionId),
+  );
+  const collapsibleState = bulkToggleState(
+    collapsibleTargets.map((c) =>
+      getExpandEntry(expandConfig, c.sectionId, c.account).collapsible),
+  );
+  const hideTotalTargets = collapsibleTargets.filter((c) =>
+    getExpandEntry(expandConfig, c.sectionId, c.account).collapsible);
+  const hideTotalState = bulkToggleState(
+    hideTotalTargets.map((c) =>
+      getExpandEntry(expandConfig, c.sectionId, c.account).hideTotalWhenExpanded),
+  );
+  const hasCustomEntry = candidates.some(
+    (c) => Object.prototype.hasOwnProperty.call(
+      expandConfig,
+      expandConfigKey(c.sectionId, c.account),
+    ),
+  );
+
+  appendContextMenuItem(menu, {
+    label: '折りたたむ',
+    checked: collapsibleState.all,
+    indeterminate: collapsibleState.mixed,
+    disabled: !collapsibleTargets.length,
+    onSelect: () => {
+      for (const c of collapsibleTargets) {
+        expandConfig = setExpandEntry(expandConfig, c.sectionId, c.account, {
+          collapsible: collapsibleState.next,
+        });
+      }
+      saveExpandConfig(expandConfig);
+      rebuildPlanData();
+      renderExpandSettings();
+    },
+  });
+  appendContextMenuItem(menu, {
+    label: '展開時に合計非表示',
+    checked: hideTotalState.all,
+    indeterminate: hideTotalState.mixed,
+    disabled: !hideTotalTargets.length,
+    onSelect: () => {
+      for (const c of hideTotalTargets) {
+        expandConfig = setExpandEntry(expandConfig, c.sectionId, c.account, {
+          hideTotalWhenExpanded: hideTotalState.next,
+        });
+      }
+      saveExpandConfig(expandConfig);
+      renderExpandSettings();
+    },
+  });
+  if (!multi && hasCustomEntry) {
+    appendContextMenuItem(menu, {
+      label: 'デフォルトに戻す',
+      onSelect: () => {
+        const c = candidates[0];
+        const key = expandConfigKey(c.sectionId, c.account);
+        expandConfig = { ...expandConfig };
+        delete expandConfig[key];
+        saveExpandConfig(expandConfig);
+        rebuildPlanData();
+        renderExpandSettings();
+      },
+    });
+  }
+
+  positionContextMenu(menu, clientX, clientY);
+  rowContextMenuEl = menu;
+
+  const onDismiss = () => closeRowContextMenu();
+  const controller = new AbortController();
+  const { signal } = controller;
+  rowContextMenuCleanup = () => controller.abort();
+
+  document.addEventListener('pointerdown', (e) => {
+    if (!menu.contains(e.target)) onDismiss();
+  }, { signal, capture: true });
+  window.addEventListener('scroll', onDismiss, { signal, capture: true });
+  window.addEventListener('resize', onDismiss, { signal });
+}
+
+function bindExpandSettingsContextMenu(wrap, table) {
+  const prev = expandSettingsContextMenuControllers.get(wrap);
+  prev?.abort();
+
+  const tbody = table.tBodies[0];
+  if (!tbody) return;
+
+  const controller = new AbortController();
+  const { signal } = controller;
+  expandSettingsContextMenuControllers.set(wrap, controller);
+
+  tbody.addEventListener('contextmenu', (e) => {
+    const tr = e.target.closest('tr');
+    if (!tr || tr.parentElement !== tbody) return;
+    const { sectionId, account } = tr.dataset;
+    if (!sectionId || !account) return;
+    e.preventDefault();
+    const candidate = findExpandCandidate(sectionId, account);
+    if (!candidate) return;
+    showExpandSettingsContextMenu(e.clientX, e.clientY, [candidate]);
+  }, { signal });
+}
+
 function bindRowContextMenu(wrap, table) {
   const prev = rowContextMenuControllers.get(wrap);
   prev?.abort();
@@ -6557,18 +7462,12 @@ function bindRowContextMenu(wrap, table) {
   rowContextMenuControllers.set(wrap, controller);
 
   tbody.addEventListener('click', (e) => {
-    if (e.target.closest('.row-toggle')) return;
+    if (e.target.closest('.row-toggle') && !(e.ctrlKey || e.metaKey) && !e.shiftKey) return;
     const tr = e.target.closest('tr');
     if (!tr || tr.parentElement !== tbody) return;
     if (!tr.dataset.rowKey) return;
 
-    if (e.ctrlKey || e.metaKey) {
-      e.preventDefault();
-      toggleRowSelection(tr);
-      return;
-    }
-
-    clearRowSelection(table);
+    handlePlanRowSelectClick(tr, table, e);
   }, { signal });
 
   tbody.addEventListener('contextmenu', (e) => {
@@ -6778,8 +7677,12 @@ function bindPlanTableColumnWidthSync(wrap, table) {
   planTableColumnWidthControllers.set(wrap, controller);
 
   let raf = null;
+  let lastSyncAvailableWidth = -1;
   const schedule = () => {
     if (!table.isConnected) return;
+    const availableW = getPlanTableAvailableWidth(table);
+    if (availableW > 0 && availableW === lastSyncAvailableWidth) return;
+    lastSyncAvailableWidth = availableW;
     if (raf !== null) cancelAnimationFrame(raf);
     raf = requestAnimationFrame(() => {
       raf = null;
@@ -6983,10 +7886,11 @@ function applyPlanColors(planData) {
     fiscalEndMonth: appSettings.fiscalEndMonth,
     displayMode,
   });
-  return {
+  const colored = {
     ...withAverages,
     sections: applySectionColors(withAverages.sections, sectionColorConfig),
   };
+  return applyExpenseSortToPlanData(insertSgaSummarySections(colored), expenseSortConfig);
 }
 
 function refreshSectionColors() {
@@ -7260,6 +8164,101 @@ function renderView() {
   else if (activeTab === 'settings') renderOtherSettings();
 }
 
+function getPlanTableAmountContext() {
+  const displayMode = getFiscalPeriodDisplayMode(
+    appSettings.businessStartYear,
+    appSettings.fiscalPeriod,
+  );
+  const pastMonthSet = displayMode === 'budget-actual'
+    ? buildPastFiscalMonthSet(
+      appSettings.businessStartYear,
+      appSettings.fiscalPeriod,
+      FISCAL_MONTHS,
+    )
+    : displayMode === 'actual'
+      ? new Set(FISCAL_MONTHS)
+      : new Set();
+  return {
+    displayMode,
+    pastMonthSet,
+    crossVarianceCtx: buildRevenueReceivablesCrossVarianceContext(data.sections),
+  };
+}
+
+function updateGroupRowAmountDisplay(tr, section, row, amountCtx) {
+  const expanded = expandedGroups.has(row.id);
+  const hideGroupTotal = expanded
+    && isHideTotalWhenExpanded(section.id, row.label, expandConfig);
+  const { crossVarianceCtx } = amountCtx;
+
+  const monthTds = tr.querySelectorAll('td.col-amount-month');
+  for (let mi = 0; mi < FISCAL_MONTHS.length; mi += 1) {
+    const m = FISCAL_MONTHS[mi];
+    const td = monthTds[mi];
+    if (!td) continue;
+    const val = row.values[m];
+    const showAmount = shouldShowCrossVarianceMonth(section, row, m, crossVarianceCtx);
+    if (hideGroupTotal || !showAmount) {
+      td.innerHTML = '';
+      td.classList.remove('aggregate-formula-cell');
+      td.removeAttribute('title');
+    } else {
+      td.innerHTML = formatAmount(val, 'item');
+      const drilldownHint = td.classList.contains('col-amount-drilldown')
+        ? 'ダブルクリックで仕訳を表示'
+        : '';
+      applyAggregateCellTooltip(td, row, section, m, drilldownHint);
+    }
+  }
+
+  const extraTds = tr.querySelectorAll('td.col-amount-extra');
+  for (let ei = 0; ei < EXTRA_COLUMNS.length; ei += 1) {
+    const col = EXTRA_COLUMNS[ei];
+    const td = extraTds[ei];
+    if (!td) continue;
+    if (hideGroupTotal) {
+      td.innerHTML = '';
+      td.classList.remove('aggregate-formula-cell');
+      td.removeAttribute('title');
+    } else {
+      td.innerHTML = formatAmount(row.values[col], 'item');
+      applyAggregateCellTooltip(td, row, section, col);
+    }
+  }
+}
+
+/** 展開状態だけ DOM に反映（列幅再計測・テーブル全再描画は行わない） */
+function applyPlanGroupExpandState(table) {
+  if (!table || !data) return;
+  const amountCtx = getPlanTableAmountContext();
+
+  for (const tr of table.querySelectorAll('tbody tr[data-parent-id]')) {
+    const parentId = tr.dataset.parentId;
+    tr.classList.toggle('is-expand-collapsed', !expandedGroups.has(parentId));
+  }
+
+  for (const tr of table.querySelectorAll('tbody tr.row-group[data-row-id]')) {
+    const groupId = tr.dataset.rowId;
+    const sectionId = tr.dataset.sectionId;
+    const section = data.sections.find((s) => s.id === sectionId);
+    const row = section?.rows.find((r) => r.id === groupId);
+    if (!section || !row) continue;
+
+    const expanded = expandedGroups.has(groupId);
+    const btn = tr.querySelector('.row-toggle');
+    const icon = btn?.querySelector('.toggle-icon');
+    if (btn) btn.setAttribute('aria-expanded', String(expanded));
+    if (icon) icon.textContent = expanded ? '▼' : '▶';
+    updateGroupRowAmountDisplay(tr, section, row, amountCtx);
+  }
+}
+
+function togglePlanGroupExpanded(groupId) {
+  if (expandedGroups.has(groupId)) expandedGroups.delete(groupId);
+  else expandedGroups.add(groupId);
+  applyPlanGroupExpandState(root.querySelector('.plan-table'));
+}
+
 function renderTable() {
   if (!data) return;
   closeJournalPopup();
@@ -7349,11 +8348,14 @@ function renderTable() {
   for (const section of visibleSections) {
     const visibleRows = section.rows.filter((row) => {
       if (!rowVisibleInSection(section, row)) return false;
-      if (row.parentId && !expandedGroups.has(row.parentId)) return false;
+      if (section.hideSectionTotal && row.type === 'total') return false;
       return true;
     });
     if (!visibleRows.length) continue;
     let sectionCellAdded = false;
+    let sectionRowIndex = 0;
+    const usesCategoryCell = sectionUsesCategoryCell(section);
+    const categoryRowSpan = usesCategoryCell ? countCategoryRowSpan(section, visibleRows) : 0;
     const sectionTextColor = section.textColor ?? '#ffffff';
     const fillSectionColor = sectionFillsRowWithAccentBackground(section.id);
 
@@ -7363,25 +8365,29 @@ function renderTable() {
       tr.dataset.sectionId = section.id;
       tr.dataset.rowKey = visibilityRowKey(section.id, row);
       syncRowSelection(tr);
-      if (row.parentId) tr.dataset.parentId = row.parentId;
-      if (!sectionCellAdded || row.type === 'total' || row.type === 'warningSummary' || fillSectionColor) {
+      if (row.id) tr.dataset.rowId = row.id;
+      if (row.parentId) {
+        tr.dataset.parentId = row.parentId;
+        if (!expandedGroups.has(row.parentId)) tr.classList.add('is-expand-collapsed');
+      }
+      if (!sectionCellAdded || planRowIsAccentRow(section, row) || row.type === 'warningSummary' || fillSectionColor) {
         tr.style.setProperty('--section-bg', section.barColor);
         tr.style.setProperty('--section-accent', section.color);
         tr.style.setProperty('--section-text', sectionTextColor);
         tr.style.setProperty('--section-text-dim', hexToRgba(sectionTextColor, 0.55));
       }
 
-      if (!sectionCellAdded) {
-        const category = document.createElement('td');
-        category.className = 'col-category';
-        category.rowSpan = visibleRows.length;
-        appendSectionCategoryLabel(category, section);
-        tr.appendChild(category);
-        sectionCellAdded = true;
-      }
+      sectionCellAdded = appendPlanTableCategoryCell(tr, {
+        section,
+        sectionRowIndex,
+        categoryRowSpan,
+        usesCategoryCell,
+        sectionCellAdded,
+      });
 
       const label = document.createElement('td');
       label.className = 'col-label';
+      const aggregateFormulaLabel = getAggregateFormulaLabel(row);
 
       if (row.type === 'group') {
         const expanded = expandedGroups.has(row.id);
@@ -7395,19 +8401,26 @@ function renderTable() {
         icon.textContent = expanded ? '▼' : '▶';
         const textSpan = document.createElement('span');
         textSpan.className = 'row-toggle-text';
-        appendAggregateLabelContent(textSpan, row.label);
+        appendAggregateLabelContent(textSpan, row.label, aggregateFormulaLabel);
         btn.append(icon, textSpan);
         btn.addEventListener('click', (e) => {
           e.preventDefault();
-          if (expandedGroups.has(row.id)) expandedGroups.delete(row.id);
-          else expandedGroups.add(row.id);
-          renderTable();
+          if (e.ctrlKey || e.metaKey || e.shiftKey) {
+            e.stopPropagation();
+            handlePlanRowSelectClick(tr, tr.closest('table'), e);
+            return;
+          }
+          togglePlanGroupExpanded(row.id);
         });
         label.appendChild(btn);
       } else if (row.type === 'sub' || row.type === 'sub-variance' || row.type === 'breakdown') {
         label.textContent = '';
       } else if (row.label) {
-        appendAggregateLabelContent(label, row.label);
+        appendAggregateLabelContent(label, row.label, aggregateFormulaLabel);
+        if (aggregateFormulaLabel) {
+          label.classList.add('aggregate-formula-label');
+          label.title = aggregateFormulaLabel;
+        }
       }
       tr.appendChild(label);
 
@@ -7444,17 +8457,24 @@ function renderTable() {
         const amountType = row.type === 'variance' ? 'variance' : 'item';
         const showAmount = shouldShowCrossVarianceMonth(section, row, m, crossVarianceCtx);
         td.innerHTML = hideGroupTotal || !showAmount ? '' : formatAmount(val, amountType);
-        if (
-          showAmount
+        const hasDrilldown = showAmount
           && isDrilldownAvailable(section, row)
           && hasDrilldownEntries(getDrilldownIndex(), section, row, m)
-          && !row.planFillMonths?.includes(m)
-        ) {
+          && !row.planFillMonths?.includes(m);
+        if (hasDrilldown) {
           td.classList.add('col-amount-drilldown');
-          td.title = 'ダブルクリックで仕訳を表示';
           td.addEventListener('dblclick', () => {
             showJournalPopup(section, row, m);
           });
+        }
+        if (showAmount && !hideGroupTotal) {
+          applyAggregateCellTooltip(
+            td,
+            row,
+            section,
+            m,
+            hasDrilldown ? 'ダブルクリックで仕訳を表示' : '',
+          );
         }
         tr.appendChild(td);
       }
@@ -7470,9 +8490,13 @@ function renderTable() {
         }
         const amountType = row.type === 'variance' ? 'variance' : 'item';
         td.innerHTML = hideGroupTotal ? '' : formatAmount(val, amountType);
+        if (!hideGroupTotal) {
+          applyAggregateCellTooltip(td, row, section, col);
+        }
         tr.appendChild(td);
       }
       tbody.appendChild(tr);
+      sectionRowIndex += 1;
     }
   }
 
@@ -7520,7 +8544,9 @@ function renderExpandSettings() {
   `;
   wrap.appendChild(header);
 
-  const candidates = data.expandCandidates ?? [];
+  const candidates = (data.expandCandidates ?? []).filter(
+    (c) => isExpandSettingsSection(c.sectionId),
+  );
   if (candidates.length === 0) {
     const empty = document.createElement('p');
     empty.className = 'expand-settings-empty';
@@ -7576,6 +8602,9 @@ function renderExpandSettings() {
     );
     const forceExpanded = ALWAYS_EXPAND_SECTION_IDS?.has?.(c.sectionId);
 
+    tr.dataset.sectionId = c.sectionId;
+    tr.dataset.account = c.account;
+
     tr.innerHTML = `
       <td></td>
       <td class="col-settings-label">${c.account}</td>
@@ -7628,6 +8657,7 @@ function renderExpandSettings() {
 
   table.appendChild(tbody);
   wrap.appendChild(table);
+  bindExpandSettingsContextMenu(wrap, table);
 
   wrap.querySelector('#expand-reset-btn').addEventListener('click', () => {
     expandConfig = {};
@@ -7654,11 +8684,35 @@ function renderVisibilitySettings() {
       予実表に表示する行を選択します。オフにした行は予実表に表示されません（補助科目行は親行をオフにすると非表示になります）。
       <strong>大きく表示</strong>は通常サイズのフォント・行高で表示します（デフォルトは小さめ）。
       <strong>塗り色１</strong>は注目したい行、<strong>塗り色２</strong>は注意したい行に着色します（色は色設定で変更可能）。
+      <strong>諸経費</strong>の勘定科目行では<strong>並び順</strong>（数値が小さいほど上）を指定できます。
       設定はブラウザに保存されます。
     </p>
-    <button type="button" class="expand-reset-btn" id="visibility-reset-btn">すべて表示</button>
+    <div class="expand-settings-header-actions">
+      <button type="button" class="expand-reset-btn" id="visibility-show-all-btn">すべて表示</button>
+      <button type="button" class="expand-reset-btn" id="visibility-reset-btn">デフォルトに戻す</button>
+    </div>
   `;
   wrap.appendChild(header);
+
+  function bindVisibilitySettingsHeaderActions() {
+    wrap.querySelector('#visibility-show-all-btn')?.addEventListener('click', () => {
+      visibilityConfig = {};
+      saveVisibilityConfig(visibilityConfig);
+      renderVisibilitySettings();
+      if (activeTab === 'plan') refreshPlanTable();
+    });
+    wrap.querySelector('#visibility-reset-btn')?.addEventListener('click', () => {
+      visibilityConfig = {};
+      rowDisplayConfig = {};
+      expenseSortConfig = {};
+      saveVisibilityConfig(visibilityConfig);
+      saveRowDisplayConfig(rowDisplayConfig);
+      saveExpenseSortConfig(expenseSortConfig);
+      if (rawPlanData) data = applyPlanColors(rawPlanData);
+      renderVisibilitySettings();
+      if (activeTab === 'plan') refreshPlanTable();
+    });
+  }
 
   const candidates = data.visibilityCandidates ?? [];
   if (candidates.length === 0) {
@@ -7666,6 +8720,7 @@ function renderVisibilitySettings() {
     empty.className = 'expand-settings-empty';
     empty.textContent = '表示対象の行がありません。';
     wrap.appendChild(empty);
+    bindVisibilitySettingsHeaderActions();
     replaceRootPanel(wrap);
     return;
   }
@@ -7679,6 +8734,7 @@ function renderVisibilitySettings() {
         <th class="col-row-type">種別</th>
         <th class="col-settings-label">勘定科目</th>
         <th class="col-subs">補助科目</th>
+        <th class="col-sort-order">並び順</th>
         <th class="col-toggle">表示</th>
         <th class="col-toggle">大きく表示</th>
         <th class="col-toggle">塗り色１（注目）</th>
@@ -7689,6 +8745,12 @@ function renderVisibilitySettings() {
 
   const tbody = document.createElement('tbody');
   let lastSection = '';
+  const expenseSortAccountsShown = new Set();
+
+  function applyExpenseSortAndRefreshPlan() {
+    if (rawPlanData) data = applyPlanColors(rawPlanData);
+    if (activeTab === 'plan') refreshPlanTable();
+  }
 
   function appendDisplayCheckbox(cell, { checked, ariaLabel, disabled, onChange }) {
     const label = document.createElement('label');
@@ -7728,6 +8790,7 @@ function renderVisibilitySettings() {
       <td class="col-row-type">${c.rowTypeLabel}</td>
       <td class="col-settings-label">${c.account}</td>
       <td class="col-subs">${c.subLabel}</td>
+      <td class="col-sort-order"></td>
       <td class="col-toggle"></td>
       <td class="col-toggle"></td>
       <td class="col-toggle"></td>
@@ -7735,6 +8798,32 @@ function renderVisibilitySettings() {
     `;
     styleSectionLabelCell(tr.querySelector('td'), c.sectionId);
     tr.querySelector('td').textContent = c.sectionLabel;
+
+    const sortCell = tr.querySelector('.col-sort-order');
+    if (
+      c.sectionId === 'expense'
+      && c.rowType !== 'total'
+      && !expenseSortAccountsShown.has(c.account)
+    ) {
+      expenseSortAccountsShown.add(c.account);
+      const sortInput = document.createElement('input');
+      sortInput.type = 'text';
+      sortInput.inputMode = 'numeric';
+      sortInput.autocomplete = 'off';
+      sortInput.className = 'expense-sort-order-input';
+      sortInput.value = getExpenseAccountSortOrderDisplay(expenseSortConfig, c.account);
+      sortInput.setAttribute('aria-label', `${c.account} の並び順`);
+      sortInput.addEventListener('change', () => {
+        expenseSortConfig = setExpenseAccountSortOrder(
+          expenseSortConfig,
+          c.account,
+          sortInput.value,
+        );
+        saveExpenseSortConfig(expenseSortConfig);
+        applyExpenseSortAndRefreshPlan();
+      });
+      sortCell.appendChild(sortInput);
+    }
 
     const toggleCell = tr.querySelector('.col-toggle');
     const label = document.createElement('label');
@@ -7772,6 +8861,7 @@ function renderVisibilitySettings() {
         );
         saveRowDisplayConfig(rowDisplayConfig);
         renderVisibilitySettings();
+        if (activeTab === 'plan') refreshPlanTable();
       },
     });
 
@@ -7788,6 +8878,7 @@ function renderVisibilitySettings() {
         );
         saveRowDisplayConfig(rowDisplayConfig);
         renderVisibilitySettings();
+        if (activeTab === 'plan') refreshPlanTable();
       },
     });
 
@@ -7804,6 +8895,7 @@ function renderVisibilitySettings() {
         );
         saveRowDisplayConfig(rowDisplayConfig);
         renderVisibilitySettings();
+        if (activeTab === 'plan') refreshPlanTable();
       },
     });
 
@@ -7813,11 +8905,7 @@ function renderVisibilitySettings() {
   table.appendChild(tbody);
   wrap.appendChild(table);
 
-  wrap.querySelector('#visibility-reset-btn').addEventListener('click', () => {
-    visibilityConfig = {};
-    saveVisibilityConfig(visibilityConfig);
-    renderVisibilitySettings();
-  });
+  bindVisibilitySettingsHeaderActions();
 
   replaceRootPanel(wrap);
 }
@@ -8506,6 +9594,7 @@ function renderUiColorPanel(container) {
     const { cellBg } = getUiColors(uiColorConfig);
     expandablePreview.style.background = cellBg;
     expandablePreview.style.color = color;
+    expandablePreview.style.boxShadow = 'none';
     expandablePreview.style.border = `1px solid ${color}`;
     expandableResetBtn.disabled = color === getUiColors({}).expandableHighlight;
     refreshPlanView();

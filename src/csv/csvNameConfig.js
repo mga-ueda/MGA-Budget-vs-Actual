@@ -1,23 +1,23 @@
 const STORAGE_KEY = 'mga-csv-name-config';
 
 export const CSV_KINDS = [
-  { id: 'journal', label: '\u4ed5\u8a33\u30c7\u30fc\u30bf', required: true },
-  { id: 'balanceSheet', label: '\u8cb8\u501f\u5bfe\u7167\u8868', required: true },
-  { id: 'generalLedger', label: '\u7dcf\u52d8\u5b9a\u5143\u5e33', required: true },
+  { id: 'journal', label: '仕訳データ', required: true },
+  { id: 'balanceSheet', label: '貸借対照表', required: true },
+  { id: 'generalLedger', label: '総勘定元帳', required: true },
 ];
 
 export const DEFAULT_CSV_NAME_CONFIG = {
   journal: {
-    pattern: '^\u4ed5\u8a33\u30c7\u30fc\u30bf_\\d{4}-\\d{2}-\\d{2}_\\d{4}-\\d{2}-\\d{2}\\.csv$',
-    example: '\u4ed5\u8a33\u30c7\u30fc\u30bf_2018-12-07_2019-11-30.csv',
+    pattern: '^仕訳データ_\\d{4}-\\d{2}-\\d{2}_\\d{4}-\\d{2}-\\d{2}\\.csv$',
+    example: '仕訳データ_2018-12-07_2019-11-30.csv',
   },
   balanceSheet: {
-    pattern: '^\u8cb8\u501f\u5bfe\u7167\u8868_\u6708\u6b21\u63a8\u79fb_\\d{8}_\\d{4}\\.csv$',
-    example: '\u8cb8\u501f\u5bfe\u7167\u8868_\u6708\u6b21\u63a8\u79fb_20260627_0759.csv',
+    pattern: '^貸借対照表_月次推移_\\d{8}_\\d{4}\\.csv$',
+    example: '貸借対照表_月次推移_20260627_0759.csv',
   },
   generalLedger: {
-    pattern: '^\u7dcf\u52d8\u5b9a\u5143\u5e33_\\d{8}_\\d{4}\\.csv$',
-    example: '\u7dcf\u52d8\u5b9a\u5143\u5e33_20260627_0759.csv',
+    pattern: '^総勘定元帳_\\d{8}_\\d{4}\\.csv$',
+    example: '総勘定元帳_20260627_0759.csv',
   },
 };
 
@@ -71,11 +71,11 @@ export function validateCsvNameConfig(config = loadCsvNameConfig()) {
     const entry = config[kind.id];
     const re = compileCsvPattern(entry?.pattern);
     if (!re) {
-      errors.push(`${kind.label}: \u6b63\u898f\u8868\u73fe\u304c\u4e0d\u6b63\u3067\u3059`);
+      errors.push(`${kind.label}: 正規表現が不正です`);
       continue;
     }
     if (entry.example && !re.test(entry.example)) {
-      errors.push(`${kind.label}: \u4f8b\u306e\u30d5\u30a1\u30a4\u30eb\u540d\u304c\u30d1\u30bf\u30fc\u30f3\u3068\u4e00\u81f4\u3057\u307e\u305b\u3093`);
+      errors.push(`${kind.label}: 例のファイル名がパターンと一致しません`);
     }
   }
   return { valid: errors.length === 0, errors };
@@ -100,11 +100,11 @@ export function classifyCsvFile(name, config = loadCsvNameConfig()) {
 
 export function testCsvNameExample(kindId, config = loadCsvNameConfig()) {
   const entry = config[kindId];
-  if (!entry) return { ok: false, error: '\u672a\u5b9a\u7fa9' };
+  if (!entry) return { ok: false, error: '未定義' };
   const re = compileCsvPattern(entry.pattern);
-  if (!re) return { ok: false, error: '\u6b63\u898f\u8868\u73fe\u304c\u4e0d\u6b63' };
-  if (!entry.example) return { ok: false, error: '\u4f8b\u304c\u3042\u308a\u307e\u305b\u3093' };
-  return { ok: re.test(entry.example), error: re.test(entry.example) ? null : '\u4e0d\u4e00\u81f4' };
+  if (!re) return { ok: false, error: '正規表現が不正' };
+  if (!entry.example) return { ok: false, error: '例がありません' };
+  return { ok: re.test(entry.example), error: re.test(entry.example) ? null : '不一致' };
 }
 
 export function getCsvNameExamples(config = loadCsvNameConfig()) {

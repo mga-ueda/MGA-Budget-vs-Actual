@@ -15,13 +15,13 @@ import { getConsumptionTaxRatePercent } from '../config/consumptionTaxRateConfig
 import { calcWithholdingTax } from '../config/withholdingTaxRateConfig.js';
 import { visibilityRowKey, rowTypeLabel } from '../config/visibilityConfig.js';
 
-const OUT_NO_SUB_LABEL = '\u88dc\u52a9\u79d1\u76ee\u306a\u3057';
-const OUTSOURCING_SECTION_LABEL = '\u5916\u6ce8\u8cbb';
+const OUT_NO_SUB_LABEL = '補助科目なし';
+const OUTSOURCING_SECTION_LABEL = '外注費';
 const BREAKDOWN_LABELS = {
-  remuneration: '\u5831\u916c\u91d1\u984d',
-  consumptionTax: '\u6d88\u8cbb\u7a0e\u984d',
-  withholdingTax: '\u6e90\u6cc9\u6240\u5f97\u7a0e\u984d',
-  netReceived: '\u53d7\u3051\u53d6\u308b\u91d1\u984d',
+  remuneration: '報酬金額',
+  consumptionTax: '消費税額',
+  withholdingTax: '源泉所得税額',
+  netReceived: '受け取る金額',
 };
 const BREAKDOWN_DEFS = [
   { key: 'remuneration', label: BREAKDOWN_LABELS.remuneration },
@@ -146,14 +146,14 @@ function outSumNonPlanRows(rows) {
 }
 
 function outParseMonthLabelNumber(label) {
-  const m = String(label).match(/^(\d{1,2})\u6708$/);
+  const m = String(label).match(/^(\d{1,2})月$/);
   return m ? parseInt(m[1], 10) : null;
 }
 
 function outGetCalendarYearMonth(monthLabel, monthYearMap, fiscalEndMonth) {
   const year = monthYearMap[monthLabel];
   if (year == null) return null;
-  if (monthLabel === '\u6c7a\u7b97\u6574\u7406') {
+  if (monthLabel === '決算整理') {
     return { year, month: fiscalEndMonth };
   }
   const month = outParseMonthLabelNumber(monthLabel);
@@ -168,7 +168,7 @@ function outCalcRemunerationFromTaxInclusiveTotal(totalYen, ratePercent) {
   return Math.floor(total * 100 / (100 + ratePercent));
 }
 
-/** �ō��x���z����l���Ǝ�����O���������Z�o */
+/** 税込支払額から個人事業主向け源泉内訳を算出 */
 export function calcOutsourcingBreakdownForMonth(
   totalYen,
   calendarYear,
@@ -294,18 +294,6 @@ function outInsertIndividualBreakdownRows(rows, {
   return result;
 }
 
-function outCollectBreakdownVisibilityCandidates(rows) {
-  return rows.filter((row) => row.type === 'breakdown').map((row) => ({
-    key: visibilityRowKey('outsourcing', row),
-    sectionId: 'outsourcing',
-    sectionLabel: OUTSOURCING_SECTION_LABEL,
-    account: '',
-    subLabel: row.subLabel || '',
-    rowType: row.type,
-    rowTypeLabel: rowTypeLabel(row.type),
-  }));
-}
-
 function outCollectPlanVisibilityCandidates(planRows) {
   return planRows.map((row) => ({
     key: visibilityRowKey('outsourcing', row),
@@ -318,7 +306,7 @@ function outCollectPlanVisibilityCandidates(planRows) {
   }));
 }
 
-/** Merge outsourcing payment plans into outsourcing section (plan / budget-actual modes). */
+/** 外注費セクションに支払計画をマージする（予算・予実モード） */
 export function enrichPlanDataWithOutsourcingRows(planData, {
   outsourcingPlans,
   businessStartYear,
@@ -342,24 +330,14 @@ export function enrichPlanDataWithOutsourcingRows(planData, {
     withholdingTaxRates,
   });
 
-  const mergeVisibilityCandidates = (sections, ...extraLists) => ({
-    ...planData,
-    sections,
-    visibilityCandidates: [
-      ...(planData.visibilityCandidates ?? []),
-      ...extraLists.flat(),
-    ],
-  });
-
   if (displayMode !== 'plan' && displayMode !== 'budget-actual') {
     if (outsourcingIdx < 0) return planData;
     const outsourcing = planData.sections[outsourcingIdx];
     const rows = applyBreakdown(outsourcing.rows);
-    const breakdownCandidates = outCollectBreakdownVisibilityCandidates(rows);
     const sections = planData.sections.map((section, idx) => (
       idx === outsourcingIdx ? { ...section, rows } : section
     ));
-    return mergeVisibilityCandidates(sections, breakdownCandidates);
+    return { ...planData, sections };
   }
 
   const vendors = getPeriodVendorEntries(outsourcingPlans ?? {}, fiscalPeriod, fiscalMonths);
@@ -377,7 +355,6 @@ export function enrichPlanDataWithOutsourcingRows(planData, {
   if (outsourcingIdx < 0) {
     if (planRows.length === 0) return planData;
     const rows = applyBreakdown(planRows);
-    const breakdownCandidates = outCollectBreakdownVisibilityCandidates(rows);
     return {
       ...planData,
       sections: [...planData.sections, {
@@ -389,7 +366,6 @@ export function enrichPlanDataWithOutsourcingRows(planData, {
       visibilityCandidates: [
         ...(planData.visibilityCandidates ?? []),
         ...extraCandidates,
-        ...breakdownCandidates,
       ],
     };
   }
@@ -411,7 +387,6 @@ export function enrichPlanDataWithOutsourcingRows(planData, {
   }
 
   rows = applyBreakdown(rows);
-  const breakdownCandidates = outCollectBreakdownVisibilityCandidates(rows);
 
   const sections = planData.sections.map((section, idx) => {
     if (idx !== outsourcingIdx) return section;
@@ -424,12 +399,11 @@ export function enrichPlanDataWithOutsourcingRows(planData, {
     visibilityCandidates: [
       ...(planData.visibilityCandidates ?? []),
       ...extraCandidates,
-      ...breakdownCandidates,
     ],
   };
 }
 
-/** ?\???\?f?[?^????O???????????????????o???? */
+/** 予実データから外注実績の月別金額を取引先ごとに抽出 */
 export function collectOutsourcingActualAmountsFromPlanData(planData, fiscalMonths) {
   const section = planData?.sections?.find((s) => s.id === 'outsourcing');
   if (!section) return new Map();
@@ -451,7 +425,7 @@ export function collectOutsourcingActualAmountsFromPlanData(planData, fiscalMont
   return result;
 }
 
-/** ?\???\?f?[?^????O????????????o???? */
+/** 予実データから外注の補助科目一覧を抽出 */
 export function collectOutsourcingSubaccountsFromPlanData(planData) {
   const section = planData?.sections?.find((s) => s.id === 'outsourcing');
   if (!section) return [];

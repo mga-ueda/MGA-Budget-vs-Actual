@@ -6,12 +6,12 @@ import { buildPastFiscalMonthSet } from '../config/appSettings.js';
 import { buildFiscalYearMonths } from '../config/salaryPlanConfig.js';
 import { planDataFromCache } from '../csv/csvLoader.js';
 
-const INTEREST_ACCOUNT = '\u53d7\u53d6\u5229\u606f';
+const INTEREST_ACCOUNT = '受取利息';
 const NON_OPERATING_SECTION_ID = 'nonOperating';
 const EXPENSE_SECTION_ID = 'expense';
 const OTHER_SECTION_ID = 'other';
-const AVERAGE_COLUMN = '\u5e73\u5747';
-const DEPRECIATION_ACCOUNT = '\u6e1b\u4fa1\u511f\u5374\u8cbb';
+const AVERAGE_COLUMN = '平均';
+const DEPRECIATION_ACCOUNT = '減価償却費';
 
 function emptyRawMonthValues() {
   const values = {};

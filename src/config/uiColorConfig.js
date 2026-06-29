@@ -114,7 +114,6 @@ export function applyUiColors(config = {}) {
 
   root.style.setProperty('--plan-bg', appBg);
   root.style.setProperty('--plan-cell-bg', cellBg);
-  root.style.setProperty('--plan-cell-bg-sub', darkenHex(cellBg, 0.12));
   root.style.setProperty('--plan-text', textColor);
   root.style.setProperty('--plan-muted', textColor);
   root.style.setProperty('--plan-text-dim', hexToRgba(textColor, 0.5));

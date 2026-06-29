@@ -32,7 +32,7 @@ export const MIN_ROW_PADDING_SCALE = 0.5;
 export const MAX_ROW_PADDING_SCALE = 1.5;
 
 /** 補助科目の法人等判定に使う文字列マーカー（カンマ区切り） */
-export const DEFAULT_CORP_ENTITY_MARKERS = '\u3231,\u3232,(\u540c)';
+export const DEFAULT_CORP_ENTITY_MARKERS = '㈱,㈲,(同)';
 
 export const DEFAULT_COMPANY_NAME = 'MIYABI GAME AUDIO INC.';
 export const DEFAULT_BRAND_ICON_TEXT = 'MGA';
@@ -175,24 +175,24 @@ export function buildMonthYearMap(businessStartYear, fiscalPeriod) {
   const decYear = businessStartYear + fiscalPeriod - 1;
   const nextYear = decYear + 1;
   return {
-    '12\u6708': decYear,
-    '1\u6708': nextYear,
-    '2\u6708': nextYear,
-    '3\u6708': nextYear,
-    '4\u6708': nextYear,
-    '5\u6708': nextYear,
-    '6\u6708': nextYear,
-    '7\u6708': nextYear,
-    '8\u6708': nextYear,
-    '9\u6708': nextYear,
-    '10\u6708': nextYear,
-    '11\u6708': nextYear,
-    '\u6c7a\u7b97\u6574\u7406': nextYear,
+    '12月': decYear,
+    '1月': nextYear,
+    '2月': nextYear,
+    '3月': nextYear,
+    '4月': nextYear,
+    '5月': nextYear,
+    '6月': nextYear,
+    '7月': nextYear,
+    '8月': nextYear,
+    '9月': nextYear,
+    '10月': nextYear,
+    '11月': nextYear,
+    '決算整理': nextYear,
   };
 }
 
 function parseMonthLabelNumber(label) {
-  const m = String(label).match(/^(\d{1,2})\u6708$/);
+  const m = String(label).match(/^(\d{1,2})月$/);
   return m ? parseInt(m[1], 10) : null;
 }
 
@@ -274,11 +274,11 @@ export function normalizeFiscalPeriod(businessStartYear, fiscalPeriod, date = ne
 }
 
 export function formatFiscalPeriodLabel(fiscalPeriod) {
-  return `\u7b2c${fiscalPeriod}\u671f`;
+  return `第${fiscalPeriod}期`;
 }
 
 export function parseFiscalPeriod(label) {
-  const m = String(label ?? '').match(/\u7b2c(\d+)\u671f/);
+  const m = String(label ?? '').match(/第(\d+)期/);
   return m ? parseInt(m[1], 10) : 8;
 }
 
@@ -294,7 +294,7 @@ export function fiscalPeriodJournalBounds(businessStartYear, fiscalPeriod) {
 /** 仕訳 CSV の期間が選択期と一致するか */
 export function journalFileMatchesFiscalPeriod(fileName, businessStartYear, fiscalPeriod) {
   const base = fileName.replace(/\\/g, '/').split('/').pop() ?? fileName;
-  const m = base.match(/^\u4ed5\u8a33\u30c7\u30fc\u30bf_(\d{4}-\d{2}-\d{2})_(\d{4}-\d{2}-\d{2})\.csv$/);
+  const m = base.match(/^仕訳データ_(\d{4}-\d{2}-\d{2})_(\d{4}-\d{2}-\d{2})\.csv$/);
   if (!m) return false;
   const { startPrefix, endPrefix } = fiscalPeriodJournalBounds(businessStartYear, fiscalPeriod);
   return m[1].startsWith(startPrefix) && m[2].startsWith(endPrefix);

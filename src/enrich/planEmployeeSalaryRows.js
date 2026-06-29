@@ -21,32 +21,15 @@ import {
   computeLegalWelfareAmount,
 } from '../config/legalWelfareRateConfig.js';
 
-const DIRECTOR_ACCOUNT = '\u5f79\u54e1\u5831\u916c';
-const SALARY_ACCOUNT = '\u7d66\u6599\u624b\u5f53';
-const OVERTIME_SUB_PATTERN = /\u6b8b\u696d\u624b\u5f53/;
-const TRAVEL_ACCOUNT = '\u65c5\u8cbb\u4ea4\u901a\u8cbb';
-const TRAVEL_ROW_PATTERN = /\u65c5\u8cbb\u4ea4\u901a\u8cbb|\u901a\u52e4\u624b\u5f53/;
-const LEGAL_WELFARE_ACCOUNT = '\u6cd5\u5b9a\u798f\u5229\u8cbb';
-const PERSONNEL_SECTION_LABEL = '\u4eba\u4ef6\u8cbb';
-const PERSONNEL_TOTAL_LABEL = '\u4eba\u4ef6\u8cbb\u5408\u8a08';
+const DIRECTOR_ACCOUNT = '役員報酬';
+const SALARY_ACCOUNT = '給料手当';
+const OVERTIME_SUB_PATTERN = /残業手当/;
+const TRAVEL_ACCOUNT = '旅費交通費';
+const TRAVEL_ROW_PATTERN = /旅費交通費|通勤手当/;
+const LEGAL_WELFARE_ACCOUNT = '法定福利費';
+const PERSONNEL_SECTION_LABEL = '人件費';
+const PERSONNEL_TOTAL_LABEL = '人件費合計';
 const TOTAL_COLUMN = EXTRA_COLUMNS[0];
-
-function planRowSortTotal(row) {
-  return Math.abs(row.values[TOTAL_COLUMN] ?? 0);
-}
-
-/** 金額降順 → 勘定科目 → 補助科目（氏名） */
-function comparePlanRowsByTotal(a, b) {
-  const byAmount = planRowSortTotal(b) - planRowSortTotal(a);
-  if (byAmount !== 0) return byAmount;
-  const byAccount = (a.label ?? '').localeCompare(b.label ?? '', 'ja');
-  if (byAccount !== 0) return byAccount;
-  return (a.subLabel ?? '').localeCompare(b.subLabel ?? '', 'ja');
-}
-
-function sortPlanRowsByTotal(rows) {
-  return [...rows].sort(comparePlanRowsByTotal);
-}
 
 function combineMonthlyAndBonusValues(plan, fiscalMonths) {
   const values = {};
@@ -261,7 +244,7 @@ function mergePlanIntoPrimaryCsvRow(
   if (csvRows.length === 0 || !planTotal) return csvRows;
   const planMonths = rawValuesFromRow({ values: planTotal });
   const primaryIdx = csvRows.findIndex(
-    (row) => !row.subLabel || row.subLabel === '\u88dc\u52a9\u79d1\u76ee\u306a\u3057',
+    (row) => !row.subLabel || row.subLabel === '補助科目なし',
   );
   const targetIdx = primaryIdx >= 0 ? primaryIdx : 0;
   return csvRows.map((row, index) => {
@@ -271,8 +254,7 @@ function mergePlanIntoPrimaryCsvRow(
 }
 
 /**
- * Order: director CSV, director plan rows, staff plan rows, salary CSV,
- * overtime CSV (plan-filled), travel CSV (plan-filled), rest.
+ * 並び順：役員CSV→役員計画行→一般職計画行→給与CSV→残業CSV（計画補完）→出張CSV（計画補完）→その他。
  */
 function rebuildPersonnelRows(
   rows,
@@ -385,8 +367,8 @@ function buildEmployeePlanRows(activeEmployees, salaryPlans, fiscalPeriod, fisca
   const hasStaffPlan = (staffPlanTotalEnriched[TOTAL_COLUMN] ?? 0) !== 0;
 
   return {
-    directorRows: sortPlanRowsByTotal(directorRows),
-    salaryRows: sortPlanRowsByTotal(salaryRows),
+    directorRows,
+    salaryRows,
     directorPlanTotal: hasDirectorPlan ? directorPlanTotalEnriched : null,
     staffPlanTotal: hasStaffPlan ? staffPlanTotalEnriched : null,
   };
@@ -450,6 +432,7 @@ function createPersonnelSection(rows) {
     subLabel: '',
     type: 'total',
     values: totalValues,
+    aggregateFormula: 'sectionSumExcludePlan',
   };
   return {
     id: 'personnel',
@@ -474,7 +457,7 @@ function collectPlanVisibilityCandidates(planRows) {
   }));
 }
 
-/** Merge employee salary plan rows into personnel (plan / budget-actual modes). */
+/** 人件費セクションに従業員給与計画行をマージ（予算・予実モード）。 */
 export function enrichPlanDataWithEmployeeSalaryRows(planData, {
   employees,
   salaryPlans,
@@ -559,6 +542,7 @@ export function enrichPlanDataWithEmployeeSalaryRows(planData, {
     rows[totalIdx] = {
       ...rows[totalIdx],
       values: sumNonPlanRows(rows),
+      aggregateFormula: 'sectionSumExcludePlan',
     };
   }
 

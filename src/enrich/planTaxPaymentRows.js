@@ -10,10 +10,10 @@ import { buildFiscalYearMonths } from '../config/salaryPlanConfig.js';
 import { getTaxPaymentPlan } from '../config/taxPaymentConfig.js';
 import { visibilityRowKey, rowTypeLabel } from '../config/visibilityConfig.js';
 
-const TAX_PAY_ACCOUNT = '\u79df\u7a0e\u516c\u8ab2';
-const TAX_PAY_OTHER_SECTION_LABEL = '\u305d\u306e\u4ed6';
-const TAX_PAY_OTHER_TOTAL_LABEL = '\u305d\u306e\u4ed6\u5408\u8a08';
-const NO_SUB_LABEL = '\u88dc\u52a9\u79d1\u76ee\u306a\u3057';
+const TAX_PAY_ACCOUNT = '租税公課';
+const TAX_PAY_OTHER_SECTION_LABEL = 'その他';
+const TAX_PAY_OTHER_TOTAL_LABEL = 'その他合計';
+const NO_SUB_LABEL = '補助科目なし';
 
 function taxPayEmptyRawMonthValues() {
   const values = {};
@@ -163,6 +163,7 @@ function taxPayCreateOtherSection(rows) {
     subLabel: '',
     type: 'total',
     values: totalValues,
+    aggregateFormula: 'sectionSumExcludePlan',
   };
   return {
     id: 'other',
@@ -188,7 +189,7 @@ function taxPayCollectPlanVisibilityCandidates(planRow) {
   }];
 }
 
-/** Merge tax public charge payment plan into other section (plan / budget-actual modes). */
+/** 税金・公租公課の支払計画をその他セクションにマージ（予算・予実モード）。 */
 export function enrichPlanDataWithTaxPaymentRows(planData, {
   taxPaymentPlans,
   businessStartYear,
@@ -245,6 +246,7 @@ export function enrichPlanDataWithTaxPaymentRows(planData, {
     rows[totalIdx] = {
       ...rows[totalIdx],
       values: taxPaySumNonPlanRows(rows),
+      aggregateFormula: 'sectionSumExcludePlan',
     };
   }
 

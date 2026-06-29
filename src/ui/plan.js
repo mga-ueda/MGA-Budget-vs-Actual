@@ -1,4 +1,9 @@
 import {
+  getAggregateFormulaLabel,
+  getAggregateFormulaDetail,
+  isAggregateRow,
+} from '../parse/aggregateFormula.js';
+import {
   formatYen,
   calcTotalProfitMargin,
   buildFullPlan,
@@ -8,6 +13,7 @@ import {
   APP_AGGREGATE_LABEL_PREFIX,
   buildRevenueReceivablesCrossVarianceContext,
   shouldShowCrossVarianceMonth,
+  insertSgaSummarySections,
 } from '../parse/parseJournal.js';
 import {
   resolvePlanStartup,
@@ -79,6 +85,7 @@ import {
   setExpandEntry,
   expandConfigKey,
   ALWAYS_EXPAND_SECTION_IDS,
+  isExpandSettingsSection,
 } from '../config/expandConfig.js';
 import {
   loadVisibilityConfig,
@@ -86,6 +93,8 @@ import {
   isRowVisible,
   visibilityRowKey,
   isVisibilityFixedSection,
+  isOutsourcingFixedDisplaySection,
+  isOutsourcingBreakdownRow,
 } from '../config/visibilityConfig.js';
 import {
   loadRowDisplayConfig,
@@ -93,6 +102,13 @@ import {
   getRowDisplayEntry,
   setRowDisplayEntry,
 } from '../config/rowDisplayConfig.js';
+import {
+  loadExpenseSortConfig,
+  saveExpenseSortConfig,
+  getExpenseAccountSortOrderDisplay,
+  setExpenseAccountSortOrder,
+  applyExpenseSortToPlanData,
+} from '../config/expenseSortConfig.js';
 import {
   loadSectionColorConfig,
   saveSectionColorConfig,
@@ -341,7 +357,7 @@ const FILTERS = [
   { id: 'expense', label: '諸経費' },
   { id: 'outsourcing', label: '外注費' },
   { id: 'other', label: 'その他' },
-  { id: 'tax', label: '税金' },
+  { id: 'tax', label: '法人税' },
   { id: 'trends', label: '事業推移' },
 ];
 
@@ -357,6 +373,7 @@ let currentMonth = '6月';
 let expandConfig = loadExpandConfig();
 let visibilityConfig = loadVisibilityConfig();
 let rowDisplayConfig = loadRowDisplayConfig();
+let expenseSortConfig = loadExpenseSortConfig();
 let sectionColorConfig = loadSectionColorConfig();
 let uiColorConfig = loadUiColorConfig();
 let csvNameConfig = loadCsvNameConfig();
@@ -374,12 +391,15 @@ const expandedGroups = new Set();
 const rowHoverPlateControllers = new WeakMap();
 const rowSelectionPlateControllers = new WeakMap();
 const rowContextMenuControllers = new WeakMap();
+const expandSettingsContextMenuControllers = new WeakMap();
 const planTableColumnWidthControllers = new WeakMap();
 let activePlanTableColumnWidthAbort = null;
 let rowContextMenuEl = null;
 let rowContextMenuCleanup = null;
 /** 予実表の複数行選択（visibilityRowKey の Set） */
 const selectedPlanRowKeys = new Set();
+/** Shift+クリック範囲選択の起点 */
+let selectionAnchorRowKey = null;
 
 let planLoadingVisible = false;
 let planLoadingAwaitLayout = false;
@@ -548,6 +568,51 @@ function isTaxPublicChargeRow(row) {
   return /^租税公課/.test(row.label ?? '');
 }
 
+function sectionUsesCategoryCell(section) {
+  return Boolean(section.label) && !section.hideCategory;
+}
+
+function countCategoryRowSpan(section, visibleRows) {
+  const rows = section.categorySpanExcludesTotal
+    ? visibleRows.filter((r) => r.type !== 'total' && r.type !== 'warningSummary')
+    : visibleRows;
+  return rows.length;
+}
+
+function isCategoryColumnCoveredByRowSpan(sectionRowIndex, categoryRowSpan, usesCategoryCell, sectionCellAdded) {
+  return usesCategoryCell
+    && sectionCellAdded
+    && sectionRowIndex > 0
+    && sectionRowIndex < categoryRowSpan;
+}
+
+/** 区分列を常に1列分確保し、列ズレを防ぐ */
+function appendPlanTableCategoryCell(tr, {
+  section,
+  sectionRowIndex,
+  categoryRowSpan,
+  usesCategoryCell,
+  sectionCellAdded,
+}) {
+  if (isCategoryColumnCoveredByRowSpan(sectionRowIndex, categoryRowSpan, usesCategoryCell, sectionCellAdded)) {
+    return sectionCellAdded;
+  }
+
+  if (usesCategoryCell && sectionRowIndex === 0 && categoryRowSpan > 0) {
+    const category = document.createElement('td');
+    category.className = 'col-category';
+    category.rowSpan = categoryRowSpan;
+    appendSectionCategoryLabel(category, section);
+    tr.appendChild(category);
+    return true;
+  }
+
+  const category = document.createElement('td');
+  category.className = 'col-category col-category-placeholder';
+  tr.appendChild(category);
+  return sectionCellAdded;
+}
+
 /** 列内容に合わせた幅（空セル除外・計測モード中の scrollWidth） */
 function maxPlanCellScrollWidth(cells) {
   let max = 0;
@@ -696,29 +761,52 @@ function applyPlanTableColumnWidths(table, widths) {
   syncPlanTableStickyColumnOffsets(table);
 }
 
-/** セクション全体が大項目背景色（--section-bg）で行を塗るか（CF・利益セクション） */
+/** セクション全体が大項目背景色（--section-bg）で行を塗るか（CFセクション） */
 function sectionFillsRowWithAccentBackground(sectionId) {
-  return sectionId === 'cfIn' || sectionId === 'cfOut' || sectionId === 'profit';
+  return sectionId === 'cfIn' || sectionId === 'cfOut';
+}
+
+function isBsSectionForAccentTotal(sectionId) {
+  return (
+    sectionId === 'currentAssets' || sectionId === 'fixedAssets'
+    || sectionId === 'currentLiab' || sectionId === 'fixedLiab'
+    || sectionId === 'equity' || sectionId === 'cashBalance'
+  );
+}
+
+/** 大項目色付け行か（BS・利益は各セクションの最重要行のみ） */
+function planRowIsAccentRow(section, row) {
+  if (row.accentTotal === true) return true;
+  if (row.type !== 'total') return false;
+  if (isBsSectionForAccentTotal(section.id)) return false;
+  return true;
 }
 
 /**
  * 予実表行がアクセント背景色を持つか（row-accent-bg / 通常フォントサイズの判定）。
- * 大項目合計行・CF/利益セクションの行・差異行に該当。区分列（col-category）は行種別に関わらず常にアクセント。
+ * 大項目合計行・CFセクションの行・差異行に該当。区分列（col-category）は行種別に関わらず常にアクセント。
  */
 function planRowHasAccentBackground(section, row) {
   if (row.type === 'variance' || row.type === 'warningSummary') return true;
-  return row.type === 'total' || sectionFillsRowWithAccentBackground(section.id);
+  return planRowIsAccentRow(section, row) || sectionFillsRowWithAccentBackground(section.id);
+}
+
+function isOutsourcingFixedDisplayRow(section, row) {
+  return isOutsourcingFixedDisplaySection(section.id)
+    && row.type !== 'total'
+    && row.type !== 'breakdown';
 }
 
 function planRowUsesLargeDisplay(section, row) {
-  if (row.type === 'plan') return false;
+  if (isOutsourcingBreakdownRow(section.id, row)) return false;
+  if (row.type === 'plan' && !isOutsourcingFixedDisplayRow(section, row)) return false;
   if (isVisibilityFixedSection(section.id)) return true;
   if (planRowHasAccentBackground(section, row)) return true;
   return getRowDisplayEntry(rowDisplayConfig, section.id, row).largeDisplay;
 }
 
 function getRowFillColorClass(section, row) {
-  if (row.type === 'plan') return 'row-plan-amount';
+  if (isOutsourcingFixedDisplayRow(section, row)) return 'row-fill-1';
   if (planRowHasAccentBackground(section, row)) return '';
   if (isVisibilityFixedSection(section.id)) return '';
   const { fillColor1, fillColor2 } = getRowDisplayEntry(rowDisplayConfig, section.id, row);
@@ -737,7 +825,7 @@ function splitAggregateLabel(label) {
   };
 }
 
-function appendAggregateLabelContent(parent, label) {
+function appendAggregateLabelContent(parent, label, formulaLabel = null) {
   const { hasPrefix, text } = splitAggregateLabel(label);
   if (!hasPrefix) {
     parent.textContent = text;
@@ -747,8 +835,20 @@ function appendAggregateLabelContent(parent, label) {
   prefixSpan.className = 'aggregate-label-prefix';
   prefixSpan.textContent = APP_AGGREGATE_LABEL_PREFIX.trimEnd();
   prefixSpan.setAttribute('aria-hidden', 'true');
+  if (formulaLabel) {
+    prefixSpan.classList.add('aggregate-label-has-formula');
+    prefixSpan.title = formulaLabel;
+  }
   parent.appendChild(prefixSpan);
   parent.appendChild(document.createTextNode(` ${text}`));
+}
+
+function applyAggregateCellTooltip(td, row, section, columnKey, drilldownHint = '') {
+  if (!isAggregateRow(row)) return;
+  const detail = getAggregateFormulaDetail(row, section, data, columnKey);
+  if (!detail) return;
+  td.classList.add('aggregate-formula-cell');
+  td.title = drilldownHint ? `${detail}\n\n${drilldownHint}` : detail;
 }
 
 function appendSectionCategoryLabel(categoryTd, section) {
@@ -767,13 +867,18 @@ function appendSectionCategoryLabel(categoryTd, section) {
 
 function buildPlanRowTrClass(section, row) {
   const fillSectionColor = sectionFillsRowWithAccentBackground(section.id);
+  const isAccentRow = planRowIsAccentRow(section, row);
+  const rowKindClass = row.type === 'total' ? 'row-total' : 'row-item';
   return [
-    row.type === 'total' ? 'row-total row-section-total' : 'row-item',
+    `${rowKindClass}${isAccentRow ? ' row-section-total' : ''}`,
     fillSectionColor ? 'row-section-total' : '',
     planRowUsesLargeDisplay(section, row) ? 'row-accent-bg' : 'row-plain-bg',
     getRowFillColorClass(section, row),
+    row.type === 'plan' ? 'row-plan-amount' : '',
+    isTaxPublicChargeRow(row) && row.type !== 'total' ? 'row-tax-public-charge' : '',
     row.type === 'profit' && section.id !== 'profit' ? 'row-profit' : '',
     row.type === 'group' ? 'row-group' : '',
+    row.type === 'breakdown' ? 'row-breakdown' : '',
     row.type === 'sub' || row.type === 'breakdown' ? 'row-sub' : '',
     row.type === 'variance' ? 'row-variance' : '',
     row.type === 'warningSummary' ? 'row-warning-summary' : '',
@@ -899,22 +1004,22 @@ function positionRowHoverPlate(wrap, plate, tr) {
 }
 
 function positionRowSelectionPlate(wrap, plate, tr) {
-  const firstCell = tr.querySelector('td:first-child');
+  const labelCell = tr.querySelector('.col-label');
   const lastCell = tr.querySelector('td:last-child');
-  if (!firstCell || !lastCell) {
+  if (!labelCell || !lastCell) {
     plate.hidden = true;
     return;
   }
 
   const wrapRect = wrap.getBoundingClientRect();
-  const firstRect = firstCell.getBoundingClientRect();
+  const labelRect = labelCell.getBoundingClientRect();
   const lastRect = lastCell.getBoundingClientRect();
 
   plate.hidden = false;
-  plate.style.top = `${firstRect.top - wrapRect.top + wrap.scrollTop}px`;
-  plate.style.left = `${firstRect.left - wrapRect.left + wrap.scrollLeft}px`;
-  plate.style.width = `${lastRect.right - firstRect.left}px`;
-  plate.style.height = `${firstRect.height}px`;
+  plate.style.top = `${labelRect.top - wrapRect.top + wrap.scrollTop}px`;
+  plate.style.left = `${labelRect.left - wrapRect.left + wrap.scrollLeft}px`;
+  plate.style.width = `${lastRect.right - labelRect.left}px`;
+  plate.style.height = `${labelRect.height}px`;
 }
 
 function updateRowSelectionPlates(wrap, table) {
@@ -1016,27 +1121,197 @@ function findPlanRow(sectionId, rowKey) {
   return { section, row };
 }
 
+function findPlanRowByKey(rowKey) {
+  if (!data?.sections || !rowKey) return null;
+  for (const section of data.sections) {
+    const row = section.rows.find((r) => visibilityRowKey(section.id, r) === rowKey);
+    if (row) return { section, row };
+  }
+  return null;
+}
+
+function dedupeTargetsByRowKey(targets) {
+  const seen = new Set();
+  const result = [];
+  for (const item of targets) {
+    const key = visibilityRowKey(item.section.id, item.row);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(item);
+  }
+  return result;
+}
+
+function applyRowDisplayPatch(targets, patch) {
+  if (!targets.length) return;
+  for (const { section, row } of targets) {
+    rowDisplayConfig = setRowDisplayEntry(rowDisplayConfig, section.id, row, patch);
+  }
+  saveRowDisplayConfig(rowDisplayConfig);
+}
+
+/** 行の見た目設定（大きく表示・塗り色）だけ DOM に反映（テーブル全再描画は行わない） */
+function applyPlanRowDisplayState(table, targets, { remeasureColumns = false } = {}) {
+  if (!table || !targets.length || !data) return;
+
+  const targetKeys = new Set(
+    targets.map(({ section, row }) => visibilityRowKey(section.id, row)),
+  );
+
+  for (const tr of table.querySelectorAll('tbody tr[data-row-key]')) {
+    if (!targetKeys.has(tr.dataset.rowKey)) continue;
+    const sectionId = tr.dataset.sectionId;
+    const rowKey = tr.dataset.rowKey;
+    const section = data.sections.find((s) => s.id === sectionId);
+    if (!section) continue;
+    const row = section.rows.find((r) => visibilityRowKey(sectionId, r) === rowKey);
+    if (!row) continue;
+
+    const usesLarge = planRowUsesLargeDisplay(section, row);
+    tr.classList.toggle('row-accent-bg', usesLarge);
+    tr.classList.toggle('row-plain-bg', !usesLarge);
+
+    tr.classList.remove('row-fill-1', 'row-fill-2');
+    const fillClass = getRowFillColorClass(section, row);
+    if (fillClass) tr.classList.add(fillClass);
+  }
+
+  if (remeasureColumns) {
+    fixPlanTableColumnWidths(table);
+  }
+}
+
 function findExpandCandidate(sectionId, account) {
   return data?.expandCandidates?.find(
     (c) => c.sectionId === sectionId && c.account === account,
   ) ?? null;
 }
 
+function resolveExpandAccountFromRow(row) {
+  if (row.type === 'group' || row.type === 'item' || row.type === 'sub') {
+    return row.label || null;
+  }
+  return null;
+}
+
+/** 展開設定対象を勘定科目単位にまとめる（補助科目行・常時表示行も含む） */
+function collectExpandMenuTargets(targets) {
+  const byKey = new Map();
+  for (const { section, row } of targets) {
+    const account = resolveExpandAccountFromRow(row);
+    if (!account || !findExpandCandidate(section.id, account)) continue;
+    const key = expandConfigKey(section.id, account);
+    if (!byKey.has(key)) {
+      byKey.set(key, { section, account, row });
+    }
+  }
+  return [...byKey.values()];
+}
+
+function findGroupRowForExpand(section, account) {
+  return section.rows.find((r) => r.type === 'group' && r.label === account) ?? null;
+}
+
 function clearRowSelection(table) {
   selectedPlanRowKeys.clear();
+  selectionAnchorRowKey = null;
   table?.querySelectorAll('tr.is-row-selected').forEach((tr) => {
     tr.classList.remove('is-row-selected');
   });
   refreshRowSelectionPlates(table);
 }
 
-function getSelectedPlanRows() {
-  const targets = [];
-  for (const rowKey of selectedPlanRowKeys) {
-    const sectionId = rowKey.split('|')[0];
-    const found = findPlanRow(sectionId, rowKey);
-    if (found) targets.push(found);
+function getVisibleSelectableRowTrs(tbody) {
+  return [...tbody.querySelectorAll('tr[data-row-key]')]
+    .filter((tr) => !tr.classList.contains('is-expand-collapsed'));
+}
+
+function selectPlanRowRange(fromKey, toKey, table) {
+  const tbody = table?.tBodies[0];
+  if (!tbody || !toKey) return;
+
+  const trs = getVisibleSelectableRowTrs(tbody);
+  if (!trs.length) return;
+
+  const keys = trs.map((tr) => tr.dataset.rowKey);
+  const fromIdx = fromKey ? keys.indexOf(fromKey) : -1;
+  const toIdx = keys.indexOf(toKey);
+  if (toIdx < 0) return;
+
+  const startIdx = fromIdx >= 0 ? Math.min(fromIdx, toIdx) : toIdx;
+  const endIdx = fromIdx >= 0 ? Math.max(fromIdx, toIdx) : toIdx;
+
+  selectedPlanRowKeys.clear();
+  tbody.querySelectorAll('tr.is-row-selected').forEach((tr) => {
+    tr.classList.remove('is-row-selected');
+  });
+
+  for (let i = startIdx; i <= endIdx; i += 1) {
+    selectedPlanRowKeys.add(keys[i]);
   }
+
+  for (const tr of trs) {
+    if (selectedPlanRowKeys.has(tr.dataset.rowKey)) {
+      tr.classList.add('is-row-selected');
+    }
+  }
+
+  selectionAnchorRowKey = toKey;
+  refreshRowSelectionPlates(table);
+}
+
+function handlePlanRowSelectClick(tr, table, e) {
+  const { rowKey } = tr.dataset;
+  if (!rowKey) return;
+
+  const ctrl = e.ctrlKey || e.metaKey;
+  const shift = e.shiftKey;
+
+  if (shift) {
+    e.preventDefault();
+    selectPlanRowRange(selectionAnchorRowKey ?? rowKey, rowKey, table);
+    return;
+  }
+
+  if (ctrl) {
+    e.preventDefault();
+    toggleRowSelection(tr);
+    selectionAnchorRowKey = rowKey;
+    return;
+  }
+
+  clearRowSelection(table);
+  selectionAnchorRowKey = rowKey;
+}
+
+function getSelectedPlanRows() {
+  const table = root.querySelector('.plan-table');
+  const targets = [];
+  const seenKeys = new Set();
+
+  const appendTarget = (item) => {
+    if (!item) return;
+    const key = visibilityRowKey(item.section.id, item.row);
+    if (seenKeys.has(key)) return;
+    seenKeys.add(key);
+    targets.push(item);
+  };
+
+  if (table?.tBodies[0]) {
+    for (const tr of table.tBodies[0].querySelectorAll('tr.is-row-selected')) {
+      const { sectionId, rowKey } = tr.dataset;
+      if (!rowKey) continue;
+      const found = (sectionId && findPlanRow(sectionId, rowKey))
+        || findPlanRowByKey(rowKey);
+      appendTarget(found);
+    }
+  }
+
+  for (const rowKey of selectedPlanRowKeys) {
+    if (seenKeys.has(rowKey)) continue;
+    appendTarget(findPlanRowByKey(rowKey));
+  }
+
   return targets;
 }
 
@@ -1068,6 +1343,7 @@ function ensureRowInSelection(tr, table) {
     tr.classList.add('is-row-selected');
     refreshRowSelectionPlates(table);
   }
+  selectionAnchorRowKey = rowKey;
 }
 
 function bulkToggleState(values) {
@@ -1179,10 +1455,10 @@ function showRowContextMenu(clientX, clientY, targets) {
     });
   }
 
-  const styleTargets = targets.filter(
+  const styleTargets = dedupeTargetsByRowKey(targets.filter(
     ({ section, row }) => !planRowHasAccentBackground(section, row)
       && !isVisibilityFixedSection(section.id),
-  );
+  ));
   const largeState = bulkToggleState(
     styleTargets.map(({ section, row }) =>
       getRowDisplayEntry(rowDisplayConfig, section.id, row).largeDisplay),
@@ -1204,16 +1480,10 @@ function showRowContextMenu(clientX, clientY, targets) {
     indeterminate: largeState.mixed,
     disabled: !styleTargets.length,
     onSelect: () => {
-      for (const { section, row } of styleTargets) {
-        rowDisplayConfig = setRowDisplayEntry(
-          rowDisplayConfig,
-          section.id,
-          row,
-          { largeDisplay: largeState.next },
-        );
-      }
-      saveRowDisplayConfig(rowDisplayConfig);
-      renderTable();
+      applyRowDisplayPatch(styleTargets, { largeDisplay: largeState.next });
+      applyPlanRowDisplayState(root.querySelector('.plan-table'), styleTargets, {
+        remeasureColumns: true,
+      });
     },
   });
   appendContextMenuItem(menu, {
@@ -1222,16 +1492,8 @@ function showRowContextMenu(clientX, clientY, targets) {
     indeterminate: fill1State.mixed,
     disabled: !styleTargets.length,
     onSelect: () => {
-      for (const { section, row } of styleTargets) {
-        rowDisplayConfig = setRowDisplayEntry(
-          rowDisplayConfig,
-          section.id,
-          row,
-          { fillColor1: fill1State.next },
-        );
-      }
-      saveRowDisplayConfig(rowDisplayConfig);
-      renderTable();
+      applyRowDisplayPatch(styleTargets, { fillColor1: fill1State.next });
+      applyPlanRowDisplayState(root.querySelector('.plan-table'), styleTargets);
     },
   });
   appendContextMenuItem(menu, {
@@ -1240,39 +1502,33 @@ function showRowContextMenu(clientX, clientY, targets) {
     indeterminate: fill2State.mixed,
     disabled: !styleTargets.length,
     onSelect: () => {
-      for (const { section, row } of styleTargets) {
-        rowDisplayConfig = setRowDisplayEntry(
-          rowDisplayConfig,
-          section.id,
-          row,
-          { fillColor2: fill2State.next },
-        );
-      }
-      saveRowDisplayConfig(rowDisplayConfig);
-      renderTable();
+      applyRowDisplayPatch(styleTargets, { fillColor2: fill2State.next });
+      applyPlanRowDisplayState(root.querySelector('.plan-table'), styleTargets);
     },
   });
 
-  const expandTargets = targets.filter(
-    ({ section, row }) => row.type === 'group' && findExpandCandidate(section.id, row.label),
-  );
-  const collapsibleTargets = expandTargets.filter(
+  const expandMenuTargets = collectExpandMenuTargets(targets);
+  const collapsibleTargets = expandMenuTargets.filter(
     ({ section }) => !ALWAYS_EXPAND_SECTION_IDS.has(section.id),
   );
 
-  if (expandTargets.length > 0) {
+  if (expandMenuTargets.length > 0) {
     const collapsibleState = bulkToggleState(
-      collapsibleTargets.map(({ section, row }) =>
-        getExpandEntry(expandConfig, section.id, row.label).collapsible),
+      collapsibleTargets.map(({ section, account }) =>
+        getExpandEntry(expandConfig, section.id, account).collapsible),
     );
-    const hideTotalTargets = collapsibleTargets.filter(({ section, row }) =>
-      getExpandEntry(expandConfig, section.id, row.label).collapsible);
+    const hideTotalTargets = collapsibleTargets.filter(({ section, account }) =>
+      getExpandEntry(expandConfig, section.id, account).collapsible);
     const hideTotalState = bulkToggleState(
-      hideTotalTargets.map(({ section, row }) =>
-        getExpandEntry(expandConfig, section.id, row.label).hideTotalWhenExpanded),
+      hideTotalTargets.map(({ section, account }) =>
+        getExpandEntry(expandConfig, section.id, account).hideTotalWhenExpanded),
     );
-    const sessionTargets = collapsibleTargets.filter(({ section, row }) =>
-      getExpandEntry(expandConfig, section.id, row.label).collapsible);
+    const sessionTargets = collapsibleTargets
+      .map(({ section, account }) => {
+        const groupRow = findGroupRowForExpand(section, account);
+        return groupRow ? { section, account, row: groupRow } : null;
+      })
+      .filter(Boolean);
     const expandedState = bulkToggleState(
       sessionTargets.map(({ row }) => expandedGroups.has(row.id)),
     );
@@ -1285,8 +1541,8 @@ function showRowContextMenu(clientX, clientY, targets) {
       indeterminate: collapsibleState.mixed,
       disabled: !collapsibleTargets.length,
       onSelect: () => {
-        for (const { section, row } of collapsibleTargets) {
-          expandConfig = setExpandEntry(expandConfig, section.id, row.label, {
+        for (const { section, account } of collapsibleTargets) {
+          expandConfig = setExpandEntry(expandConfig, section.id, account, {
             collapsible: collapsibleState.next,
           });
         }
@@ -1301,13 +1557,13 @@ function showRowContextMenu(clientX, clientY, targets) {
       indeterminate: hideTotalState.mixed,
       disabled: !hideTotalTargets.length,
       onSelect: () => {
-        for (const { section, row } of hideTotalTargets) {
-          expandConfig = setExpandEntry(expandConfig, section.id, row.label, {
+        for (const { section, account } of hideTotalTargets) {
+          expandConfig = setExpandEntry(expandConfig, section.id, account, {
             hideTotalWhenExpanded: hideTotalState.next,
           });
         }
         saveExpandConfig(expandConfig);
-        renderTable();
+        applyPlanGroupExpandState(root.querySelector('.plan-table'));
       },
     });
     if (sessionTargets.length > 0) {
@@ -1321,7 +1577,7 @@ function showRowContextMenu(clientX, clientY, targets) {
             if (expandedState.all) expandedGroups.delete(row.id);
             else expandedGroups.add(row.id);
           }
-          renderTable();
+          applyPlanGroupExpandState(root.querySelector('.plan-table'));
         },
       });
     }
@@ -1342,6 +1598,132 @@ function showRowContextMenu(clientX, clientY, targets) {
   window.addEventListener('resize', onDismiss, { signal });
 }
 
+function formatExpandSettingsContextMenuTitle(candidate) {
+  return `${candidate.sectionLabel} — ${candidate.account}`;
+}
+
+function showExpandSettingsContextMenu(clientX, clientY, candidates) {
+  closeRowContextMenu();
+  if (!candidates.length) return;
+
+  const menu = document.createElement('div');
+  menu.className = 'plan-row-context-menu';
+  menu.setAttribute('role', 'menu');
+
+  const title = document.createElement('div');
+  title.className = 'plan-row-context-menu-title';
+  if (candidates.length === 1) {
+    title.textContent = formatExpandSettingsContextMenuTitle(candidates[0]);
+  } else {
+    title.textContent = `${candidates.length}件を選択`;
+  }
+  menu.appendChild(title);
+
+  const multi = candidates.length > 1;
+  const collapsibleTargets = candidates.filter(
+    (c) => !ALWAYS_EXPAND_SECTION_IDS.has(c.sectionId),
+  );
+  const collapsibleState = bulkToggleState(
+    collapsibleTargets.map((c) =>
+      getExpandEntry(expandConfig, c.sectionId, c.account).collapsible),
+  );
+  const hideTotalTargets = collapsibleTargets.filter((c) =>
+    getExpandEntry(expandConfig, c.sectionId, c.account).collapsible);
+  const hideTotalState = bulkToggleState(
+    hideTotalTargets.map((c) =>
+      getExpandEntry(expandConfig, c.sectionId, c.account).hideTotalWhenExpanded),
+  );
+  const hasCustomEntry = candidates.some(
+    (c) => Object.prototype.hasOwnProperty.call(
+      expandConfig,
+      expandConfigKey(c.sectionId, c.account),
+    ),
+  );
+
+  appendContextMenuItem(menu, {
+    label: '折りたたむ',
+    checked: collapsibleState.all,
+    indeterminate: collapsibleState.mixed,
+    disabled: !collapsibleTargets.length,
+    onSelect: () => {
+      for (const c of collapsibleTargets) {
+        expandConfig = setExpandEntry(expandConfig, c.sectionId, c.account, {
+          collapsible: collapsibleState.next,
+        });
+      }
+      saveExpandConfig(expandConfig);
+      rebuildPlanData();
+      renderExpandSettings();
+    },
+  });
+  appendContextMenuItem(menu, {
+    label: '展開時に合計非表示',
+    checked: hideTotalState.all,
+    indeterminate: hideTotalState.mixed,
+    disabled: !hideTotalTargets.length,
+    onSelect: () => {
+      for (const c of hideTotalTargets) {
+        expandConfig = setExpandEntry(expandConfig, c.sectionId, c.account, {
+          hideTotalWhenExpanded: hideTotalState.next,
+        });
+      }
+      saveExpandConfig(expandConfig);
+      renderExpandSettings();
+    },
+  });
+  if (!multi && hasCustomEntry) {
+    appendContextMenuItem(menu, {
+      label: 'デフォルトに戻す',
+      onSelect: () => {
+        const c = candidates[0];
+        const key = expandConfigKey(c.sectionId, c.account);
+        expandConfig = { ...expandConfig };
+        delete expandConfig[key];
+        saveExpandConfig(expandConfig);
+        rebuildPlanData();
+        renderExpandSettings();
+      },
+    });
+  }
+
+  positionContextMenu(menu, clientX, clientY);
+  rowContextMenuEl = menu;
+
+  const onDismiss = () => closeRowContextMenu();
+  const controller = new AbortController();
+  const { signal } = controller;
+  rowContextMenuCleanup = () => controller.abort();
+
+  document.addEventListener('pointerdown', (e) => {
+    if (!menu.contains(e.target)) onDismiss();
+  }, { signal, capture: true });
+  window.addEventListener('scroll', onDismiss, { signal, capture: true });
+  window.addEventListener('resize', onDismiss, { signal });
+}
+
+function bindExpandSettingsContextMenu(wrap, table) {
+  const prev = expandSettingsContextMenuControllers.get(wrap);
+  prev?.abort();
+
+  const tbody = table.tBodies[0];
+  if (!tbody) return;
+
+  const controller = new AbortController();
+  const { signal } = controller;
+  expandSettingsContextMenuControllers.set(wrap, controller);
+
+  tbody.addEventListener('contextmenu', (e) => {
+    const tr = e.target.closest('tr');
+    if (!tr || tr.parentElement !== tbody) return;
+    const { sectionId, account } = tr.dataset;
+    if (!sectionId || !account) return;
+    e.preventDefault();
+    const candidate = findExpandCandidate(sectionId, account);
+    if (!candidate) return;
+    showExpandSettingsContextMenu(e.clientX, e.clientY, [candidate]);
+  }, { signal });
+}
+
 function bindRowContextMenu(wrap, table) {
   const prev = rowContextMenuControllers.get(wrap);
   prev?.abort();
@@ -1354,18 +1736,12 @@ function bindRowContextMenu(wrap, table) {
   rowContextMenuControllers.set(wrap, controller);
 
   tbody.addEventListener('click', (e) => {
-    if (e.target.closest('.row-toggle')) return;
+    if (e.target.closest('.row-toggle') && !(e.ctrlKey || e.metaKey) && !e.shiftKey) return;
     const tr = e.target.closest('tr');
     if (!tr || tr.parentElement !== tbody) return;
     if (!tr.dataset.rowKey) return;
 
-    if (e.ctrlKey || e.metaKey) {
-      e.preventDefault();
-      toggleRowSelection(tr);
-      return;
-    }
-
-    clearRowSelection(table);
+    handlePlanRowSelectClick(tr, table, e);
   }, { signal });
 
   tbody.addEventListener('contextmenu', (e) => {
@@ -1575,8 +1951,12 @@ function bindPlanTableColumnWidthSync(wrap, table) {
   planTableColumnWidthControllers.set(wrap, controller);
 
   let raf = null;
+  let lastSyncAvailableWidth = -1;
   const schedule = () => {
     if (!table.isConnected) return;
+    const availableW = getPlanTableAvailableWidth(table);
+    if (availableW > 0 && availableW === lastSyncAvailableWidth) return;
+    lastSyncAvailableWidth = availableW;
     if (raf !== null) cancelAnimationFrame(raf);
     raf = requestAnimationFrame(() => {
       raf = null;
@@ -1780,10 +2160,11 @@ function applyPlanColors(planData) {
     fiscalEndMonth: appSettings.fiscalEndMonth,
     displayMode,
   });
-  return {
+  const colored = {
     ...withAverages,
     sections: applySectionColors(withAverages.sections, sectionColorConfig),
   };
+  return applyExpenseSortToPlanData(insertSgaSummarySections(colored), expenseSortConfig);
 }
 
 function refreshSectionColors() {
@@ -2057,6 +2438,101 @@ function renderView() {
   else if (activeTab === 'settings') renderOtherSettings();
 }
 
+function getPlanTableAmountContext() {
+  const displayMode = getFiscalPeriodDisplayMode(
+    appSettings.businessStartYear,
+    appSettings.fiscalPeriod,
+  );
+  const pastMonthSet = displayMode === 'budget-actual'
+    ? buildPastFiscalMonthSet(
+      appSettings.businessStartYear,
+      appSettings.fiscalPeriod,
+      FISCAL_MONTHS,
+    )
+    : displayMode === 'actual'
+      ? new Set(FISCAL_MONTHS)
+      : new Set();
+  return {
+    displayMode,
+    pastMonthSet,
+    crossVarianceCtx: buildRevenueReceivablesCrossVarianceContext(data.sections),
+  };
+}
+
+function updateGroupRowAmountDisplay(tr, section, row, amountCtx) {
+  const expanded = expandedGroups.has(row.id);
+  const hideGroupTotal = expanded
+    && isHideTotalWhenExpanded(section.id, row.label, expandConfig);
+  const { crossVarianceCtx } = amountCtx;
+
+  const monthTds = tr.querySelectorAll('td.col-amount-month');
+  for (let mi = 0; mi < FISCAL_MONTHS.length; mi += 1) {
+    const m = FISCAL_MONTHS[mi];
+    const td = monthTds[mi];
+    if (!td) continue;
+    const val = row.values[m];
+    const showAmount = shouldShowCrossVarianceMonth(section, row, m, crossVarianceCtx);
+    if (hideGroupTotal || !showAmount) {
+      td.innerHTML = '';
+      td.classList.remove('aggregate-formula-cell');
+      td.removeAttribute('title');
+    } else {
+      td.innerHTML = formatAmount(val, 'item');
+      const drilldownHint = td.classList.contains('col-amount-drilldown')
+        ? 'ダブルクリックで仕訳を表示'
+        : '';
+      applyAggregateCellTooltip(td, row, section, m, drilldownHint);
+    }
+  }
+
+  const extraTds = tr.querySelectorAll('td.col-amount-extra');
+  for (let ei = 0; ei < EXTRA_COLUMNS.length; ei += 1) {
+    const col = EXTRA_COLUMNS[ei];
+    const td = extraTds[ei];
+    if (!td) continue;
+    if (hideGroupTotal) {
+      td.innerHTML = '';
+      td.classList.remove('aggregate-formula-cell');
+      td.removeAttribute('title');
+    } else {
+      td.innerHTML = formatAmount(row.values[col], 'item');
+      applyAggregateCellTooltip(td, row, section, col);
+    }
+  }
+}
+
+/** 展開状態だけ DOM に反映（列幅再計測・テーブル全再描画は行わない） */
+function applyPlanGroupExpandState(table) {
+  if (!table || !data) return;
+  const amountCtx = getPlanTableAmountContext();
+
+  for (const tr of table.querySelectorAll('tbody tr[data-parent-id]')) {
+    const parentId = tr.dataset.parentId;
+    tr.classList.toggle('is-expand-collapsed', !expandedGroups.has(parentId));
+  }
+
+  for (const tr of table.querySelectorAll('tbody tr.row-group[data-row-id]')) {
+    const groupId = tr.dataset.rowId;
+    const sectionId = tr.dataset.sectionId;
+    const section = data.sections.find((s) => s.id === sectionId);
+    const row = section?.rows.find((r) => r.id === groupId);
+    if (!section || !row) continue;
+
+    const expanded = expandedGroups.has(groupId);
+    const btn = tr.querySelector('.row-toggle');
+    const icon = btn?.querySelector('.toggle-icon');
+    if (btn) btn.setAttribute('aria-expanded', String(expanded));
+    if (icon) icon.textContent = expanded ? '▼' : '▶';
+    updateGroupRowAmountDisplay(tr, section, row, amountCtx);
+  }
+}
+
+function togglePlanGroupExpanded(groupId) {
+  if (expandedGroups.has(groupId)) expandedGroups.delete(groupId);
+  else expandedGroups.add(groupId);
+  applyPlanGroupExpandState(root.querySelector('.plan-table'));
+}
+
 function renderTable() {
   if (!data) return;
   closeJournalPopup();
@@ -2146,11 +2622,14 @@ function renderTable() {
   for (const section of visibleSections) {
     const visibleRows = section.rows.filter((row) => {
       if (!rowVisibleInSection(section, row)) return false;
-      if (row.parentId && !expandedGroups.has(row.parentId)) return false;
+      if (section.hideSectionTotal && row.type === 'total') return false;
       return true;
     });
     if (!visibleRows.length) continue;
     let sectionCellAdded = false;
+    let sectionRowIndex = 0;
+    const usesCategoryCell = sectionUsesCategoryCell(section);
+    const categoryRowSpan = usesCategoryCell ? countCategoryRowSpan(section, visibleRows) : 0;
     const sectionTextColor = section.textColor ?? '#ffffff';
     const fillSectionColor = sectionFillsRowWithAccentBackground(section.id);
 
@@ -2160,25 +2639,29 @@ function renderTable() {
       tr.dataset.sectionId = section.id;
       tr.dataset.rowKey = visibilityRowKey(section.id, row);
       syncRowSelection(tr);
-      if (row.parentId) tr.dataset.parentId = row.parentId;
-      if (!sectionCellAdded || row.type === 'total' || row.type === 'warningSummary' || fillSectionColor) {
+      if (row.id) tr.dataset.rowId = row.id;
+      if (row.parentId) {
+        tr.dataset.parentId = row.parentId;
+        if (!expandedGroups.has(row.parentId)) tr.classList.add('is-expand-collapsed');
+      }
+      if (!sectionCellAdded || planRowIsAccentRow(section, row) || row.type === 'warningSummary' || fillSectionColor) {
         tr.style.setProperty('--section-bg', section.barColor);
         tr.style.setProperty('--section-accent', section.color);
         tr.style.setProperty('--section-text', sectionTextColor);
         tr.style.setProperty('--section-text-dim', hexToRgba(sectionTextColor, 0.55));
       }
 
-      if (!sectionCellAdded) {
-        const category = document.createElement('td');
-        category.className = 'col-category';
-        category.rowSpan = visibleRows.length;
-        appendSectionCategoryLabel(category, section);
-        tr.appendChild(category);
-        sectionCellAdded = true;
-      }
+      sectionCellAdded = appendPlanTableCategoryCell(tr, {
+        section,
+        sectionRowIndex,
+        categoryRowSpan,
+        usesCategoryCell,
+        sectionCellAdded,
+      });
 
       const label = document.createElement('td');
       label.className = 'col-label';
+      const aggregateFormulaLabel = getAggregateFormulaLabel(row);
 
       if (row.type === 'group') {
         const expanded = expandedGroups.has(row.id);
@@ -2192,19 +2675,26 @@ function renderTable() {
         icon.textContent = expanded ? '▼' : '▶';
         const textSpan = document.createElement('span');
         textSpan.className = 'row-toggle-text';
-        appendAggregateLabelContent(textSpan, row.label);
+        appendAggregateLabelContent(textSpan, row.label, aggregateFormulaLabel);
         btn.append(icon, textSpan);
         btn.addEventListener('click', (e) => {
           e.preventDefault();
-          if (expandedGroups.has(row.id)) expandedGroups.delete(row.id);
-          else expandedGroups.add(row.id);
-          renderTable();
+          if (e.ctrlKey || e.metaKey || e.shiftKey) {
+            e.stopPropagation();
+            handlePlanRowSelectClick(tr, tr.closest('table'), e);
+            return;
+          }
+          togglePlanGroupExpanded(row.id);
         });
         label.appendChild(btn);
       } else if (row.type === 'sub' || row.type === 'sub-variance' || row.type === 'breakdown') {
         label.textContent = '';
       } else if (row.label) {
-        appendAggregateLabelContent(label, row.label);
+        appendAggregateLabelContent(label, row.label, aggregateFormulaLabel);
+        if (aggregateFormulaLabel) {
+          label.classList.add('aggregate-formula-label');
+          label.title = aggregateFormulaLabel;
+        }
       }
       tr.appendChild(label);
 
@@ -2241,17 +2731,24 @@ function renderTable() {
         const amountType = row.type === 'variance' ? 'variance' : 'item';
         const showAmount = shouldShowCrossVarianceMonth(section, row, m, crossVarianceCtx);
         td.innerHTML = hideGroupTotal || !showAmount ? '' : formatAmount(val, amountType);
-        if (
-          showAmount
+        const hasDrilldown = showAmount
           && isDrilldownAvailable(section, row)
           && hasDrilldownEntries(getDrilldownIndex(), section, row, m)
-          && !row.planFillMonths?.includes(m)
-        ) {
+          && !row.planFillMonths?.includes(m);
+        if (hasDrilldown) {
           td.classList.add('col-amount-drilldown');
-          td.title = 'ダブルクリックで仕訳を表示';
           td.addEventListener('dblclick', () => {
             showJournalPopup(section, row, m);
           });
+        }
+        if (showAmount && !hideGroupTotal) {
+          applyAggregateCellTooltip(
+            td,
+            row,
+            section,
+            m,
+            hasDrilldown ? 'ダブルクリックで仕訳を表示' : '',
+          );
         }
         tr.appendChild(td);
       }
@@ -2267,9 +2764,13 @@ function renderTable() {
         }
         const amountType = row.type === 'variance' ? 'variance' : 'item';
         td.innerHTML = hideGroupTotal ? '' : formatAmount(val, amountType);
+        if (!hideGroupTotal) {
+          applyAggregateCellTooltip(td, row, section, col);
+        }
         tr.appendChild(td);
       }
       tbody.appendChild(tr);
+      sectionRowIndex += 1;
     }
   }
 
@@ -2317,7 +2818,9 @@ function renderExpandSettings() {
   `;
   wrap.appendChild(header);
 
-  const candidates = data.expandCandidates ?? [];
+  const candidates = (data.expandCandidates ?? []).filter(
+    (c) => isExpandSettingsSection(c.sectionId),
+  );
   if (candidates.length === 0) {
     const empty = document.createElement('p');
     empty.className = 'expand-settings-empty';
@@ -2373,6 +2876,9 @@ function renderExpandSettings() {
     );
     const forceExpanded = ALWAYS_EXPAND_SECTION_IDS?.has?.(c.sectionId);
 
+    tr.dataset.sectionId = c.sectionId;
+    tr.dataset.account = c.account;
+
     tr.innerHTML = `
       <td></td>
       <td class="col-settings-label">${c.account}</td>
@@ -2425,6 +2931,7 @@ function renderExpandSettings() {
 
   table.appendChild(tbody);
   wrap.appendChild(table);
+  bindExpandSettingsContextMenu(wrap, table);
 
   wrap.querySelector('#expand-reset-btn').addEventListener('click', () => {
     expandConfig = {};
@@ -2451,11 +2958,35 @@ function renderVisibilitySettings() {
       予実表に表示する行を選択します。オフにした行は予実表に表示されません（補助科目行は親行をオフにすると非表示になります）。
       <strong>大きく表示</strong>は通常サイズのフォント・行高で表示します（デフォルトは小さめ）。
       <strong>塗り色１</strong>は注目したい行、<strong>塗り色２</strong>は注意したい行に着色します（色は色設定で変更可能）。
+      <strong>諸経費</strong>の勘定科目行では<strong>並び順</strong>（数値が小さいほど上）を指定できます。
       設定はブラウザに保存されます。
     </p>
-    <button type="button" class="expand-reset-btn" id="visibility-reset-btn">すべて表示</button>
+    <div class="expand-settings-header-actions">
+      <button type="button" class="expand-reset-btn" id="visibility-show-all-btn">すべて表示</button>
+      <button type="button" class="expand-reset-btn" id="visibility-reset-btn">デフォルトに戻す</button>
+    </div>
   `;
   wrap.appendChild(header);
+
+  function bindVisibilitySettingsHeaderActions() {
+    wrap.querySelector('#visibility-show-all-btn')?.addEventListener('click', () => {
+      visibilityConfig = {};
+      saveVisibilityConfig(visibilityConfig);
+      renderVisibilitySettings();
+      if (activeTab === 'plan') refreshPlanTable();
+    });
+    wrap.querySelector('#visibility-reset-btn')?.addEventListener('click', () => {
+      visibilityConfig = {};
+      rowDisplayConfig = {};
+      expenseSortConfig = {};
+      saveVisibilityConfig(visibilityConfig);
+      saveRowDisplayConfig(rowDisplayConfig);
+      saveExpenseSortConfig(expenseSortConfig);
+      if (rawPlanData) data = applyPlanColors(rawPlanData);
+      renderVisibilitySettings();
+      if (activeTab === 'plan') refreshPlanTable();
+    });
+  }
 
   const candidates = data.visibilityCandidates ?? [];
   if (candidates.length === 0) {
@@ -2463,6 +2994,7 @@ function renderVisibilitySettings() {
     empty.className = 'expand-settings-empty';
     empty.textContent = '表示対象の行がありません。';
     wrap.appendChild(empty);
+    bindVisibilitySettingsHeaderActions();
     replaceRootPanel(wrap);
     return;
   }
@@ -2476,6 +3008,7 @@ function renderVisibilitySettings() {
         <th class="col-row-type">種別</th>
         <th class="col-settings-label">勘定科目</th>
         <th class="col-subs">補助科目</th>
+        <th class="col-sort-order">並び順</th>
         <th class="col-toggle">表示</th>
         <th class="col-toggle">大きく表示</th>
         <th class="col-toggle">塗り色１（注目）</th>
@@ -2486,6 +3019,12 @@ function renderVisibilitySettings() {
 
   const tbody = document.createElement('tbody');
   let lastSection = '';
+  const expenseSortAccountsShown = new Set();
+
+  function applyExpenseSortAndRefreshPlan() {
+    if (rawPlanData) data = applyPlanColors(rawPlanData);
+    if (activeTab === 'plan') refreshPlanTable();
+  }
 
   function appendDisplayCheckbox(cell, { checked, ariaLabel, disabled, onChange }) {
     const label = document.createElement('label');
@@ -2525,6 +3064,7 @@ function renderVisibilitySettings() {
       <td class="col-row-type">${c.rowTypeLabel}</td>
       <td class="col-settings-label">${c.account}</td>
       <td class="col-subs">${c.subLabel}</td>
+      <td class="col-sort-order"></td>
       <td class="col-toggle"></td>
       <td class="col-toggle"></td>
       <td class="col-toggle"></td>
@@ -2532,6 +3072,32 @@ function renderVisibilitySettings() {
     `;
     styleSectionLabelCell(tr.querySelector('td'), c.sectionId);
     tr.querySelector('td').textContent = c.sectionLabel;
+
+    const sortCell = tr.querySelector('.col-sort-order');
+    if (
+      c.sectionId === 'expense'
+      && c.rowType !== 'total'
+      && !expenseSortAccountsShown.has(c.account)
+    ) {
+      expenseSortAccountsShown.add(c.account);
+      const sortInput = document.createElement('input');
+      sortInput.type = 'text';
+      sortInput.inputMode = 'numeric';
+      sortInput.autocomplete = 'off';
+      sortInput.className = 'expense-sort-order-input';
+      sortInput.value = getExpenseAccountSortOrderDisplay(expenseSortConfig, c.account);
+      sortInput.setAttribute('aria-label', `${c.account} の並び順`);
+      sortInput.addEventListener('change', () => {
+        expenseSortConfig = setExpenseAccountSortOrder(
+          expenseSortConfig,
+          c.account,
+          sortInput.value,
+        );
+        saveExpenseSortConfig(expenseSortConfig);
+        applyExpenseSortAndRefreshPlan();
+      });
+      sortCell.appendChild(sortInput);
+    }
 
     const toggleCell = tr.querySelector('.col-toggle');
     const label = document.createElement('label');
@@ -2569,6 +3135,7 @@ function renderVisibilitySettings() {
         );
         saveRowDisplayConfig(rowDisplayConfig);
         renderVisibilitySettings();
+        if (activeTab === 'plan') refreshPlanTable();
       },
     });
 
@@ -2585,6 +3152,7 @@ function renderVisibilitySettings() {
         );
         saveRowDisplayConfig(rowDisplayConfig);
         renderVisibilitySettings();
+        if (activeTab === 'plan') refreshPlanTable();
       },
     });
 
@@ -2601,6 +3169,7 @@ function renderVisibilitySettings() {
         );
         saveRowDisplayConfig(rowDisplayConfig);
         renderVisibilitySettings();
+        if (activeTab === 'plan') refreshPlanTable();
       },
     });
 
@@ -2610,11 +3179,7 @@ function renderVisibilitySettings() {
   table.appendChild(tbody);
   wrap.appendChild(table);
 
-  wrap.querySelector('#visibility-reset-btn').addEventListener('click', () => {
-    visibilityConfig = {};
-    saveVisibilityConfig(visibilityConfig);
-    renderVisibilitySettings();
-  });
+  bindVisibilitySettingsHeaderActions();
 
   replaceRootPanel(wrap);
 }
@@ -3303,6 +3868,7 @@ function renderUiColorPanel(container) {
     const { cellBg } = getUiColors(uiColorConfig);
     expandablePreview.style.background = cellBg;
     expandablePreview.style.color = color;
+    expandablePreview.style.boxShadow = 'none';
     expandablePreview.style.border = `1px solid ${color}`;
     expandableResetBtn.disabled = color === getUiColors({}).expandableHighlight;
     refreshPlanView();

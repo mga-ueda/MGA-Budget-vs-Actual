@@ -20,7 +20,6 @@ html {
   --plan-bg: #262626;
   --plan-surface: color-mix(in srgb, var(--plan-bg) 55%, #0a0a0f);
   --plan-cell-bg: #262626;
-  --plan-cell-bg-sub: #1e1e28;
   --plan-border: color-mix(in srgb, var(--plan-text) 14%, var(--plan-bg));
   --plan-text: #ffffff;
   --plan-muted: #ffffff;
@@ -127,7 +126,7 @@ html {
   padding: 0 0.5rem;
   border-radius: var(--plan-radius-md);
   background: linear-gradient(145deg, #3b82f6, #2563eb);
-  box-shadow: 0 2px 10px rgba(37, 99, 235, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -839,6 +838,13 @@ select.app-settings-input {
   cursor: pointer;
 }
 
+.section-color-input:focus {
+  outline: none;
+  box-shadow: none;
+  border-color: var(--plan-editor-border-focus);
+  background-color: var(--plan-editor-bg-focus);
+}
+
 .section-color-preview {
   display: inline-block;
   padding: 0.3rem 0.5rem;
@@ -887,6 +893,9 @@ select.app-settings-input {
   border-radius: 4px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+  text-shadow: none;
+  box-shadow: none;
+  filter: none;
 }
 
 .ui-color-preview-hover {
@@ -986,6 +995,23 @@ select.app-settings-input {
 .expand-settings-table.visibility-config-table th,
 .expand-settings-table.visibility-config-table td {
   text-align: center;
+}
+
+.expand-settings-table .col-sort-order {
+  width: 4.5rem;
+}
+
+.expand-settings-table .expense-sort-order-input {
+  width: 3.25rem;
+  padding: 0.12rem 0.2rem;
+  text-align: center;
+  font-size: 0.72rem;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: var(--plan-radius-sm);
+  background: rgba(0, 0, 0, 0.25);
+  color: inherit;
+  appearance: textfield;
+  -moz-appearance: textfield;
 }
 
 .expand-settings-table .col-toggle {
@@ -1226,6 +1252,11 @@ select.app-settings-input {
   letter-spacing: 0.02em;
 }
 
+.plan-table tbody tr.is-expand-collapsed {
+  visibility: collapse;
+  pointer-events: none;
+}
+
 .plan-table.plan-table-measuring {
   table-layout: auto;
   width: max-content;
@@ -1379,6 +1410,12 @@ select.app-settings-input {
   font-size: 0.5em;
 }
 
+.plan-table tbody td.col-category.col-category-placeholder {
+  background: var(--section-bg) !important;
+  border-color: var(--section-bg) !important;
+  padding: 0 !important;
+}
+
 .col-label {
   width: var(--plan-col-label-w);
   min-width: var(--plan-col-label-w);
@@ -1424,20 +1461,26 @@ select.app-settings-input {
 }
 
 .col-amount.current-month {
-  box-shadow: inset 0 0 0 9999px var(--current-month-overlay);
   border-top-width: 0 !important;
   border-bottom-width: 0 !important;
   border-left: 1px solid var(--current-month-ring) !important;
   border-right: 1px solid var(--current-month-ring) !important;
 }
 
+/* tbody: 塗り色の上に当月オーバーレイを重ねる（background では row-fill に負けるため） */
 .plan-table tbody .col-amount.current-month {
   position: relative;
+  box-shadow: inset 0 0 0 9999px var(--current-month-overlay);
 }
 
 thead .col-amount.current-month {
-  --current-month-overlay: var(--current-month-overlay-head);
-  color: var(--plan-text);
+  background-color: var(--plan-month-row-bg) !important;
+  box-shadow: inset 0 0 0 9999px var(--current-month-overlay-head);
+  color: var(--plan-month-row-text);
+}
+
+.plan-table thead th.col-amount.current-month {
+  z-index: 5;
 }
 
 .plan-table thead .month-row th.col-amount.current-month {
@@ -1463,11 +1506,18 @@ tr.row-section-total .col-category {
   border-color: var(--plan-fill-color-2) !important;
 }
 
-.plan-table tbody tr.row-plan-amount td.col-amount {
+.plan-table tbody tr.row-fill-1 td.col-amount.current-month,
+.plan-table tbody tr.row-fill-2 td.col-amount.current-month {
+  box-shadow: inset 0 0 0 9999px var(--current-month-overlay);
+}
+
+.plan-table tbody tr.row-plan-amount td.col-amount,
+.plan-table tbody tr.row-tax-public-charge td.col-amount {
   color: var(--plan-amount-color);
 }
 
-.plan-table tbody tr.row-plan-amount td.col-amount .amount-yen.amount-negative {
+.plan-table tbody tr.row-plan-amount td.col-amount .amount-yen.amount-negative,
+.plan-table tbody tr.row-tax-public-charge td.col-amount .amount-yen.amount-negative {
   color: var(--plan-negative-amount) !important;
 }
 
@@ -1544,11 +1594,9 @@ tr.row-sub .col-sub {
   color: var(--plan-text);
 }
 
-tr.row-sub .col-label,
-tr.row-sub .col-sub,
-tr.row-sub td {
-  background: var(--plan-cell-bg-sub);
-  border-color: var(--plan-cell-bg-sub);
+/* 個人事業主内訳: 補助科目列に表示（取引先名と同列・右端揃え） */
+tr.row-breakdown .col-sub {
+  padding-right: var(--plan-table-amount-padding-x);
 }
 
 .row-toggle {
@@ -1574,6 +1622,17 @@ tr.row-sub td {
   font-weight: 400;
   font-size: 0.5em;
   vertical-align: baseline;
+}
+
+.aggregate-label-prefix.aggregate-label-has-formula,
+td.col-label.aggregate-formula-label,
+td.col-amount.aggregate-formula-cell {
+  cursor: help;
+}
+
+.aggregate-label-prefix.aggregate-label-has-formula {
+  text-decoration: underline dotted;
+  text-underline-offset: 0.15em;
 }
 
 .row-toggle:hover,
@@ -1805,7 +1864,6 @@ tr.row-sub-variance .col-amount.has-variance {
 .plan-csv-drop.dragover {
   border-color: #2563eb;
   background: rgba(37, 99, 235, 0.08);
-  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
 }
 
 .plan-csv-drop-label {
@@ -1822,8 +1880,8 @@ tr.row-sub-variance .col-amount.has-variance {
   font-size: 0.85rem;
   font-weight: 600;
   cursor: pointer;
-  box-shadow: 0 2px 10px rgba(37, 99, 235, 0.35);
-  transition: filter var(--plan-duration) var(--plan-ease), transform var(--plan-duration) var(--plan-ease), box-shadow var(--plan-duration) var(--plan-ease);
+  box-shadow: var(--plan-shadow-sm);
+  transition: background var(--plan-duration) var(--plan-ease), transform var(--plan-duration) var(--plan-ease);
 }
 
 .plan-csv-btn:disabled {
@@ -1846,9 +1904,7 @@ tr.row-sub-variance .col-amount.has-variance {
 }
 
 .plan-csv-btn:hover {
-  filter: brightness(1.06);
   transform: translateY(-1px);
-  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.42);
 }
 
 .employee-settings-actions {

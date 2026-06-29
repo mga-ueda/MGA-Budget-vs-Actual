@@ -3,13 +3,13 @@ const EMPLOYEE_STORAGE_KEY = 'mga-employees';
 const RESIDENT_TAX_MONTH_KEYS = ['6', '7', '8', '9', '10', '11', '12', '1', '2', '3', '4', '5'];
 
 export const EMPLOYEE_ALLOWANCE_COLUMNS = [
-  { key: 'directorSalary', label: '\u5f79\u54e1\u5831\u916c' },
-  { key: 'baseSalary', label: '\u57fa\u672c\u7d66' },
-  { key: 'positionAllowance', label: '\u5f79\u8077\u624b\u5f53' },
-  { key: 'fixedOvertimePay', label: '\u56fa\u5b9a\u6b8b\u696d\u4ee3' },
-  { key: 'childAllowance', label: '\u5b50\u5973\u624b\u5f53' },
-  { key: 'fixedOvertimeAllowance', label: '\u56fa\u5b9a\u6b8b\u696d\u624b\u5f53' },
-  { key: 'commutingAllowance', label: '\u901a\u52e4\u624b\u5f53' },
+  { key: 'directorSalary', label: '役員報酬' },
+  { key: 'baseSalary', label: '基本給' },
+  { key: 'positionAllowance', label: '役職手当' },
+  { key: 'fixedOvertimePay', label: '固定残業代' },
+  { key: 'childAllowance', label: '子女手当' },
+  { key: 'fixedOvertimeAllowance', label: '固定残業手当' },
+  { key: 'commutingAllowance', label: '通勤手当' },
 ];
 
 function normalizeSalary(value) {
@@ -178,10 +178,10 @@ export function computeTenure(joinDateStr, leaveDateStr, refDate = new Date()) {
     months += 12;
   }
 
-  return `${years}\u5e74${months}\u30f6\u6708`;
+  return `${years}年${months}ヶ月`;
 }
 
-/** Monthly compensation (director salary or base + allowances). */
+/** 月額報酬（役員報酬または基本給＋手当）。 */
 export function computeMonthlySalary(employee) {
   const director = employee.directorSalary ?? 0;
   const base = employee.baseSalary ?? 0;
@@ -217,23 +217,23 @@ export function isDirectorEmployee(employee) {
   if ((employee.directorSalary ?? 0) > 0) return true;
   const contract = employee.contractType ?? '';
   const position = employee.position ?? '';
-  return /\u5f79\u54e1/.test(contract) || /\u5f79\u54e1/.test(position);
+  return /役員/.test(contract) || /役員/.test(position);
 }
 
 export function buildEmployeeTableColumns() {
   return [
-    { kind: 'text', key: 'employeeNumber', label: '\u756a\u53f7', className: 'col-emp-no' },
-    { kind: 'text', key: 'name', label: '\u6c0f\u540d', className: 'col-emp-name' },
-    { kind: 'text', key: 'contractType', label: '\u5951\u7d04\u7a2e\u5225', className: 'col-emp-contract' },
-    { kind: 'text', key: 'joinDate', label: '\u5165\u793e\u65e5', className: 'col-emp-join' },
-    { kind: 'tenure', key: 'tenure', label: '\u52e4\u7d9a', className: 'col-emp-tenure' },
+    { kind: 'text', key: 'employeeNumber', label: '番号', className: 'col-emp-no' },
+    { kind: 'text', key: 'name', label: '氏名', className: 'col-emp-name' },
+    { kind: 'text', key: 'contractType', label: '契約種別', className: 'col-emp-contract' },
+    { kind: 'text', key: 'joinDate', label: '入社日', className: 'col-emp-join' },
+    { kind: 'tenure', key: 'tenure', label: '勤続', className: 'col-emp-tenure' },
     {
       kind: 'amount',
       key: 'monthlySalary',
-      label: '\u6708\u984d\u5831\u916c',
+      label: '月額報酬',
       className: 'col-emp-amount',
     },
-    { kind: 'actions', key: 'actions', label: '\u64cd\u4f5c', className: 'col-emp-actions' },
+    { kind: 'actions', key: 'actions', label: '操作', className: 'col-emp-actions' },
   ];
 }
 

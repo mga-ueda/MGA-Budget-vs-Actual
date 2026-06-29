@@ -4,9 +4,10 @@ import {
   formatYen,
   parseNumber,
 } from './parser.js';
-import { isCollapsibleGroup, ALWAYS_EXPAND_SECTION_IDS } from '../config/expandConfig.js';
+import { isCollapsibleGroup, ALWAYS_EXPAND_SECTION_IDS, isExpandSettingsSection } from '../config/expandConfig.js';
 import { collectVisibilityCandidates } from '../config/visibilityConfig.js';
 import { DEFAULT_SECTION_COLORS } from '../config/sectionColorConfig.js';
+import { mergeExpenseSectionItems, EXPENSE_SECTION_ACCOUNTS } from '../config/expenseAccountConfig.js';
 
 export { formatYen };
 
@@ -38,11 +39,16 @@ const PERSONNEL_PATTERNS = [
 const OUTSOURCING_PATTERNS = [/^外注費/];
 const OTHER_PATTERNS = [/^租税公課/, /^減価償却費/];
 const NON_OPERATING_EXPENSE_PATTERNS = [/^支払利息/, /^雑損失/, /^貸倒引当金繰入/];
-const TAX_PATTERNS = [/^法人税等$/, /^未払法人税等$/];
+const TAX_PATTERNS = [/^法人税等$/];
 
 const BS_SKIP = new Set([
   '諸口合計', '資産の部合計', '負債の部合計', '純資産の部合計', '負債・純資産の部合計',
 ]);
+
+/** BS の参考表示行（合計に含めない内訳） */
+function isBsInformationalSub(sub) {
+  return /^（うち/.test(sub ?? '');
+}
 
 const PAYMENT_COUNTERPARTS = new Set([
   '長期未払金', '保険積立金', '役員借入金', '短期借入金', '未払法人税等', '未払消費税',
@@ -88,12 +94,13 @@ function appAggregateLabel(label) {
   return `${APP_AGGREGATE_LABEL_PREFIX}${label}`;
 }
 
-function makeRow(id, label, subLabel, values, type = 'item', parentId = null, valueMode = 'flow') {
+function makeRow(id, label, subLabel, values, type = 'item', parentId = null, valueMode = 'flow', aggregateFormula = null) {
   const displayLabel = type === 'profit' || type === 'variance'
     ? appAggregateLabel(label)
     : label;
   const row = { id, label: displayLabel, subLabel, type, values: enrichRowValues({ ...values }, valueMode) };
   if (parentId) row.parentId = parentId;
+  if (aggregateFormula) row.aggregateFormula = aggregateFormula;
   return row;
 }
 
@@ -131,55 +138,8 @@ function sumRawValues(items) {
   return total;
 }
 
-/** 年間合計（会計年度の月次合算） */
-function annualTotal(values) {
-  return FISCAL_MONTHS.reduce((s, m) => s + (values[m] ?? 0), 0);
-}
-
-/** 勘定科目ソート用: 年間合計の絶対値 */
-function sortByAnnualTotal(values) {
-  return Math.abs(annualTotal(values));
-}
-
-function accountGroupTotal(items) {
-  return sortByAnnualTotal(sumRawValues(items));
-}
-
-function itemSortTotal(item) {
-  return sortByAnnualTotal(item.values);
-}
-
 function subSortKey(sub) {
   return sub || '補助科目なし';
-}
-
-/** 金額降順 → 勘定科目 → 補助科目 */
-function compareByAmountThenLabels(amountA, amountB, accountA, accountB, subA = '', subB = '') {
-  const byAmount = amountB - amountA;
-  if (byAmount !== 0) return byAmount;
-  const byAccount = accountA.localeCompare(accountB, 'ja');
-  if (byAccount !== 0) return byAccount;
-  return subSortKey(subA).localeCompare(subSortKey(subB), 'ja');
-}
-
-function compareItemsBySortTotal(a, b) {
-  return compareByAmountThenLabels(
-    itemSortTotal(a),
-    itemSortTotal(b),
-    a.account,
-    b.account,
-    a.sub,
-    b.sub,
-  );
-}
-
-function compareAccountGroups(a, b) {
-  return compareByAmountThenLabels(
-    accountGroupTotal(a[1]),
-    accountGroupTotal(b[1]),
-    a[0],
-    b[0],
-  );
 }
 
 /** 補助科目1件のみのときは非表示（売上高・売掛金は除く）。2件以上で空欄は「補助科目なし」 */
@@ -190,6 +150,7 @@ function formatSubLabel(rawSub, subCount, sectionId) {
 
 /** 展開設定タブ用: 補助科目を持つ勘定科目一覧 */
 function collectExpandCandidatesFromItems(sectionId, sectionLabel, rawItems) {
+  if (!isExpandSettingsSection(sectionId)) return [];
   const groups = new Map();
   for (const r of rawItems) {
     if (!groups.has(r.account)) groups.set(r.account, []);
@@ -205,7 +166,43 @@ function collectExpandCandidatesFromItems(sectionId, sectionLabel, rawItems) {
   return candidates;
 }
 
-/** 勘定科目でグループ化。合計金額の大きい順。折りたたみ設定に従い表示 */
+/** 展開設定タブ用: 諸経費はハードコード一覧の全科目を表示（補助科目1件以下も含む） */
+function collectExpenseExpandCandidates(sectionId, sectionLabel, rawItems) {
+  const groups = new Map();
+  for (const r of rawItems) {
+    if (!groups.has(r.account)) groups.set(r.account, []);
+    groups.get(r.account).push(r);
+  }
+
+  const candidates = [];
+  const listed = new Set(EXPENSE_SECTION_ACCOUNTS);
+
+  for (const account of EXPENSE_SECTION_ACCOUNTS) {
+    const items = groups.get(account) ?? [{ account, sub: '' }];
+    candidates.push({
+      sectionId,
+      sectionLabel,
+      account,
+      subCount: items.length,
+      subLabels: items.map((i) => i.sub || '補助科目なし'),
+    });
+  }
+
+  for (const [account, items] of groups) {
+    if (listed.has(account) || items.length <= 1) continue;
+    candidates.push({
+      sectionId,
+      sectionLabel,
+      account,
+      subCount: items.length,
+      subLabels: items.map((i) => i.sub || '補助科目なし'),
+    });
+  }
+
+  return candidates;
+}
+
+/** 勘定科目でグループ化。入力順（MF CSV の並び）を維持し、折りたたみ設定に従い表示 */
 function buildGroupedAccountRows(rawItems, idPrefix, sectionId, expandConfig = {}, valueMode = 'flow') {
   const groups = new Map();
   for (const r of rawItems) {
@@ -213,45 +210,69 @@ function buildGroupedAccountRows(rawItems, idPrefix, sectionId, expandConfig = {
     groups.get(r.account).push(r);
   }
 
-  const sorted = [...groups.entries()].sort(compareAccountGroups);
   const rows = [];
   let idx = 0;
 
-  for (const [account, items] of sorted) {
-    const subCount = items.length;
+  const appendInformationalBreakdowns = (account, items, parentRowId) => {
+    if (!parentRowId) return;
+    for (const item of items) {
+      rows.push(makeRow(
+        `${idPrefix}-${idx++}`,
+        account,
+        item.sub,
+        item.values,
+        'breakdown',
+        parentRowId,
+        valueMode,
+      ));
+    }
+  };
+
+  for (const [account, items] of groups) {
+    const informational = items.filter((i) => isBsInformationalSub(i.sub));
+    const regular = items.filter((i) => !isBsInformationalSub(i.sub));
+    const subCount = regular.length;
     const collapsible = isCollapsibleGroup(sectionId, account, subCount, expandConfig);
 
     if (!collapsible) {
-      const subs = [...items].sort(compareItemsBySortTotal);
-      for (const item of subs) {
+      let parentRowId = null;
+      for (const item of regular) {
+        const rowId = `${idPrefix}-${idx++}`;
+        parentRowId = rowId;
         rows.push(makeRow(
-          `${idPrefix}-${idx++}`,
+          rowId,
           account,
           formatSubLabel(item.sub, subCount, sectionId),
           item.values,
           'item',
+          null,
+          valueMode,
         ));
       }
+      appendInformationalBreakdowns(account, informational, parentRowId);
       continue;
     }
 
     if (subCount === 1) {
-      const item = items[0];
+      const item = regular[0];
+      const rowId = `${idPrefix}-${idx++}`;
       rows.push(makeRow(
-        `${idPrefix}-${idx++}`,
+        rowId,
         account,
         formatSubLabel(item.sub, 1, sectionId),
         item.values,
         'item',
+        null,
+        valueMode,
       ));
+      appendInformationalBreakdowns(account, informational, rowId);
       continue;
     }
 
     const groupId = `${idPrefix}-g-${idx++}`;
-    rows.push(makeRow(groupId, account, '', sumRawValues(items), 'group'));
+    rows.push(makeRow(groupId, account, '', sumRawValues(regular), 'group', null, valueMode));
 
-    const subs = [...items].sort(compareItemsBySortTotal);
-    subs.forEach((item, j) => {
+    regular.forEach((item, j) => {
       rows.push(makeRow(
         `${groupId}-s-${j}`,
         account,
@@ -259,8 +280,10 @@ function buildGroupedAccountRows(rawItems, idPrefix, sectionId, expandConfig = {
         item.values,
         'sub',
         groupId,
+        valueMode,
       ));
     });
+    appendInformationalBreakdowns(account, informational, groupId);
   }
   return rows;
 }
@@ -269,9 +292,11 @@ function sumTopLevelRows(rows) {
   return sumValues(rows.filter((r) => r.type === 'item' || r.type === 'group'));
 }
 
-function makeTotalRow(id, label, values, valueMode = 'flow') {
+function makeTotalRow(id, label, values, valueMode = 'flow', aggregateFormula = 'sectionSum') {
   const displayLabel = valueMode === 'balance' ? label : appAggregateLabel(label);
-  return makeRow(id, displayLabel, '', values, 'total', null, valueMode);
+  const row = makeRow(id, displayLabel, '', values, 'total', null, valueMode);
+  if (valueMode !== 'balance' && aggregateFormula) row.aggregateFormula = aggregateFormula;
+  return row;
 }
 
 function sumValues(rows) {
@@ -314,7 +339,7 @@ export function categorizeAccount(key) {
     '普通預金', '売掛金', '貸倒引当金', '未払金', '未払費用', '前払金', '前払費用',
     '長期前払費用', '保険積立金', '資本金', '繰越利益剰余金', '長期未払金',
     '工具器具備品', '車両運搬具', 'ソフトウェア', '貯蔵品', '少額資産', '仮払消費税',
-    '未払消費税', '役員借入金', '預り金', '仮受消費税', '仮払金', '立替金', '未収還付法人税等',
+    '未払消費税', '未払法人税等', '役員借入金', '預り金', '仮受消費税', '仮払金', '立替金', '未収還付法人税等',
   ]);
   if (skip.has(account)) return null;
   return 'expense';
@@ -403,14 +428,6 @@ function buildPlSections(aggregated, expandConfig, expandCandidates) {
     bySection[category].push({ account, sub: sub ?? '', values });
   }
 
-  for (const cat of Object.keys(bySection)) {
-    bySection[cat].sort((a, b) => {
-      const ta = FISCAL_MONTHS.reduce((s, m) => s + Math.abs(a.values[m] ?? 0), 0);
-      const tb = FISCAL_MONTHS.reduce((s, m) => s + Math.abs(b.values[m] ?? 0), 0);
-      return compareByAmountThenLabels(ta, tb, a.account, b.account, a.sub, b.sub);
-    });
-  }
-
   const sections = [];
   const plDefs = [
     { id: 'revenue', label: '売上高', filter: 'income', key: 'revenue', prefix: 'rev', totalLabel: '売上高合計' },
@@ -420,13 +437,18 @@ function buildPlSections(aggregated, expandConfig, expandCandidates) {
     { id: 'expense', label: '諸経費', filter: 'expense', key: 'expense', prefix: 'exp', totalLabel: '諸経費合計' },
     { id: 'outsourcing', label: '外注費', filter: 'outsourcing', key: 'outsourcing', prefix: 'out', totalLabel: '外注費合計' },
     { id: 'other', label: 'その他', filter: 'other', key: 'other', prefix: 'oth', totalLabel: 'その他合計' },
-    { id: 'tax', label: '税金', filter: 'tax', key: 'tax', prefix: 'tax', totalLabel: '税金合計' },
+    { id: 'tax', label: '法人税', filter: 'tax', key: 'tax', prefix: 'tax', totalLabel: '法人税合計' },
   ];
 
   for (const def of plDefs) {
-    const raw = bySection[def.key];
-    if (!raw.length) continue;
-    expandCandidates.push(...collectExpandCandidatesFromItems(def.id, def.label, raw));
+    let raw = bySection[def.key];
+    if (def.key === 'expense') {
+      raw = mergeExpenseSectionItems(raw, emptyMonthValues);
+      expandCandidates.push(...collectExpenseExpandCandidates(def.id, def.label, raw));
+    } else {
+      if (!raw.length) continue;
+      expandCandidates.push(...collectExpandCandidatesFromItems(def.id, def.label, raw));
+    }
     const items = buildGroupedAccountRows(raw, def.prefix, def.id, expandConfig);
     pushSection(sections, {
       id: def.id, label: def.label, filter: def.filter, ...sectionColors(def.id),
@@ -652,7 +674,8 @@ function buildProfitSection(sections) {
 
   const operating = subtractValues(revV, costV);
   const ordinary = subtractValues(addValues(operating, nonOpV), nonOpExpV);
-  const net = subtractValues(ordinary, tax?.values ?? enrichRowValues(emptyMonthValues()));
+  const preTaxNet = ordinary;
+  const net = subtractValues(preTaxNet, tax?.values ?? enrichRowValues(emptyMonthValues()));
 
   return {
     id: 'profit',
@@ -660,12 +683,70 @@ function buildProfitSection(sections) {
     filter: 'trends',
     ...sectionColors('profit'),
     rows: [
-      makeTotalRow('sga-total', '販管費', costV),
-      makeRow('op-profit', '営業利益', '', operating, 'profit'),
-      makeRow('ord-profit', '経常利益', '', ordinary, 'profit'),
-      makeRow('net-profit', '当期純利益', '', net, 'profit'),
+      makeRow('op-profit', '営業利益', '', operating, 'profit', null, 'flow', 'profitOperating'),
+      makeRow('ord-profit', '経常利益', '', ordinary, 'profit', null, 'flow', 'profitOrdinary'),
+      makeRow('pre-tax-net', '税引前当期純利益', '', preTaxNet, 'profit', null, 'flow', 'profitPreTax'),
+      { ...makeRow('net-profit', '当期純利益', '', net, 'profit', null, 'flow', 'profitNet'), accentTotal: true },
     ],
   };
+}
+
+/** 消費税対象販管費（人件費＋諸経費＋外注費）と販管費合計をその他セクション前後に挿入する */
+export function insertSgaSummarySections(planData) {
+  if (!planData?.sections) return planData;
+  if (planData.sections.some((s) => s.id === 'sgaTaxable')) return planData;
+
+  const per = getTotalRow(planData.sections.find((s) => s.id === 'personnel'));
+  const exp = getTotalRow(planData.sections.find((s) => s.id === 'expense'));
+  const out = getTotalRow(planData.sections.find((s) => s.id === 'outsourcing'));
+  const otherSec = planData.sections.find((s) => s.id === 'other');
+  const other = getTotalRow(otherSec);
+
+  const empty = enrichRowValues(emptyMonthValues());
+  const taxableV = addValues(
+    addValues(per?.values ?? empty, exp?.values ?? empty),
+    out?.values ?? empty,
+  );
+  const sgaV = addValues(taxableV, other?.values ?? empty);
+
+  const hasSga = [taxableV, sgaV].some((v) => (v.合計 ?? 0) !== 0);
+  if (!hasSga) return planData;
+
+  const summaryColors = sectionColors('expense');
+  const makeSummarySection = (id, totalLabel, values, aggregateFormula) => ({
+    id,
+    label: '',
+    hideCategory: true,
+    filter: 'other',
+    ...summaryColors,
+    rows: [makeTotalRow(`${id}-row`, totalLabel, values, 'flow', aggregateFormula)],
+  });
+
+  const taxableSection = makeSummarySection('sgaTaxable', '消費税対象販管費合計', taxableV, 'sgaTaxable');
+  const sgaTotalSection = makeSummarySection('sgaTotal', '販管費合計', sgaV, 'sgaTotal');
+
+  const sections = [];
+  for (const section of planData.sections) {
+    if (section.id === 'other') {
+      sections.push(taxableSection);
+      sections.push({
+        ...section,
+        hideSectionTotal: true,
+        categorySpanExcludesTotal: true,
+      });
+      sections.push(sgaTotalSection);
+      continue;
+    }
+    sections.push(section);
+  }
+
+  if (!otherSec) {
+    const taxIdx = sections.findIndex((s) => s.id === 'tax');
+    const insertAt = taxIdx >= 0 ? taxIdx : sections.length;
+    sections.splice(insertAt, 0, taxableSection, sgaTotalSection);
+  }
+
+  return { ...planData, sections };
 }
 
 function extractBsRows(text, startMarkers, endMarker, includeTotals = true) {
@@ -723,6 +804,13 @@ function extractBsRows(text, startMarkers, endMarker, includeTotals = true) {
   return result;
 }
 
+/** BS セクション末尾の最終合計行のみ取得（明細は含めない） */
+function extractBsEndTotalRow(text, startMarkers, endMarker) {
+  const rows = extractBsRows(text, startMarkers, endMarker, true);
+  const total = rows.find((r) => r.isTotal && r.account === endMarker);
+  return total ? [total] : [];
+}
+
 function readMonthValues(cells, months) {
   const valueCells = cells.slice(3);
   const values = {};
@@ -734,10 +822,29 @@ function readMonthValues(cells, months) {
   return hasValues ? values : null;
 }
 
+const BS_SECTION_ACCENT_TOTAL = {
+  currentAssets: '流動資産合計',
+  fixedAssets: ['固定資産合計', '有形固定資産合計'],
+  currentLiab: '流動負債合計',
+  fixedLiab: '固定負債合計',
+  equity: '純資産の部合計',
+  cashBalance: '現金及び預金合計',
+};
+
+function resolveBsAccentTotalLabel(sectionId, totals) {
+  const preferred = BS_SECTION_ACCENT_TOTAL[sectionId];
+  if (!preferred) return null;
+  const labels = Array.isArray(preferred) ? preferred : [preferred];
+  for (const label of labels) {
+    if (totals.some((r) => r.account === label)) return label;
+  }
+  return null;
+}
+
 function filterBsDuplicateParents(rows) {
   const accountsWithSubs = new Set();
   for (const r of rows) {
-    if (r.sub && !r.isTotal) accountsWithSubs.add(r.account);
+    if (r.sub && !r.isTotal && !isBsInformationalSub(r.sub)) accountsWithSubs.add(r.account);
   }
   return rows.filter((r) => {
     if (r.isTotal) return true;
@@ -757,11 +864,14 @@ function bsRowsToSection(id, label, filter, rawRows, expandConfig, expandCandida
   }));
   expandCandidates.push(...collectExpandCandidatesFromItems(id, label, rawItems));
   const items = buildGroupedAccountRows(rawItems, id, id, expandConfig, 'balance');
+  const accentLabel = resolveBsAccentTotalLabel(id, totals);
   const rows = [
     ...items.map((r) => ({ ...r, values: enrichRowValues(r.values, 'balance') })),
-    ...totals.map((r, i) =>
-      makeTotalRow(`${id}-t-${i}`, r.account, r.values, 'balance'),
-    ),
+    ...totals.map((r, i) => {
+      const row = makeTotalRow(`${id}-t-${i}`, r.account, r.values, 'balance');
+      if (accentLabel && r.account === accentLabel) row.accentTotal = true;
+      return row;
+    }),
   ];
   return { id, label, filter, ...sectionColors(id), rows };
 }
@@ -780,6 +890,7 @@ function buildBsSections(bsText, expandConfig, expandCandidates) {
     ...extractBsRows(bsText, ['有形固定資産'], '有形固定資産合計'),
     ...extractBsRows(bsText, ['無形固定資産'], '無形固定資産合計', false),
     ...extractBsRows(bsText, ['投資その他の資産'], '投資その他の資産合計'),
+    ...extractBsEndTotalRow(bsText, ['固定資産'], '固定資産合計'),
   ];
   if (fixedAssets.length) {
     sections.push(bsRowsToSection(
@@ -829,12 +940,12 @@ function buildCashFlowSections(cashFlow, otherPayments, corpTax, bsText, expandC
 
   pushSection(sections, {
     id: 'cfIn', label: '入金', filter: 'cashflow', ...sectionColors('cfIn'),
-    rows: [makeRow('cf-in', appAggregateLabel('入金実績'), '', cashFlow.inflow, 'item')],
+    rows: [makeRow('cf-in', appAggregateLabel('入金実績'), '', cashFlow.inflow, 'item', null, 'flow', 'cashInflow')],
   });
 
   pushSection(sections, {
     id: 'cfOut', label: '出金', filter: 'cashflow', ...sectionColors('cfOut'),
-    rows: [makeRow('cf-out', appAggregateLabel('出金実績'), '', cashFlow.outflow, 'item')],
+    rows: [makeRow('cf-out', appAggregateLabel('出金実績'), '', cashFlow.outflow, 'item', null, 'flow', 'cashOutflow')],
   });
 
   const cashBalance = extractBsRows(bsText, ['現金及び預金'], '現金及び預金合計', true);
@@ -849,7 +960,7 @@ function buildCashFlowSections(cashFlow, otherPayments, corpTax, bsText, expandC
   if (taxTotal.合計 !== 0) {
     pushSection(sections, {
       id: 'corpTax', label: '法人税・消費税', filter: 'tax', ...sectionColors('corpTax'),
-      rows: [makeTotalRow('corp-tax-total', '法人税・消費税合計', corpTax)],
+      rows: [makeTotalRow('corp-tax-total', '法人税・消費税合計', corpTax, 'flow', 'corpTax')],
     });
   }
 

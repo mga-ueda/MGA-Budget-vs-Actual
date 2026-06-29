@@ -1,10 +1,21 @@
 const VISIBILITY_STORAGE_KEY = 'mga-row-visibility';
 
-/** 表示設定の対象外（常に表示・大きく表示） */
-export const VISIBILITY_FIXED_SECTION_IDS = new Set(['revenue', 'revenueVariance']);
+/** 表示設定の対象外（常に表示・大きく表示。外注費は塗り色１も固定） */
+export const VISIBILITY_FIXED_SECTION_IDS = new Set(['revenue', 'revenueVariance', 'outsourcing']);
+
+export const OUTSOURCING_SECTION_ID = 'outsourcing';
 
 export function isVisibilityFixedSection(sectionId) {
   return VISIBILITY_FIXED_SECTION_IDS.has(sectionId);
+}
+
+export function isOutsourcingFixedDisplaySection(sectionId) {
+  return sectionId === OUTSOURCING_SECTION_ID;
+}
+
+/** 個人事業主向け源泉内訳（報酬金額・消費税額など）。表示スタイル固定の対象外 */
+export function isOutsourcingBreakdownRow(sectionId, row) {
+  return isOutsourcingFixedDisplaySection(sectionId) && row?.type === 'breakdown';
 }
 
 const ROW_TYPE_LABELS = {

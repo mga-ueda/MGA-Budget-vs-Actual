@@ -3,6 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "node build.mjs"
+    "build": "node build.mjs",
+    "check:encoding": "node scripts/check-encoding.mjs",
+    "scan:expense": "node scripts/scan-expense-accounts.mjs"
   }
 }

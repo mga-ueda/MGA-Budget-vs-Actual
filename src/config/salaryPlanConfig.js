@@ -14,19 +14,19 @@ export function buildFiscalYearMonths(fiscalEndMonth) {
   const months = [];
   let m = start;
   for (let i = 0; i < 12; i += 1) {
-    months.push(`${m}\u6708`);
+    months.push(`${m}月`);
     m = (m % 12) + 1;
   }
   return months;
 }
 
 export function monthLabelToNumber(label) {
-  const m = String(label).match(/^(\d{1,2})\u6708$/);
+  const m = String(label).match(/^(\d{1,2})月$/);
   return m ? parseInt(m[1], 10) : null;
 }
 
 export function monthNumberToLabel(num) {
-  return `${num}\u6708`;
+  return `${num}月`;
 }
 
 export function normalizeBonusPaymentMonths(raw, fiscalMonths) {
