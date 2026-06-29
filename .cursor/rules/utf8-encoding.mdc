@@ -1,0 +1,14 @@
+---
+description: ソースファイルは常に UTF-8（BOM なし）で扱う
+globs: **/*.{css,js,mjs,html,json,md}
+alwaysApply: false
+---
+
+# 文字コード（UTF-8）
+
+- 日本語コメントを含むファイルは **UTF-8（BOM なし）** で保存する
+- ファイル編集はエディタの StrReplace/Write を使う。PowerShell の `Out-File` や `git show | ...` でソースを再生成しない
+- PowerShell でどうしても読み書きする場合:
+  - 読み込み: `[System.IO.File]::ReadAllText($path, [Text.UTF8Encoding]::new($false))`
+  - 書き込み: `[System.IO.File]::WriteAllText($path, $content, [Text.UTF8Encoding]::new($false))`
+- 文字化けしたコメント（`繝` `險` など）は放置せず、正しい日本語に直してからコミットする
