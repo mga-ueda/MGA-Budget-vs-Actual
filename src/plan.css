@@ -2417,12 +2417,6 @@ tr.row-sub-variance .col-amount.has-variance {
   white-space: nowrap;
 }
 
-.revenue-plan-table .revenue-plan-col-default-price,
-.revenue-plan-table th.revenue-plan-col-default-price {
-  min-width: 5.5rem;
-  text-align: right;
-}
-
 .revenue-plan-row--revenue .salary-plan-amount-cell,
 .revenue-plan-row--csvRevenue .salary-plan-amount-cell {
   opacity: 0.92;
@@ -2431,15 +2425,6 @@ tr.row-sub-variance .col-amount.has-variance {
 .revenue-plan-table tbody tr.revenue-plan-total-row td.salary-plan-amount-cell.salary-plan-amount-changed,
 .revenue-plan-table tbody tr.revenue-plan-total-row td.salary-plan-amount-cell.salary-plan-amount-start-month {
   color: var(--plan-amount-variance-color) !important;
-}
-
-.revenue-plan-unit-price-override {
-  font-weight: 600;
-}
-
-.revenue-add-price-input {
-  width: 7rem;
-  min-width: 5rem;
 }
 
 .revenue-period-add-form .outsourcing-add-form-row {

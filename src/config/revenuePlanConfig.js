@@ -389,7 +389,7 @@ export function renameManualClientEntry(plans, fiscalPeriod, clientId, newSubLab
   };
 }
 
-export function createManualClient({ accountLabel, subLabel, defaultUnitPrice = null }) {
+export function createManualClient({ accountLabel, subLabel }) {
   const account = String(accountLabel ?? '').trim();
   const sub = String(subLabel ?? '').trim();
   if (!account || !sub) return null;
@@ -397,7 +397,6 @@ export function createManualClient({ accountLabel, subLabel, defaultUnitPrice = 
     id: createClientId(account, sub),
     accountLabel: account,
     subLabel: sub,
-    defaultUnitPrice: normalizeAmount(defaultUnitPrice),
     manMonths: {},
     monthlyUnitPrice: {},
     manual: true,
@@ -453,7 +452,6 @@ export function syncClientListFromReference(plans, targetPeriod, referencePeriod
     const client = normalizeClientEntry({
       accountLabel: ref.accountLabel,
       subLabel: ref.subLabel,
-      defaultUnitPrice: ref.defaultUnitPrice,
       manMonths: {},
       monthlyUnitPrice: {},
     }, fiscalMonths);

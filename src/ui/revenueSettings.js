@@ -33,7 +33,6 @@ const REVENUE_ACCOUNT = '\u58f2\u4e0a\u9ad8';
 const ROW_MAN_MONTHS = '\u4eba\u6708';
 const ROW_UNIT_PRICE = '\u4eba\u6708\u5358\u4fa1';
 const ROW_REVENUE = '\u58f2\u4e0a';
-const COL_DEFAULT_PRICE = '\u65e2\u5b9a\u5358\u4fa1';
 
 function cloneMonthly(source, fiscalMonths) {
   const next = {};
@@ -66,17 +65,9 @@ function sumManMonths(map, fiscalMonths) {
   return total;
 }
 
-function isUnitPriceOverride(client, month) {
-  return client.monthlyUnitPrice?.[month] != null;
-}
-
-function setUnitPriceOverride(client, month, price, fiscalMonths) {
+function setMonthlyUnitPrice(client, month, price, fiscalMonths) {
   const monthlyUnitPrice = cloneMonthly(client.monthlyUnitPrice, fiscalMonths);
-  if (price == null || price === client.defaultUnitPrice) {
-    monthlyUnitPrice[month] = null;
-  } else {
-    monthlyUnitPrice[month] = price;
-  }
+  monthlyUnitPrice[month] = price;
   return monthlyUnitPrice;
 }
 
@@ -151,7 +142,7 @@ export function mountRevenueSettingsPanel({
   header.className = 'expand-settings-header tax-payment-settings-header';
   header.innerHTML = `
     <p class="expand-settings-desc">
-      \u58f2\u4e0a\u9ad8\u306e\u53d7\u6ce8\u8a08\u753b\u3092\u4eba\u6708\u3067\u5165\u529b\u3057\u307e\u3059\u3002\u53d7\u6ce8\u5148\u3054\u3068\u306b\u4eba\u6708\u5358\u4fa1\uFF08\u65e2\u5b9a\uFF09\u3092\u8a2d\u5b9a\u3067\u304d\u3001\u6708\u306e\u5358\u4fa1\u306f\u500b\u5225\u306b\u4e0a\u66f8\u304d\u3067\u304d\u307e\u3059\u3002\u58f2\u4e0a\u306f\u5b9f\u7e3e\u6708\u306f\u4ed5\u8a33CSV\u306e\u5b9f\u7e3e\u3001\u305d\u308c\u4ee5\u5916\u306f\u4eba\u6708\u00d7\u5358\u4fa1\u306e\u8a08\u753b\uFF08\u6D88\u8CBB\u7A0E\u8FBC\uFF09\u3067\u3059\u3002\u4eba\u6708\u306f Shift+Enter \u3067\u5165\u529b\u6708\u4ee5\u964d\u306b\u540c\u5024\u3092\u5f15\u304d\u7d99\u304e\u307e\u3059\uFF080 \u3082\u53ef\uFF09\u3002Enter \u306f\u305d\u306e\u6708\u306e\u307f\u53cd\u6620\u3057\u307e\u3059\u3002\u4eca\u671f\u306e\u5b9f\u7e3e\u6708\u306f\u4ed5\u8a33\u5b9f\u7e3e\u6708\u3068\u3057\u3066\u7de8\u96c6\u4e0d\u53ef\u3067\u3059\u3002\u8a2d\u5b9a\u306f\u30d6\u30e9\u30a6\u30b6\u306b\u4fdd\u5b58\u3055\u308c\u3001\u4e88\u5b9f\u8868\u306e\u300c\u58f2\u4e0a\u9ad8\u300d\u306b\u53cd\u6620\u3055\u308c\u307e\u3059\u3002
+      \u58f2\u4e0a\u9ad8\u306e\u53d7\u6ce8\u8a08\u753b\u3092\u4eba\u6708\u3067\u5165\u529b\u3057\u307e\u3059\u3002\u53d7\u6ce8\u5148\u3054\u3068\u306b\u6708\u3054\u3068\u306e\u4eba\u6708\u5358\u4fa1\u3092\u5165\u529b\u3057\u307e\u3059\u3002\u58f2\u4e0a\u306f\u5b9f\u7e3e\u6708\u306f\u4ed5\u8a33CSV\u306e\u5b9f\u7e3e\u3001\u305d\u308c\u4ee5\u5916\u306f\u4eba\u6708\u00d7\u5358\u4fa1\u306e\u8a08\u753b\uFF08\u6D88\u8CBB\u7A0E\u8FBC\uFF09\u3067\u3059\u3002\u4eba\u6708\u306f Shift+Enter \u3067\u5165\u529b\u6708\u4ee5\u964d\u306b\u540c\u5024\u3092\u5f15\u304d\u7d99\u304e\u307e\u3059\uFF080 \u3082\u53ef\uFF09\u3002Enter \u306f\u305d\u306e\u6708\u306e\u307f\u53cd\u6620\u3057\u307e\u3059\u3002\u4eca\u671f\u306e\u5b9f\u7e3e\u6708\u306f\u4ed5\u8a33\u5b9f\u7e3e\u6708\u3068\u3057\u3066\u7de8\u96c6\u4e0d\u53ef\u3067\u3059\u3002\u8a2d\u5b9a\u306f\u30d6\u30e9\u30a6\u30b6\u306b\u4fdd\u5b58\u3055\u308c\u3001\u4e88\u5b9f\u8868\u306e\u300c\u58f2\u4e0a\u9ad8\u300d\u306b\u53cd\u6620\u3055\u308c\u307e\u3059\u3002
     </p>
     <div class="tax-payment-settings-controls">
       <div class="tax-payment-plan-years-row">
@@ -584,27 +575,6 @@ export function mountRevenueSettingsPanel({
       kindTd.textContent = kind;
       tr.appendChild(kindTd);
 
-      const defaultTd = document.createElement('td');
-      defaultTd.className = 'salary-plan-amount-cell revenue-plan-col-default-price';
-      if (key === 'unitPrice') {
-        const editable = true;
-        defaultTd.classList.add('salary-plan-cell-editable');
-        defaultTd.title = '\u30c0\u30d6\u30eb\u30af\u30ea\u30c3\u30af\u3067\u7de8\u96c6';
-        defaultTd.textContent = formatSalaryPlanYen(client.defaultUnitPrice);
-        defaultTd.addEventListener('dblclick', () => {
-          startNumericCellEdit(defaultTd, {
-            rawValue: client.defaultUnitPrice,
-            editable,
-            formatValue: formatSalaryPlanYen,
-            parseValue: parseSalaryPlanAmountInput,
-            onSave: (parsed) => {
-              persistClient({ ...client, defaultUnitPrice: parsed }, fiscalPeriod);
-            },
-          });
-        });
-      }
-      tr.appendChild(defaultTd);
-
       for (let i = 0; i < fiscalMonths.length; i += 1) {
         const month = fiscalMonths[i];
         const editable = isMonthEditable(fiscalPeriod, month);
@@ -637,23 +607,21 @@ export function mountRevenueSettingsPanel({
             },
           });
         } else if (key === 'unitPrice') {
-          const effective = getEffectiveUnitPrice(client, month);
-          const prevEffective = prevMonth != null
+          const unitPrice = getEffectiveUnitPrice(client, month);
+          const prevUnitPrice = prevMonth != null
             ? getEffectiveUnitPrice(client, prevMonth)
             : undefined;
-          const hasOverride = isUnitPriceOverride(client, month);
           appendPlanAmountCell(tr, {
             monthIndex: i,
-            value: effective,
-            prevValue: prevEffective,
+            value: unitPrice,
+            prevValue: prevUnitPrice,
             editable,
-            rawValue: hasOverride ? client.monthlyUnitPrice[month] : client.defaultUnitPrice,
-            title: '\u30c0\u30d6\u30eb\u30af\u30ea\u30c3\u30af\u3067\u7de8\u96c6\uFF08\u6708\u5225\u5358\u4fa1\uFF09',
+            rawValue: client.monthlyUnitPrice[month],
+            title: '\u30c0\u30d6\u30eb\u30af\u30ea\u30c3\u30af\u3067\u7de8\u96c6\uFF08\u4eba\u6708\u5358\u4fa1\uFF09',
             formatValue: formatSalaryPlanYen,
             parseValue: parseSalaryPlanAmountInput,
-            extraClass: hasOverride ? 'revenue-plan-unit-price-override' : '',
             onSave: (parsed) => {
-              const nextUnitPrices = setUnitPriceOverride(client, month, parsed, fiscalMonths);
+              const nextUnitPrices = setMonthlyUnitPrice(client, month, parsed, fiscalMonths);
               persistClient({ ...client, monthlyUnitPrice: nextUnitPrices }, fiscalPeriod);
             },
           });
@@ -697,7 +665,6 @@ export function mountRevenueSettingsPanel({
     const headerLabels = [
       '\u53d7\u6ce8\u5148',
       '\u9805\u76ee',
-      COL_DEFAULT_PRICE,
       ...fiscalMonths,
       '\u5408\u8a08',
       '',
@@ -710,7 +677,6 @@ export function mountRevenueSettingsPanel({
       th.textContent = label;
       if (label === '\u53d7\u6ce8\u5148') th.className = 'salary-plan-col-name revenue-plan-col-client';
       else if (label === '\u9805\u76ee') th.className = 'salary-plan-col-sub revenue-plan-col-kind';
-      else if (label === COL_DEFAULT_PRICE) th.className = 'revenue-plan-col-default-price';
       else if (label === '\u5408\u8a08') th.className = 'salary-plan-col-total';
       else if (label === '') th.className = 'col-out-actions';
       else th.className = 'salary-plan-col-month';
@@ -754,7 +720,7 @@ export function mountRevenueSettingsPanel({
     const trManMonthTotal = document.createElement('tr');
     trManMonthTotal.className = 'salary-plan-total-row salary-plan-row-monthly revenue-plan-total-row revenue-plan-total-row--manMonths';
     const manMonthTotalLabel = document.createElement('td');
-    manMonthTotalLabel.colSpan = 3;
+    manMonthTotalLabel.colSpan = 2;
     manMonthTotalLabel.className = 'salary-plan-total-label';
     manMonthTotalLabel.textContent = '\u5408\u8a08\uFF08\u4eba\u6708\uFF09';
     trManMonthTotal.appendChild(manMonthTotalLabel);
@@ -785,7 +751,7 @@ export function mountRevenueSettingsPanel({
     const trTotal = document.createElement('tr');
     trTotal.className = 'salary-plan-total-row salary-plan-row-monthly revenue-plan-total-row revenue-plan-total-row--revenue';
     const totalLabel = document.createElement('td');
-    totalLabel.colSpan = 3;
+    totalLabel.colSpan = 2;
     totalLabel.className = 'salary-plan-total-label';
     totalLabel.textContent = '\u5408\u8a08\uFF08\u58f2\u4e0a\uFF09';
     trTotal.appendChild(totalLabel);
@@ -834,17 +800,6 @@ export function mountRevenueSettingsPanel({
     nameInput.autocomplete = 'off';
     nameInput.spellcheck = false;
 
-    const priceLabel = document.createElement('span');
-    priceLabel.className = 'outsourcing-add-label';
-    priceLabel.textContent = '\u65e2\u5b9a\u5358\u4fa1';
-
-    const priceInput = document.createElement('input');
-    priceInput.type = 'text';
-    priceInput.inputMode = 'numeric';
-    priceInput.className = 'app-settings-input outsourcing-add-input revenue-add-price-input';
-    priceInput.autocomplete = 'off';
-    priceInput.spellcheck = false;
-
     const submitBtn = document.createElement('button');
     submitBtn.type = 'button';
     submitBtn.className = 'plan-csv-btn';
@@ -857,7 +812,6 @@ export function mountRevenueSettingsPanel({
 
     cancelBtn.addEventListener('click', () => {
       nameInput.value = '';
-      priceInput.value = '';
       nameInput.focus();
     });
 
@@ -868,11 +822,9 @@ export function mountRevenueSettingsPanel({
         nameInput.focus();
         return;
       }
-      const defaultUnitPrice = parseSalaryPlanAmountInput(priceInput.value);
       const client = createManualClient({
         accountLabel: REVENUE_ACCOUNT,
         subLabel,
-        defaultUnitPrice,
       });
       if (!client) {
         showStatus('\u53d7\u6ce8\u5148\u306e\u8ffd\u52a0\u306b\u5931\u6557\u3057\u307e\u3057\u305f\u3002', true);
@@ -889,7 +841,6 @@ export function mountRevenueSettingsPanel({
       revenuePlans = setClientEntry(revenuePlans, fiscalPeriod, client, fiscalMonths);
       setRevenuePlans(revenuePlans);
       nameInput.value = '';
-      priceInput.value = '';
       const periodEntry = planPeriodEntries().find((e) => e.period === fiscalPeriod);
       const periodLabel = periodEntry?.label ?? formatFiscalPeriodLabel(fiscalPeriod);
       showStatus(`${periodLabel}\u306b ${subLabel} \u3092\u8ffd\u52a0\u3057\u307e\u3057\u305f\u3002`);
@@ -897,7 +848,7 @@ export function mountRevenueSettingsPanel({
       refreshPlanTableIfNeeded();
     });
 
-    row.append(label, nameInput, priceLabel, priceInput, submitBtn, cancelBtn);
+    row.append(label, nameInput, submitBtn, cancelBtn);
     form.appendChild(row);
     return form;
   }
