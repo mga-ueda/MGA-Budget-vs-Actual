@@ -33,6 +33,7 @@ const FILES = [
   'enrich/planOutsourcingRows.js',
   'enrich/planRevenueRows.js',
   'enrich/planPeriodAverageFill.js',
+  'enrich/planCashFlowOpening.js',
   'parse/parseEmployee.js',
   'config/appSettings.js',
   'config/settingsExport.js',

@@ -154,6 +154,7 @@ import { enrichPlanDataWithTaxPaymentRows, collectPaymentActualAmountsFromPlanDa
 import { enrichPlanDataWithOutsourcingRows, collectOutsourcingSubaccountsFromPlanData, collectOutsourcingActualAmountsFromPlanData } from '../enrich/planOutsourcingRows.js';
 import { enrichPlanDataWithRevenueRows } from '../enrich/planRevenueRows.js';
 import { enrichPlanDataWithPeriodAverageFills } from '../enrich/planPeriodAverageFill.js';
+import { enrichPlanDataWithCashFlowOpeningInflow } from '../enrich/planCashFlowOpening.js';
 import {
   parseJournalEntries,
   findRelatedJournalEntries,
@@ -2285,7 +2286,14 @@ function applyPlanColors(planData) {
     fiscalEndMonth: appSettings.fiscalEndMonth,
     displayMode,
   });
-  const withProfit = rebuildProfitSectionInPlanData(withAverages);
+  const withCashOpening = enrichPlanDataWithCashFlowOpeningInflow(withAverages, {
+    expandConfig,
+    businessStartYear: appSettings.businessStartYear,
+    fiscalPeriod: appSettings.fiscalPeriod,
+    fiscalEndMonth: appSettings.fiscalEndMonth,
+    displayMode,
+  });
+  const withProfit = rebuildProfitSectionInPlanData(withCashOpening);
   const colored = {
     ...withProfit,
     sections: applySectionColors(withProfit.sections, sectionColorConfig),
@@ -2905,7 +2913,8 @@ function renderTable() {
         const hasDrilldown = showAmount
           && isDrilldownAvailable(section, row)
           && hasDrilldownEntries(getDrilldownIndex(), section, row, m)
-          && !row.planFillMonths?.includes(m);
+          && !row.planFillMonths?.includes(m)
+          && !row.openingAdjustMonths?.includes(m);
         if (hasDrilldown) {
           td.classList.add('col-amount-drilldown');
           td.addEventListener('dblclick', () => {
