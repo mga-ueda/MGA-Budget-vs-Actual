@@ -14,6 +14,8 @@ export const ALL_SETTINGS_STORAGE_KEYS = [
   'mga-tax-payment-plans',
   'mga-tax-payment-settings',
   'mga-outsourcing-plans',
+  'mga-revenue-plans',
+  'mga-revenue-plan-settings',
   'mga-sub-expand-config',
   'mga-row-visibility',
   'mga-row-display',

@@ -7,6 +7,12 @@ export const DEFAULT_PAYMENT_PLAN_YEARS = 5;
 const MIN_PAYMENT_PLAN_YEARS = 1;
 const MAX_PAYMENT_PLAN_YEARS = 30;
 
+export const RESIDENT_TAX_ACCOUNT = '住民税';
+
+/** 予実表「法人税」セクションに反映する勘定 */
+export const CORPORATE_TAX_ACCOUNT = '法人税等';
+export const CORPORATE_TAX_SECTION_LABEL = '法人税';
+
 /** 支払い設定で管理する勘定科目（表示・集計用） */
 export const PAYMENT_PLAN_ACCOUNTS = [
   '租税公課',
@@ -16,6 +22,7 @@ export const PAYMENT_PLAN_ACCOUNTS = [
   '未払法人税等',
   '住民税',
   '役員借入金',
+  CORPORATE_TAX_ACCOUNT,
 ];
 
 /** 単一行で編集する勘定科目 */
@@ -26,14 +33,21 @@ export const PAYMENT_PLAN_SIMPLE_ACCOUNTS = [
   '未払消費税',
   '未払法人税等',
   '役員借入金',
+  CORPORATE_TAX_ACCOUNT,
 ];
-
-export const RESIDENT_TAX_ACCOUNT = '住民税';
 
 const RESIDENT_TAX_MUNICIPALITIES_KEY = 'residentTaxMunicipalities';
 
 /** 予実表の「その他」セクションに反映する勘定 */
 export const PAYMENT_PLAN_OTHER_SECTION_ACCOUNTS = new Set(['租税公課']);
+
+/** 予実表の「法人税」セクションに反映する勘定 */
+export const PAYMENT_PLAN_TAX_SECTION_ACCOUNTS = new Set([CORPORATE_TAX_ACCOUNT]);
+
+/** 支払い計画表で勘定科目列にセクション名を表示する行 */
+export const PAYMENT_PLAN_ACCOUNT_SECTION_LABELS = {
+  [CORPORATE_TAX_ACCOUNT]: CORPORATE_TAX_SECTION_LABEL,
+};
 
 /** 予実表の「その他支払」セクションに反映する勘定 */
 export const PAYMENT_PLAN_OTHER_PAY_ACCOUNTS = new Set([

@@ -14,6 +14,7 @@ import {
   buildRevenueReceivablesCrossVarianceContext,
   shouldShowCrossVarianceMonth,
   insertSgaSummarySections,
+  rebuildProfitSectionInPlanData,
 } from '../parse/parseJournal.js';
 import {
   resolvePlanStartup,
@@ -151,6 +152,7 @@ import {
 import { enrichPlanDataWithEmployeeSalaryRows } from '../enrich/planEmployeeSalaryRows.js';
 import { enrichPlanDataWithTaxPaymentRows, collectPaymentActualAmountsFromPlanData, collectResidentTaxActualByMunicipality, collectResidentTaxSubaccountsFromPlanData } from '../enrich/planTaxPaymentRows.js';
 import { enrichPlanDataWithOutsourcingRows, collectOutsourcingSubaccountsFromPlanData, collectOutsourcingActualAmountsFromPlanData } from '../enrich/planOutsourcingRows.js';
+import { enrichPlanDataWithRevenueRows } from '../enrich/planRevenueRows.js';
 import { enrichPlanDataWithPeriodAverageFills } from '../enrich/planPeriodAverageFill.js';
 import {
   parseJournalEntries,
@@ -213,6 +215,7 @@ import {
   setPaymentPlanAccount,
   PAYMENT_PLAN_SIMPLE_ACCOUNTS,
   RESIDENT_TAX_ACCOUNT,
+  PAYMENT_PLAN_ACCOUNT_SECTION_LABELS,
   loadPaymentPlanSettings,
   getPaymentPlanYears,
   setPaymentPlanYears,
@@ -234,6 +237,8 @@ import {
   mergeVendorsFromSubaccounts,
   syncVendorListFromReference,
 } from '../config/outsourcingPlanConfig.js';
+import { loadRevenuePlans, loadRevenuePlanSettings } from '../config/revenuePlanConfig.js';
+import { mountRevenueSettingsPanel } from './revenueSettings.js';
 import { parseEmployeeCsv } from '../parse/parseEmployee.js';
 import { readCsvFile } from '../parse/parser.js';
 
@@ -316,6 +321,12 @@ async function setFiscalPeriod(nextPeriod) {
   if (activeTab === 'employees') {
     syncPlanDataToCurrentPeriod();
     renderEmployeeSettings();
+    return;
+  }
+
+  if (activeTab === 'orders') {
+    syncPlanDataToCurrentPeriod();
+    renderRevenueSettings();
     return;
   }
 
@@ -410,6 +421,8 @@ let salaryPlanSettings = loadSalaryPlanSettings();
 let taxPaymentPlans = loadTaxPaymentPlans();
 let paymentPlanSettings = loadPaymentPlanSettings();
 let outsourcingPlans = loadOutsourcingPlans();
+let revenuePlans = loadRevenuePlans();
+let revenuePlanSettings = loadRevenuePlanSettings();
 let employeeTenureTimerId = null;
 let journalEntriesCache = null;
 let drilldownIndex = null;
@@ -586,6 +599,9 @@ function shouldHighlightMonthDeltaFromPrevious(section, row, monthIndex, display
   }
   if (section.id === 'revenue') {
     if (row.type === 'item' || row.type === 'sub' || row.type === 'group') {
+      if (displayMode === 'plan' || displayMode === 'budget-actual') {
+        return shouldHighlightPlanAmountMonth(row.values, monthIndex, displayMode, pastMonthSet);
+      }
       return shouldHighlightActualMonthDeltaFromPrevious(row.values, monthIndex);
     }
   }
@@ -852,8 +868,8 @@ function isOutsourcingFixedDisplayRow(section, row) {
 
 function planRowUsesLargeDisplay(section, row) {
   if (isOutsourcingBreakdownRow(section.id, row)) return false;
-  if (row.type === 'plan' && !isOutsourcingFixedDisplayRow(section, row)) return false;
   if (isVisibilityFixedSection(section.id)) return true;
+  if (row.type === 'plan' && !isOutsourcingFixedDisplayRow(section, row)) return false;
   if (planRowHasAccentBackground(section, row)) return true;
   return getRowDisplayEntry(rowDisplayConfig, section.id, row).largeDisplay;
 }
@@ -2254,16 +2270,25 @@ function applyPlanColors(planData) {
     consumptionTaxRates: appSettings.consumptionTaxRates,
     withholdingTaxRates: appSettings.withholdingTaxRates,
   });
-  const withAverages = enrichPlanDataWithPeriodAverageFills(withOutsourcing, {
+  const withRevenue = enrichPlanDataWithRevenueRows(withOutsourcing, {
+    revenuePlans,
+    businessStartYear: appSettings.businessStartYear,
+    fiscalPeriod: appSettings.fiscalPeriod,
+    fiscalEndMonth: appSettings.fiscalEndMonth,
+    displayMode,
+    consumptionTaxRates: appSettings.consumptionTaxRates,
+  });
+  const withAverages = enrichPlanDataWithPeriodAverageFills(withRevenue, {
     expandConfig,
     businessStartYear: appSettings.businessStartYear,
     fiscalPeriod: appSettings.fiscalPeriod,
     fiscalEndMonth: appSettings.fiscalEndMonth,
     displayMode,
   });
+  const withProfit = rebuildProfitSectionInPlanData(withAverages);
   const colored = {
-    ...withAverages,
-    sections: applySectionColors(withAverages.sections, sectionColorConfig),
+    ...withProfit,
+    sections: applySectionColors(withProfit.sections, sectionColorConfig),
   };
   const withSga = insertSgaSummarySections(colored);
   const sorted = applyExpenseSortToPlanData(withSga, expenseSortConfig);
@@ -2432,6 +2457,8 @@ document.addEventListener('keydown', (ev) => {
 const MAIN_MENU_ENTRIES = [
   { kind: 'item', value: 'plan', label: '予実表' },
   { kind: 'heading', label: '設定' },
+  { kind: 'item', value: 'orders', label: '受注', indented: true },
+  { kind: 'item', value: 'taxrates', label: '税率定義', indented: true },
   { kind: 'item', value: 'taxpayments', label: '支払い', indented: true },
   { kind: 'item', value: 'employees', label: '人件費', indented: true },
   { kind: 'item', value: 'outsourcing', label: '外注費', indented: true },
@@ -2573,6 +2600,7 @@ function renderView() {
   } else if (activeTab === 'visibility') renderVisibilitySettings();
   else if (activeTab === 'colors') renderSectionColorSettings();
   else if (activeTab === 'taxrates') renderTaxRateSettings();
+  else if (activeTab === 'orders') renderRevenueSettings();
   else if (activeTab === 'taxpayments') renderTaxPaymentSettings();
   else if (activeTab === 'employees') renderEmployeeSettings();
   else if (activeTab === 'outsourcing') renderOutsourcingSettings();
@@ -4580,7 +4608,7 @@ function renderTaxPaymentSettings() {
   const header = document.createElement('div');
   header.className = 'expand-settings-header tax-payment-settings-header';
   header.innerHTML = `
-    <p class="expand-settings-desc">租税公課・保険積立金・長期未払金・未払消費税・未払法人税等・住民税・役員借入金の支払い計画を設定します。住民税は市区町村ごとに入力し、合計が予実表に反映されます。今期の支払済み月は仕訳実績を表示します（編集不可）。未来の月のみダブルクリックで編集できます。住民税のみ過去月も入力でき、予実表にもその値が反映されます。Shift+Enter で入力した月以降の同額を後続月に反映します。</p>
+    <p class="expand-settings-desc">租税公課・保険積立金・長期未払金・未払消費税・未払法人税等・法人税等・住民税・役員借入金の支払い計画を設定します。法人税等は予実表の「法人税」セクションに反映されます。住民税は市区町村ごとに入力し、合計が予実表に反映されます。今期の支払済み月は仕訳実績を表示します（編集不可）。未来の月のみダブルクリックで編集できます。住民税のみ過去月も入力でき、予実表にもその値が反映されます。Shift+Enter で入力した月以降の同額を後続月に反映します。</p>
     <div class="tax-payment-settings-controls">
       <div class="tax-payment-plan-years-row">
         <span class="app-settings-label">計画年数</span>
@@ -4964,11 +4992,13 @@ function renderTaxPaymentSettings() {
 
       const accountTd = document.createElement('td');
       accountTd.className = 'salary-plan-col-name';
-      accountTd.textContent = account;
+      const sectionLabel = PAYMENT_PLAN_ACCOUNT_SECTION_LABELS[account];
+      accountTd.textContent = sectionLabel ?? account;
       tr.appendChild(accountTd);
 
       const subTd = document.createElement('td');
       subTd.className = 'salary-plan-col-sub';
+      if (sectionLabel) subTd.textContent = account;
       tr.appendChild(subTd);
 
       for (let i = 0; i < fiscalMonths.length; i += 1) {
@@ -6193,6 +6223,23 @@ function renderEmployeeSettings() {
   });
 
   replaceRootPanel(wrap);
+}
+
+function renderRevenueSettings() {
+  mountRevenueSettingsPanel({
+    replaceRootPanel,
+    setPlanKpi,
+    appSettings,
+    rawPlanData,
+    getRevenuePlans: () => revenuePlans,
+    setRevenuePlans: (plans) => { revenuePlans = plans; },
+    getRevenuePlanSettings: () => revenuePlanSettings,
+    setRevenuePlanSettings: (settings) => { revenuePlanSettings = settings; },
+    refreshPlanTableIfNeeded: () => {
+      refreshSectionColors();
+      if (activeTab === 'plan' && data) refreshPlanTable();
+    },
+  });
 }
 
 function renderOutsourcingSettings() {
@@ -7448,6 +7495,8 @@ function reloadAllSettingsFromStorage() {
   taxPaymentPlans = loadTaxPaymentPlans();
   paymentPlanSettings = loadPaymentPlanSettings();
   outsourcingPlans = loadOutsourcingPlans();
+  revenuePlans = loadRevenuePlans();
+  revenuePlanSettings = loadRevenuePlanSettings();
 
   applyUiColors(uiColorConfig);
   applyBrandSettings(appSettings);

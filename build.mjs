@@ -27,15 +27,18 @@ const FILES = [
   'config/salaryPlanConfig.js',
   'config/taxPaymentConfig.js',
   'config/outsourcingPlanConfig.js',
+  'config/revenuePlanConfig.js',
   'enrich/planEmployeeSalaryRows.js',
   'enrich/planTaxPaymentRows.js',
   'enrich/planOutsourcingRows.js',
+  'enrich/planRevenueRows.js',
   'enrich/planPeriodAverageFill.js',
   'parse/parseEmployee.js',
   'config/appSettings.js',
   'config/settingsExport.js',
   'csv/csvFolder.js',
   'csv/csvLoader.js',
+  'ui/revenueSettings.js',
   'ui/plan.js',
 ];
 

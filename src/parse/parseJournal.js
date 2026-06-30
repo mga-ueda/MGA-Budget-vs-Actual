@@ -688,6 +688,23 @@ function buildProfitSection(sections) {
   };
 }
 
+/** 計画・予実マージ後に各セクション合計から利益セクションを再計算する */
+export function rebuildProfitSectionInPlanData(planData) {
+  if (!planData?.sections?.length) return planData;
+  const profitSection = buildProfitSection(planData.sections);
+  if (!profitSection) return planData;
+  const profitIdx = planData.sections.findIndex((s) => s.id === 'profit');
+  const sections = [...planData.sections];
+  if (profitIdx >= 0) {
+    sections[profitIdx] = profitSection;
+  } else {
+    const taxIdx = sections.findIndex((s) => s.id === 'tax');
+    const insertAt = taxIdx >= 0 ? taxIdx + 1 : sections.length;
+    sections.splice(insertAt, 0, profitSection);
+  }
+  return { ...planData, sections };
+}
+
 /** 消費税対象販管費（人件費＋諸経費＋外注費）と販管費合計をその他セクション前後に挿入する */
 export function insertSgaSummarySections(planData) {
   if (!planData?.sections) return planData;

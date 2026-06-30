@@ -15,9 +15,11 @@ import {
   PAYMENT_PLAN_ACCOUNTS,
   PAYMENT_PLAN_SIMPLE_ACCOUNTS,
   PAYMENT_PLAN_OTHER_SECTION_ACCOUNTS,
+  PAYMENT_PLAN_TAX_SECTION_ACCOUNTS,
   PAYMENT_PLAN_OTHER_PAY_ACCOUNTS,
   PAYMENT_PLAN_OTHER_PAY_SIMPLE_ACCOUNTS,
   RESIDENT_TAX_ACCOUNT,
+  CORPORATE_TAX_ACCOUNT,
 } from '../config/taxPaymentConfig.js';
 import { visibilityRowKey, rowTypeLabel } from '../config/visibilityConfig.js';
 
@@ -25,6 +27,7 @@ const TAX_PAY_OTHER_SECTION_LABEL = 'その他';
 const TAX_PAY_OTHER_TOTAL_LABEL = 'その他合計';
 const TAX_PAY_OTHER_PAY_SECTION_LABEL = 'その他支払';
 const TAX_PAY_OTHER_PAY_TOTAL_LABEL = 'その他支払合計';
+const TAX_PAY_TAX_SECTION_LABEL = '法人税';
 const NO_SUB_LABEL = '補助科目なし';
 
 function taxPayEmptyRawMonthValues() {
@@ -484,6 +487,13 @@ function taxPayCollectAllPlanVisibilityCandidates(
         TAX_PAY_OTHER_PAY_SECTION_LABEL,
       ));
     }
+    if (PAYMENT_PLAN_TAX_SECTION_ACCOUNTS.has(account)) {
+      candidates.push(...taxPayCollectPlanVisibilityCandidates(
+        planRow,
+        'tax',
+        TAX_PAY_TAX_SECTION_LABEL,
+      ));
+    }
   }
   candidates.push(...taxPayCollectResidentTaxPlanVisibilityCandidates(
     municipalities,
@@ -514,6 +524,64 @@ function taxPayEnrichOtherSection(section, periodPlans, actualAmounts, fiscalMon
     };
   }
   return { ...section, rows };
+}
+
+function taxPayEnrichTaxSection(section, periodPlans, actualAmounts, fiscalMonths, pastMonths) {
+  const accounts = [...PAYMENT_PLAN_TAX_SECTION_ACCOUNTS];
+  const rows = taxPayRebuildRowsForAccounts(
+    section.rows,
+    accounts,
+    periodPlans,
+    actualAmounts,
+    fiscalMonths,
+    pastMonths,
+    'corp-tax-plan',
+  );
+  const totalIdx = rows.findIndex((r) => r.type === 'total');
+  if (totalIdx >= 0) {
+    rows[totalIdx] = {
+      ...rows[totalIdx],
+      values: taxPaySumNonPlanRows(rows),
+    };
+  }
+  return { ...section, rows };
+}
+
+function taxPayCreateTaxSectionFromPlans(periodPlans, actualAmounts, fiscalMonths, pastMonths) {
+  const planRows = [];
+  for (const account of PAYMENT_PLAN_TAX_SECTION_ACCOUNTS) {
+    const planTotal = taxPayBuildAccountPlanTotal(
+      periodPlans[account] ?? {},
+      actualAmounts.get(account) ?? {},
+      fiscalMonths,
+      pastMonths,
+    );
+    const planRow = taxPayBuildAccountPlanRow(account, planTotal, 'corp-tax-plan');
+    if (planRow) planRows.push(planRow);
+  }
+  if (planRows.length === 0) return null;
+  const colors = DEFAULT_SECTION_COLORS.tax ?? {
+    color: '#7030a0',
+    barColor: '#7030a0',
+    textColor: '#ffffff',
+  };
+  const totalValues = taxPaySumNonPlanRows(planRows);
+  const totalRow = {
+    id: 'tax-total',
+    label: `${APP_AGGREGATE_LABEL_PREFIX}法人税合計`,
+    subLabel: '',
+    type: 'total',
+    values: totalValues,
+  };
+  return {
+    id: 'tax',
+    label: TAX_PAY_TAX_SECTION_LABEL,
+    filter: 'tax',
+    color: colors.color,
+    barColor: colors.barColor,
+    textColor: colors.textColor,
+    rows: [...planRows, totalRow],
+  };
 }
 
 function taxPayEnrichOtherPaySection(
@@ -684,6 +752,18 @@ export function collectPaymentActualAmountsFromPlanData(planData, fiscalMonths) 
     }
   }
 
+  const taxSection = planData?.sections?.find((s) => s.id === 'tax');
+  if (taxSection) {
+    for (const row of taxSection.rows) {
+      if (!taxPayIsActualSourceRow(row)) continue;
+      if (row.label !== CORPORATE_TAX_ACCOUNT) continue;
+      const monthly = result.get(CORPORATE_TAX_ACCOUNT);
+      for (const m of fiscalMonths) {
+        monthly[m] += row.values[m] ?? 0;
+      }
+    }
+  }
+
   return result;
 }
 
@@ -738,7 +818,8 @@ export function enrichPlanDataWithTaxPaymentRows(planData, {
   );
   const otherIdx = planData.sections.findIndex((s) => s.id === 'other');
   const otherPayIdx = planData.sections.findIndex((s) => s.id === 'otherPay');
-  const canEnrich = hasPlans || otherIdx >= 0 || otherPayIdx >= 0;
+  const taxIdx = planData.sections.findIndex((s) => s.id === 'tax');
+  const canEnrich = hasPlans || otherIdx >= 0 || otherPayIdx >= 0 || taxIdx >= 0;
   if (!canEnrich) {
     return planData;
   }
@@ -789,6 +870,25 @@ export function enrichPlanDataWithTaxPaymentRows(planData, {
       municipalities,
       actualAmounts,
       actualResidentTaxByMunicipality,
+      fiscalMonths,
+      pastMonths,
+    );
+    if (created) sections = [...sections, created];
+  }
+
+  const updatedTaxIdx = sections.findIndex((s) => s.id === 'tax');
+  if (updatedTaxIdx >= 0) {
+    sections[updatedTaxIdx] = taxPayEnrichTaxSection(
+      sections[updatedTaxIdx],
+      periodPlans,
+      actualAmounts,
+      fiscalMonths,
+      pastMonths,
+    );
+  } else if (hasPlans) {
+    const created = taxPayCreateTaxSectionFromPlans(
+      periodPlans,
+      actualAmounts,
       fiscalMonths,
       pastMonths,
     );

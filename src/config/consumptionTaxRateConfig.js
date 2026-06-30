@@ -53,6 +53,20 @@ export function getConsumptionTaxRatePercent(calendarYear, calendarMonth, rates)
   return found;
 }
 
+/** 税抜金額を税率定義に基づき税込に換算（円・四捨五入） */
+export function calcTaxInclusiveFromTaxExclusiveAmount(
+  taxExclusiveYen,
+  calendarYear,
+  calendarMonth,
+  rates,
+) {
+  const base = Math.max(0, Math.floor(Number(taxExclusiveYen) || 0));
+  if (base === 0) return 0;
+  const ratePercent = getConsumptionTaxRatePercent(calendarYear, calendarMonth, rates);
+  if (ratePercent == null || ratePercent <= 0) return base;
+  return Math.round(base * (100 + ratePercent) / 100);
+}
+
 export function isConsumptionTaxRatesDefault(rates) {
   const current = normalizeConsumptionTaxRates(rates);
   const defaults = normalizeConsumptionTaxRates(DEFAULT_CONSUMPTION_TAX_RATES);
