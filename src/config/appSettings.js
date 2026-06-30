@@ -39,6 +39,11 @@ export const DEFAULT_BRAND_ICON_TEXT = 'MGA';
 export const DEFAULT_BRAND_FILL_COLOR = '#2563eb';
 export const DEFAULT_BRAND_TEXT_COLOR = '#ffffff';
 
+/** ロゴ画像の最大サイズ（バイト） */
+export const MAX_BRAND_LOGO_BYTES = 512 * 1024;
+
+const BRAND_LOGO_DATA_URL_RE = /^data:image\/(png|jpe?g|gif|webp|svg\+xml);base64,/i;
+
 function parseHexColor(hex) {
   const h = String(hex ?? '').replace('#', '').trim();
   if (!/^[0-9a-fA-F]{6}$/.test(h)) return null;
@@ -51,8 +56,7 @@ export function normalizeBrandColor(hex, fallback) {
 }
 
 export function normalizeCompanyName(value) {
-  const s = String(value ?? '').trim();
-  return s || DEFAULT_COMPANY_NAME;
+  return String(value ?? '').trim();
 }
 
 export function normalizeBrandIconText(value) {
@@ -60,16 +64,52 @@ export function normalizeBrandIconText(value) {
   return s || DEFAULT_BRAND_ICON_TEXT;
 }
 
-export function applyBrandSettings(settings) {
-  const logo = document.querySelector('.plan-logo');
-  const company = document.querySelector('.plan-company');
+/** ブランドロゴ画像（data URL）。不正な値は null */
+export function normalizeBrandLogoDataUrl(value) {
+  if (value == null || value === '') return null;
+  const s = String(value).trim();
+  if (!BRAND_LOGO_DATA_URL_RE.test(s)) return null;
+  return s;
+}
+
+export function hasBrandLogo(settings) {
+  return normalizeBrandLogoDataUrl(settings?.brandLogoDataUrl) != null;
+}
+
+function applyBrandToLogoElement(logoEl, settings) {
+  if (!logoEl) return;
+  const dataUrl = normalizeBrandLogoDataUrl(settings.brandLogoDataUrl);
+  if (dataUrl) {
+    logoEl.textContent = '';
+    logoEl.style.background = 'transparent';
+    logoEl.style.color = '';
+    logoEl.style.boxShadow = 'none';
+    logoEl.classList.add('plan-logo-image');
+    let img = logoEl.querySelector('img');
+    if (!img) {
+      img = document.createElement('img');
+      img.alt = '';
+      logoEl.appendChild(img);
+    }
+    img.src = dataUrl;
+    return;
+  }
+  logoEl.classList.remove('plan-logo-image');
+  const img = logoEl.querySelector('img');
+  if (img) img.remove();
   const fillColor = normalizeBrandColor(settings.brandFillColor, DEFAULT_BRAND_FILL_COLOR);
   const textColor = normalizeBrandColor(settings.brandTextColor, DEFAULT_BRAND_TEXT_COLOR);
-  if (logo) {
-    logo.textContent = normalizeBrandIconText(settings.brandIconText);
-    logo.style.background = fillColor;
-    logo.style.color = textColor;
-  }
+  logoEl.textContent = normalizeBrandIconText(settings.brandIconText);
+  logoEl.style.background = fillColor;
+  logoEl.style.color = textColor;
+  logoEl.style.boxShadow = '';
+}
+
+export function applyBrandSettings(settings) {
+  document.querySelectorAll('.plan-logo').forEach((logo) => {
+    applyBrandToLogoElement(logo, settings);
+  });
+  const company = document.querySelector('.plan-company');
   if (company) {
     company.textContent = normalizeCompanyName(settings.companyName);
   }
@@ -332,11 +372,15 @@ function loadCorpEntityMarkers(stored) {
 }
 
 function loadBrandSettings(parsed) {
+  const companyName = parsed && Object.prototype.hasOwnProperty.call(parsed, 'companyName')
+    ? normalizeCompanyName(parsed.companyName)
+    : DEFAULT_COMPANY_NAME;
   return {
-    companyName: normalizeCompanyName(parsed?.companyName),
+    companyName,
     brandIconText: normalizeBrandIconText(parsed?.brandIconText),
     brandFillColor: normalizeBrandColor(parsed?.brandFillColor, DEFAULT_BRAND_FILL_COLOR),
     brandTextColor: normalizeBrandColor(parsed?.brandTextColor, DEFAULT_BRAND_TEXT_COLOR),
+    brandLogoDataUrl: normalizeBrandLogoDataUrl(parsed?.brandLogoDataUrl),
   };
 }
 
@@ -411,6 +455,7 @@ export function resetAppSettings() {
     brandIconText: DEFAULT_BRAND_ICON_TEXT,
     brandFillColor: DEFAULT_BRAND_FILL_COLOR,
     brandTextColor: DEFAULT_BRAND_TEXT_COLOR,
+    brandLogoDataUrl: null,
     consumptionTaxRates: DEFAULT_CONSUMPTION_TAX_RATES.map((r) => ({ ...r })),
     withholdingTaxRates: DEFAULT_WITHHOLDING_TAX_RATES.map((r) => ({ ...r })),
     legalWelfareRate: DEFAULT_LEGAL_WELFARE_RATE,
@@ -430,5 +475,6 @@ export function resetOtherAppSettings(current) {
     brandIconText: DEFAULT_BRAND_ICON_TEXT,
     brandFillColor: DEFAULT_BRAND_FILL_COLOR,
     brandTextColor: DEFAULT_BRAND_TEXT_COLOR,
+    brandLogoDataUrl: null,
   };
 }

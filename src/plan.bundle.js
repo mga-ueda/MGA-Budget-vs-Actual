@@ -1164,10 +1164,11 @@ function subSortKey(sub) {
   return sub || '補助科目なし';
 }
 
-/** 補助科目1件のみのときは非表示（売上高・売掛金は除く）。2件以上で空欄は「補助科目なし」 */
-function formatSubLabel(rawSub, subCount, sectionId) {
-  if (subCount === 1 && !ALWAYS_EXPAND_SECTION_IDS.has(sectionId)) return '';
-  return rawSub || '補助科目なし';
+/** 補助科目が1件だけで空のときは非表示。2件以上で空欄は「補助科目なし」 */
+function formatSubLabel(rawSub, subCount) {
+  if (rawSub) return rawSub;
+  if (subCount === 1) return '';
+  return '補助科目なし';
 }
 
 /** 展開設定タブ用: 補助科目を持つ勘定科目一覧 */
@@ -1264,7 +1265,7 @@ function buildGroupedAccountRows(rawItems, idPrefix, sectionId, expandConfig = {
         rows.push(makeRow(
           rowId,
           account,
-          formatSubLabel(item.sub, subCount, sectionId),
+          formatSubLabel(item.sub, subCount),
           item.values,
           'item',
           null,
@@ -1281,7 +1282,7 @@ function buildGroupedAccountRows(rawItems, idPrefix, sectionId, expandConfig = {
       rows.push(makeRow(
         rowId,
         account,
-        formatSubLabel(item.sub, 1, sectionId),
+        formatSubLabel(item.sub, 1),
         item.values,
         'item',
         null,
@@ -1298,7 +1299,7 @@ function buildGroupedAccountRows(rawItems, idPrefix, sectionId, expandConfig = {
       rows.push(makeRow(
         `${groupId}-s-${j}`,
         account,
-        formatSubLabel(item.sub, subCount, sectionId),
+        formatSubLabel(item.sub, subCount),
         item.values,
         'sub',
         groupId,
@@ -6111,6 +6112,11 @@ const DEFAULT_BRAND_ICON_TEXT = 'MGA';
 const DEFAULT_BRAND_FILL_COLOR = '#2563eb';
 const DEFAULT_BRAND_TEXT_COLOR = '#ffffff';
 
+/** ロゴ画像の最大サイズ（バイト） */
+const MAX_BRAND_LOGO_BYTES = 512 * 1024;
+
+const BRAND_LOGO_DATA_URL_RE = /^data:image\/(png|jpe?g|gif|webp|svg\+xml);base64,/i;
+
 function parseHexColor(hex) {
   const h = String(hex ?? '').replace('#', '').trim();
   if (!/^[0-9a-fA-F]{6}$/.test(h)) return null;
@@ -6123,8 +6129,7 @@ function normalizeBrandColor(hex, fallback) {
 }
 
 function normalizeCompanyName(value) {
-  const s = String(value ?? '').trim();
-  return s || DEFAULT_COMPANY_NAME;
+  return String(value ?? '').trim();
 }
 
 function normalizeBrandIconText(value) {
@@ -6132,16 +6137,52 @@ function normalizeBrandIconText(value) {
   return s || DEFAULT_BRAND_ICON_TEXT;
 }
 
-function applyBrandSettings(settings) {
-  const logo = document.querySelector('.plan-logo');
-  const company = document.querySelector('.plan-company');
+/** ブランドロゴ画像（data URL）。不正な値は null */
+function normalizeBrandLogoDataUrl(value) {
+  if (value == null || value === '') return null;
+  const s = String(value).trim();
+  if (!BRAND_LOGO_DATA_URL_RE.test(s)) return null;
+  return s;
+}
+
+function hasBrandLogo(settings) {
+  return normalizeBrandLogoDataUrl(settings?.brandLogoDataUrl) != null;
+}
+
+function applyBrandToLogoElement(logoEl, settings) {
+  if (!logoEl) return;
+  const dataUrl = normalizeBrandLogoDataUrl(settings.brandLogoDataUrl);
+  if (dataUrl) {
+    logoEl.textContent = '';
+    logoEl.style.background = 'transparent';
+    logoEl.style.color = '';
+    logoEl.style.boxShadow = 'none';
+    logoEl.classList.add('plan-logo-image');
+    let img = logoEl.querySelector('img');
+    if (!img) {
+      img = document.createElement('img');
+      img.alt = '';
+      logoEl.appendChild(img);
+    }
+    img.src = dataUrl;
+    return;
+  }
+  logoEl.classList.remove('plan-logo-image');
+  const img = logoEl.querySelector('img');
+  if (img) img.remove();
   const fillColor = normalizeBrandColor(settings.brandFillColor, DEFAULT_BRAND_FILL_COLOR);
   const textColor = normalizeBrandColor(settings.brandTextColor, DEFAULT_BRAND_TEXT_COLOR);
-  if (logo) {
-    logo.textContent = normalizeBrandIconText(settings.brandIconText);
-    logo.style.background = fillColor;
-    logo.style.color = textColor;
-  }
+  logoEl.textContent = normalizeBrandIconText(settings.brandIconText);
+  logoEl.style.background = fillColor;
+  logoEl.style.color = textColor;
+  logoEl.style.boxShadow = '';
+}
+
+function applyBrandSettings(settings) {
+  document.querySelectorAll('.plan-logo').forEach((logo) => {
+    applyBrandToLogoElement(logo, settings);
+  });
+  const company = document.querySelector('.plan-company');
   if (company) {
     company.textContent = normalizeCompanyName(settings.companyName);
   }
@@ -6404,11 +6445,15 @@ function loadCorpEntityMarkers(stored) {
 }
 
 function loadBrandSettings(parsed) {
+  const companyName = parsed && Object.prototype.hasOwnProperty.call(parsed, 'companyName')
+    ? normalizeCompanyName(parsed.companyName)
+    : DEFAULT_COMPANY_NAME;
   return {
-    companyName: normalizeCompanyName(parsed?.companyName),
+    companyName,
     brandIconText: normalizeBrandIconText(parsed?.brandIconText),
     brandFillColor: normalizeBrandColor(parsed?.brandFillColor, DEFAULT_BRAND_FILL_COLOR),
     brandTextColor: normalizeBrandColor(parsed?.brandTextColor, DEFAULT_BRAND_TEXT_COLOR),
+    brandLogoDataUrl: normalizeBrandLogoDataUrl(parsed?.brandLogoDataUrl),
   };
 }
 
@@ -6483,6 +6528,7 @@ function resetAppSettings() {
     brandIconText: DEFAULT_BRAND_ICON_TEXT,
     brandFillColor: DEFAULT_BRAND_FILL_COLOR,
     brandTextColor: DEFAULT_BRAND_TEXT_COLOR,
+    brandLogoDataUrl: null,
     consumptionTaxRates: DEFAULT_CONSUMPTION_TAX_RATES.map((r) => ({ ...r })),
     withholdingTaxRates: DEFAULT_WITHHOLDING_TAX_RATES.map((r) => ({ ...r })),
     legalWelfareRate: DEFAULT_LEGAL_WELFARE_RATE,
@@ -6502,6 +6548,7 @@ function resetOtherAppSettings(current) {
     brandIconText: DEFAULT_BRAND_ICON_TEXT,
     brandFillColor: DEFAULT_BRAND_FILL_COLOR,
     brandTextColor: DEFAULT_BRAND_TEXT_COLOR,
+    brandLogoDataUrl: null,
   };
 }
 
@@ -7508,7 +7555,7 @@ function maxPlanCellScrollWidth(cells) {
     const hasContent = cell.textContent.trim()
       || cell.querySelector('.amount-yen, .row-toggle, button');
     if (!hasContent) continue;
-    max = Math.max(max, Math.ceil(cell.scrollWidth));
+    max = Math.max(max, measurePlanCellContentWidth(cell));
   }
   return max;
 }
@@ -7537,6 +7584,31 @@ function maxAmountCellScrollWidth(cells) {
     max = Math.max(max, Math.ceil(cell.scrollWidth));
   }
   return max;
+}
+
+function appendPlanTableColgroup(table) {
+  const colgroup = document.createElement('colgroup');
+  for (const cls of ['col-category', 'col-label', 'col-sub']) {
+    const col = document.createElement('col');
+    col.className = cls;
+    colgroup.appendChild(col);
+  }
+  for (let i = 0; i < FISCAL_MONTHS.length; i += 1) {
+    const col = document.createElement('col');
+    col.className = 'col-amount-month';
+    colgroup.appendChild(col);
+  }
+  for (let i = 0; i < EXTRA_COLUMNS.length; i += 1) {
+    const col = document.createElement('col');
+    col.className = 'col-amount-extra';
+    colgroup.appendChild(col);
+  }
+  table.appendChild(colgroup);
+}
+
+function measurePlanCellContentWidth(cell) {
+  if (!cell) return 0;
+  return Math.max(Math.ceil(cell.scrollWidth), Math.ceil(cell.getBoundingClientRect().width));
 }
 
 function syncPlanTableStickyColumnOffsets(table) {
@@ -7791,7 +7863,11 @@ function collectPlanColumnWidthCandidates(planData) {
         labelSpecs.push({ trClass, groupLabel: row.label, expanded: false });
         labelSpecs.push({ trClass, groupLabel: row.label, expanded: true });
       } else if (row.type !== 'sub' && row.label) {
-        labelSpecs.push({ trClass, text: row.label });
+        labelSpecs.push({
+          trClass,
+          text: row.label,
+          formulaLabel: getAggregateFormulaLabel(row, section),
+        });
       }
 
       if (row.type === 'sub' && row.subLabel) {
@@ -7809,7 +7885,7 @@ function collectPlanColumnWidthCandidates(planData) {
 
 function measureLabelColumnWidth(table, labelSpecs) {
   const headerCell = table.querySelector('.month-row th.col-label');
-  let max = headerCell ? headerCell.scrollWidth : 0;
+  let max = headerCell && headerCell.colSpan <= 1 ? headerCell.scrollWidth : 0;
 
   const tbody = table.querySelector('tbody') ?? table.appendChild(document.createElement('tbody'));
   const tr = document.createElement('tr');
@@ -7838,9 +7914,9 @@ function measureLabelColumnWidth(table, labelSpecs) {
       btn.append(icon, textSpan);
       td.appendChild(btn);
     } else {
-      appendAggregateLabelContent(td, spec.text);
+      appendAggregateLabelContent(td, spec.text, spec.formulaLabel ?? null);
     }
-    max = Math.max(max, td.scrollWidth);
+    max = Math.max(max, measurePlanCellContentWidth(td));
   }
 
   tr.remove();
@@ -8677,7 +8753,6 @@ function fixPlanTableColumnWidths(table) {
   if (hasData) {
     const { labelSpecs, subEntries } = collectPlanColumnWidthCandidates(data);
     labelW = Math.max(
-      maxPlanCellScrollWidth(table.querySelectorAll('thead .month-row th.col-label')),
       maxPlanCellScrollWidth(table.querySelectorAll('tbody .col-label')),
       measureLabelColumnWidth(table, labelSpecs),
     );
@@ -9540,12 +9615,14 @@ function renderTable() {
   const table = document.createElement('table');
   table.className = 'plan-table';
 
+  appendPlanTableColgroup(table);
+
   const thead = document.createElement('thead');
 
   const yearRow = document.createElement('tr');
   yearRow.className = 'year-row';
   yearRow.innerHTML =
-    '<th class="col-category"></th><th class="col-label"></th><th class="col-sub"></th>';
+    '<th class="col-account-header" colspan="2"></th><th class="col-sub"></th>';
 
   let lastYear = null;
   const monthYear = getMonthYear();
@@ -9574,7 +9651,7 @@ function renderTable() {
   const monthRow = document.createElement('tr');
   monthRow.className = 'month-row';
   monthRow.innerHTML =
-    '<th class="col-category"></th><th class="col-label">勘定科目</th><th class="col-sub">補助科目</th>';
+    '<th class="col-account-header" colspan="2">勘定科目</th><th class="col-sub">補助科目</th>';
   for (const m of FISCAL_MONTHS) {
     const th = document.createElement('th');
     th.className = `col-amount col-amount-month${highlightCurrentMonth && m === currentMonth ? ' current-month' : ''}`;
@@ -13588,16 +13665,25 @@ function renderOtherSettings() {
           <input type="text" class="app-settings-input" id="brand-company-name"
             spellcheck="false" autocomplete="off" />
         </label>
-        <label class="app-settings-field other-settings-brand-field">
+        <div class="app-settings-field other-settings-brand-logo-field">
+          <span class="app-settings-label">ロゴ画像</span>
+          <div class="brand-logo-controls">
+            <input type="file" accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml"
+              id="brand-logo-file" hidden />
+            <button type="button" class="plan-csv-btn" id="brand-logo-load-btn">画像を読み込む</button>
+            <button type="button" class="expand-reset-btn brand-logo-clear-btn" id="brand-logo-clear-btn" hidden>削除</button>
+          </div>
+        </div>
+        <label class="app-settings-field other-settings-brand-field other-settings-brand-text-field">
           <span class="app-settings-label">アイコン表示</span>
           <input type="text" class="app-settings-input" id="brand-icon-text"
             spellcheck="false" autocomplete="off" placeholder="MGA や ⚖️ など" />
         </label>
-        <label class="app-settings-field other-settings-brand-color-field">
+        <label class="app-settings-field other-settings-brand-color-field other-settings-brand-text-field">
           <span class="app-settings-label">塗り</span>
           <input type="color" class="section-color-input" id="brand-fill-color" />
         </label>
-        <label class="app-settings-field other-settings-brand-color-field">
+        <label class="app-settings-field other-settings-brand-color-field other-settings-brand-text-field">
           <span class="app-settings-label">文字</span>
           <input type="color" class="section-color-input" id="brand-text-color" />
         </label>
@@ -13642,23 +13728,36 @@ function renderOtherSettings() {
   const brandTextColorInput = form.querySelector('#brand-text-color');
   const brandPreviewLogo = form.querySelector('#brand-preview-logo');
   const brandPreviewCompany = form.querySelector('#brand-preview-company');
+  const brandLogoFileInput = form.querySelector('#brand-logo-file');
+  const brandLogoLoadBtn = form.querySelector('#brand-logo-load-btn');
+  const brandLogoClearBtn = form.querySelector('#brand-logo-clear-btn');
+  const brandTextFields = form.querySelectorAll('.other-settings-brand-text-field');
+
+  function syncBrandTextFieldsVisibility() {
+    const logoActive = hasBrandLogo(appSettings);
+    brandTextFields.forEach((el) => {
+      el.hidden = logoActive;
+    });
+    brandLogoClearBtn.hidden = !logoActive;
+  }
 
   function refreshBrandPreview() {
-    brandPreviewLogo.textContent = appSettings.brandIconText;
-    brandPreviewLogo.style.background = appSettings.brandFillColor;
-    brandPreviewLogo.style.color = appSettings.brandTextColor;
     brandPreviewCompany.textContent = appSettings.companyName;
     applyBrandSettings(appSettings);
+    syncBrandTextFieldsVisibility();
   }
 
   function saveBrandSettings() {
-    appSettings = {
+    const next = {
       ...appSettings,
       companyName: normalizeCompanyName(companyNameInput.value),
-      brandIconText: normalizeBrandIconText(brandIconTextInput.value),
       brandFillColor: normalizeBrandColor(brandFillColorInput.value, DEFAULT_BRAND_FILL_COLOR),
       brandTextColor: normalizeBrandColor(brandTextColorInput.value, DEFAULT_BRAND_TEXT_COLOR),
     };
+    if (!hasBrandLogo(appSettings)) {
+      next.brandIconText = normalizeBrandIconText(brandIconTextInput.value);
+    }
+    appSettings = next;
     saveAppSettings(appSettings);
     companyNameInput.value = appSettings.companyName;
     brandIconTextInput.value = appSettings.brandIconText;
@@ -13666,6 +13765,58 @@ function renderOtherSettings() {
     brandTextColorInput.value = appSettings.brandTextColor;
     refreshBrandPreview();
   }
+
+  function readBrandLogoFile(file) {
+    return new Promise((resolve, reject) => {
+      if (!file.type.startsWith('image/')) {
+        reject(new Error('画像ファイルを選択してください。'));
+        return;
+      }
+      if (file.size > MAX_BRAND_LOGO_BYTES) {
+        reject(new Error(`ロゴ画像は ${Math.round(MAX_BRAND_LOGO_BYTES / 1024)}KB 以下にしてください。`));
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(reader.error ?? new Error('画像の読み込みに失敗しました。'));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  brandLogoLoadBtn.addEventListener('click', () => {
+    brandLogoFileInput.value = '';
+    brandLogoFileInput.click();
+  });
+
+  brandLogoFileInput.addEventListener('change', async () => {
+    const file = brandLogoFileInput.files?.[0];
+    if (!file) return;
+    try {
+      const dataUrl = await readBrandLogoFile(file);
+      const normalized = normalizeBrandLogoDataUrl(dataUrl);
+      if (!normalized) {
+        window.alert('対応していない画像形式です。');
+        return;
+      }
+      appSettings = {
+        ...appSettings,
+        brandLogoDataUrl: normalized,
+      };
+      saveAppSettings(appSettings);
+      refreshBrandPreview();
+    } catch (err) {
+      window.alert(err?.message ?? '画像の読み込みに失敗しました。');
+    }
+  });
+
+  brandLogoClearBtn.addEventListener('click', () => {
+    appSettings = {
+      ...appSettings,
+      brandLogoDataUrl: null,
+    };
+    saveAppSettings(appSettings);
+    refreshBrandPreview();
+  });
 
   for (let m = 1; m <= 12; m += 1) {
     const opt = document.createElement('option');

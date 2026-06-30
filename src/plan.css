@@ -55,6 +55,8 @@ html {
   --plan-warning-text: #ffff00;
   --plan-colored-cell-font-weight: bold;
   --plan-header-h: 120px;
+  --plan-logo-height: 45px;
+  --plan-header-top-height: calc(var(--plan-logo-height) * 0.75);
   --plan-font-table: "Meiryo UI", Meiryo, "メイリオ", sans-serif;
   --plan-font-table-base: 0.72rem;
   /** 予実表 tbody 標準（Excel 9pt 相当）。フォント倍率 UI（--plan-font-scale）と連動 */
@@ -104,24 +106,23 @@ html {
 }
 
 .plan-header-top {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 0.75rem 1.5rem;
+  display: grid;
+  grid-template-columns: auto auto 1fr auto;
+  grid-template-areas: "logo main . menu";
+  align-items: stretch;
+  gap: 0.625rem 0.5rem;
   margin-bottom: 0.625rem;
-}
-
-.plan-brand {
-  display: flex;
-  align-items: center;
-  gap: 0.625rem;
+  position: relative;
+  box-sizing: border-box;
+  padding-block: 10px;
+  min-height: calc(var(--plan-header-top-height) + 20px);
+  height: calc(var(--plan-header-top-height) + 20px);
 }
 
 .plan-logo {
   box-sizing: border-box;
-  height: 36px;
-  min-width: 36px;
+  height: var(--plan-logo-height);
+  min-width: var(--plan-logo-height);
   width: auto;
   padding: 0 0.5rem;
   border-radius: var(--plan-radius-md);
@@ -135,6 +136,58 @@ html {
   letter-spacing: -0.03em;
   white-space: nowrap;
   flex-shrink: 0;
+  overflow: hidden;
+}
+
+.plan-header-top .plan-logo {
+  grid-area: logo;
+  align-self: stretch;
+  justify-self: start;
+  height: 100%;
+}
+
+.plan-brand-center {
+  grid-area: main;
+  align-self: end;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.plan-logo-image {
+  padding: 0;
+  min-width: 0;
+  width: auto;
+  background: transparent;
+  box-shadow: none;
+  border-radius: 0;
+  overflow: visible;
+  display: inline-flex;
+  align-items: center;
+}
+
+.plan-header-top .plan-logo-image {
+  min-height: 100%;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+}
+
+.plan-logo-image img {
+  display: block;
+  height: var(--plan-logo-height);
+  width: auto;
+  max-width: calc(var(--plan-logo-height) * 120 / 36);
+  object-fit: contain;
+  object-position: left bottom;
+  border-radius: 0;
+}
+
+.plan-header-top .plan-logo-image img {
+  height: 100%;
+  max-width: none;
+  object-position: left bottom;
 }
 
 .plan-company {
@@ -144,17 +197,24 @@ html {
   text-transform: uppercase;
 }
 
+.plan-company:empty {
+  display: none;
+}
+
 .plan-title-row {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  height: 14px;
 }
 
 .plan-title-row h1 {
   margin: 0;
+  padding-inline: 20px;
   font-size: 1.125rem;
   font-weight: 700;
   letter-spacing: -0.02em;
+  line-height: 1;
 }
 
 .plan-period-nav {
@@ -168,8 +228,8 @@ html {
   border: 1px solid var(--plan-border);
   color: var(--plan-text);
   border-radius: var(--plan-radius-sm);
-  width: 1.75rem;
-  height: 1.75rem;
+  width: 1.625rem;
+  height: 1.625rem;
   padding: 0;
   font-size: 0.85rem;
   line-height: 1;
@@ -198,8 +258,9 @@ html {
   border: 1px solid var(--plan-border);
   color: var(--plan-text);
   border-radius: var(--plan-radius-sm);
-  padding: 0.2rem 0.5rem;
+  padding: 0.15rem 0.5rem;
   font-size: 0.8rem;
+  line-height: 1.2;
   transition: background var(--plan-duration) var(--plan-ease), border-color var(--plan-duration) var(--plan-ease), box-shadow var(--plan-duration) var(--plan-ease);
 }
 
@@ -216,10 +277,10 @@ html {
 .plan-period-mode {
   position: absolute;
   left: 50%;
-  top: 1.4rem;
-  transform: translateX(-50%);
+  top: 50%;
+  transform: translate(-50%, -50%);
   margin-left: 0;
-  padding: 0.45rem 3rem;
+  padding: 0.45rem 40px;
   border-radius: var(--plan-radius-sm);
   font-size: calc(1.125rem * 1.25);
   font-weight: 700;
@@ -248,9 +309,12 @@ html {
 }
 
 .plan-meta {
+  grid-area: menu;
   display: flex;
   justify-content: flex-end;
   align-items: flex-start;
+  align-self: start;
+  flex-shrink: 0;
   font-size: 0.7rem;
   color: var(--plan-muted);
 }
@@ -279,6 +343,7 @@ html {
   min-width: 0;
   overflow-x: auto;
   scrollbar-width: thin;
+  padding-bottom: 10px;
 }
 
 .plan-header-nav::-webkit-scrollbar {
@@ -761,6 +826,22 @@ select.app-settings-input {
 .other-settings-brand-color-field {
   flex: 0 0 auto;
   min-width: 3.5rem;
+}
+
+.other-settings-brand-logo-field {
+  flex: 0 0 auto;
+}
+
+.brand-logo-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.brand-logo-clear-btn {
+  padding: 0.35rem 0.65rem;
+  font-size: 0.75rem;
 }
 
 .other-settings-brand .brand-settings-preview {
@@ -1513,6 +1594,26 @@ select.app-settings-input {
   min-width: 100%;
 }
 
+.plan-table col.col-category {
+  width: var(--plan-col-category-w);
+}
+
+.plan-table col.col-label {
+  width: var(--plan-col-label-w);
+}
+
+.plan-table col.col-sub {
+  width: var(--plan-col-sub-w);
+}
+
+.plan-table col.col-amount-month {
+  width: var(--plan-col-amount-month-w);
+}
+
+.plan-table col.col-amount-extra {
+  width: var(--plan-col-amount-extra-w);
+}
+
 .plan-table :is(.col-amount, .col-amt) {
   font-variant-numeric: tabular-nums lining-nums;
   font-feature-settings: "tnum" 1, "lnum" 1;
@@ -1536,6 +1637,10 @@ select.app-settings-input {
   max-width: none !important;
 }
 
+.plan-table.plan-table-measuring col {
+  width: auto !important;
+}
+
 .plan-table thead th {
   position: sticky;
   z-index: 4;
@@ -1551,7 +1656,8 @@ select.app-settings-input {
 
 .plan-table thead th.col-category,
 .plan-table thead th.col-label,
-.plan-table thead th.col-sub {
+.plan-table thead th.col-sub,
+.plan-table thead th.col-account-header {
   z-index: 6;
 }
 
@@ -1559,6 +1665,16 @@ select.app-settings-input {
   z-index: 8;
   text-align: center;
   vertical-align: bottom;
+}
+
+.plan-table thead :is(.year-row, .month-row) th.col-account-header {
+  left: 0;
+  z-index: 8;
+  text-align: center;
+  vertical-align: middle;
+  width: auto;
+  min-width: 0;
+  max-width: none;
 }
 
 .plan-table thead th.col-sub {

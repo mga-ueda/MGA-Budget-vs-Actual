@@ -62,7 +62,10 @@ import {
   normalizeCompanyName,
   normalizeBrandIconText,
   normalizeBrandColor,
+  normalizeBrandLogoDataUrl,
+  hasBrandLogo,
   applyBrandSettings,
+  MAX_BRAND_LOGO_BYTES,
   DEFAULT_BRAND_FILL_COLOR,
   DEFAULT_BRAND_TEXT_COLOR,
 } from '../config/appSettings.js';
@@ -645,7 +648,7 @@ function maxPlanCellScrollWidth(cells) {
     const hasContent = cell.textContent.trim()
       || cell.querySelector('.amount-yen, .row-toggle, button');
     if (!hasContent) continue;
-    max = Math.max(max, Math.ceil(cell.scrollWidth));
+    max = Math.max(max, measurePlanCellContentWidth(cell));
   }
   return max;
 }
@@ -674,6 +677,31 @@ function maxAmountCellScrollWidth(cells) {
     max = Math.max(max, Math.ceil(cell.scrollWidth));
   }
   return max;
+}
+
+function appendPlanTableColgroup(table) {
+  const colgroup = document.createElement('colgroup');
+  for (const cls of ['col-category', 'col-label', 'col-sub']) {
+    const col = document.createElement('col');
+    col.className = cls;
+    colgroup.appendChild(col);
+  }
+  for (let i = 0; i < FISCAL_MONTHS.length; i += 1) {
+    const col = document.createElement('col');
+    col.className = 'col-amount-month';
+    colgroup.appendChild(col);
+  }
+  for (let i = 0; i < EXTRA_COLUMNS.length; i += 1) {
+    const col = document.createElement('col');
+    col.className = 'col-amount-extra';
+    colgroup.appendChild(col);
+  }
+  table.appendChild(colgroup);
+}
+
+function measurePlanCellContentWidth(cell) {
+  if (!cell) return 0;
+  return Math.max(Math.ceil(cell.scrollWidth), Math.ceil(cell.getBoundingClientRect().width));
 }
 
 function syncPlanTableStickyColumnOffsets(table) {
@@ -928,7 +956,11 @@ function collectPlanColumnWidthCandidates(planData) {
         labelSpecs.push({ trClass, groupLabel: row.label, expanded: false });
         labelSpecs.push({ trClass, groupLabel: row.label, expanded: true });
       } else if (row.type !== 'sub' && row.label) {
-        labelSpecs.push({ trClass, text: row.label });
+        labelSpecs.push({
+          trClass,
+          text: row.label,
+          formulaLabel: getAggregateFormulaLabel(row, section),
+        });
       }
 
       if (row.type === 'sub' && row.subLabel) {
@@ -946,7 +978,7 @@ function collectPlanColumnWidthCandidates(planData) {
 
 function measureLabelColumnWidth(table, labelSpecs) {
   const headerCell = table.querySelector('.month-row th.col-label');
-  let max = headerCell ? headerCell.scrollWidth : 0;
+  let max = headerCell && headerCell.colSpan <= 1 ? headerCell.scrollWidth : 0;
 
   const tbody = table.querySelector('tbody') ?? table.appendChild(document.createElement('tbody'));
   const tr = document.createElement('tr');
@@ -975,9 +1007,9 @@ function measureLabelColumnWidth(table, labelSpecs) {
       btn.append(icon, textSpan);
       td.appendChild(btn);
     } else {
-      appendAggregateLabelContent(td, spec.text);
+      appendAggregateLabelContent(td, spec.text, spec.formulaLabel ?? null);
     }
-    max = Math.max(max, td.scrollWidth);
+    max = Math.max(max, measurePlanCellContentWidth(td));
   }
 
   tr.remove();
@@ -1814,7 +1846,6 @@ function fixPlanTableColumnWidths(table) {
   if (hasData) {
     const { labelSpecs, subEntries } = collectPlanColumnWidthCandidates(data);
     labelW = Math.max(
-      maxPlanCellScrollWidth(table.querySelectorAll('thead .month-row th.col-label')),
       maxPlanCellScrollWidth(table.querySelectorAll('tbody .col-label')),
       measureLabelColumnWidth(table, labelSpecs),
     );
@@ -2677,12 +2708,14 @@ function renderTable() {
   const table = document.createElement('table');
   table.className = 'plan-table';
 
+  appendPlanTableColgroup(table);
+
   const thead = document.createElement('thead');
 
   const yearRow = document.createElement('tr');
   yearRow.className = 'year-row';
   yearRow.innerHTML =
-    '<th class="col-category"></th><th class="col-label"></th><th class="col-sub"></th>';
+    '<th class="col-account-header" colspan="2"></th><th class="col-sub"></th>';
 
   let lastYear = null;
   const monthYear = getMonthYear();
@@ -2711,7 +2744,7 @@ function renderTable() {
   const monthRow = document.createElement('tr');
   monthRow.className = 'month-row';
   monthRow.innerHTML =
-    '<th class="col-category"></th><th class="col-label">勘定科目</th><th class="col-sub">補助科目</th>';
+    '<th class="col-account-header" colspan="2">勘定科目</th><th class="col-sub">補助科目</th>';
   for (const m of FISCAL_MONTHS) {
     const th = document.createElement('th');
     th.className = `col-amount col-amount-month${highlightCurrentMonth && m === currentMonth ? ' current-month' : ''}`;
@@ -6725,16 +6758,25 @@ function renderOtherSettings() {
           <input type="text" class="app-settings-input" id="brand-company-name"
             spellcheck="false" autocomplete="off" />
         </label>
-        <label class="app-settings-field other-settings-brand-field">
+        <div class="app-settings-field other-settings-brand-logo-field">
+          <span class="app-settings-label">ロゴ画像</span>
+          <div class="brand-logo-controls">
+            <input type="file" accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml"
+              id="brand-logo-file" hidden />
+            <button type="button" class="plan-csv-btn" id="brand-logo-load-btn">画像を読み込む</button>
+            <button type="button" class="expand-reset-btn brand-logo-clear-btn" id="brand-logo-clear-btn" hidden>削除</button>
+          </div>
+        </div>
+        <label class="app-settings-field other-settings-brand-field other-settings-brand-text-field">
           <span class="app-settings-label">アイコン表示</span>
           <input type="text" class="app-settings-input" id="brand-icon-text"
             spellcheck="false" autocomplete="off" placeholder="MGA や ⚖️ など" />
         </label>
-        <label class="app-settings-field other-settings-brand-color-field">
+        <label class="app-settings-field other-settings-brand-color-field other-settings-brand-text-field">
           <span class="app-settings-label">塗り</span>
           <input type="color" class="section-color-input" id="brand-fill-color" />
         </label>
-        <label class="app-settings-field other-settings-brand-color-field">
+        <label class="app-settings-field other-settings-brand-color-field other-settings-brand-text-field">
           <span class="app-settings-label">文字</span>
           <input type="color" class="section-color-input" id="brand-text-color" />
         </label>
@@ -6779,23 +6821,36 @@ function renderOtherSettings() {
   const brandTextColorInput = form.querySelector('#brand-text-color');
   const brandPreviewLogo = form.querySelector('#brand-preview-logo');
   const brandPreviewCompany = form.querySelector('#brand-preview-company');
+  const brandLogoFileInput = form.querySelector('#brand-logo-file');
+  const brandLogoLoadBtn = form.querySelector('#brand-logo-load-btn');
+  const brandLogoClearBtn = form.querySelector('#brand-logo-clear-btn');
+  const brandTextFields = form.querySelectorAll('.other-settings-brand-text-field');
+
+  function syncBrandTextFieldsVisibility() {
+    const logoActive = hasBrandLogo(appSettings);
+    brandTextFields.forEach((el) => {
+      el.hidden = logoActive;
+    });
+    brandLogoClearBtn.hidden = !logoActive;
+  }
 
   function refreshBrandPreview() {
-    brandPreviewLogo.textContent = appSettings.brandIconText;
-    brandPreviewLogo.style.background = appSettings.brandFillColor;
-    brandPreviewLogo.style.color = appSettings.brandTextColor;
     brandPreviewCompany.textContent = appSettings.companyName;
     applyBrandSettings(appSettings);
+    syncBrandTextFieldsVisibility();
   }
 
   function saveBrandSettings() {
-    appSettings = {
+    const next = {
       ...appSettings,
       companyName: normalizeCompanyName(companyNameInput.value),
-      brandIconText: normalizeBrandIconText(brandIconTextInput.value),
       brandFillColor: normalizeBrandColor(brandFillColorInput.value, DEFAULT_BRAND_FILL_COLOR),
       brandTextColor: normalizeBrandColor(brandTextColorInput.value, DEFAULT_BRAND_TEXT_COLOR),
     };
+    if (!hasBrandLogo(appSettings)) {
+      next.brandIconText = normalizeBrandIconText(brandIconTextInput.value);
+    }
+    appSettings = next;
     saveAppSettings(appSettings);
     companyNameInput.value = appSettings.companyName;
     brandIconTextInput.value = appSettings.brandIconText;
@@ -6803,6 +6858,58 @@ function renderOtherSettings() {
     brandTextColorInput.value = appSettings.brandTextColor;
     refreshBrandPreview();
   }
+
+  function readBrandLogoFile(file) {
+    return new Promise((resolve, reject) => {
+      if (!file.type.startsWith('image/')) {
+        reject(new Error('画像ファイルを選択してください。'));
+        return;
+      }
+      if (file.size > MAX_BRAND_LOGO_BYTES) {
+        reject(new Error(`ロゴ画像は ${Math.round(MAX_BRAND_LOGO_BYTES / 1024)}KB 以下にしてください。`));
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(reader.error ?? new Error('画像の読み込みに失敗しました。'));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  brandLogoLoadBtn.addEventListener('click', () => {
+    brandLogoFileInput.value = '';
+    brandLogoFileInput.click();
+  });
+
+  brandLogoFileInput.addEventListener('change', async () => {
+    const file = brandLogoFileInput.files?.[0];
+    if (!file) return;
+    try {
+      const dataUrl = await readBrandLogoFile(file);
+      const normalized = normalizeBrandLogoDataUrl(dataUrl);
+      if (!normalized) {
+        window.alert('対応していない画像形式です。');
+        return;
+      }
+      appSettings = {
+        ...appSettings,
+        brandLogoDataUrl: normalized,
+      };
+      saveAppSettings(appSettings);
+      refreshBrandPreview();
+    } catch (err) {
+      window.alert(err?.message ?? '画像の読み込みに失敗しました。');
+    }
+  });
+
+  brandLogoClearBtn.addEventListener('click', () => {
+    appSettings = {
+      ...appSettings,
+      brandLogoDataUrl: null,
+    };
+    saveAppSettings(appSettings);
+    refreshBrandPreview();
+  });
 
   for (let m = 1; m <= 12; m += 1) {
     const opt = document.createElement('option');

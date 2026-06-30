@@ -4,7 +4,7 @@ import {
   formatYen,
   parseNumber,
 } from './parser.js';
-import { isCollapsibleGroup, ALWAYS_EXPAND_SECTION_IDS, isExpandSettingsSection } from '../config/expandConfig.js';
+import { isCollapsibleGroup, isExpandSettingsSection } from '../config/expandConfig.js';
 import { collectVisibilityCandidates } from '../config/visibilityConfig.js';
 import { DEFAULT_SECTION_COLORS } from '../config/sectionColorConfig.js';
 import { mergeExpenseSectionItems, EXPENSE_SECTION_ACCOUNTS } from '../config/expenseAccountConfig.js';
@@ -142,10 +142,11 @@ function subSortKey(sub) {
   return sub || '補助科目なし';
 }
 
-/** 補助科目1件のみのときは非表示（売上高・売掛金は除く）。2件以上で空欄は「補助科目なし」 */
-function formatSubLabel(rawSub, subCount, sectionId) {
-  if (subCount === 1 && !ALWAYS_EXPAND_SECTION_IDS.has(sectionId)) return '';
-  return rawSub || '補助科目なし';
+/** 補助科目が1件だけで空のときは非表示。2件以上で空欄は「補助科目なし」 */
+function formatSubLabel(rawSub, subCount) {
+  if (rawSub) return rawSub;
+  if (subCount === 1) return '';
+  return '補助科目なし';
 }
 
 /** 展開設定タブ用: 補助科目を持つ勘定科目一覧 */
@@ -242,7 +243,7 @@ function buildGroupedAccountRows(rawItems, idPrefix, sectionId, expandConfig = {
         rows.push(makeRow(
           rowId,
           account,
-          formatSubLabel(item.sub, subCount, sectionId),
+          formatSubLabel(item.sub, subCount),
           item.values,
           'item',
           null,
@@ -259,7 +260,7 @@ function buildGroupedAccountRows(rawItems, idPrefix, sectionId, expandConfig = {
       rows.push(makeRow(
         rowId,
         account,
-        formatSubLabel(item.sub, 1, sectionId),
+        formatSubLabel(item.sub, 1),
         item.values,
         'item',
         null,
@@ -276,7 +277,7 @@ function buildGroupedAccountRows(rawItems, idPrefix, sectionId, expandConfig = {
       rows.push(makeRow(
         `${groupId}-s-${j}`,
         account,
-        formatSubLabel(item.sub, subCount, sectionId),
+        formatSubLabel(item.sub, subCount),
         item.values,
         'sub',
         groupId,
