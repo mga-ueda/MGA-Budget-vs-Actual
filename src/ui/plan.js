@@ -1,3 +1,4 @@
+import { mountDashboardPanel, resetDashboardState } from './dashboard.js';
 import { getPlanKpiTooltip } from '../config/planKpiConfig.js';
 import {
   getAggregateFormulaLabel,
@@ -482,6 +483,14 @@ function bindPeriodControls() {
   nextBtn?.addEventListener('click', () => {
     setFiscalPeriod(appSettings.fiscalPeriod + 1);
   });
+}
+
+function bindDashboardButton() {
+  const btn = document.getElementById('plan-dashboard-btn');
+  btn?.addEventListener('click', () => {
+    switchMainTab(activeTab === 'dashboard' ? 'plan' : 'dashboard');
+  });
+  btn?.classList.toggle('is-active', activeTab === 'dashboard');
 }
 
 let rawPlanData = null;
@@ -3565,6 +3574,7 @@ document.addEventListener('keydown', (ev) => {
 
 const MAIN_MENU_ENTRIES = [
   { kind: 'item', value: 'plan', label: '予実表', shortcutKey: 'P' },
+  { kind: 'item', value: 'dashboard', label: 'ダッシュボード', shortcutKey: 'D' },
   { kind: 'heading', label: '設定' },
   { kind: 'item', value: 'orders', label: '受注', indented: true, shortcutKey: 'O' },
   { kind: 'item', value: 'taxrates', label: '税率定義', indented: true, shortcutKey: 'T' },
@@ -3596,6 +3606,8 @@ function executeMainMenuEntry(entry) {
 
 function renderMainTabs() {
   toolbar.hidden = activeTab !== 'plan';
+  const dashboardBtn = document.getElementById('plan-dashboard-btn');
+  dashboardBtn?.classList.toggle('is-active', activeTab === 'dashboard');
 }
 
 function getFilterButtonColors(filterId) {
@@ -3737,7 +3749,35 @@ function renderView({ measureColumnWidths = false } = {}) {
   else if (activeTab === 'taxpayments') renderTaxPaymentSettings();
   else if (activeTab === 'employees') renderEmployeeSettings();
   else if (activeTab === 'outsourcing') renderOutsourcingSettings();
+  else if (activeTab === 'dashboard') renderDashboardView();
   else if (activeTab === 'settings') renderOtherSettings();
+}
+
+function renderDashboardView() {
+  const prevPeriod = appSettings.fiscalPeriod - 1;
+  const prevPrevPeriod = appSettings.fiscalPeriod - 2;
+  const prevCached = prevPeriod >= 1
+    ? planDataFromCache(expandConfig, {
+      businessStartYear: appSettings.businessStartYear,
+      fiscalPeriod: prevPeriod,
+    })
+    : null;
+  const prevPrevCached = prevPrevPeriod >= 1
+    ? planDataFromCache(expandConfig, {
+      businessStartYear: appSettings.businessStartYear,
+      fiscalPeriod: prevPrevPeriod,
+    })
+    : null;
+  mountDashboardPanel({
+    replaceRootPanel,
+    setPlanKpi,
+    data,
+    prevData: prevCached?.data ?? null,
+    prevPrevData: prevPrevCached?.data ?? null,
+    appSettings,
+    calcPlanKpiMetrics,
+    buildPlanKpiOptions,
+  });
 }
 
 function getPlanTableAmountContext() {
@@ -7884,7 +7924,7 @@ function renderSectionColorSettings() {
 }
 
 function replaceRootPanel(el) {
-  const selectors = '.plan-table-wrap, .expand-settings-wrap, .plan-csv-load';
+  const selectors = '.plan-table-wrap, .expand-settings-wrap, .plan-csv-load, .dashboard-wrap';
   const existing = root.querySelector(selectors);
   if (existing) existing.replaceWith(el);
   else root.appendChild(el);
@@ -8111,7 +8151,9 @@ function buildMainMenu() {
     if (entry.shortcutKey) {
       const keySpan = document.createElement('span');
       keySpan.className = 'plan-main-menu-item-key';
-      keySpan.textContent = `[ ${entry.shortcutKey} ]`;
+      const kbd = document.createElement('kbd');
+      kbd.textContent = entry.shortcutKey;
+      keySpan.appendChild(kbd);
       keySpan.setAttribute('aria-hidden', 'true');
       btn.appendChild(keySpan);
     }
@@ -8236,6 +8278,7 @@ function loadPlanOnlyPeriodData({ measureColumnWidths = false } = {}) {
   bsText = null;
   generalLedgerText = null;
   generalLedgerName = null;
+  resetDashboardState();
   const planData = rawPlanData
     ? zeroOutPlanData(rawPlanData)
     : buildFullPlan('', null, expandConfig);
@@ -8256,6 +8299,7 @@ function loadData(loaded, { measureColumnWidths = false } = {}) {
   journalEntriesCache = null;
   invalidateDrilldownIndex();
   closeJournalPopup();
+  resetDashboardState();
   rawPlanData = loaded.data;
   data = applyPlanColors(loaded.data);
   if (measureColumnWidths) {
@@ -8275,6 +8319,7 @@ async function init() {
   mountPlanFontScaleControl();
   mountPlanRowPaddingScaleControl();
   bindPeriodControls();
+  bindDashboardButton();
   bindMainMenu();
   bindSettingsImportExport();
 

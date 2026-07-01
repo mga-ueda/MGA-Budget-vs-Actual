@@ -5,6 +5,7 @@ import {
   EXTRA_COLUMNS,
   BS_SECTION_IDS,
   categorizeAccount,
+  isInterAccountCashTransfer,
 } from './parseJournal.js';
 
 const PL_SECTION_CATEGORY = {
@@ -148,8 +149,14 @@ function filterReceivables(entries, section, row, months) {
 function filterCashflow(entries, row, months) {
   return entries.filter((e) => {
     if (!months.includes(e.monthKey)) return false;
-    if (row.id === 'cf-in') return e.debitAcct === '普通預金' && e.debitAmt > 0;
-    if (row.id === 'cf-out') return e.creditAcct === '普通預金' && e.creditAmt > 0;
+    if (row.id === 'cf-in') {
+      return e.debitAcct === '普通預金' && e.debitAmt > 0
+        && !isInterAccountCashTransfer(e.debitAcct, e.creditAcct);
+    }
+    if (row.id === 'cf-out') {
+      return e.creditAcct === '普通預金' && e.creditAmt > 0
+        && !isInterAccountCashTransfer(e.debitAcct, e.creditAcct);
+    }
     return false;
   });
 }

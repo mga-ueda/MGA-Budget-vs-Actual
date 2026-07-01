@@ -59,6 +59,16 @@ const PAYMENT_COUNTERPARTS = new Set([
   '長期未払金', '保険積立金', '住民税', '役員借入金', '短期借入金', '未払法人税等', '未払消費税',
 ]);
 
+/** 現金及び預金に属する勘定（口座間資金移動の判定用） */
+const CASH_ACCOUNTS = new Set([
+  '現金', '普通預金', '当座預金', '定期預金', '通知預金', '別段預金',
+]);
+
+/** 借方・貸方がともに現預金勘定の口座間移動か */
+export function isInterAccountCashTransfer(debitAcct, creditAcct) {
+  return CASH_ACCOUNTS.has(debitAcct) && CASH_ACCOUNTS.has(creditAcct);
+}
+
 function monthKey(dateStr) {
   const m = parseInt(dateStr.split('/')[1], 10);
   return m === 12 ? '12月' : `${m}月`;
@@ -385,8 +395,14 @@ function aggregateJournal(text) {
     const creditSub = cells[11]?.trim();
     const creditAmt = parseInt(cells[16], 10) || 0;
 
-    if (debitAcct === '普通預金' && debitAmt > 0) cashFlow.inflow[mk] += debitAmt;
-    if (creditAcct === '普通預金' && creditAmt > 0) cashFlow.outflow[mk] += creditAmt;
+    if (debitAcct === '普通預金' && debitAmt > 0
+      && !isInterAccountCashTransfer(debitAcct, creditAcct)) {
+      cashFlow.inflow[mk] += debitAmt;
+    }
+    if (creditAcct === '普通預金' && creditAmt > 0
+      && !isInterAccountCashTransfer(debitAcct, creditAcct)) {
+      cashFlow.outflow[mk] += creditAmt;
+    }
 
     if (creditAcct === '普通預金' && debitAmt > 0 && PAYMENT_COUNTERPARTS.has(debitAcct)) {
       trackPayment(debitAcct, debitSub, debitAmt, mk);
