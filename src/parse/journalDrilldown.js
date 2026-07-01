@@ -180,7 +180,9 @@ function filterBs(entries, section, row, months) {
 }
 
 export function isDrilldownAvailable(section, row) {
-  if (row.type === 'profit' || row.type === 'variance' || row.type === 'plan') return false;
+  if (row.type === 'profit' || row.type === 'variance' || row.type === 'plan' || row.type === 'man-month') {
+    return false;
+  }
   if (row.type === 'variance' || row.type === 'sub-variance' || row.type === 'warningSummary') return false;
   if (section.id === 'profit') return false;
   return true;

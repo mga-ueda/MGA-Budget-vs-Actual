@@ -106,6 +106,7 @@ import {
   isVisibilityFixedSection,
   isOutsourcingFixedDisplaySection,
   isOutsourcingBreakdownRow,
+  isRevenueManMonthRow,
   collectVisibilityCandidates,
 } from '../config/visibilityConfig.js';
 import {
@@ -242,7 +243,15 @@ import {
   mergeVendorsFromSubaccounts,
   syncVendorListFromReference,
 } from '../config/outsourcingPlanConfig.js';
-import { loadRevenuePlans, loadRevenuePlanSettings } from '../config/revenuePlanConfig.js';
+import {
+  loadRevenuePlans,
+  loadRevenuePlanSettings,
+  getPeriodClientEntries,
+  setClientEntry,
+  parseManMonthInput,
+  formatManMonths,
+  applyManMonthsFromMonthForward,
+} from '../config/revenuePlanConfig.js';
 import { mountRevenueSettingsPanel } from './revenueSettings.js';
 import { parseEmployeeCsv } from '../parse/parseEmployee.js';
 import { readCsvFile } from '../parse/parser.js';
@@ -607,7 +616,7 @@ function shouldHighlightMonthDeltaFromPrevious(section, row, monthIndex, display
   if (monthIndex < 0 || row.type === 'variance' || row.type === 'sub-variance' || row.type === 'warningSummary') {
     return false;
   }
-  if (row.type === 'plan') {
+  if (row.type === 'plan' || row.type === 'man-month') {
     return !isTaxPublicChargeRow(row) && shouldHighlightPlanAmountMonth(row.values, monthIndex, displayMode, pastMonthSet);
   }
   if (section.id === 'revenue') {
@@ -881,6 +890,7 @@ function isOutsourcingFixedDisplayRow(section, row) {
 
 function planRowUsesLargeDisplay(section, row) {
   if (isOutsourcingBreakdownRow(section.id, row)) return false;
+  if (isRevenueManMonthRow(section.id, row)) return false;
   if (isVisibilityFixedSection(section.id)) return true;
   if (row.type === 'plan' && !isOutsourcingFixedDisplayRow(section, row)) return false;
   if (planRowHasAccentBackground(section, row)) return true;
@@ -962,6 +972,7 @@ function buildPlanRowTrClass(section, row) {
     row.type === 'group' ? 'row-group' : '',
     row.type === 'breakdown' ? 'row-breakdown' : '',
     row.type === 'sub' || row.type === 'breakdown' ? 'row-sub' : '',
+    row.type === 'man-month' ? 'row-man-month row-sub' : '',
     row.type === 'variance' ? 'row-variance' : '',
     row.type === 'warningSummary' ? 'row-warning-summary' : '',
     row.type === 'sub-variance' ? 'row-sub-variance' : '',
@@ -995,6 +1006,8 @@ function collectPlanColumnWidthCandidates(planData) {
       if (row.type === 'sub' && row.subLabel) {
         subEntries.push({ trClass, text: row.subLabel });
       } else if (row.type === 'breakdown' && row.subLabel) {
+        subEntries.push({ trClass, text: row.subLabel });
+      } else if (row.type === 'man-month' && row.subLabel) {
         subEntries.push({ trClass, text: row.subLabel });
       } else if (row.type === 'item' && row.subLabel) {
         subEntries.push({ trClass, text: row.subLabel });
@@ -1437,10 +1450,254 @@ function bulkToggleState(values) {
 }
 
 function formatContextMenuRowTitle(section, row) {
-  const rowTitle = row.type === 'sub' || row.type === 'breakdown'
-    ? `${row.label || section.label} / ${row.subLabel}`
-    : (row.subLabel ? `${row.label} / ${row.subLabel}` : row.label);
+  const rowTitle = row.type === 'man-month'
+    ? row.subLabel
+    : row.type === 'sub' || row.type === 'breakdown'
+      ? `${row.label || section.label} / ${row.subLabel}`
+      : (row.subLabel ? `${row.label} / ${row.subLabel}` : row.label);
   return `${section.label} — ${rowTitle}`;
+}
+
+function isRevenueManMonthMonthEditable(month, displayMode, pastMonthSet) {
+  if (displayMode === 'actual') return false;
+  if (displayMode === 'budget-actual' && pastMonthSet.has(month)) return false;
+  return true;
+}
+
+function persistRevenueManMonths(clientId, nextManMonths) {
+  const fiscalMonths = buildFiscalYearMonths(appSettings.fiscalEndMonth);
+  const clients = getPeriodClientEntries(revenuePlans, appSettings.fiscalPeriod, fiscalMonths);
+  const client = clients.find((c) => c.id === clientId);
+  if (!client) return;
+  revenuePlans = setClientEntry(
+    revenuePlans,
+    appSettings.fiscalPeriod,
+    { ...client, manMonths: nextManMonths },
+    fiscalMonths,
+  );
+  refreshSectionColors();
+  setPlanKpi(calcTotalProfitMargin(data));
+  applyRevenueManMonthEditDom(root.querySelector('.plan-table'), clientId);
+}
+
+function updatePlanTableManMonthRowCells(tr, section, row, amountCtx) {
+  const { displayMode, pastMonthSet } = amountCtx;
+  const monthTds = tr.querySelectorAll('td.col-amount-month');
+  for (let mi = 0; mi < FISCAL_MONTHS.length; mi += 1) {
+    const td = monthTds[mi];
+    if (!td || td.querySelector('input')) continue;
+    const m = FISCAL_MONTHS[mi];
+    const val = row.values[m];
+    td.classList.toggle(
+      'plan-amount-variance',
+      shouldHighlightMonthDeltaFromPrevious(section, row, mi, displayMode, pastMonthSet),
+    );
+    td.textContent = formatManMonths(val);
+  }
+
+  const extraTds = tr.querySelectorAll('td.col-amount-extra');
+  for (let ei = 0; ei < EXTRA_COLUMNS.length; ei += 1) {
+    const td = extraTds[ei];
+    if (!td || td.querySelector('input')) continue;
+    td.textContent = formatManMonths(row.values[EXTRA_COLUMNS[ei]]);
+  }
+}
+
+function updatePlanTableRevenueAmountRowCells(tr, section, row, amountCtx) {
+  const { displayMode, pastMonthSet, crossVarianceCtx } = amountCtx;
+  const amountType = row.type === 'variance' ? 'variance' : 'item';
+  const monthTds = tr.querySelectorAll('td.col-amount-month');
+  for (let mi = 0; mi < FISCAL_MONTHS.length; mi += 1) {
+    const td = monthTds[mi];
+    if (!td) continue;
+    const m = FISCAL_MONTHS[mi];
+    const val = row.values[m];
+    td.classList.toggle(
+      'has-variance',
+      (row.type === 'variance' || row.type === 'sub-variance') && val !== 0,
+    );
+    td.classList.toggle(
+      'plan-amount-variance',
+      shouldHighlightMonthDeltaFromPrevious(section, row, mi, displayMode, pastMonthSet),
+    );
+    td.classList.toggle('plan-amount-filled', Boolean(row.planFillMonths?.includes(m)));
+    const showAmount = shouldShowCrossVarianceMonth(section, row, m, crossVarianceCtx);
+    if (!showAmount) {
+      td.innerHTML = '';
+      continue;
+    }
+    if (td.classList.contains('col-amount-drilldown')) continue;
+    td.innerHTML = formatAmount(val, amountType);
+  }
+
+  const extraTds = tr.querySelectorAll('td.col-amount-extra');
+  for (let ei = 0; ei < EXTRA_COLUMNS.length; ei += 1) {
+    const col = EXTRA_COLUMNS[ei];
+    const td = extraTds[ei];
+    if (!td) continue;
+    td.classList.toggle(
+      'has-variance',
+      (row.type === 'variance' || row.type === 'sub-variance') && (row.values[col] ?? 0) !== 0,
+    );
+    td.innerHTML = formatAmount(row.values[col], amountType);
+    applyAggregateCellTooltip(td, row, section, col);
+  }
+}
+
+function updatePlanTableProfitRowCells(tr, section, row, amountCtx) {
+  const { crossVarianceCtx } = amountCtx;
+  const amountType = row.type === 'variance' ? 'variance' : 'item';
+  const monthTds = tr.querySelectorAll('td.col-amount-month');
+  for (let mi = 0; mi < FISCAL_MONTHS.length; mi += 1) {
+    const td = monthTds[mi];
+    if (!td) continue;
+    const m = FISCAL_MONTHS[mi];
+    const val = row.values[m];
+    td.classList.toggle(
+      'has-variance',
+      (row.type === 'variance' || row.type === 'sub-variance') && val !== 0,
+    );
+    const showAmount = shouldShowCrossVarianceMonth(section, row, m, crossVarianceCtx);
+    td.innerHTML = showAmount ? formatAmount(val, amountType) : '';
+    if (showAmount) {
+      applyAggregateCellTooltip(
+        td,
+        row,
+        section,
+        m,
+        td.classList.contains('col-amount-drilldown') ? '\u30c0\u30d6\u30eb\u30af\u30ea\u30c3\u30af\u3067\u4ed5\u8a33\u3092\u8868\u793a' : '',
+      );
+    }
+  }
+
+  const extraTds = tr.querySelectorAll('td.col-amount-extra');
+  for (let ei = 0; ei < EXTRA_COLUMNS.length; ei += 1) {
+    const col = EXTRA_COLUMNS[ei];
+    const td = extraTds[ei];
+    if (!td) continue;
+    td.classList.toggle(
+      'has-variance',
+      (row.type === 'variance' || row.type === 'sub-variance') && (row.values[col] ?? 0) !== 0,
+    );
+    td.innerHTML = formatAmount(row.values[col], amountType);
+    applyAggregateCellTooltip(td, row, section, col);
+  }
+}
+
+/** 人月編集後: 売上・利益の該当セルだけ DOM 更新（列幅再計測・全再描画なし） */
+function applyRevenueManMonthEditDom(table, clientId) {
+  if (!table || !data) return;
+  const amountCtx = getPlanTableAmountContext();
+  const revenueSection = data.sections.find((s) => s.id === 'revenue');
+  if (!revenueSection) return;
+
+  const parentRowIds = new Set();
+  for (const row of revenueSection.rows) {
+    if (row.type === 'man-month' && row.revenueClientId === clientId) {
+      parentRowIds.add(row.parentRevenueRowId);
+    }
+  }
+
+  for (const tr of table.querySelectorAll('tbody tr[data-section-id="revenue"][data-row-id]')) {
+    const row = revenueSection.rows.find((r) => r.id === tr.dataset.rowId);
+    if (!row) continue;
+    const shouldUpdate = row.type === 'total'
+      || (row.type === 'man-month' && row.revenueClientId === clientId)
+      || parentRowIds.has(row.id);
+    if (!shouldUpdate) continue;
+    if (row.type === 'man-month') {
+      updatePlanTableManMonthRowCells(tr, revenueSection, row, amountCtx);
+    } else {
+      updatePlanTableRevenueAmountRowCells(tr, revenueSection, row, amountCtx);
+    }
+  }
+
+  const profitSection = data.sections.find((s) => s.id === 'profit');
+  if (!profitSection) return;
+  for (const tr of table.querySelectorAll('tbody tr[data-section-id="profit"][data-row-id]')) {
+    const row = profitSection.rows.find((r) => r.id === tr.dataset.rowId);
+    if (!row || !rowVisibleInSection(profitSection, row)) continue;
+    updatePlanTableProfitRowCells(tr, profitSection, row, amountCtx);
+  }
+}
+
+function startRevenueManMonthCellEdit(td, {
+  clientId,
+  month,
+  displayMode,
+  pastMonthSet,
+}) {
+  if (!isRevenueManMonthMonthEditable(month, displayMode, pastMonthSet)) return;
+  if (td.querySelector('input')) return;
+
+  const fiscalMonths = buildFiscalYearMonths(appSettings.fiscalEndMonth);
+  const clients = getPeriodClientEntries(revenuePlans, appSettings.fiscalPeriod, fiscalMonths);
+  const client = clients.find((c) => c.id === clientId);
+  if (!client) return;
+
+  const editStartValue = client.manMonths[month] ?? null;
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.inputMode = 'decimal';
+  input.className = 'salary-plan-amount-input plan-man-month-amount-input';
+  input.autocomplete = 'off';
+  input.spellcheck = false;
+  input.value = editStartValue != null && editStartValue !== 0 ? String(editStartValue) : '';
+
+  let editClosed = false;
+
+  const finish = (save, fillForward = false) => {
+    if (editClosed) return;
+    editClosed = true;
+    td.classList.remove('plan-man-month-editing');
+    if (save) {
+      const parsed = fillForward
+        ? parseSalaryPlanAmountInputWithFillForward(input.value, true, editStartValue)
+        : parseManMonthInput(input.value);
+      const latestClient = getPeriodClientEntries(revenuePlans, appSettings.fiscalPeriod, fiscalMonths)
+        .find((c) => c.id === clientId);
+      const baseManMonths = latestClient?.manMonths ?? client.manMonths;
+      const nextManMonths = fillForward
+        ? applyManMonthsFromMonthForward(
+          baseManMonths,
+          month,
+          parsed,
+          pastMonthSet,
+          fiscalMonths,
+        )
+        : { ...baseManMonths, [month]: parsed };
+      input.remove();
+      persistRevenueManMonths(clientId, nextManMonths);
+      return;
+    }
+    input.remove();
+    td.textContent = formatManMonths(editStartValue);
+  };
+
+  input.addEventListener('keydown', (e) => {
+    if (e.isComposing) return;
+    if (e.key === 'Enter' || e.code === 'NumpadEnter') {
+      e.preventDefault();
+      finish(true, e.shiftKey);
+      return;
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      finish(false);
+    }
+  });
+  input.addEventListener('blur', () => {
+    setTimeout(() => {
+      if (!editClosed) finish(true, false);
+    }, 0);
+  });
+
+  td.classList.add('plan-man-month-editing');
+  td.textContent = '';
+  td.appendChild(input);
+  input.focus();
+  input.select();
 }
 
 function closeRowContextMenu() {
@@ -2884,7 +3141,7 @@ function renderTable() {
           togglePlanGroupExpanded(row.id);
         });
         label.appendChild(btn);
-      } else if (row.type === 'sub' || row.type === 'sub-variance' || row.type === 'breakdown') {
+      } else if (row.type === 'sub' || row.type === 'sub-variance' || row.type === 'breakdown' || row.type === 'man-month') {
         label.textContent = '';
       } else if (row.label) {
         appendAggregateLabelContent(label, row.label, aggregateFormulaLabel);
@@ -2897,7 +3154,7 @@ function renderTable() {
 
       const sub = document.createElement('td');
       sub.className = 'col-sub';
-      if (row.type === 'sub' || row.type === 'sub-variance' || row.type === 'breakdown') {
+      if (row.type === 'sub' || row.type === 'sub-variance' || row.type === 'breakdown' || row.type === 'man-month') {
         sub.textContent = row.subLabel;
       } else if (row.type !== 'total' && row.type !== 'warningSummary') {
         sub.textContent = row.type === 'group' ? '' : (row.subLabel || '');
@@ -2907,6 +3164,8 @@ function renderTable() {
       const hideGroupTotal = row.type === 'group'
         && expandedGroups.has(row.id)
         && isHideTotalWhenExpanded(section.id, row.label, expandConfig);
+
+      const isManMonthRow = isRevenueManMonthRow(section.id, row);
 
       for (let mi = 0; mi < FISCAL_MONTHS.length; mi += 1) {
         const m = FISCAL_MONTHS[mi];
@@ -2925,8 +3184,29 @@ function renderTable() {
         if (row.planFillMonths?.includes(m)) {
           td.classList.add('plan-amount-filled');
         }
-        const amountType = row.type === 'variance' ? 'variance' : 'item';
         const showAmount = shouldShowCrossVarianceMonth(section, row, m, crossVarianceCtx);
+
+        if (isManMonthRow) {
+          if (!hideGroupTotal && showAmount) {
+            td.textContent = formatManMonths(val);
+            if (isRevenueManMonthMonthEditable(m, displayMode, pastMonthSet)) {
+              td.classList.add('plan-man-month-editable', 'salary-plan-cell-editable');
+              td.title = '\u30c0\u30d6\u30eb\u30af\u30ea\u30c3\u30af\u3067\u7de8\u96c6\uFF08Shift+Enter \u3067\u5f8c\u7d9a\u6708\u3078\u540c\u5024\u3092\u53cd\u6620\u30000 \u3082\u53ef\uFF09';
+              td.addEventListener('dblclick', () => {
+                startRevenueManMonthCellEdit(td, {
+                  clientId: row.revenueClientId,
+                  month: m,
+                  displayMode,
+                  pastMonthSet,
+                });
+              });
+            }
+          }
+          tr.appendChild(td);
+          continue;
+        }
+
+        const amountType = row.type === 'variance' ? 'variance' : 'item';
         td.innerHTML = hideGroupTotal || !showAmount ? '' : formatAmount(val, amountType);
         const hasDrilldown = showAmount
           && isDrilldownAvailable(section, row)
@@ -2960,10 +3240,14 @@ function renderTable() {
         ) {
           td.classList.add('has-variance');
         }
-        const amountType = row.type === 'variance' ? 'variance' : 'item';
-        td.innerHTML = hideGroupTotal ? '' : formatAmount(val, amountType);
-        if (!hideGroupTotal) {
-          applyAggregateCellTooltip(td, row, section, col);
+        if (isManMonthRow) {
+          td.textContent = hideGroupTotal ? '' : formatManMonths(val);
+        } else {
+          const amountType = row.type === 'variance' ? 'variance' : 'item';
+          td.innerHTML = hideGroupTotal ? '' : formatAmount(val, amountType);
+          if (!hideGroupTotal) {
+            applyAggregateCellTooltip(td, row, section, col);
+          }
         }
         tr.appendChild(td);
       }

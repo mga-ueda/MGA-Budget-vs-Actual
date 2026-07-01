@@ -2036,6 +2036,48 @@ tr.row-breakdown .col-sub {
   padding-right: var(--plan-table-amount-padding-x);
 }
 
+tr.row-man-month .col-sub {
+  padding-right: var(--plan-table-sub-indent);
+  color: var(--plan-text);
+}
+
+.plan-table tbody tr.row-man-month td.col-amount {
+  color: var(--plan-amount-color);
+}
+
+.plan-table tbody tr.row-man-month td.col-amount.plan-man-month-editable {
+  cursor: pointer;
+}
+
+.plan-table tbody td.col-amount.plan-man-month-editing {
+  position: relative;
+  overflow: hidden;
+}
+
+.plan-table tbody td.col-amount .plan-man-month-amount-input {
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0 var(--plan-table-amount-padding-x);
+  border: none;
+  border-radius: 0;
+  background: var(--plan-editor-bg);
+  color: var(--plan-text);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  line-height: inherit;
+  box-shadow: inset 0 0 0 1px var(--plan-editor-border);
+}
+
+.plan-table tbody td.col-amount .plan-man-month-amount-input:focus {
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--plan-editor-border-hover);
+}
+
 .row-toggle {
   display: flex;
   align-items: center;

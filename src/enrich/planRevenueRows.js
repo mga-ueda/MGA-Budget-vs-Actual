@@ -8,12 +8,17 @@ import {
   buildMonthYearMap,
 } from '../config/appSettings.js';
 import { buildFiscalYearMonths } from '../config/salaryPlanConfig.js';
-import { getPeriodClientEntries, computeClientMonthlyRevenue } from '../config/revenuePlanConfig.js';
+import {
+  getPeriodClientEntries,
+  computeClientMonthlyRevenue,
+  clientHasManMonthPlan,
+} from '../config/revenuePlanConfig.js';
 import { visibilityRowKey, rowTypeLabel } from '../config/visibilityConfig.js';
 
 const REV_NO_SUB_LABEL = '補助科目なし';
 const REVENUE_SECTION_LABEL = '売上高';
 const REVENUE_ACCOUNT_LABEL = '売上高';
+const REV_MAN_MONTH_SUB_LABEL = '\u4eba\u6708';
 
 function revEmptyRawMonthValues() {
   const values = {};
@@ -106,9 +111,48 @@ function revRowMatchesClient(row, client) {
   return row.label === client.accountLabel && row.subLabel === client.subLabel;
 }
 
+function revBuildManMonthRowValues(client, fiscalMonths) {
+  const values = revEmptyRawMonthValues();
+  for (const m of fiscalMonths) {
+    const mm = client.manMonths[m];
+    if (mm != null && mm !== 0) values[m] = mm;
+  }
+  return enrichRowValues(values, 'flow');
+}
+
+function revRowHasPlanData(row) {
+  return row.type === 'plan' || (row.planFillMonths?.length ?? 0) > 0;
+}
+
+function revMakeManMonthRow(parentRow, client, fiscalMonths) {
+  return {
+    id: `${parentRow.id}-mm`,
+    label: '',
+    subLabel: REV_MAN_MONTH_SUB_LABEL,
+    type: 'man-month',
+    revenueClientId: client.id,
+    parentRevenueRowId: parentRow.id,
+    values: revBuildManMonthRowValues(client, fiscalMonths),
+  };
+}
+
+function revInsertManMonthRows(rows, clients, fiscalMonths) {
+  const result = [];
+  for (const row of rows) {
+    result.push(row);
+    if (row.type === 'total' || row.type === 'man-month') continue;
+    if (!revIsRevenueDetailRow(row) && row.type !== 'plan') continue;
+    if (!revRowHasPlanData(row)) continue;
+    const client = clients.find((v) => revRowMatchesClient(row, v));
+    if (!client || !clientHasManMonthPlan(client, fiscalMonths)) continue;
+    result.push(revMakeManMonthRow(row, client, fiscalMonths));
+  }
+  return result;
+}
+
 function revRebuildRevenueRows(rows, clients, fiscalMonths, skipPlanFillMonths = null, taxOptions = null) {
   const totalRow = rows.find((r) => r.type === 'total');
-  const body = rows.filter((r) => r.type !== 'plan' && r.type !== 'total');
+  const body = rows.filter((r) => r.type !== 'plan' && r.type !== 'total' && r.type !== 'man-month');
   const planRows = revBuildClientPlanRows(clients, fiscalMonths, taxOptions);
   const matchedClientIds = new Set();
 
@@ -192,13 +236,14 @@ export function enrichPlanDataWithRevenueRows(planData, {
 
   if (revenueIdx < 0) {
     if (planRows.length === 0) return planData;
+    const rowsWithManMonths = revInsertManMonthRows(planRows, clients, fiscalMonths);
     return {
       ...planData,
       sections: [...planData.sections, {
         id: 'revenue',
         label: REVENUE_SECTION_LABEL,
         filter: 'income',
-        rows: planRows,
+        rows: rowsWithManMonths,
       }],
       visibilityCandidates: [
         ...(planData.visibilityCandidates ?? []),
@@ -215,6 +260,8 @@ export function enrichPlanDataWithRevenueRows(planData, {
     skipPlanFillMonths,
     taxOptions,
   );
+
+  rows = revInsertManMonthRows(rows, clients, fiscalMonths);
 
   const totalIdx = rows.findIndex((r) => r.type === 'total');
   if (totalIdx >= 0) {

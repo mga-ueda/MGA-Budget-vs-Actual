@@ -18,6 +18,11 @@ export function isOutsourcingBreakdownRow(sectionId, row) {
   return isOutsourcingFixedDisplaySection(sectionId) && row?.type === 'breakdown';
 }
 
+/** 売上高の人月計画行。小さく表示する */
+export function isRevenueManMonthRow(sectionId, row) {
+  return sectionId === 'revenue' && row?.type === 'man-month';
+}
+
 const ROW_TYPE_LABELS = {
   total: '合計',
   group: 'グループ',
@@ -25,6 +30,7 @@ const ROW_TYPE_LABELS = {
   item: '明細',
   plan: '計画',
   breakdown: '内訳',
+  'man-month': '\u4eba\u6708',
   profit: '利益',
   variance: '差異',
   warningSummary: '警告',
@@ -37,6 +43,7 @@ export function visibilityRowKey(sectionId, row) {
   if (row.type === 'group') return `${sectionId}|group|${row.label}`;
   if (row.type === 'plan') return `${sectionId}|plan|${row.label}|${row.subLabel}`;
   if (row.type === 'breakdown') return `${sectionId}|breakdown|${row.parentVendorRowId}|${row.subLabel}`;
+  if (row.type === 'man-month') return `${sectionId}|man-month|${row.parentRevenueRowId}|${row.revenueClientId}`;
   if (row.type === 'sub') return `${sectionId}|sub|${row.label}|${row.subLabel}`;
   return `${sectionId}|item|${row.label}|${row.subLabel || ''}`;
 }

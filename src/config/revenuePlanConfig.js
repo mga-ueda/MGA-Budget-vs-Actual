@@ -32,6 +32,32 @@ export function formatManMonths(value) {
   return rounded.toLocaleString('ja-JP', { maximumFractionDigits: 2 });
 }
 
+export function cloneClientMonthly(source, fiscalMonths) {
+  const next = {};
+  for (const month of fiscalMonths) next[month] = source?.[month] ?? null;
+  return next;
+}
+
+export function applyManMonthsFromMonthForward(source, startMonth, amount, pastMonths, fiscalMonths) {
+  const next = cloneClientMonthly(source, fiscalMonths);
+  const startIndex = fiscalMonths.indexOf(startMonth);
+  if (startIndex < 0) return next;
+  next[startMonth] = amount;
+  for (let i = startIndex + 1; i < fiscalMonths.length; i += 1) {
+    const month = fiscalMonths[i];
+    if (pastMonths.has(month)) continue;
+    next[month] = amount;
+  }
+  return next;
+}
+
+export function clientHasManMonthPlan(client, fiscalMonths) {
+  return Boolean(
+    client?.manMonths
+    && fiscalMonths.some((m) => client.manMonths[m] != null && client.manMonths[m] !== 0),
+  );
+}
+
 export function getEffectiveUnitPrice(client, month) {
   const override = client.monthlyUnitPrice?.[month];
   if (override != null) return override;
