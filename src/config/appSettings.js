@@ -260,6 +260,29 @@ export function buildPastFiscalMonthSet(
   return past;
 }
 
+/** 表示中期における本日の会計月ラベル（該当なしは null） */
+export function getCurrentFiscalMonthLabel(
+  businessStartYear,
+  fiscalPeriod,
+  fiscalMonths,
+  date = new Date(),
+) {
+  const monthYearMap = buildMonthYearMap(businessStartYear, fiscalPeriod);
+  const refYear = date.getFullYear();
+  const refMonth = date.getMonth() + 1;
+
+  for (const monthLabel of fiscalMonths) {
+    const year = monthYearMap[monthLabel];
+    if (year == null) continue;
+    const monthNum = parseMonthLabelNumber(monthLabel);
+    if (monthNum == null) continue;
+    if (year === refYear && monthNum === refMonth) {
+      return monthLabel;
+    }
+  }
+  return null;
+}
+
 export function getFiscalPeriodForDate(businessStartYear, date = new Date()) {
   const y = date.getFullYear();
   const m = date.getMonth() + 1;

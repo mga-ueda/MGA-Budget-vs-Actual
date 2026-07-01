@@ -4,7 +4,7 @@ import {
   enrichRowValues,
   APP_AGGREGATE_LABEL_PREFIX,
 } from '../parse/parseJournal.js';
-import { buildPastFiscalMonthSet } from '../config/appSettings.js';
+import { buildBudgetActualMonthSets } from '../config/monthDisplayConfig.js';
 import { DEFAULT_SECTION_COLORS } from '../config/sectionColorConfig.js';
 import {
   formatEmployeeName,
@@ -219,11 +219,22 @@ function rawValuesFromRow(row) {
   return values;
 }
 
-function mergePlanIntoCsvRow(csvRow, planMonthValues, fiscalMonths, skipPlanFillMonths = null) {
+function mergePlanIntoCsvRow(
+  csvRow,
+  planMonthValues,
+  fiscalMonths,
+  skipPlanFillMonths = null,
+  forcePlanMonths = null,
+) {
   const months = rawValuesFromRow(csvRow);
   const planFillMonths = [];
   for (const m of fiscalMonths) {
     if (skipPlanFillMonths?.has(m)) continue;
+    if (forcePlanMonths?.has(m)) {
+      months[m] = planMonthValues[m] ?? 0;
+      planFillMonths.push(m);
+      continue;
+    }
     if (isMissingCsvMonthValue(months[m]) && (planMonthValues[m] ?? 0) !== 0) {
       months[m] = planMonthValues[m];
       planFillMonths.push(m);
@@ -241,6 +252,7 @@ function mergePlanIntoPrimaryCsvRow(
   planTotal,
   fiscalMonths,
   skipPlanFillMonths = null,
+  forcePlanMonths = null,
 ) {
   if (csvRows.length === 0 || !planTotal) return csvRows;
   const planMonths = rawValuesFromRow({ values: planTotal });
@@ -250,7 +262,7 @@ function mergePlanIntoPrimaryCsvRow(
   const targetIdx = primaryIdx >= 0 ? primaryIdx : 0;
   return csvRows.map((row, index) => {
     if (index !== targetIdx) return row;
-    return mergePlanIntoCsvRow(row, planMonths, fiscalMonths, skipPlanFillMonths);
+    return mergePlanIntoCsvRow(row, planMonths, fiscalMonths, skipPlanFillMonths, forcePlanMonths);
   });
 }
 
@@ -267,6 +279,7 @@ function rebuildPersonnelRows(
   travelPlanTotal,
   fiscalMonths,
   overtimeSkipPlanFillMonths = null,
+  overtimeForcePlanMonths = null,
   legalWelfareRate,
 ) {
   const totalRow = rows.find((r) => r.type === 'total');
@@ -288,6 +301,7 @@ function rebuildPersonnelRows(
     overtimePlanTotal,
     fiscalMonths,
     overtimeSkipPlanFillMonths,
+    overtimeForcePlanMonths,
   );
   const travelCsvMerged = mergePlanIntoPrimaryCsvRow(
     travelCsv,
@@ -468,6 +482,7 @@ export function enrichPlanDataWithEmployeeSalaryRows(planData, {
   fiscalEndMonth,
   displayMode,
   legalWelfareRate,
+  monthDisplayConfig,
 }) {
   if (displayMode !== 'plan' && displayMode !== 'budget-actual') {
     return planData;
@@ -522,9 +537,16 @@ export function enrichPlanDataWithEmployeeSalaryRows(planData, {
   }
 
   const personnel = planData.sections[personnelIdx];
-  const overtimeSkipPlanFillMonths = displayMode === 'budget-actual'
-    ? buildPastFiscalMonthSet(businessStartYear, fiscalPeriod, fiscalMonths)
-    : null;
+  let overtimeSkipPlanFillMonths = null;
+  let overtimeForcePlanMonths = null;
+  if (displayMode === 'budget-actual') {
+    ({ skipPlanFillMonths: overtimeSkipPlanFillMonths, forcePlanMonths: overtimeForcePlanMonths } = buildBudgetActualMonthSets({
+      config: monthDisplayConfig,
+      businessStartYear,
+      fiscalPeriod,
+      fiscalMonths,
+    }));
+  }
   const rows = rebuildPersonnelRows(
     personnel.rows,
     directorRows,
@@ -535,6 +557,7 @@ export function enrichPlanDataWithEmployeeSalaryRows(planData, {
     travelPlanTotal,
     fiscalMonths,
     overtimeSkipPlanFillMonths,
+    overtimeForcePlanMonths,
     legalWelfareRate,
   );
 

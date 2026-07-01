@@ -1,7 +1,24 @@
+import { normalizeUiColorConfig } from './uiColorConfig.js';
+import { normalizeSectionColorConfig } from './sectionColorConfig.js';
+
 export const SETTINGS_EXPORT_FORMAT = 'mga-budget-settings';
 export const SETTINGS_EXPORT_VERSION = 1;
 
 const SETTINGS_EXPORT_APP_KEY = 'mga-app-settings';
+
+function prepareSettingsValueForExport(key, value) {
+  if (key === 'mga-ui-colors') return normalizeUiColorConfig(value);
+  if (key === 'mga-section-colors') return normalizeSectionColorConfig(value);
+  if (key !== SETTINGS_EXPORT_APP_KEY) return value;
+  return stripAppSettingsForExport(value);
+}
+
+function prepareSettingsValueForImport(key, value) {
+  if (key === 'mga-ui-colors') return normalizeUiColorConfig(value);
+  if (key === 'mga-section-colors') return normalizeSectionColorConfig(value);
+  if (key !== SETTINGS_EXPORT_APP_KEY) return value;
+  return mergeAppSettingsForImport(value);
+}
 
 /** Excluded from export/import (per-device font scale and row padding). */
 const APP_SETTINGS_EXCLUDED_KEYS = ['fontScale', 'rowPaddingScale', 'fontScaleUi'];
@@ -25,6 +42,7 @@ export const ALL_SETTINGS_STORAGE_KEYS = [
   'mga-section-filter',
   'mga-ui-colors',
   'mga-csv-name-config',
+  'mga-month-display',
 ];
 
 function stripAppSettingsForExport(appSettings) {
@@ -57,16 +75,6 @@ function mergeAppSettingsForImport(imported) {
     }
   }
   return merged;
-}
-
-function prepareSettingsValueForExport(key, value) {
-  if (key !== SETTINGS_EXPORT_APP_KEY) return value;
-  return stripAppSettingsForExport(value);
-}
-
-function prepareSettingsValueForImport(key, value) {
-  if (key !== SETTINGS_EXPORT_APP_KEY) return value;
-  return mergeAppSettingsForImport(value);
 }
 
 export function collectSettingsForExport() {

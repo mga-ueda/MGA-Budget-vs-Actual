@@ -1,4 +1,5 @@
 import {
+  parseSalaryPlanAmountInput,
   parseSalaryPlanAmountInputWithFillForward,
   formatSalaryPlanYen,
   salaryPlanAmountDiffersFromPrevious,
@@ -14,7 +15,14 @@ import {
   removeExpenseOverrideAccount,
   collectExpenseOverrideAccountCandidates,
 } from '../config/expensePlanOverrideConfig.js';
-import { buildPastFiscalMonthSet, formatFiscalPeriodLabel } from '../config/appSettings.js';
+import { formatFiscalPeriodLabel } from '../config/appSettings.js';
+import { getSettingsLockedMonths } from '../config/monthDisplayConfig.js';
+import {
+  handlePlanAmountCellKeydown,
+  resumePlanCellTabEdit,
+  tagPlanEditableCell,
+  tagPlanEditableRow,
+} from '../config/planCellEdit.js';
 
 const SECTION_CLASS = 'expense-plan-override-section';
 
@@ -24,7 +32,7 @@ function sumDisplayMonthlyTotal(display, fiscalMonths) {
   return total;
 }
 
-/** 支払い計画タブ内に諸経費計画のオーバーライドセクションを表示 */
+/** 支払い計画タブ内に諸経計画オーバーライドセクションを表示 */
 export function mountExpensePlanOverrideSection({
   wrap,
   appSettings,
@@ -32,21 +40,22 @@ export function mountExpensePlanOverrideSection({
   getExpensePlanOverrides,
   setExpensePlanOverrides,
   refreshPlanTableIfNeeded,
+  getMonthDisplayConfig,
 }) {
   const fiscalMonths = buildFiscalYearMonths(appSettings.fiscalEndMonth);
   const currentPeriod = appSettings.fiscalPeriod;
   const periodEntries = buildExpensePlanOverridePeriodEntries(currentPeriod);
-  const currentPastMonths = buildPastFiscalMonthSet(
-    appSettings.businessStartYear,
-    currentPeriod,
-    fiscalMonths,
-  );
 
   let expensePlanOverrides = getExpensePlanOverrides();
 
   function getPastMonthsForPeriod(fiscalPeriod) {
-    if (fiscalPeriod === currentPeriod) return currentPastMonths;
-    return new Set();
+    return getSettingsLockedMonths({
+      config: getMonthDisplayConfig(),
+      businessStartYear: appSettings.businessStartYear,
+      fiscalPeriod,
+      fiscalMonths,
+      currentFiscalPeriod: currentPeriod,
+    });
   }
 
   function isMonthEditable(fiscalPeriod, month) {
@@ -107,16 +116,11 @@ export function mountExpensePlanOverrideSection({
     };
 
     input.addEventListener('keydown', (e) => {
-      if (e.isComposing) return;
-      if (e.key === 'Enter' || e.code === 'NumpadEnter') {
-        e.preventDefault();
-        finish(true, e.shiftKey);
-        return;
-      }
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        finish(false);
-      }
+      handlePlanAmountCellKeydown(e, {
+        finish,
+        td,
+        scopeId: `expense-override-${fiscalPeriod}`,
+      });
     });
     input.addEventListener('blur', () => {
       setTimeout(() => {
@@ -140,6 +144,7 @@ export function mountExpensePlanOverrideSection({
     }
     if (editable) {
       td.classList.add('salary-plan-cell-editable');
+      tagPlanEditableCell(td, { month });
       td.title = "ダブルクリックで編集（Shift+Enter で後継月へ同額反映）";
       td.textContent = formatSalaryPlanYen(value);
       td.addEventListener('dblclick', () => {
@@ -192,6 +197,7 @@ export function mountExpensePlanOverrideSection({
       );
       const tr = document.createElement('tr');
       tr.className = 'salary-plan-row-monthly';
+      tagPlanEditableRow(tr, account);
 
       const accountTd = document.createElement('td');
       accountTd.className = 'salary-plan-col-name';
@@ -222,7 +228,7 @@ export function mountExpensePlanOverrideSection({
       actionsTd.className = 'expense-plan-override-col-actions';
       const removeBtn = document.createElement('button');
       removeBtn.type = 'button';
-      removeBtn.className = 'expense-plan-override-remove-btn';
+      removeBtn.className = 'settings-delete-btn';
       removeBtn.textContent = "削除";
       removeBtn.title = "この科目のオーバーライドを解除";
       removeBtn.addEventListener('click', () => {
@@ -304,9 +310,9 @@ export function mountExpensePlanOverrideSection({
     const planHeader = document.createElement('div');
     planHeader.className = 'salary-plan-header salary-plan-header-spaced';
     planHeader.innerHTML = `
-      <h3 class="salary-plan-title">諸経費計画のオーバーライド</h3>
+      <h3 class="salary-plan-title">諸経計画オーバーライド</h3>
       <p class="salary-plan-desc">
-        自動補完（参照期の平均）を上書きする諸経勘定科目を指定します。オーバーライドした科目は平均補完の対象外となり、入力した月次の計画値が使われます（空欄は補完しません）。今期・来期のみ設定できます。今期の支払済み月は編集できません。双して入力した値は予実表にも反します。
+        自動補完（参照期の平均）を上書きする諸経勘定科目を指定します。オーバーライドした科目は平均補完の対象外となり、入力した月次の計画値が使われます（空欄は補完しません）。今期・来期のみ設定できます。今期の実績表示月は編集できません。予実表で計画表示に切り替えた月は編集できます。また入力した値は予実表にも反します。
       </p>
     `;
     section.appendChild(planHeader);
@@ -324,6 +330,8 @@ export function mountExpensePlanOverrideSection({
       tableWrap.className = 'salary-plan-table-wrap';
       tableWrap.appendChild(buildOverrideTable(period));
       block.appendChild(tableWrap);
+
+      resumePlanCellTabEdit(block, `expense-override-${period}`);
 
       renderAddRow(period, block);
       section.appendChild(block);

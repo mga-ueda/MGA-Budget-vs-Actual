@@ -27,6 +27,7 @@ function defaultBsAssetRowDisplay(sectionId, row) {
 const ORDINARY_DEPOSIT_ACCOUNT = '普通預金';
 const ORDINARY_DEPOSIT_NO_SUB_LABEL = '補助科目なし';
 const CASH_BALANCE_SECTION_ID = 'cashBalance';
+const CASH_DEPOSIT_CHANGE_ROW_ID = 'cash-deposit-change';
 
 function isOrdinaryDepositNoSubRow(sectionId, row) {
   if (sectionId !== BS_CURRENT_ASSETS_SECTION_ID
@@ -42,6 +43,13 @@ function isOrdinaryDepositNoSubRow(sectionId, row) {
 function defaultOrdinaryDepositNoSubDisplay(sectionId, row) {
   if (!isOrdinaryDepositNoSubRow(sectionId, row)) return null;
   return { largeDisplay: false, fillColor1: false, fillColor2: true };
+}
+
+function defaultCashDepositChangeDisplay(sectionId, row) {
+  if (sectionId === CASH_BALANCE_SECTION_ID && row?.id === CASH_DEPOSIT_CHANGE_ROW_ID) {
+    return { largeDisplay: true, fillColor1: true, fillColor2: false };
+  }
+  return null;
 }
 
 /** 人件費: 旅費交通費以外の明細行をデフォルト注目・大きく表示 */
@@ -87,6 +95,8 @@ function defaultRowDisplayEntry(sectionId, row) {
   if (equityDefault) return equityDefault;
   const ordinaryDepositDefault = defaultOrdinaryDepositNoSubDisplay(sectionId, row);
   if (ordinaryDepositDefault) return ordinaryDepositDefault;
+  const cashDepositChangeDefault = defaultCashDepositChangeDisplay(sectionId, row);
+  if (cashDepositChangeDefault) return cashDepositChangeDefault;
   if (sectionId === PERSONNEL_SECTION_ID) {
     if (row?.type === 'total' || row?.type === 'plan') {
       return { ...DEFAULT_ROW_DISPLAY };

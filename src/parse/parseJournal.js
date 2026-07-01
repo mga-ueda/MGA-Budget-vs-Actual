@@ -18,6 +18,11 @@ export const FISCAL_MONTHS = [
 
 export const EXTRA_COLUMNS = ['合計', '平均'];
 
+/** 貸借対照表・現預金の大項目（合計・平均列は表示しない） */
+export const BS_SECTION_IDS = new Set([
+  'currentAssets', 'fixedAssets', 'currentLiab', 'fixedLiab', 'equity', 'cashBalance',
+]);
+
 const COLOR_FALLBACK = { color: '#44403c', barColor: '#292524' };
 
 function sectionColors(id) {

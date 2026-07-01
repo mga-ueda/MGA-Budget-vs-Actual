@@ -4,6 +4,7 @@ import {
   enrichRowValues,
   APP_AGGREGATE_LABEL_PREFIX,
 } from '../parse/parseJournal.js';
+import { buildBudgetActualMonthSets } from '../config/monthDisplayConfig.js';
 import { buildPastFiscalMonthSet } from '../config/appSettings.js';
 import { DEFAULT_SECTION_COLORS } from '../config/sectionColorConfig.js';
 import { buildFiscalYearMonths } from '../config/salaryPlanConfig.js';
@@ -77,6 +78,7 @@ function taxPayMergePlanIntoCsvRow(
   actualMonthly,
   fiscalMonths,
   pastMonths,
+  forcePlanMonths = null,
 ) {
   const months = taxPayRawValuesFromRow(csvRow);
   const planFillMonths = [];
@@ -85,6 +87,11 @@ function taxPayMergePlanIntoCsvRow(
       if (taxPayIsMissingCsvMonthValue(months[m])) {
         months[m] = actualMonthly[m] ?? 0;
       }
+      continue;
+    }
+    if (forcePlanMonths?.has(m)) {
+      months[m] = planMonthValues[m] ?? 0;
+      if ((planMonthValues[m] ?? 0) !== 0) planFillMonths.push(m);
       continue;
     }
     if (taxPayIsMissingCsvMonthValue(months[m]) && (planMonthValues[m] ?? 0) !== 0) {
@@ -105,6 +112,7 @@ function taxPayMergePlanIntoPrimaryCsvRow(
   actualMonthly,
   fiscalMonths,
   pastMonths,
+  forcePlanMonths = null,
 ) {
   if (csvRows.length === 0) return csvRows;
   const primaryIdx = csvRows.findIndex(
@@ -119,6 +127,7 @@ function taxPayMergePlanIntoPrimaryCsvRow(
       actualMonthly,
       fiscalMonths,
       pastMonths,
+      forcePlanMonths,
     );
   });
 }
@@ -357,6 +366,7 @@ function taxPayRebuildRowsForAccounts(
   fiscalMonths,
   pastMonths,
   planRowIdPrefix,
+  forcePlanMonths = null,
 ) {
   const totalRow = rows.find((r) => r.type === 'total');
   const body = rows.filter((r) => r.type !== 'plan' && r.type !== 'total');
@@ -375,6 +385,7 @@ function taxPayRebuildRowsForAccounts(
       actualMonthly,
       fiscalMonths,
       pastMonths,
+      forcePlanMonths,
     );
     const planTotal = taxPayBuildAccountPlanTotal(
       monthlyPlan,
@@ -504,7 +515,14 @@ function taxPayCollectAllPlanVisibilityCandidates(
   return candidates;
 }
 
-function taxPayEnrichOtherSection(section, periodPlans, actualAmounts, fiscalMonths, pastMonths) {
+function taxPayEnrichOtherSection(
+  section,
+  periodPlans,
+  actualAmounts,
+  fiscalMonths,
+  pastMonths,
+  forcePlanMonths = null,
+) {
   const accounts = [...PAYMENT_PLAN_OTHER_SECTION_ACCOUNTS];
   const rows = taxPayRebuildRowsForAccounts(
     section.rows,
@@ -514,6 +532,7 @@ function taxPayEnrichOtherSection(section, periodPlans, actualAmounts, fiscalMon
     fiscalMonths,
     pastMonths,
     'tax-pay-plan',
+    forcePlanMonths,
   );
   const totalIdx = rows.findIndex((r) => r.type === 'total');
   if (totalIdx >= 0) {
@@ -526,7 +545,14 @@ function taxPayEnrichOtherSection(section, periodPlans, actualAmounts, fiscalMon
   return { ...section, rows };
 }
 
-function taxPayEnrichTaxSection(section, periodPlans, actualAmounts, fiscalMonths, pastMonths) {
+function taxPayEnrichTaxSection(
+  section,
+  periodPlans,
+  actualAmounts,
+  fiscalMonths,
+  pastMonths,
+  forcePlanMonths = null,
+) {
   const accounts = [...PAYMENT_PLAN_TAX_SECTION_ACCOUNTS];
   const rows = taxPayRebuildRowsForAccounts(
     section.rows,
@@ -536,6 +562,7 @@ function taxPayEnrichTaxSection(section, periodPlans, actualAmounts, fiscalMonth
     fiscalMonths,
     pastMonths,
     'corp-tax-plan',
+    forcePlanMonths,
   );
   const totalIdx = rows.findIndex((r) => r.type === 'total');
   if (totalIdx >= 0) {
@@ -592,6 +619,7 @@ function taxPayEnrichOtherPaySection(
   actualResidentTaxByMunicipality,
   fiscalMonths,
   pastMonths,
+  forcePlanMonths = null,
 ) {
   const accounts = [...PAYMENT_PLAN_OTHER_PAY_SIMPLE_ACCOUNTS];
   let rows = taxPayRebuildRowsForAccounts(
@@ -602,6 +630,7 @@ function taxPayEnrichOtherPaySection(
     fiscalMonths,
     pastMonths,
     'other-pay-plan',
+    forcePlanMonths,
   );
   rows = taxPayRebuildResidentTaxRows(
     rows,
@@ -776,13 +805,25 @@ export function enrichPlanDataWithTaxPaymentRows(planData, {
   fiscalEndMonth,
   displayMode,
   actualSourcePlanData = null,
+  monthDisplayConfig,
 }) {
   if (displayMode !== 'plan' && displayMode !== 'budget-actual') {
     return planData;
   }
 
   const fiscalMonths = buildFiscalYearMonths(fiscalEndMonth);
-  const pastMonths = buildPastFiscalMonthSet(businessStartYear, fiscalPeriod, fiscalMonths);
+  let pastMonths;
+  let forcePlanMonths = null;
+  if (displayMode === 'budget-actual') {
+    ({ actualMonthSet: pastMonths, forcePlanMonths } = buildBudgetActualMonthSets({
+      config: monthDisplayConfig,
+      businessStartYear,
+      fiscalPeriod,
+      fiscalMonths,
+    }));
+  } else {
+    pastMonths = buildPastFiscalMonthSet(businessStartYear, fiscalPeriod, fiscalMonths);
+  }
   const actualSource = actualSourcePlanData ?? planData;
   const actualAmounts = collectPaymentActualAmountsFromPlanData(
     actualSource,
@@ -842,6 +883,7 @@ export function enrichPlanDataWithTaxPaymentRows(planData, {
       actualAmounts,
       fiscalMonths,
       pastMonths,
+      forcePlanMonths,
     );
   } else if (hasPlans) {
     const created = taxPayCreateOtherSectionFromPlans(
@@ -863,6 +905,7 @@ export function enrichPlanDataWithTaxPaymentRows(planData, {
       actualResidentTaxByMunicipality,
       fiscalMonths,
       pastMonths,
+      forcePlanMonths,
     );
   } else if (hasPlans) {
     const created = taxPayCreateOtherPaySectionFromPlans(
@@ -884,6 +927,7 @@ export function enrichPlanDataWithTaxPaymentRows(planData, {
       actualAmounts,
       fiscalMonths,
       pastMonths,
+      forcePlanMonths,
     );
   } else if (hasPlans) {
     const created = taxPayCreateTaxSectionFromPlans(

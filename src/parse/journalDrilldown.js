@@ -1,5 +1,11 @@
 import { parseCsvLine } from './parser.js';
-import { formatYen, FISCAL_MONTHS, EXTRA_COLUMNS, categorizeAccount } from './parseJournal.js';
+import {
+  formatYen,
+  FISCAL_MONTHS,
+  EXTRA_COLUMNS,
+  BS_SECTION_IDS,
+  categorizeAccount,
+} from './parseJournal.js';
 
 const PL_SECTION_CATEGORY = {
   revenue: 'revenue',
@@ -11,10 +17,6 @@ const PL_SECTION_CATEGORY = {
   other: 'other',
   tax: 'tax',
 };
-
-const BS_SECTION_IDS = new Set([
-  'currentAssets', 'fixedAssets', 'currentLiab', 'fixedLiab', 'equity', 'cashBalance',
-]);
 
 function normalizeSub(sub) {
   if (!sub || sub === '補助科目なし') return '';

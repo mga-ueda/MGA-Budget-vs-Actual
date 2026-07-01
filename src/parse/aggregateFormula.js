@@ -12,6 +12,7 @@ const FORMULA_LABELS = {
   sgaTotal: '消費税対象販管費合計 + その他合計',
   cashInflow: '仕訳の借方「普通預金」の合計（期首月は現預金・前期末残高・出金実績から整合）',
   cashOutflow: '仕訳の貸方「普通預金」の合計',
+  cashDepositChange: '当月末現預金 − 前月末現預金',
 };
 
 export function isAggregateRow(row) {

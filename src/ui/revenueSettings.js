@@ -24,10 +24,17 @@ import {
   formatManMonths,
 } from '../config/revenuePlanConfig.js';
 import {
+  handlePlanAmountCellKeydown,
+  resumePlanCellTabEdit,
+  tagPlanEditableCell,
+  tagPlanEditableRow,
+} from '../config/planCellEdit.js';
+import {
   collectRevenueSubaccountsFromPlanData,
   collectRevenueActualAmountsFromPlanData,
 } from '../enrich/planRevenueRows.js';
-import { buildPastFiscalMonthSet, buildMonthYearMap, formatFiscalPeriodLabel } from '../config/appSettings.js';
+import { buildMonthYearMap, formatFiscalPeriodLabel } from '../config/appSettings.js';
+import { getSettingsLockedMonths } from '../config/monthDisplayConfig.js';
 
 const REVENUE_ACCOUNT = '\u58f2\u4e0a\u9ad8';
 const ROW_MAN_MONTHS = '\u4eba\u6708';
@@ -81,6 +88,7 @@ export function mountRevenueSettingsPanel({
   getRevenuePlanSettings,
   setRevenuePlanSettings,
   refreshPlanTableIfNeeded,
+  getMonthDisplayConfig,
 }) {
   setPlanKpi(null);
 
@@ -119,11 +127,6 @@ export function mountRevenueSettingsPanel({
   const actualAmountsByClient = rawPlanData
     ? collectRevenueActualAmountsFromPlanData(rawPlanData, fiscalMonths)
     : new Map();
-  const currentPastMonths = buildPastFiscalMonthSet(
-    appSettings.businessStartYear,
-    currentPeriod,
-    fiscalMonths,
-  );
 
   const journalClientKeys = new Set();
   if (rawPlanData) {
@@ -202,8 +205,13 @@ export function mountRevenueSettingsPanel({
   }
 
   function getPastMonthsForPeriod(fiscalPeriod) {
-    if (fiscalPeriod === currentPeriod) return currentPastMonths;
-    return new Set();
+    return getSettingsLockedMonths({
+      config: getMonthDisplayConfig(),
+      businessStartYear: appSettings.businessStartYear,
+      fiscalPeriod,
+      fiscalMonths,
+      currentFiscalPeriod: currentPeriod,
+    });
   }
 
   function isMonthEditable(fiscalPeriod, month) {
@@ -263,6 +271,7 @@ export function mountRevenueSettingsPanel({
     parseValue,
     onSave,
     allowShiftFillForward = false,
+    tabScopeId,
   }) {
     if (!editable) return;
     if (td.querySelector('input')) return;
@@ -290,16 +299,12 @@ export function mountRevenueSettingsPanel({
     };
 
     input.addEventListener('keydown', (e) => {
-      if (e.isComposing) return;
-      if (e.key === 'Enter' || e.code === 'NumpadEnter') {
-        e.preventDefault();
-        finish(true, e.shiftKey);
-        return;
-      }
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        finish(false);
-      }
+      handlePlanAmountCellKeydown(e, {
+        finish,
+        td,
+        scopeId: tabScopeId,
+        allowShiftFillForward,
+      });
     });
     input.addEventListener('blur', () => {
       setTimeout(() => {
@@ -322,6 +327,7 @@ export function mountRevenueSettingsPanel({
   }
 
   function appendPlanAmountCell(tr, {
+    month,
     monthIndex,
     value,
     prevValue,
@@ -333,12 +339,14 @@ export function mountRevenueSettingsPanel({
     onSave,
     extraClass = '',
     allowShiftFillForward = false,
+    tabScopeId,
   }) {
     const td = document.createElement('td');
     td.className = `salary-plan-amount-cell ${extraClass}`.trim();
     applyPlanAmountVarianceClass(td, monthIndex, value, prevValue);
     if (editable) {
       td.classList.add('salary-plan-cell-editable');
+      tagPlanEditableCell(td, { month });
       td.title = title;
       td.textContent = formatValue(value);
       td.addEventListener('dblclick', () => {
@@ -349,6 +357,7 @@ export function mountRevenueSettingsPanel({
           parseValue,
           onSave,
           allowShiftFillForward,
+          tabScopeId,
         });
       });
     } else {
@@ -423,7 +432,7 @@ export function mountRevenueSettingsPanel({
       if (canDeleteClient(client)) {
         const deleteBtn = document.createElement('button');
         deleteBtn.type = 'button';
-        deleteBtn.className = 'employee-delete-btn';
+        deleteBtn.className = 'settings-delete-btn';
         deleteBtn.textContent = '\u524a\u9664';
         deleteBtn.addEventListener('click', () => {
           actionsWrap.replaceChildren();
@@ -435,12 +444,12 @@ export function mountRevenueSettingsPanel({
 
           const confirmBtn = document.createElement('button');
           confirmBtn.type = 'button';
-          confirmBtn.className = 'employee-delete-confirm-btn';
+          confirmBtn.className = 'settings-delete-btn';
           confirmBtn.textContent = '\u524a\u9664\u3059\u308b';
 
           const cancelBtn = document.createElement('button');
           cancelBtn.type = 'button';
-          cancelBtn.className = 'employee-delete-cancel-btn';
+          cancelBtn.className = 'settings-delete-cancel-btn';
           cancelBtn.textContent = '\u30ad\u30e3\u30f3\u30bb\u30eb';
 
           confirmBtn.addEventListener('click', () => deleteClient(client, fiscalPeriod));
@@ -565,6 +574,7 @@ export function mountRevenueSettingsPanel({
       const { kind, key } = rowKinds[rowIndex];
       const tr = document.createElement('tr');
       tr.className = `salary-plan-row-monthly revenue-plan-row revenue-plan-row--${key}`;
+      tagPlanEditableRow(tr, `${client.id}:${key}`);
 
       if (rowIndex === 0) {
         appendClientNameCell(tr, client, fiscalPeriod, rowKinds.length);
@@ -583,11 +593,13 @@ export function mountRevenueSettingsPanel({
         if (key === 'manMonths') {
           const prevValue = prevMonth != null ? client.manMonths[prevMonth] : undefined;
           appendPlanAmountCell(tr, {
+            month,
             monthIndex: i,
             value: client.manMonths[month],
             prevValue,
             editable,
             rawValue: client.manMonths[month],
+            tabScopeId: `revenue-settings-${fiscalPeriod}`,
             title: '\u30c0\u30d6\u30eb\u30af\u30ea\u30c3\u30af\u3067\u7de8\u96c6\uFF08Shift+Enter \u3067\u5f8c\u7d9a\u6708\u3078\u540c\u5024\u3092\u53cd\u6620\u30000 \u3082\u53ef\uFF09',
             formatValue: formatManMonths,
             parseValue: parseManMonthInput,
@@ -612,11 +624,13 @@ export function mountRevenueSettingsPanel({
             ? getEffectiveUnitPrice(client, prevMonth)
             : undefined;
           appendPlanAmountCell(tr, {
+            month,
             monthIndex: i,
             value: unitPrice,
             prevValue: prevUnitPrice,
             editable,
             rawValue: client.monthlyUnitPrice[month],
+            tabScopeId: `revenue-settings-${fiscalPeriod}`,
             title: '\u30c0\u30d6\u30eb\u30af\u30ea\u30c3\u30af\u3067\u7de8\u96c6\uFF08\u4eba\u6708\u5358\u4fa1\uFF09',
             formatValue: formatSalaryPlanYen,
             parseValue: parseSalaryPlanAmountInput,
@@ -628,10 +642,12 @@ export function mountRevenueSettingsPanel({
         } else if (key === 'revenue') {
           const prevDisplay = prevMonth != null ? displayRevenue[prevMonth] : undefined;
           appendPlanAmountCell(tr, {
+            month,
             monthIndex: i,
             value: displayRevenue[month],
             prevValue: prevDisplay,
             editable: false,
+            tabScopeId: `revenue-settings-${fiscalPeriod}`,
             formatValue: formatSalaryPlanYen,
             extraClass: 'revenue-plan-revenue-cell',
           });
@@ -895,6 +911,8 @@ export function mountRevenueSettingsPanel({
       tableWrap.className = 'salary-plan-table-wrap';
       tableWrap.appendChild(buildRevenuePlanTable(period));
       block.appendChild(tableWrap);
+
+      resumePlanCellTabEdit(block, `revenue-settings-${period}`);
 
       periodsContainer.appendChild(block);
     }

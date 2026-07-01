@@ -3,8 +3,8 @@ import {
   EXTRA_COLUMNS,
   enrichRowValues,
 } from '../parse/parseJournal.js';
+import { buildBudgetActualMonthSets } from '../config/monthDisplayConfig.js';
 import {
-  buildPastFiscalMonthSet,
   buildMonthYearMap,
   parseCorpEntityMarkers,
   isCorporateSubLabel,
@@ -66,11 +66,22 @@ function outMakePlanRow(id, label, subLabel, values) {
   };
 }
 
-function outMergePlanIntoCsvRow(csvRow, planMonthValues, fiscalMonths, skipPlanFillMonths = null) {
+function outMergePlanIntoCsvRow(
+  csvRow,
+  planMonthValues,
+  fiscalMonths,
+  skipPlanFillMonths = null,
+  forcePlanMonths = null,
+) {
   const months = outRawValuesFromRow(csvRow);
   const planFillMonths = [];
   for (const m of fiscalMonths) {
     if (skipPlanFillMonths?.has(m)) continue;
+    if (forcePlanMonths?.has(m)) {
+      months[m] = planMonthValues[m] ?? 0;
+      planFillMonths.push(m);
+      continue;
+    }
     if (outIsMissingCsvMonthValue(months[m]) && (planMonthValues[m] ?? 0) !== 0) {
       months[m] = planMonthValues[m];
       planFillMonths.push(m);
@@ -111,7 +122,13 @@ function outRowMatchesVendor(row, vendor) {
   return row.label === vendor.accountLabel && row.subLabel === vendor.subLabel;
 }
 
-function outRebuildOutsourcingRows(rows, vendors, fiscalMonths, skipPlanFillMonths = null) {
+function outRebuildOutsourcingRows(
+  rows,
+  vendors,
+  fiscalMonths,
+  skipPlanFillMonths = null,
+  forcePlanMonths = null,
+) {
   const totalRow = rows.find((r) => r.type === 'total');
   const body = rows.filter((r) => r.type !== 'plan' && r.type !== 'total');
   const planRows = outBuildVendorPlanRows(vendors, fiscalMonths);
@@ -123,7 +140,7 @@ function outRebuildOutsourcingRows(rows, vendors, fiscalMonths, skipPlanFillMont
     if (!vendor) return row;
     matchedVendorIds.add(vendor.id);
     const planMonths = outRawValuesFromRow({ values: outBuildVendorPlanValues(vendor, fiscalMonths) });
-    return outMergePlanIntoCsvRow(row, planMonths, fiscalMonths, skipPlanFillMonths);
+    return outMergePlanIntoCsvRow(row, planMonths, fiscalMonths, skipPlanFillMonths, forcePlanMonths);
   });
 
   const orphanPlanRows = planRows.filter((row) => {
@@ -316,6 +333,7 @@ export function enrichPlanDataWithOutsourcingRows(planData, {
   corpEntityMarkers,
   consumptionTaxRates,
   withholdingTaxRates,
+  monthDisplayConfig,
 }) {
   const fiscalMonths = buildFiscalYearMonths(fiscalEndMonth);
   const monthYearMap = buildMonthYearMap(businessStartYear, fiscalPeriod);
@@ -348,9 +366,16 @@ export function enrichPlanDataWithOutsourcingRows(planData, {
   }
 
   const extraCandidates = outCollectPlanVisibilityCandidates(planRows);
-  const skipPlanFillMonths = displayMode === 'budget-actual'
-    ? buildPastFiscalMonthSet(businessStartYear, fiscalPeriod, fiscalMonths)
-    : null;
+  let skipPlanFillMonths = null;
+  let forcePlanMonths = null;
+  if (displayMode === 'budget-actual') {
+    ({ skipPlanFillMonths, forcePlanMonths } = buildBudgetActualMonthSets({
+      config: monthDisplayConfig,
+      businessStartYear,
+      fiscalPeriod,
+      fiscalMonths,
+    }));
+  }
 
   if (outsourcingIdx < 0) {
     if (planRows.length === 0) return planData;
@@ -376,6 +401,7 @@ export function enrichPlanDataWithOutsourcingRows(planData, {
     vendors,
     fiscalMonths,
     skipPlanFillMonths,
+    forcePlanMonths,
   );
 
   const totalIdx = rows.findIndex((r) => r.type === 'total');

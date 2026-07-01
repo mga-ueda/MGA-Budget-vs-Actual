@@ -1,5 +1,5 @@
 import { FISCAL_MONTHS, enrichRowValues } from '../parse/parseJournal.js';
-import { buildPastFiscalMonthSet } from '../config/appSettings.js';
+import { buildBudgetActualMonthSets } from '../config/monthDisplayConfig.js';
 import { buildFiscalYearMonths } from '../config/salaryPlanConfig.js';
 import { planDataFromCache } from '../csv/csvLoader.js';
 
@@ -63,6 +63,7 @@ export function enrichPlanDataWithCashFlowOpeningInflow(planData, {
   fiscalPeriod,
   fiscalEndMonth,
   displayMode,
+  monthDisplayConfig,
 }) {
   const referencePeriod = fiscalPeriod - 1;
   if (referencePeriod < 1) return planData;
@@ -82,11 +83,19 @@ export function enrichPlanDataWithCashFlowOpeningInflow(planData, {
 
   const fiscalMonths = buildFiscalYearMonths(fiscalEndMonth);
   const firstMonth = fiscalMonths[0];
-  const pastMonthSet = displayMode === 'budget-actual'
-    ? buildPastFiscalMonthSet(businessStartYear, fiscalPeriod, fiscalMonths)
-    : displayMode === 'actual'
+  let pastMonthSet;
+  if (displayMode === 'budget-actual') {
+    ({ actualMonthSet: pastMonthSet } = buildBudgetActualMonthSets({
+      config: monthDisplayConfig,
+      businessStartYear,
+      fiscalPeriod,
+      fiscalMonths,
+    }));
+  } else {
+    pastMonthSet = displayMode === 'actual'
       ? new Set(FISCAL_MONTHS)
       : new Set();
+  }
 
   if (!shouldAdjustOpeningMonth({
     displayMode,

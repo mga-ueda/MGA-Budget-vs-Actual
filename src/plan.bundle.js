@@ -265,6 +265,7 @@ function defaultBsAssetRowDisplay(sectionId, row) {
 const ORDINARY_DEPOSIT_ACCOUNT = '普通預金';
 const ORDINARY_DEPOSIT_NO_SUB_LABEL = '補助科目なし';
 const CASH_BALANCE_SECTION_ID = 'cashBalance';
+const CASH_DEPOSIT_CHANGE_ROW_ID = 'cash-deposit-change';
 
 function isOrdinaryDepositNoSubRow(sectionId, row) {
   if (sectionId !== BS_CURRENT_ASSETS_SECTION_ID
@@ -280,6 +281,13 @@ function isOrdinaryDepositNoSubRow(sectionId, row) {
 function defaultOrdinaryDepositNoSubDisplay(sectionId, row) {
   if (!isOrdinaryDepositNoSubRow(sectionId, row)) return null;
   return { largeDisplay: false, fillColor1: false, fillColor2: true };
+}
+
+function defaultCashDepositChangeDisplay(sectionId, row) {
+  if (sectionId === CASH_BALANCE_SECTION_ID && row?.id === CASH_DEPOSIT_CHANGE_ROW_ID) {
+    return { largeDisplay: true, fillColor1: true, fillColor2: false };
+  }
+  return null;
 }
 
 /** 人件費: 旅費交通費以外の明細行をデフォルト注目・大きく表示 */
@@ -325,6 +333,8 @@ function defaultRowDisplayEntry(sectionId, row) {
   if (equityDefault) return equityDefault;
   const ordinaryDepositDefault = defaultOrdinaryDepositNoSubDisplay(sectionId, row);
   if (ordinaryDepositDefault) return ordinaryDepositDefault;
+  const cashDepositChangeDefault = defaultCashDepositChangeDisplay(sectionId, row);
+  if (cashDepositChangeDefault) return cashDepositChangeDefault;
   if (sectionId === PERSONNEL_SECTION_ID) {
     if (row?.type === 'total' || row?.type === 'plan') {
       return { ...DEFAULT_ROW_DISPLAY };
@@ -707,9 +717,18 @@ function saveSectionColorConfig(config) {
   localStorage.setItem(SECTION_COLOR_STORAGE_KEY, JSON.stringify(normalizeSectionColorConfig(config)));
 }
 
-function normalizeSectionColorConfig(config) {
+const SECTION_COLOR_MODE_KEYS = new Set(['dark', 'light']);
+
+function isPerModeSectionColorConfig(config) {
+  if (!config || typeof config !== 'object') return false;
+  const keys = Object.keys(config);
+  if (keys.length === 0) return false;
+  return keys.every((key) => SECTION_COLOR_MODE_KEYS.has(key));
+}
+
+function normalizeSectionOverrides(raw = {}) {
   const normalized = {};
-  const migrated = { ...config };
+  const migrated = { ...raw };
   if (migrated.receivables && !migrated.revenueVariance) {
     migrated.revenueVariance = migrated.receivables;
   }
@@ -727,10 +746,59 @@ function normalizeSectionColorConfig(config) {
   return normalized;
 }
 
-function getSectionColors(sectionId, config = {}) {
+function normalizeSectionColorConfig(config = {}) {
+  if (!config || typeof config !== 'object') {
+    return { dark: {}, light: {} };
+  }
+  if (isPerModeSectionColorConfig(config)) {
+    return {
+      dark: normalizeSectionOverrides(config.dark),
+      light: normalizeSectionOverrides(config.light),
+    };
+  }
+  return {
+    dark: normalizeSectionOverrides(config),
+    light: {},
+  };
+}
+
+function getSectionColorModeBucket(config, mode = 'dark') {
+  const normalized = normalizeSectionColorConfig(config);
+  return normalized[mode === 'light' ? 'light' : 'dark'] ?? {};
+}
+
+function setSectionColorOverride(config, mode, sectionId, { barColor, textColor }) {
+  const normalized = normalizeSectionColorConfig(config);
+  const modeKey = mode === 'light' ? 'light' : 'dark';
+  return {
+    ...normalized,
+    [modeKey]: {
+      ...normalized[modeKey],
+      [sectionId]: { barColor, textColor },
+    },
+  };
+}
+
+function resetSectionColorOverride(config, mode, sectionId) {
+  const normalized = normalizeSectionColorConfig(config);
+  const modeKey = mode === 'light' ? 'light' : 'dark';
+  const bucket = { ...normalized[modeKey] };
+  delete bucket[sectionId];
+  return { ...normalized, [modeKey]: bucket };
+}
+
+/** 指定モードの大項目色上書きをすべて削除 */
+function resetSectionColorModeOverrides(config, mode = 'dark') {
+  const normalized = normalizeSectionColorConfig(config);
+  const modeKey = mode === 'light' ? 'light' : 'dark';
+  return { ...normalized, [modeKey]: {} };
+}
+
+function getSectionColors(sectionId, config = {}, mode = 'dark') {
   const defaults = DEFAULT_SECTION_COLORS[sectionId] ?? FALLBACK;
-  const override = config[sectionId]
-    ?? (sectionId === 'revenueVariance' ? config.receivables : undefined);
+  const bucket = getSectionColorModeBucket(config, mode);
+  const override = bucket[sectionId]
+    ?? (sectionId === 'revenueVariance' ? bucket.receivables : undefined);
   if (!override) return { ...defaults };
   if (typeof override === 'string') return { ...defaults, barColor: override };
   return {
@@ -740,9 +808,9 @@ function getSectionColors(sectionId, config = {}) {
   };
 }
 
-function applySectionColors(sections, config) {
+function applySectionColors(sections, config, mode = 'dark') {
   return sections.map((s) => {
-    const { color, barColor, textColor } = getSectionColors(s.id, config);
+    const { color, barColor, textColor } = getSectionColors(s.id, config, mode);
     return { ...s, color, barColor, textColor };
   });
 }
@@ -755,16 +823,17 @@ function resolveSectionColorLabel(section) {
   return registry?.label ?? section.id;
 }
 
-function collectSectionColorDefs(sections = [], config = {}) {
+function collectSectionColorDefs(sections = [], config = {}, mode = 'dark') {
   const labels = new Map(SECTION_COLOR_SECTION_DEFS.map((d) => [d.id, d.label]));
   for (const s of sections) {
     labels.set(s.id, resolveSectionColorLabel(s));
   }
 
+  const bucket = getSectionColorModeBucket(config, mode);
   const registryIds = new Set(SECTION_COLOR_SECTION_DEFS.map((d) => d.id));
   const defs = SECTION_COLOR_SECTION_DEFS.map(({ id }) => {
     const defaults = DEFAULT_SECTION_COLORS[id] ?? FALLBACK;
-    const current = getSectionColors(id, config);
+    const current = getSectionColors(id, config, mode);
     return {
       sectionId: id,
       label: labels.get(id) ?? id,
@@ -774,14 +843,14 @@ function collectSectionColorDefs(sections = [], config = {}) {
       defaultColor: defaults.color,
       defaultBarColor: defaults.barColor,
       defaultTextColor: defaults.textColor,
-      isCustom: Object.prototype.hasOwnProperty.call(config, id),
+      isCustom: Object.prototype.hasOwnProperty.call(bucket, id),
     };
   });
 
   for (const s of sections) {
     if (registryIds.has(s.id)) continue;
     const defaults = DEFAULT_SECTION_COLORS[s.id] ?? FALLBACK;
-    const current = getSectionColors(s.id, config);
+    const current = getSectionColors(s.id, config, mode);
     defs.push({
       sectionId: s.id,
       label: resolveSectionColorLabel(s),
@@ -791,23 +860,23 @@ function collectSectionColorDefs(sections = [], config = {}) {
       defaultColor: defaults.color,
       defaultBarColor: defaults.barColor,
       defaultTextColor: defaults.textColor,
-      isCustom: Object.prototype.hasOwnProperty.call(config, s.id),
+      isCustom: Object.prototype.hasOwnProperty.call(bucket, s.id),
     });
   }
 
   return defs;
 }
 
-function getSectionBarColor(sectionId, sections, config = {}) {
+function getSectionBarColor(sectionId, sections, config = {}, mode = 'dark') {
   const section = sections?.find((s) => s.id === sectionId);
   if (section?.barColor) return section.barColor;
-  return getSectionColors(sectionId, config).barColor;
+  return getSectionColors(sectionId, config, mode).barColor;
 }
 
-function getSectionTextColor(sectionId, sections, config = {}) {
+function getSectionTextColor(sectionId, sections, config = {}, mode = 'dark') {
   const section = sections?.find((s) => s.id === sectionId);
   if (section?.textColor) return section.textColor;
-  return getSectionColors(sectionId, config).textColor;
+  return getSectionColors(sectionId, config, mode).textColor;
 }
 
 /* config/sectionFilterConfig.js */
@@ -885,24 +954,83 @@ const CURRENT_MONTH_OVERLAY_HEAD_ALPHA = 0.34;
 const CURRENT_MONTH_OVERLAY_HOVER_ALPHA = 0.22;
 const CURRENT_MONTH_OVERLAY_TOTAL_ALPHA = 0.32;
 
-const DEFAULT_UI_COLORS = {
-  appBg: '#262626',
-  cellBg: '#262626',
-  textColor: '#ffffff',
-  negativeAmountColor: '#ff0000',
+const SETTLEMENT_MONTH_OVERLAY_ALPHA = CURRENT_MONTH_OVERLAY_ALPHA;
+const SETTLEMENT_MONTH_RING_ALPHA = CURRENT_MONTH_RING_ALPHA;
+const SETTLEMENT_MONTH_OVERLAY_HEAD_ALPHA = CURRENT_MONTH_OVERLAY_HEAD_ALPHA;
+const SETTLEMENT_MONTH_OVERLAY_TOTAL_ALPHA = CURRENT_MONTH_OVERLAY_TOTAL_ALPHA;
+
+const UI_COLOR_MODES = ['dark', 'light'];
+
+const SHARED_UI_COLORS = {
   yearRowBg: '#c65911',
   yearRowText: '#ffffff',
+  amountVarianceColor: '#C65911',
+  negativeAmountColor: '#ff0000',
+};
+
+const DEFAULT_UI_COLORS_DARK = {
+  browserBg: '#262626',
+  settingsSurfaceBg: '#19191A',
+  settingsInputBg: '#353535',
+  settingsInputBorder: '#565656',
+  settingsButtonBg: '#262626',
+  settingsRowHoverBg: '#2E2E2E',
   monthRowBg: '#595959',
   monthRowText: '#ffffff',
   currentMonthBg: '#800000',
   currentMonthBorder: '#ff0000',
-  rowHoverBorder: '#00ffff',
-  expandableHighlight: '#00ffff',
+  settlementMonthBg: '#000000',
+  cellBg: '#262626',
+  textColor: '#ffffff',
+  noteTextColor: '#C9C9C9',
+  hintTextColor: '#B3B3B3',
+  textDimColor: '#929292',
+  planAmountColor: '#00B0F0',
   fillColor1: '#404040',
   fillColor2: '#3F1B1B',
-  planAmountColor: '#00B0F0',
-  amountVarianceColor: '#C65911',
   warningTextColor: '#FFFF00',
+  expandableHighlight: '#00ffff',
+  rowHoverBorder: '#00ffff',
+  rowSelectionRing: '#ffff00',
+  ...SHARED_UI_COLORS,
+};
+
+const DEFAULT_UI_COLORS_LIGHT = {
+  browserBg: '#E8E8E8',
+  settingsSurfaceBg: '#D9D9D9',
+  settingsInputBg: '#FFFFFF',
+  settingsInputBorder: '#B8B8B8',
+  settingsButtonBg: '#FFFFFF',
+  settingsRowHoverBg: '#EFEFEF',
+  monthRowBg: '#D9D9D9',
+  monthRowText: '#1A1A1A',
+  currentMonthBg: '#CC6666',
+  currentMonthBorder: '#CC0000',
+  settlementMonthBg: '#B0B0B0',
+  cellBg: '#FFFFFF',
+  textColor: '#1A1A1A',
+  noteTextColor: '#4A4A4A',
+  hintTextColor: '#5C5C5C',
+  textDimColor: '#757575',
+  planAmountColor: '#0078D4',
+  fillColor1: '#E8EEF4',
+  fillColor2: '#F5E8E8',
+  warningTextColor: '#8B6914',
+  expandableHighlight: '#0078D4',
+  rowHoverBorder: '#0078D4',
+  rowSelectionRing: '#E6B800',
+  ...SHARED_UI_COLORS,
+  negativeAmountColor: '#C00000',
+};
+
+/** @deprecated DEFAULT_UI_COLORS_DARK と同義 */
+const DEFAULT_UI_COLORS = DEFAULT_UI_COLORS_DARK;
+
+const UI_COLOR_KEYS = Object.keys(DEFAULT_UI_COLORS_DARK);
+
+const DEFAULTS_BY_MODE = {
+  dark: DEFAULT_UI_COLORS_DARK,
+  light: DEFAULT_UI_COLORS_LIGHT,
 };
 
 function parseHex(hex) {
@@ -932,10 +1060,120 @@ function opaqueHex(hex) {
   return `#${toHex(rgb.r)}${toHex(rgb.g)}${toHex(rgb.b)}`;
 }
 
+function getUiColorMode(config = {}) {
+  return config.colorMode === 'light' ? 'light' : 'dark';
+}
+
+function getDefaultUiColors(mode = 'dark') {
+  const key = mode === 'light' ? 'light' : 'dark';
+  return { ...DEFAULTS_BY_MODE[key] };
+}
+
+const UI_COLOR_LEGACY_KEYS = [...UI_COLOR_KEYS, 'textFaintColor', 'appBg'];
+
+function migrateUiColorBucket(bucket = {}) {
+  const next = { ...bucket };
+  if (next.textFaintColor != null && next.textDimColor == null) {
+    next.textDimColor = next.textFaintColor;
+  }
+  delete next.textFaintColor;
+  if (next.appBg != null && next.settingsInputBg == null) {
+    next.settingsInputBg = next.appBg;
+  }
+  delete next.appBg;
+  return next;
+}
+
+function hasLegacyUiColorFlatKeys(config) {
+  return UI_COLOR_LEGACY_KEYS.some((key) => config[key] != null);
+}
+
+/** localStorage / エクスポート用の正規形（モード別上書き） */
+function normalizeUiColorConfig(config = {}) {
+  if (!config || typeof config !== 'object') {
+    return { colorMode: 'dark', dark: {}, light: {} };
+  }
+
+  const colorMode = config.colorMode === 'light' ? 'light' : 'dark';
+  let dark = migrateUiColorBucket(
+    typeof config.dark === 'object' && config.dark !== null ? { ...config.dark } : {},
+  );
+  let light = migrateUiColorBucket(
+    typeof config.light === 'object' && config.light !== null ? { ...config.light } : {},
+  );
+
+  if (hasLegacyUiColorFlatKeys(config)) {
+    const bucket = colorMode === 'light' ? light : dark;
+    for (const key of UI_COLOR_LEGACY_KEYS) {
+      if (config[key] != null) bucket[key] = config[key];
+    }
+    if (colorMode === 'light') {
+      light = migrateUiColorBucket(bucket);
+    } else {
+      dark = migrateUiColorBucket(bucket);
+    }
+  }
+
+  return { colorMode, dark, light };
+}
+
+function getUiColorModeBucket(config, mode = getUiColorMode(config)) {
+  const normalized = normalizeUiColorConfig(config);
+  return normalized[mode === 'light' ? 'light' : 'dark'] ?? {};
+}
+
+/** 表示モード切替（各モードの上書きは保持） */
+function switchUiColorMode(config, mode) {
+  const normalized = normalizeUiColorConfig(config);
+  return {
+    ...normalized,
+    colorMode: mode === 'light' ? 'light' : 'dark',
+  };
+}
+
+/** @deprecated switchUiColorMode({}, mode) と同義 */
+function createUiColorConfigForMode(mode) {
+  return switchUiColorMode({}, mode);
+}
+
+function setUiColorKey(config, key, value) {
+  const normalized = normalizeUiColorConfig(config);
+  const mode = getUiColorMode(normalized);
+  const modeKey = mode === 'light' ? 'light' : 'dark';
+  return {
+    ...normalized,
+    [modeKey]: { ...normalized[modeKey], [key]: value },
+  };
+}
+
+function setUiColorKeys(config, keys, values) {
+  let next = config;
+  keys.forEach((key, index) => {
+    next = setUiColorKey(next, key, values[index]);
+  });
+  return next;
+}
+
+function resetUiColorKey(config, key) {
+  const normalized = normalizeUiColorConfig(config);
+  const mode = getUiColorMode(normalized);
+  const modeKey = mode === 'light' ? 'light' : 'dark';
+  const bucket = { ...normalized[modeKey] };
+  delete bucket[key];
+  return { ...normalized, [modeKey]: bucket };
+}
+
+/** 指定モードの UI 色上書きをすべて削除 */
+function resetUiColorModeOverrides(config, mode = getUiColorMode(config)) {
+  const normalized = normalizeUiColorConfig(config);
+  const modeKey = mode === 'light' ? 'light' : 'dark';
+  return { ...normalized, [modeKey]: {} };
+}
+
 /** 補助科目行など、セル背景より一段暗い色 */
 function darkenHex(hex, ratio = 0.12) {
   const rgb = parseHex(hex);
-  if (!rgb) return DEFAULT_UI_COLORS.cellBg;
+  if (!rgb) return DEFAULT_UI_COLORS_DARK.cellBg;
   const factor = 1 - ratio;
   return `#${toHex(rgb.r * factor)}${toHex(rgb.g * factor)}${toHex(rgb.b * factor)}`;
 }
@@ -943,60 +1181,74 @@ function darkenHex(hex, ratio = 0.12) {
 function loadUiColorConfig() {
   try {
     const raw = localStorage.getItem(UI_COLOR_STORAGE_KEY);
-    return raw ? JSON.parse(raw) : {};
+    return normalizeUiColorConfig(raw ? JSON.parse(raw) : {});
   } catch {
-    return {};
+    return normalizeUiColorConfig({});
   }
 }
 
 function saveUiColorConfig(config) {
-  localStorage.setItem(UI_COLOR_STORAGE_KEY, JSON.stringify(config));
+  localStorage.setItem(UI_COLOR_STORAGE_KEY, JSON.stringify(normalizeUiColorConfig(config)));
 }
 
 function getUiColors(config = {}) {
-  return {
-    appBg: config.appBg ?? DEFAULT_UI_COLORS.appBg,
-    cellBg: config.cellBg ?? DEFAULT_UI_COLORS.cellBg,
-    textColor: config.textColor ?? DEFAULT_UI_COLORS.textColor,
-    negativeAmountColor: config.negativeAmountColor ?? DEFAULT_UI_COLORS.negativeAmountColor,
-    yearRowBg: config.yearRowBg ?? DEFAULT_UI_COLORS.yearRowBg,
-    yearRowText: config.yearRowText ?? DEFAULT_UI_COLORS.yearRowText,
-    monthRowBg: config.monthRowBg ?? DEFAULT_UI_COLORS.monthRowBg,
-    monthRowText: config.monthRowText ?? DEFAULT_UI_COLORS.monthRowText,
-    currentMonthBg: config.currentMonthBg ?? DEFAULT_UI_COLORS.currentMonthBg,
-    currentMonthBorder: config.currentMonthBorder ?? DEFAULT_UI_COLORS.currentMonthBorder,
-    rowHoverBorder: config.rowHoverBorder ?? DEFAULT_UI_COLORS.rowHoverBorder,
-    expandableHighlight: config.expandableHighlight ?? DEFAULT_UI_COLORS.expandableHighlight,
-    fillColor1: config.fillColor1 ?? DEFAULT_UI_COLORS.fillColor1,
-    fillColor2: config.fillColor2 ?? DEFAULT_UI_COLORS.fillColor2,
-    planAmountColor: config.planAmountColor ?? DEFAULT_UI_COLORS.planAmountColor,
-    amountVarianceColor: config.amountVarianceColor ?? DEFAULT_UI_COLORS.amountVarianceColor,
-    warningTextColor: config.warningTextColor ?? DEFAULT_UI_COLORS.warningTextColor,
-  };
+  const normalized = normalizeUiColorConfig(config);
+  const mode = getUiColorMode(normalized);
+  const defaults = getDefaultUiColors(mode);
+  const result = { ...defaults };
+  const bucket = getUiColorModeBucket(normalized, mode);
+  for (const key of UI_COLOR_KEYS) {
+    if (bucket[key] != null) result[key] = bucket[key];
+  }
+  return result;
+}
+
+function isUiColorKeyCustom(config, key) {
+  const normalized = normalizeUiColorConfig(config);
+  const mode = getUiColorMode(normalized);
+  const bucket = getUiColorModeBucket(normalized, mode);
+  if (bucket[key] == null) return false;
+  return bucket[key] !== getDefaultUiColors(mode)[key];
 }
 
 function applyUiColors(config = {}) {
+  const colors = getUiColors(config);
   const {
-    appBg, cellBg, textColor, negativeAmountColor,
+    browserBg,
+    settingsSurfaceBg, settingsInputBg, settingsInputBorder,
+    settingsButtonBg, settingsRowHoverBg,
+    cellBg, textColor,
+    noteTextColor, hintTextColor, textDimColor,
+    negativeAmountColor,
     yearRowBg, yearRowText, monthRowBg, monthRowText,
-    currentMonthBg, currentMonthBorder,
-    rowHoverBorder,
+    currentMonthBg, currentMonthBorder, settlementMonthBg,
+    rowHoverBorder, rowSelectionRing,
     expandableHighlight,
-    fillColor1,
-    fillColor2,
-    planAmountColor,
-    amountVarianceColor,
+    fillColor1, fillColor2,
+    planAmountColor, amountVarianceColor,
     warningTextColor,
-  } = getUiColors(config);
+  } = colors;
+
+  document.documentElement.style.setProperty('--plan-browser-bg', browserBg);
+  document.documentElement.dataset.planColorMode = getUiColorMode(config);
+
   const root = document.querySelector('.plan-app');
   if (!root) return;
 
-  root.style.setProperty('--plan-bg', appBg);
+  root.dataset.planColorMode = getUiColorMode(config);
+  root.style.setProperty('--plan-browser-bg', browserBg);
+  root.style.setProperty('--plan-surface', opaqueHex(settingsSurfaceBg));
+  root.style.setProperty('--plan-editor-bg', opaqueHex(settingsInputBg));
+  root.style.setProperty('--plan-editor-border', opaqueHex(settingsInputBorder));
+  root.style.setProperty('--plan-settings-button-bg', opaqueHex(settingsButtonBg));
+  root.style.setProperty('--plan-settings-row-hover', opaqueHex(settingsRowHoverBg));
+  root.style.setProperty('--plan-bg', opaqueHex(settingsInputBg));
   root.style.setProperty('--plan-cell-bg', cellBg);
   root.style.setProperty('--plan-text', textColor);
   root.style.setProperty('--plan-muted', textColor);
-  root.style.setProperty('--plan-text-dim', hexToRgba(textColor, 0.5));
-  root.style.setProperty('--plan-text-faint', hexToRgba(textColor, 0.35));
+  root.style.setProperty('--plan-note-text', opaqueHex(noteTextColor));
+  root.style.setProperty('--plan-hint-text', opaqueHex(hintTextColor));
+  root.style.setProperty('--plan-text-dim', opaqueHex(textDimColor));
   root.style.setProperty('--plan-negative-amount', negativeAmountColor);
   root.style.setProperty('--plan-year-row-bg', yearRowBg);
   root.style.setProperty('--plan-year-row-text', yearRowText);
@@ -1007,7 +1259,12 @@ function applyUiColors(config = {}) {
   root.style.setProperty('--current-month-overlay-head', hexToRgba(currentMonthBg, CURRENT_MONTH_OVERLAY_HEAD_ALPHA));
   root.style.setProperty('--current-month-overlay-hover', hexToRgba(currentMonthBg, CURRENT_MONTH_OVERLAY_HOVER_ALPHA));
   root.style.setProperty('--current-month-overlay-total', hexToRgba(currentMonthBg, CURRENT_MONTH_OVERLAY_TOTAL_ALPHA));
+  root.style.setProperty('--settlement-month-overlay', hexToRgba(settlementMonthBg, SETTLEMENT_MONTH_OVERLAY_ALPHA));
+  root.style.setProperty('--settlement-month-ring', hexToRgba(settlementMonthBg, SETTLEMENT_MONTH_RING_ALPHA));
+  root.style.setProperty('--settlement-month-overlay-head', hexToRgba(settlementMonthBg, SETTLEMENT_MONTH_OVERLAY_HEAD_ALPHA));
+  root.style.setProperty('--settlement-month-overlay-total', hexToRgba(settlementMonthBg, SETTLEMENT_MONTH_OVERLAY_TOTAL_ALPHA));
   root.style.setProperty('--row-hover-border', opaqueHex(rowHoverBorder));
+  root.style.setProperty('--row-selection-ring', opaqueHex(rowSelectionRing));
   root.style.setProperty('--plan-expandable-highlight', opaqueHex(expandableHighlight));
   root.style.setProperty('--plan-fill-color-1', opaqueHex(fillColor1));
   root.style.setProperty('--plan-fill-color-2', opaqueHex(fillColor2));
@@ -1017,26 +1274,11 @@ function applyUiColors(config = {}) {
 }
 
 function isUiColorCustom(config = {}) {
-  const current = getUiColors(config);
-  return (
-    current.appBg !== DEFAULT_UI_COLORS.appBg
-    || current.cellBg !== DEFAULT_UI_COLORS.cellBg
-    || current.textColor !== DEFAULT_UI_COLORS.textColor
-    || current.negativeAmountColor !== DEFAULT_UI_COLORS.negativeAmountColor
-    || current.yearRowBg !== DEFAULT_UI_COLORS.yearRowBg
-    || current.yearRowText !== DEFAULT_UI_COLORS.yearRowText
-    || current.monthRowBg !== DEFAULT_UI_COLORS.monthRowBg
-    || current.monthRowText !== DEFAULT_UI_COLORS.monthRowText
-    || current.currentMonthBg !== DEFAULT_UI_COLORS.currentMonthBg
-    || current.currentMonthBorder !== DEFAULT_UI_COLORS.currentMonthBorder
-    || current.rowHoverBorder !== DEFAULT_UI_COLORS.rowHoverBorder
-    || current.expandableHighlight !== DEFAULT_UI_COLORS.expandableHighlight
-    || current.fillColor1 !== DEFAULT_UI_COLORS.fillColor1
-    || current.fillColor2 !== DEFAULT_UI_COLORS.fillColor2
-    || current.planAmountColor !== DEFAULT_UI_COLORS.planAmountColor
-    || current.amountVarianceColor !== DEFAULT_UI_COLORS.amountVarianceColor
-    || current.warningTextColor !== DEFAULT_UI_COLORS.warningTextColor
-  );
+  const normalized = normalizeUiColorConfig(config);
+  const mode = getUiColorMode(normalized);
+  const bucket = getUiColorModeBucket(normalized, mode);
+  const defaults = getDefaultUiColors(mode);
+  return UI_COLOR_KEYS.some((key) => bucket[key] != null && bucket[key] !== defaults[key]);
 }
 
 /* parse/parseJournal.js */
@@ -1046,6 +1288,11 @@ const FISCAL_MONTHS = [
 ];
 
 const EXTRA_COLUMNS = ['合計', '平均'];
+
+/** 貸借対照表・現預金の大項目（合計・平均列は表示しない） */
+const BS_SECTION_IDS = new Set([
+  'currentAssets', 'fixedAssets', 'currentLiab', 'fixedLiab', 'equity', 'cashBalance',
+]);
 
 const COLOR_FALLBACK = { color: '#44403c', barColor: '#292524' };
 
@@ -2083,6 +2330,7 @@ const FORMULA_LABELS = {
   sgaTotal: '消費税対象販管費合計 + その他合計',
   cashInflow: '仕訳の借方「普通預金」の合計（期首月は現預金・前期末残高・出金実績から整合）',
   cashOutflow: '仕訳の貸方「普通預金」の合計',
+  cashDepositChange: '当月末現預金 − 前月末現預金',
 };
 
 function isAggregateRow(row) {
@@ -2121,10 +2369,6 @@ const PL_SECTION_CATEGORY = {
   other: 'other',
   tax: 'tax',
 };
-
-const BS_SECTION_IDS = new Set([
-  'currentAssets', 'fixedAssets', 'currentLiab', 'fixedLiab', 'equity', 'cashBalance',
-]);
 
 function normalizeSub(sub) {
   if (!sub || sub === '補助科目なし') return '';
@@ -3355,6 +3599,95 @@ function formatSalaryIncreaseRate(ratePercent) {
   const rounded = Math.round(ratePercent * 10) / 10;
   const sign = rounded > 0 ? '+' : '';
   return `${sign}${rounded.toLocaleString('ja-JP', { maximumFractionDigits: 1 })}%`;
+}
+
+/* config/planCellEdit.js */
+let pendingTabFocus = null;
+
+function markPlanCellTabTarget(rowKey, month, scopeId) {
+  pendingTabFocus = { scopeId, rowKey: String(rowKey), month: String(month) };
+}
+
+function takePlanCellTabTarget(scopeId) {
+  if (pendingTabFocus?.scopeId !== scopeId) return null;
+  const target = pendingTabFocus;
+  pendingTabFocus = null;
+  return target;
+}
+
+function tagPlanEditableCell(td, { rowKey, month }) {
+  if (rowKey != null) td.dataset.planRowKey = String(rowKey);
+  if (month != null) td.dataset.planMonth = String(month);
+}
+
+function tagPlanEditableRow(tr, rowKey) {
+  if (rowKey != null) tr.dataset.planRowKey = String(rowKey);
+}
+
+function findNextEditablePlanCell(td) {
+  let el = td.nextElementSibling;
+  while (el) {
+    if (el.matches('td.salary-plan-cell-editable')) return el;
+    el = el.nextElementSibling;
+  }
+  return null;
+}
+
+function resolvePlanTabTargetCell(container, target) {
+  if (!container || !target) return null;
+  const row = container.querySelector(
+    `tr[data-plan-row-key="${CSS.escape(target.rowKey)}"]`,
+  );
+  const cell = row?.querySelector(`td[data-plan-month="${CSS.escape(target.month)}"]`);
+  if (cell?.classList.contains('salary-plan-cell-editable')) return cell;
+  return null;
+}
+
+function resumePlanCellTabEdit(container, scopeId) {
+  const target = takePlanCellTabTarget(scopeId);
+  const cell = resolvePlanTabTargetCell(container, target);
+  if (!cell) return;
+  requestAnimationFrame(() => {
+    cell.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+  });
+}
+
+function handlePlanAmountCellKeydown(e, {
+  finish,
+  td,
+  scopeId,
+  allowShiftFillForward = true,
+  onTabNext,
+}) {
+  if (e.isComposing) return false;
+  if (e.key === 'Enter' || e.code === 'NumpadEnter') {
+    e.preventDefault();
+    finish(true, allowShiftFillForward && e.shiftKey);
+    return true;
+  }
+  if (e.key === 'Tab' && !e.shiftKey) {
+    e.preventDefault();
+    const nextTd = findNextEditablePlanCell(td);
+    const row = td.closest('tr');
+    const rowKey = td.dataset.planRowKey ?? row?.dataset.planRowKey;
+    const nextMonth = nextTd?.dataset.planMonth;
+    if (onTabNext) {
+      finish(true, false);
+      onTabNext(nextTd, { rowKey, nextMonth });
+    } else {
+      if (scopeId && rowKey && nextMonth) {
+        markPlanCellTabTarget(rowKey, nextMonth, scopeId);
+      }
+      finish(true, false);
+    }
+    return true;
+  }
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    finish(false);
+    return true;
+  }
+  return false;
 }
 
 /* config/taxPaymentConfig.js */
@@ -4885,11 +5218,22 @@ function rawValuesFromRow(row) {
   return values;
 }
 
-function mergePlanIntoCsvRow(csvRow, planMonthValues, fiscalMonths, skipPlanFillMonths = null) {
+function mergePlanIntoCsvRow(
+  csvRow,
+  planMonthValues,
+  fiscalMonths,
+  skipPlanFillMonths = null,
+  forcePlanMonths = null,
+) {
   const months = rawValuesFromRow(csvRow);
   const planFillMonths = [];
   for (const m of fiscalMonths) {
     if (skipPlanFillMonths?.has(m)) continue;
+    if (forcePlanMonths?.has(m)) {
+      months[m] = planMonthValues[m] ?? 0;
+      planFillMonths.push(m);
+      continue;
+    }
     if (isMissingCsvMonthValue(months[m]) && (planMonthValues[m] ?? 0) !== 0) {
       months[m] = planMonthValues[m];
       planFillMonths.push(m);
@@ -4907,6 +5251,7 @@ function mergePlanIntoPrimaryCsvRow(
   planTotal,
   fiscalMonths,
   skipPlanFillMonths = null,
+  forcePlanMonths = null,
 ) {
   if (csvRows.length === 0 || !planTotal) return csvRows;
   const planMonths = rawValuesFromRow({ values: planTotal });
@@ -4916,7 +5261,7 @@ function mergePlanIntoPrimaryCsvRow(
   const targetIdx = primaryIdx >= 0 ? primaryIdx : 0;
   return csvRows.map((row, index) => {
     if (index !== targetIdx) return row;
-    return mergePlanIntoCsvRow(row, planMonths, fiscalMonths, skipPlanFillMonths);
+    return mergePlanIntoCsvRow(row, planMonths, fiscalMonths, skipPlanFillMonths, forcePlanMonths);
   });
 }
 
@@ -4933,6 +5278,7 @@ function rebuildPersonnelRows(
   travelPlanTotal,
   fiscalMonths,
   overtimeSkipPlanFillMonths = null,
+  overtimeForcePlanMonths = null,
   legalWelfareRate,
 ) {
   const totalRow = rows.find((r) => r.type === 'total');
@@ -4954,6 +5300,7 @@ function rebuildPersonnelRows(
     overtimePlanTotal,
     fiscalMonths,
     overtimeSkipPlanFillMonths,
+    overtimeForcePlanMonths,
   );
   const travelCsvMerged = mergePlanIntoPrimaryCsvRow(
     travelCsv,
@@ -5134,6 +5481,7 @@ function enrichPlanDataWithEmployeeSalaryRows(planData, {
   fiscalEndMonth,
   displayMode,
   legalWelfareRate,
+  monthDisplayConfig,
 }) {
   if (displayMode !== 'plan' && displayMode !== 'budget-actual') {
     return planData;
@@ -5188,9 +5536,16 @@ function enrichPlanDataWithEmployeeSalaryRows(planData, {
   }
 
   const personnel = planData.sections[personnelIdx];
-  const overtimeSkipPlanFillMonths = displayMode === 'budget-actual'
-    ? buildPastFiscalMonthSet(businessStartYear, fiscalPeriod, fiscalMonths)
-    : null;
+  let overtimeSkipPlanFillMonths = null;
+  let overtimeForcePlanMonths = null;
+  if (displayMode === 'budget-actual') {
+    ({ skipPlanFillMonths: overtimeSkipPlanFillMonths, forcePlanMonths: overtimeForcePlanMonths } = buildBudgetActualMonthSets({
+      config: monthDisplayConfig,
+      businessStartYear,
+      fiscalPeriod,
+      fiscalMonths,
+    }));
+  }
   const rows = rebuildPersonnelRows(
     personnel.rows,
     directorRows,
@@ -5201,6 +5556,7 @@ function enrichPlanDataWithEmployeeSalaryRows(planData, {
     travelPlanTotal,
     fiscalMonths,
     overtimeSkipPlanFillMonths,
+    overtimeForcePlanMonths,
     legalWelfareRate,
   );
 
@@ -5283,6 +5639,7 @@ function taxPayMergePlanIntoCsvRow(
   actualMonthly,
   fiscalMonths,
   pastMonths,
+  forcePlanMonths = null,
 ) {
   const months = taxPayRawValuesFromRow(csvRow);
   const planFillMonths = [];
@@ -5291,6 +5648,11 @@ function taxPayMergePlanIntoCsvRow(
       if (taxPayIsMissingCsvMonthValue(months[m])) {
         months[m] = actualMonthly[m] ?? 0;
       }
+      continue;
+    }
+    if (forcePlanMonths?.has(m)) {
+      months[m] = planMonthValues[m] ?? 0;
+      if ((planMonthValues[m] ?? 0) !== 0) planFillMonths.push(m);
       continue;
     }
     if (taxPayIsMissingCsvMonthValue(months[m]) && (planMonthValues[m] ?? 0) !== 0) {
@@ -5311,6 +5673,7 @@ function taxPayMergePlanIntoPrimaryCsvRow(
   actualMonthly,
   fiscalMonths,
   pastMonths,
+  forcePlanMonths = null,
 ) {
   if (csvRows.length === 0) return csvRows;
   const primaryIdx = csvRows.findIndex(
@@ -5325,6 +5688,7 @@ function taxPayMergePlanIntoPrimaryCsvRow(
       actualMonthly,
       fiscalMonths,
       pastMonths,
+      forcePlanMonths,
     );
   });
 }
@@ -5563,6 +5927,7 @@ function taxPayRebuildRowsForAccounts(
   fiscalMonths,
   pastMonths,
   planRowIdPrefix,
+  forcePlanMonths = null,
 ) {
   const totalRow = rows.find((r) => r.type === 'total');
   const body = rows.filter((r) => r.type !== 'plan' && r.type !== 'total');
@@ -5581,6 +5946,7 @@ function taxPayRebuildRowsForAccounts(
       actualMonthly,
       fiscalMonths,
       pastMonths,
+      forcePlanMonths,
     );
     const planTotal = taxPayBuildAccountPlanTotal(
       monthlyPlan,
@@ -5710,7 +6076,14 @@ function taxPayCollectAllPlanVisibilityCandidates(
   return candidates;
 }
 
-function taxPayEnrichOtherSection(section, periodPlans, actualAmounts, fiscalMonths, pastMonths) {
+function taxPayEnrichOtherSection(
+  section,
+  periodPlans,
+  actualAmounts,
+  fiscalMonths,
+  pastMonths,
+  forcePlanMonths = null,
+) {
   const accounts = [...PAYMENT_PLAN_OTHER_SECTION_ACCOUNTS];
   const rows = taxPayRebuildRowsForAccounts(
     section.rows,
@@ -5720,6 +6093,7 @@ function taxPayEnrichOtherSection(section, periodPlans, actualAmounts, fiscalMon
     fiscalMonths,
     pastMonths,
     'tax-pay-plan',
+    forcePlanMonths,
   );
   const totalIdx = rows.findIndex((r) => r.type === 'total');
   if (totalIdx >= 0) {
@@ -5732,7 +6106,14 @@ function taxPayEnrichOtherSection(section, periodPlans, actualAmounts, fiscalMon
   return { ...section, rows };
 }
 
-function taxPayEnrichTaxSection(section, periodPlans, actualAmounts, fiscalMonths, pastMonths) {
+function taxPayEnrichTaxSection(
+  section,
+  periodPlans,
+  actualAmounts,
+  fiscalMonths,
+  pastMonths,
+  forcePlanMonths = null,
+) {
   const accounts = [...PAYMENT_PLAN_TAX_SECTION_ACCOUNTS];
   const rows = taxPayRebuildRowsForAccounts(
     section.rows,
@@ -5742,6 +6123,7 @@ function taxPayEnrichTaxSection(section, periodPlans, actualAmounts, fiscalMonth
     fiscalMonths,
     pastMonths,
     'corp-tax-plan',
+    forcePlanMonths,
   );
   const totalIdx = rows.findIndex((r) => r.type === 'total');
   if (totalIdx >= 0) {
@@ -5798,6 +6180,7 @@ function taxPayEnrichOtherPaySection(
   actualResidentTaxByMunicipality,
   fiscalMonths,
   pastMonths,
+  forcePlanMonths = null,
 ) {
   const accounts = [...PAYMENT_PLAN_OTHER_PAY_SIMPLE_ACCOUNTS];
   let rows = taxPayRebuildRowsForAccounts(
@@ -5808,6 +6191,7 @@ function taxPayEnrichOtherPaySection(
     fiscalMonths,
     pastMonths,
     'other-pay-plan',
+    forcePlanMonths,
   );
   rows = taxPayRebuildResidentTaxRows(
     rows,
@@ -5982,13 +6366,25 @@ function enrichPlanDataWithTaxPaymentRows(planData, {
   fiscalEndMonth,
   displayMode,
   actualSourcePlanData = null,
+  monthDisplayConfig,
 }) {
   if (displayMode !== 'plan' && displayMode !== 'budget-actual') {
     return planData;
   }
 
   const fiscalMonths = buildFiscalYearMonths(fiscalEndMonth);
-  const pastMonths = buildPastFiscalMonthSet(businessStartYear, fiscalPeriod, fiscalMonths);
+  let pastMonths;
+  let forcePlanMonths = null;
+  if (displayMode === 'budget-actual') {
+    ({ actualMonthSet: pastMonths, forcePlanMonths } = buildBudgetActualMonthSets({
+      config: monthDisplayConfig,
+      businessStartYear,
+      fiscalPeriod,
+      fiscalMonths,
+    }));
+  } else {
+    pastMonths = buildPastFiscalMonthSet(businessStartYear, fiscalPeriod, fiscalMonths);
+  }
   const actualSource = actualSourcePlanData ?? planData;
   const actualAmounts = collectPaymentActualAmountsFromPlanData(
     actualSource,
@@ -6048,6 +6444,7 @@ function enrichPlanDataWithTaxPaymentRows(planData, {
       actualAmounts,
       fiscalMonths,
       pastMonths,
+      forcePlanMonths,
     );
   } else if (hasPlans) {
     const created = taxPayCreateOtherSectionFromPlans(
@@ -6069,6 +6466,7 @@ function enrichPlanDataWithTaxPaymentRows(planData, {
       actualResidentTaxByMunicipality,
       fiscalMonths,
       pastMonths,
+      forcePlanMonths,
     );
   } else if (hasPlans) {
     const created = taxPayCreateOtherPaySectionFromPlans(
@@ -6090,6 +6488,7 @@ function enrichPlanDataWithTaxPaymentRows(planData, {
       actualAmounts,
       fiscalMonths,
       pastMonths,
+      forcePlanMonths,
     );
   } else if (hasPlans) {
     const created = taxPayCreateTaxSectionFromPlans(
@@ -6163,11 +6562,22 @@ function outMakePlanRow(id, label, subLabel, values) {
   };
 }
 
-function outMergePlanIntoCsvRow(csvRow, planMonthValues, fiscalMonths, skipPlanFillMonths = null) {
+function outMergePlanIntoCsvRow(
+  csvRow,
+  planMonthValues,
+  fiscalMonths,
+  skipPlanFillMonths = null,
+  forcePlanMonths = null,
+) {
   const months = outRawValuesFromRow(csvRow);
   const planFillMonths = [];
   for (const m of fiscalMonths) {
     if (skipPlanFillMonths?.has(m)) continue;
+    if (forcePlanMonths?.has(m)) {
+      months[m] = planMonthValues[m] ?? 0;
+      planFillMonths.push(m);
+      continue;
+    }
     if (outIsMissingCsvMonthValue(months[m]) && (planMonthValues[m] ?? 0) !== 0) {
       months[m] = planMonthValues[m];
       planFillMonths.push(m);
@@ -6208,7 +6618,13 @@ function outRowMatchesVendor(row, vendor) {
   return row.label === vendor.accountLabel && row.subLabel === vendor.subLabel;
 }
 
-function outRebuildOutsourcingRows(rows, vendors, fiscalMonths, skipPlanFillMonths = null) {
+function outRebuildOutsourcingRows(
+  rows,
+  vendors,
+  fiscalMonths,
+  skipPlanFillMonths = null,
+  forcePlanMonths = null,
+) {
   const totalRow = rows.find((r) => r.type === 'total');
   const body = rows.filter((r) => r.type !== 'plan' && r.type !== 'total');
   const planRows = outBuildVendorPlanRows(vendors, fiscalMonths);
@@ -6220,7 +6636,7 @@ function outRebuildOutsourcingRows(rows, vendors, fiscalMonths, skipPlanFillMont
     if (!vendor) return row;
     matchedVendorIds.add(vendor.id);
     const planMonths = outRawValuesFromRow({ values: outBuildVendorPlanValues(vendor, fiscalMonths) });
-    return outMergePlanIntoCsvRow(row, planMonths, fiscalMonths, skipPlanFillMonths);
+    return outMergePlanIntoCsvRow(row, planMonths, fiscalMonths, skipPlanFillMonths, forcePlanMonths);
   });
 
   const orphanPlanRows = planRows.filter((row) => {
@@ -6413,6 +6829,7 @@ function enrichPlanDataWithOutsourcingRows(planData, {
   corpEntityMarkers,
   consumptionTaxRates,
   withholdingTaxRates,
+  monthDisplayConfig,
 }) {
   const fiscalMonths = buildFiscalYearMonths(fiscalEndMonth);
   const monthYearMap = buildMonthYearMap(businessStartYear, fiscalPeriod);
@@ -6445,9 +6862,16 @@ function enrichPlanDataWithOutsourcingRows(planData, {
   }
 
   const extraCandidates = outCollectPlanVisibilityCandidates(planRows);
-  const skipPlanFillMonths = displayMode === 'budget-actual'
-    ? buildPastFiscalMonthSet(businessStartYear, fiscalPeriod, fiscalMonths)
-    : null;
+  let skipPlanFillMonths = null;
+  let forcePlanMonths = null;
+  if (displayMode === 'budget-actual') {
+    ({ skipPlanFillMonths, forcePlanMonths } = buildBudgetActualMonthSets({
+      config: monthDisplayConfig,
+      businessStartYear,
+      fiscalPeriod,
+      fiscalMonths,
+    }));
+  }
 
   if (outsourcingIdx < 0) {
     if (planRows.length === 0) return planData;
@@ -6473,6 +6897,7 @@ function enrichPlanDataWithOutsourcingRows(planData, {
     vendors,
     fiscalMonths,
     skipPlanFillMonths,
+    forcePlanMonths,
   );
 
   const totalIdx = rows.findIndex((r) => r.type === 'total');
@@ -6584,11 +7009,22 @@ function revMakePlanRow(id, label, subLabel, values) {
   };
 }
 
-function revMergePlanIntoCsvRow(csvRow, planMonthValues, fiscalMonths, skipPlanFillMonths = null) {
+function revMergePlanIntoCsvRow(
+  csvRow,
+  planMonthValues,
+  fiscalMonths,
+  skipPlanFillMonths = null,
+  forcePlanMonths = null,
+) {
   const months = revRawValuesFromRow(csvRow);
   const planFillMonths = [];
   for (const m of fiscalMonths) {
     if (skipPlanFillMonths?.has(m)) continue;
+    if (forcePlanMonths?.has(m)) {
+      months[m] = planMonthValues[m] ?? 0;
+      planFillMonths.push(m);
+      continue;
+    }
     if (revIsMissingCsvMonthValue(months[m]) && (planMonthValues[m] ?? 0) !== 0) {
       months[m] = planMonthValues[m];
       planFillMonths.push(m);
@@ -6678,7 +7114,61 @@ function revInsertManMonthRows(rows, clients, fiscalMonths) {
   return result;
 }
 
-function revRebuildRevenueRows(rows, clients, fiscalMonths, skipPlanFillMonths = null, taxOptions = null) {
+function revHasBudgetActualMonthFilter(skipPlanFillMonths, forcePlanMonths) {
+  return (skipPlanFillMonths?.size ?? 0) > 0 || (forcePlanMonths?.size ?? 0) > 0;
+}
+
+/** plan / man-month: hide plan values in actual-display months (budget-actual). */
+function revApplyBudgetActualMonthDisplayToPlanRow(
+  row,
+  fiscalMonths,
+  skipPlanFillMonths,
+  forcePlanMonths,
+) {
+  if (row.type !== 'plan' && row.type !== 'man-month') return row;
+  if (!revHasBudgetActualMonthFilter(skipPlanFillMonths, forcePlanMonths)) return row;
+
+  const months = revRawValuesFromRow(row);
+  const planFillMonths = [];
+  for (const m of fiscalMonths) {
+    if (skipPlanFillMonths?.has(m)) {
+      months[m] = 0;
+      continue;
+    }
+    if (forcePlanMonths?.has(m) && (months[m] ?? 0) !== 0) {
+      planFillMonths.push(m);
+    }
+  }
+  return {
+    ...row,
+    values: enrichRowValues(months, 'flow'),
+    planFillMonths,
+  };
+}
+
+function revApplyBudgetActualMonthDisplayToRows(
+  rows,
+  fiscalMonths,
+  skipPlanFillMonths,
+  forcePlanMonths,
+) {
+  if (!revHasBudgetActualMonthFilter(skipPlanFillMonths, forcePlanMonths)) return rows;
+  return rows.map((row) => revApplyBudgetActualMonthDisplayToPlanRow(
+    row,
+    fiscalMonths,
+    skipPlanFillMonths,
+    forcePlanMonths,
+  ));
+}
+
+function revRebuildRevenueRows(
+  rows,
+  clients,
+  fiscalMonths,
+  skipPlanFillMonths = null,
+  taxOptions = null,
+  forcePlanMonths = null,
+) {
   const totalRow = rows.find((r) => r.type === 'total');
   const body = rows.filter((r) => r.type !== 'plan' && r.type !== 'total' && r.type !== 'man-month');
   const planRows = revBuildClientPlanRows(clients, fiscalMonths, taxOptions);
@@ -6690,7 +7180,7 @@ function revRebuildRevenueRows(rows, clients, fiscalMonths, skipPlanFillMonths =
     if (!client) return row;
     matchedClientIds.add(client.id);
     const planMonths = revRawValuesFromRow({ values: revBuildClientPlanValues(client, fiscalMonths, taxOptions) });
-    return revMergePlanIntoCsvRow(row, planMonths, fiscalMonths, skipPlanFillMonths);
+    return revMergePlanIntoCsvRow(row, planMonths, fiscalMonths, skipPlanFillMonths, forcePlanMonths);
   });
 
   const orphanPlanRows = planRows.filter((row) => {
@@ -6736,6 +7226,7 @@ function enrichPlanDataWithRevenueRows(planData, {
   fiscalEndMonth,
   displayMode,
   consumptionTaxRates,
+  monthDisplayConfig,
 }) {
   const fiscalMonths = buildFiscalYearMonths(fiscalEndMonth);
   const revenueIdx = planData.sections.findIndex((s) => s.id === 'revenue');
@@ -6758,13 +7249,26 @@ function enrichPlanDataWithRevenueRows(planData, {
   }
 
   const extraCandidates = revCollectPlanVisibilityCandidates(planRows);
-  const skipPlanFillMonths = displayMode === 'budget-actual'
-    ? buildPastFiscalMonthSet(businessStartYear, fiscalPeriod, fiscalMonths)
-    : null;
+  let skipPlanFillMonths = null;
+  let forcePlanMonths = null;
+  if (displayMode === 'budget-actual') {
+    ({ skipPlanFillMonths, forcePlanMonths } = buildBudgetActualMonthSets({
+      config: monthDisplayConfig,
+      businessStartYear,
+      fiscalPeriod,
+      fiscalMonths,
+    }));
+  }
 
   if (revenueIdx < 0) {
     if (planRows.length === 0) return planData;
-    const rowsWithManMonths = revInsertManMonthRows(planRows, clients, fiscalMonths);
+    let rowsWithManMonths = revInsertManMonthRows(planRows, clients, fiscalMonths);
+    rowsWithManMonths = revApplyBudgetActualMonthDisplayToRows(
+      rowsWithManMonths,
+      fiscalMonths,
+      skipPlanFillMonths,
+      forcePlanMonths,
+    );
     return {
       ...planData,
       sections: [...planData.sections, {
@@ -6787,9 +7291,16 @@ function enrichPlanDataWithRevenueRows(planData, {
     fiscalMonths,
     skipPlanFillMonths,
     taxOptions,
+    forcePlanMonths,
   );
 
   rows = revInsertManMonthRows(rows, clients, fiscalMonths);
+  rows = revApplyBudgetActualMonthDisplayToRows(
+    rows,
+    fiscalMonths,
+    skipPlanFillMonths,
+    forcePlanMonths,
+  );
 
   const totalIdx = rows.findIndex((r) => r.type === 'total');
   if (totalIdx >= 0) {
@@ -6933,11 +7444,22 @@ function buildAveragePlanMonthValues(referenceRow, fiscalMonths) {
   return months;
 }
 
-function mergePlanIntoCsvRow(csvRow, planMonthValues, fiscalMonths, skipPlanFillMonths = null) {
+function mergePlanIntoCsvRow(
+  csvRow,
+  planMonthValues,
+  fiscalMonths,
+  skipPlanFillMonths = null,
+  forcePlanMonths = null,
+) {
   const months = rawValuesFromRow(csvRow);
   const planFillMonths = [];
   for (const m of fiscalMonths) {
     if (skipPlanFillMonths?.has(m)) continue;
+    if (forcePlanMonths?.has(m)) {
+      months[m] = planMonthValues[m] ?? 0;
+      planFillMonths.push(m);
+      continue;
+    }
     if (isMissingCsvMonthValue(months[m]) && (planMonthValues[m] ?? 0) !== 0) {
       months[m] = planMonthValues[m];
       planFillMonths.push(m);
@@ -6950,13 +7472,24 @@ function mergePlanIntoCsvRow(csvRow, planMonthValues, fiscalMonths, skipPlanFill
   };
 }
 
-function mergeOverrideIntoCsvRow(csvRow, overrideMonthly, fiscalMonths, skipPlanFillMonths = null) {
+function mergeOverrideIntoCsvRow(
+  csvRow,
+  overrideMonthly,
+  fiscalMonths,
+  skipPlanFillMonths = null,
+  forcePlanMonths = null,
+) {
   const months = rawValuesFromRow(csvRow);
   const planFillMonths = [];
   for (const m of fiscalMonths) {
     if (skipPlanFillMonths?.has(m)) continue;
     const overrideVal = overrideMonthly[m];
     if (overrideVal === null || overrideVal === undefined) continue;
+    if (forcePlanMonths?.has(m)) {
+      months[m] = overrideVal;
+      planFillMonths.push(m);
+      continue;
+    }
     if (isMissingCsvMonthValue(months[m])) {
       months[m] = overrideVal;
       planFillMonths.push(m);
@@ -6986,6 +7519,7 @@ function enrichSectionRowsWithAverageFill(
   rowFilter,
   skipPlanFillMonths = null,
   expenseOverrideMap = null,
+  forcePlanMonths = null,
 ) {
   const overrideTargetIds = buildExpenseOverrideTargetIds(section.rows, expenseOverrideMap);
 
@@ -6997,13 +7531,13 @@ function enrichSectionRowsWithAverageFill(
     const overrideMonthly = expenseOverrideMap?.get(account);
     if (overrideMonthly) {
       if (!overrideTargetIds.has(row.id)) return row;
-      return mergeOverrideIntoCsvRow(row, overrideMonthly, fiscalMonths, skipPlanFillMonths);
+      return mergeOverrideIntoCsvRow(row, overrideMonthly, fiscalMonths, skipPlanFillMonths, forcePlanMonths);
     }
 
     const refRow = refMap.get(rowKey(row));
     const planMonths = buildAveragePlanMonthValues(refRow, fiscalMonths);
     if (!planMonths) return row;
-    return mergePlanIntoCsvRow(row, planMonths, fiscalMonths, skipPlanFillMonths);
+    return mergePlanIntoCsvRow(row, planMonths, fiscalMonths, skipPlanFillMonths, forcePlanMonths);
   });
 
   const totalIdx = rows.findIndex((r) => r.type === 'total');
@@ -7039,6 +7573,7 @@ function enrichPlanDataWithPeriodAverageFills(planData, {
   fiscalEndMonth,
   displayMode,
   expensePlanOverrides,
+  monthDisplayConfig,
 }) {
   if (displayMode !== 'plan' && displayMode !== 'budget-actual') {
     return planData;
@@ -7055,9 +7590,16 @@ function enrichPlanDataWithPeriodAverageFills(planData, {
   if (!refPlanData) return planData;
 
   const fiscalMonths = buildFiscalYearMonths(fiscalEndMonth);
-  const skipPlanFillMonths = displayMode === 'budget-actual'
-    ? buildPastFiscalMonthSet(businessStartYear, fiscalPeriod, fiscalMonths)
-    : null;
+  let skipPlanFillMonths = null;
+  let forcePlanMonths = null;
+  if (displayMode === 'budget-actual') {
+    ({ skipPlanFillMonths, forcePlanMonths } = buildBudgetActualMonthSets({
+      config: monthDisplayConfig,
+      businessStartYear,
+      fiscalPeriod,
+      fiscalMonths,
+    }));
+  }
   const expenseOverrideMap = buildExpenseOverrideMapForPeriod(
     expensePlanOverrides ?? {},
     fiscalPeriod,
@@ -7078,6 +7620,8 @@ function enrichPlanDataWithPeriodAverageFills(planData, {
         fiscalMonths,
         isInterestRow,
         skipPlanFillMonths,
+        null,
+        forcePlanMonths,
       );
     }
     if (section.id === EXPENSE_SECTION_ID) {
@@ -7088,6 +7632,7 @@ function enrichPlanDataWithPeriodAverageFills(planData, {
         null,
         skipPlanFillMonths,
         expenseOverrideMap,
+        forcePlanMonths,
       );
     }
     if (section.id === OTHER_SECTION_ID) {
@@ -7097,6 +7642,8 @@ function enrichPlanDataWithPeriodAverageFills(planData, {
         fiscalMonths,
         isFillableOtherRow,
         skipPlanFillMonths,
+        null,
+        forcePlanMonths,
       );
     }
     return section;
@@ -7166,6 +7713,7 @@ function enrichPlanDataWithCashFlowOpeningInflow(planData, {
   fiscalPeriod,
   fiscalEndMonth,
   displayMode,
+  monthDisplayConfig,
 }) {
   const referencePeriod = fiscalPeriod - 1;
   if (referencePeriod < 1) return planData;
@@ -7185,11 +7733,19 @@ function enrichPlanDataWithCashFlowOpeningInflow(planData, {
 
   const fiscalMonths = buildFiscalYearMonths(fiscalEndMonth);
   const firstMonth = fiscalMonths[0];
-  const pastMonthSet = displayMode === 'budget-actual'
-    ? buildPastFiscalMonthSet(businessStartYear, fiscalPeriod, fiscalMonths)
-    : displayMode === 'actual'
+  let pastMonthSet;
+  if (displayMode === 'budget-actual') {
+    ({ actualMonthSet: pastMonthSet } = buildBudgetActualMonthSets({
+      config: monthDisplayConfig,
+      businessStartYear,
+      fiscalPeriod,
+      fiscalMonths,
+    }));
+  } else {
+    pastMonthSet = displayMode === 'actual'
       ? new Set(FISCAL_MONTHS)
       : new Set();
+  }
 
   if (!shouldAdjustOpeningMonth({
     displayMode,
@@ -7227,6 +7783,246 @@ function enrichPlanDataWithCashFlowOpeningInflow(planData, {
         row.id === CF_IN_ROW_ID ? updatedInflowRow : row
       )),
     };
+  });
+
+  return { ...planData, sections };
+}
+
+/* enrich/planCashFlowForecast.js */
+const CFF_IN_SECTION_ID = 'cfIn';
+const CFF_OUT_SECTION_ID = 'cfOut';
+const CFF_CASH_BALANCE_SECTION_ID = 'cashBalance';
+const CFF_CASH_BALANCE_TOTAL_LABEL = "現金及び預金合計";
+const CFF_IN_ROW_ID = 'cf-in';
+const CFF_OUT_ROW_ID = 'cf-out';
+const CFF_DEPOSIT_CHANGE_ROW_ID = 'cash-deposit-change';
+
+const CFF_INFLOW_SECTION_IDS = ['revenue', 'nonOperating'];
+const CFF_OUTFLOW_SECTION_IDS = [
+  'personnel',
+  'expense',
+  'outsourcing',
+  'other',
+  'tax',
+  'nonOperatingExpense',
+  'otherPay',
+];
+
+function cffLoadReferencePeriodPlanData(expandConfig, businessStartYear, fiscalPeriod) {
+  if (fiscalPeriod < 1) return null;
+  const cached = planDataFromCache(expandConfig, {
+    businessStartYear,
+    fiscalPeriod,
+  });
+  return cached?.data ?? null;
+}
+
+function cffFindCashBalanceTotalRow(section) {
+  if (!section) return null;
+  return section.rows.find((r) =>
+    r.type === 'total'
+    && (r.label === CFF_CASH_BALANCE_TOTAL_LABEL || String(r.label ?? '').includes(CFF_CASH_BALANCE_TOTAL_LABEL)),
+  ) ?? section.rows.find((r) => r.type === 'total' && r.accentTotal);
+}
+
+function cffGetPriorPeriodEndCashBalance(refPlanData) {
+  const section = refPlanData?.sections?.find((s) => s.id === CFF_CASH_BALANCE_SECTION_ID);
+  const totalRow = cffFindCashBalanceTotalRow(section);
+  return totalRow?.values?.["合計"] ?? 0;
+}
+
+function cffEmptyRawMonthValues() {
+  const values = {};
+  for (const m of FISCAL_MONTHS) values[m] = 0;
+  return values;
+}
+
+function cffResolvePlanMonths(displayMode, monthDisplayConfig, businessStartYear, fiscalPeriod, fiscalMonths) {
+  if (displayMode === 'actual') return null;
+  if (displayMode === 'plan') {
+    return new Set(fiscalMonths.filter((m) => isMonthDisplayToggleTarget(m)));
+  }
+  const { forcePlanMonths } = buildBudgetActualMonthSets({
+    config: monthDisplayConfig,
+    businessStartYear,
+    fiscalPeriod,
+    fiscalMonths,
+  });
+  return forcePlanMonths;
+}
+
+function cffGetSectionTotalMonthValue(sections, sectionId, month) {
+  const section = sections.find((s) => s.id === sectionId);
+  const totalRow = section?.rows?.find((r) => r.type === 'total');
+  return totalRow?.values?.[month] ?? 0;
+}
+
+function cffSumSectionTotals(sections, sectionIds, month) {
+  let sum = 0;
+  for (const sectionId of sectionIds) {
+    sum += cffGetSectionTotalMonthValue(sections, sectionId, month);
+  }
+  return sum;
+}
+
+function cffComputePlanInflow(sections, month) {
+  return cffSumSectionTotals(sections, CFF_INFLOW_SECTION_IDS, month);
+}
+
+function cffComputePlanOutflow(sections, month) {
+  return cffSumSectionTotals(sections, CFF_OUTFLOW_SECTION_IDS, month);
+}
+
+function cffMergePlanFillMonths(existingMonths, planMonths) {
+  const merged = new Set(existingMonths ?? []);
+  for (const month of planMonths) merged.add(month);
+  return [...merged];
+}
+
+function cffInsertCashDepositChangeRow(rows, depositChangeRow) {
+  const totalIdx = rows.findIndex((r) => r.type === 'total' && (
+    r.label === CFF_CASH_BALANCE_TOTAL_LABEL
+    || String(r.label ?? '').includes(CFF_CASH_BALANCE_TOTAL_LABEL)
+    || r.accentTotal
+  ));
+  if (totalIdx < 0) return [...rows, depositChangeRow];
+  const next = [...rows];
+  next.splice(totalIdx, 0, depositChangeRow);
+  return next;
+}
+
+/**
+ * 計画月の入金・出金・現預金を見込みで補完し、預金増減行を追加する。
+ */
+function enrichPlanDataWithCashFlowForecast(planData, {
+  expandConfig,
+  businessStartYear,
+  fiscalPeriod,
+  fiscalEndMonth,
+  displayMode,
+  monthDisplayConfig,
+}) {
+  if (!planData?.sections?.length) return planData;
+  if (displayMode === 'actual') return planData;
+
+  const fiscalMonths = buildFiscalYearMonths(fiscalEndMonth);
+  const planMonths = cffResolvePlanMonths(
+    displayMode,
+    monthDisplayConfig,
+    businessStartYear,
+    fiscalPeriod,
+    fiscalMonths,
+  );
+  if (!planMonths?.size) return planData;
+
+  const cfInSection = planData.sections.find((s) => s.id === CFF_IN_SECTION_ID);
+  const cfOutSection = planData.sections.find((s) => s.id === CFF_OUT_SECTION_ID);
+  const cashSection = planData.sections.find((s) => s.id === CFF_CASH_BALANCE_SECTION_ID);
+  if (!cfInSection || !cfOutSection || !cashSection) return planData;
+
+  const inflowRow = cfInSection.rows.find((r) => r.id === CFF_IN_ROW_ID);
+  const outflowRow = cfOutSection.rows.find((r) => r.id === CFF_OUT_ROW_ID);
+  const cashTotalRow = cffFindCashBalanceTotalRow(cashSection);
+  if (!inflowRow || !outflowRow || !cashTotalRow) return planData;
+
+  const refPlanData = fiscalPeriod > 1
+    ? cffLoadReferencePeriodPlanData(expandConfig, businessStartYear, fiscalPeriod - 1)
+    : null;
+  const priorPeriodEnd = cffGetPriorPeriodEndCashBalance(refPlanData);
+
+  const inflowMonths = { ...inflowRow.values };
+  const outflowMonths = { ...outflowRow.values };
+  const balanceMonths = { ...cashTotalRow.values };
+  const depositChangeMonths = cffEmptyRawMonthValues();
+  const inflowPlanFillMonths = [];
+  const outflowPlanFillMonths = [];
+  const balancePlanFillMonths = [];
+  const depositChangePlanFillMonths = [];
+
+  for (let i = 0; i < fiscalMonths.length; i += 1) {
+    const month = fiscalMonths[i];
+    if (month === "決算整理") continue;
+
+    const prevBalance = i === 0
+      ? priorPeriodEnd
+      : (balanceMonths[fiscalMonths[i - 1]] ?? 0);
+
+    if (planMonths.has(month)) {
+      const inflow = cffComputePlanInflow(planData.sections, month);
+      const outflow = cffComputePlanOutflow(planData.sections, month);
+      const balance = prevBalance + inflow - outflow;
+
+      inflowMonths[month] = inflow;
+      outflowMonths[month] = outflow;
+      balanceMonths[month] = balance;
+
+      inflowPlanFillMonths.push(month);
+      outflowPlanFillMonths.push(month);
+      balancePlanFillMonths.push(month);
+      depositChangePlanFillMonths.push(month);
+    }
+
+    depositChangeMonths[month] = (balanceMonths[month] ?? 0) - prevBalance;
+  }
+
+  const updatedInflowRow = {
+    ...inflowRow,
+    values: enrichRowValues(inflowMonths, 'flow'),
+    planFillMonths: cffMergePlanFillMonths(inflowRow.planFillMonths, inflowPlanFillMonths),
+  };
+  const updatedOutflowRow = {
+    ...outflowRow,
+    values: enrichRowValues(outflowMonths, 'flow'),
+    planFillMonths: cffMergePlanFillMonths(outflowRow.planFillMonths, outflowPlanFillMonths),
+  };
+  const updatedCashTotalRow = {
+    ...cashTotalRow,
+    values: enrichRowValues(balanceMonths, 'balance'),
+    planFillMonths: cffMergePlanFillMonths(cashTotalRow.planFillMonths, balancePlanFillMonths),
+  };
+  const depositChangeRow = {
+    id: CFF_DEPOSIT_CHANGE_ROW_ID,
+    label: "預金増減",
+    subLabel: '',
+    type: 'item',
+    values: enrichRowValues(depositChangeMonths, 'flow'),
+    planFillMonths: depositChangePlanFillMonths,
+    aggregateFormula: 'cashDepositChange',
+  };
+
+  const sections = planData.sections.map((section) => {
+    if (section.id === CFF_IN_SECTION_ID) {
+      return {
+        ...section,
+        rows: section.rows.map((row) => (
+          row.id === CFF_IN_ROW_ID ? updatedInflowRow : row
+        )),
+      };
+    }
+    if (section.id === CFF_OUT_SECTION_ID) {
+      return {
+        ...section,
+        rows: section.rows.map((row) => (
+          row.id === CFF_OUT_ROW_ID ? updatedOutflowRow : row
+        )),
+      };
+    }
+    if (section.id === CFF_CASH_BALANCE_SECTION_ID) {
+      const withoutDepositChange = section.rows.filter((row) => row.id !== CFF_DEPOSIT_CHANGE_ROW_ID);
+      const rows = withoutDepositChange.map((row) => (
+        row.id === cashTotalRow.id || (
+          row.type === 'total'
+          && (row.label === CFF_CASH_BALANCE_TOTAL_LABEL || row.accentTotal)
+        )
+          ? updatedCashTotalRow
+          : row
+      ));
+      return {
+        ...section,
+        rows: cffInsertCashDepositChangeRow(rows, depositChangeRow),
+      };
+    }
+    return section;
   });
 
   return { ...planData, sections };
@@ -7371,6 +8167,283 @@ function parseEmployeeCsv(text) {
   }
 
   return { employees, errors };
+}
+
+/* config/monthDisplayConfig.js */
+/** @typedef {'actual' | 'plan'} MonthDisplayMode */
+
+const MONTH_DISPLAY_STORAGE_KEY = 'mga-month-display';
+
+/**
+ * 期ごとの実績/計画の境界。
+ * planFromMonth 以降の月が計画表示。未設定は全月計画。
+ * planFromMonth: null は全月実績（決終整理除く）。
+ * @type {Record<string, { planFromMonth: string | null }>}
+ */
+const EMPTY_MONTH_DISPLAY_CONFIG = {};
+
+const MONTH_DISPLAY_NON_TOGGLE_MONTHS = new Set(["決算整理"]);
+
+/** 月ヘッダーの実績/計画切り替え対象か（決算整理は対象外） */
+function isMonthDisplayToggleTarget(monthLabel) {
+  return !MONTH_DISPLAY_NON_TOGGLE_MONTHS.has(monthLabel);
+}
+
+function getLastToggleMonthIndex(fiscalMonths = FISCAL_MONTHS) {
+  for (let i = fiscalMonths.length - 1; i >= 0; i -= 1) {
+    if (isMonthDisplayToggleTarget(fiscalMonths[i])) return i;
+  }
+  return -1;
+}
+
+function getDefaultPlanFromMonth(fiscalMonths = FISCAL_MONTHS) {
+  const idx = fiscalMonths.findIndex((m) => isMonthDisplayToggleTarget(m));
+  return idx >= 0 ? fiscalMonths[idx] : fiscalMonths[0];
+}
+
+/** 計画表示が始まる月の会計月インデックス（未設定は最初のト0グル対象月） */
+function getFirstPlanMonthIndex(config, fiscalPeriod, fiscalMonths = FISCAL_MONTHS) {
+  const periodKey = String(fiscalPeriod);
+  const entry = config?.[periodKey];
+  if (!entry || !Object.prototype.hasOwnProperty.call(entry, 'planFromMonth')) {
+    return fiscalMonths.findIndex((m) => isMonthDisplayToggleTarget(m));
+  }
+  if (entry.planFromMonth === null) {
+    return getLastToggleMonthIndex(fiscalMonths) + 1;
+  }
+  const idx = fiscalMonths.indexOf(entry.planFromMonth);
+  if (idx < 0) return fiscalMonths.findIndex((m) => isMonthDisplayToggleTarget(m));
+  return idx;
+}
+
+function normalizePeriodEntry(entry, fiscalMonths = FISCAL_MONTHS) {
+  if (!entry || typeof entry !== 'object') return null;
+  if (Object.prototype.hasOwnProperty.call(entry, 'planFromMonth')) {
+    if (entry.planFromMonth === null) return { planFromMonth: null };
+    const month = String(entry.planFromMonth);
+    if (!isMonthDisplayToggleTarget(month)) return null;
+    if (month === getDefaultPlanFromMonth(fiscalMonths)) return null;
+    return { planFromMonth: month };
+  }
+  return null;
+}
+
+/** 保存値を正規化（デフォルト状態は期エントリを省略） */
+function normalizeMonthDisplayConfig(raw, fiscalMonths = FISCAL_MONTHS) {
+  if (!raw || typeof raw !== 'object') return { ...EMPTY_MONTH_DISPLAY_CONFIG };
+  const result = {};
+  for (const [periodKey, entry] of Object.entries(raw)) {
+    const normalized = normalizePeriodEntry(entry, fiscalMonths);
+    if (normalized) result[String(periodKey)] = normalized;
+  }
+  return result;
+}
+
+function loadMonthDisplayConfig() {
+  try {
+    const raw = localStorage.getItem(MONTH_DISPLAY_STORAGE_KEY);
+    return raw ? normalizeMonthDisplayConfig(JSON.parse(raw)) : { ...EMPTY_MONTH_DISPLAY_CONFIG };
+  } catch {
+    return { ...EMPTY_MONTH_DISPLAY_CONFIG };
+  }
+}
+
+function saveMonthDisplayConfig(config) {
+  const normalized = normalizeMonthDisplayConfig(config);
+  if (Object.keys(normalized).length === 0) {
+    localStorage.removeItem(MONTH_DISPLAY_STORAGE_KEY);
+    return;
+  }
+  localStorage.setItem(MONTH_DISPLAY_STORAGE_KEY, JSON.stringify(normalized));
+}
+
+/** 月の表示モード（境界より実績か計画かを判別） */
+function getMonthDisplayMode(
+  config,
+  fiscalPeriod,
+  monthLabel,
+  _businessStartYear,
+  fiscalMonths = FISCAL_MONTHS,
+) {
+  if (!isMonthDisplayToggleTarget(monthLabel)) return 'actual';
+  const idx = fiscalMonths.indexOf(monthLabel);
+  if (idx < 0) return 'plan';
+  const firstPlanIdx = getFirstPlanMonthIndex(config, fiscalPeriod, fiscalMonths);
+  return idx >= firstPlanIdx ? 'plan' : 'actual';
+}
+
+/**
+ * 予実表示時のenrich / UI用月集合を構築する。
+ */
+function buildBudgetActualMonthSets({
+  config,
+  businessStartYear,
+  fiscalPeriod,
+  fiscalMonths = FISCAL_MONTHS,
+}) {
+  const actualMonthSet = new Set();
+  const skipPlanFillMonths = new Set();
+  const forcePlanMonths = new Set();
+
+  for (const monthLabel of fiscalMonths) {
+    if (!isMonthDisplayToggleTarget(monthLabel)) continue;
+    const mode = getMonthDisplayMode(
+      config,
+      fiscalPeriod,
+      monthLabel,
+      businessStartYear,
+      fiscalMonths,
+    );
+
+    if (mode === 'actual') {
+      actualMonthSet.add(monthLabel);
+      skipPlanFillMonths.add(monthLabel);
+    } else {
+      forcePlanMonths.add(monthLabel);
+    }
+  }
+
+  return { actualMonthSet, skipPlanFillMonths, forcePlanMonths };
+}
+
+/**
+ * 月クリックで実績/計画の境界を移動する。
+ * 計画状態の月を押す→その月以降を計画、前を実績。
+ * 実績状態の月を押す→その月まで実績、以降を計画。
+ */
+function toggleMonthDisplayMode(
+  config,
+  fiscalPeriod,
+  monthLabel,
+  _businessStartYear,
+  fiscalMonths = FISCAL_MONTHS,
+) {
+  if (!isMonthDisplayToggleTarget(monthLabel)) {
+    return normalizeMonthDisplayConfig(config, fiscalMonths);
+  }
+
+  const normalized = normalizeMonthDisplayConfig(config, fiscalMonths);
+  const periodKey = String(fiscalPeriod);
+  const idx = fiscalMonths.indexOf(monthLabel);
+  if (idx < 0) return normalized;
+
+  const current = getMonthDisplayMode(
+    normalized,
+    fiscalPeriod,
+    monthLabel,
+    _businessStartYear,
+    fiscalMonths,
+  );
+
+  let planFromMonth;
+  if (current === 'plan') {
+    const nextIdx = idx + 1;
+    const lastToggleIdx = getLastToggleMonthIndex(fiscalMonths);
+    planFromMonth = nextIdx > lastToggleIdx ? null : fiscalMonths[nextIdx];
+  } else {
+    planFromMonth = monthLabel;
+  }
+
+  const nextConfig = { ...normalized };
+  const defaultPlanFromMonth = getDefaultPlanFromMonth(fiscalMonths);
+
+  if (planFromMonth === defaultPlanFromMonth) {
+    delete nextConfig[periodKey];
+  } else {
+    nextConfig[periodKey] = { planFromMonth };
+  }
+
+  return normalizeMonthDisplayConfig(nextConfig, fiscalMonths);
+}
+
+/** 設定画面で編集不可な月（実績表示の月） */
+function getSettingsLockedMonths({
+  config,
+  businessStartYear,
+  fiscalPeriod,
+  fiscalMonths = FISCAL_MONTHS,
+  currentFiscalPeriod,
+  date = new Date(),
+}) {
+  const displayMode = getFiscalPeriodDisplayMode(businessStartYear, fiscalPeriod, date);
+  if (fiscalPeriod === currentFiscalPeriod && displayMode === 'budget-actual') {
+    return buildBudgetActualMonthSets({
+      config,
+      businessStartYear,
+      fiscalPeriod,
+      fiscalMonths,
+      date,
+    }).actualMonthSet;
+  }
+  if (fiscalPeriod === currentFiscalPeriod) {
+    return buildPastFiscalMonthSet(businessStartYear, fiscalPeriod, fiscalMonths, date);
+  }
+  return new Set();
+}
+
+function getMonthDisplayModeLabel(mode) {
+  return mode === 'plan' ? "計画" : "実績";
+}
+
+/** 月クリック時のツールチップ文字を返す。 */
+function getMonthDisplayClickHint(mode) {
+  if (mode === 'plan') {
+    return "クリックでこの月まで実績表示に切り替え";
+  }
+  return "クリックでこの月以降を計画表示に切り替え";
+}
+
+/* config/planPeriodCleanup.js */
+/** 期番号キーのエントリから指定期未未のデータを削除する。 */
+function purgePeriodKeyedStorage(storageObject, firstKeptPeriod) {
+  if (!storageObject || typeof storageObject !== 'object') {
+    return { data: storageObject, changed: false };
+  }
+  const next = { ...storageObject };
+  let changed = false;
+  for (const key of Object.keys(storageObject)) {
+    const period = Number(key);
+    if (Number.isInteger(period) && period > 0 && period < firstKeptPeriod) {
+      delete next[key];
+      changed = true;
+    }
+  }
+  return { data: next, changed };
+}
+
+/** 終了した期の計画データをまとに削除する。 */
+function purgeClosedPeriodPlanStorage({
+  businessStartYear,
+  date = new Date(),
+  revenuePlans,
+  salaryPlans,
+  salaryPlanSettings,
+  taxPaymentPlans,
+  outsourcingPlans,
+  expensePlanOverrides,
+  monthDisplayConfig,
+}) {
+  const firstKeptPeriod = getFiscalPeriodForDate(businessStartYear, date);
+  const parts = {
+    revenuePlans: purgePeriodKeyedStorage(revenuePlans, firstKeptPeriod),
+    salaryPlans: purgePeriodKeyedStorage(salaryPlans, firstKeptPeriod),
+    salaryPlanSettings: purgePeriodKeyedStorage(salaryPlanSettings, firstKeptPeriod),
+    taxPaymentPlans: purgePeriodKeyedStorage(taxPaymentPlans, firstKeptPeriod),
+    outsourcingPlans: purgePeriodKeyedStorage(outsourcingPlans, firstKeptPeriod),
+    expensePlanOverrides: purgePeriodKeyedStorage(expensePlanOverrides, firstKeptPeriod),
+    monthDisplayConfig: purgePeriodKeyedStorage(monthDisplayConfig, firstKeptPeriod),
+  };
+  return {
+    firstKeptPeriod,
+    revenuePlans: parts.revenuePlans.data,
+    salaryPlans: parts.salaryPlans.data,
+    salaryPlanSettings: parts.salaryPlanSettings.data,
+    taxPaymentPlans: parts.taxPaymentPlans.data,
+    outsourcingPlans: parts.outsourcingPlans.data,
+    expensePlanOverrides: parts.expensePlanOverrides.data,
+    monthDisplayConfig: parts.monthDisplayConfig.data,
+    changed: Object.values(parts).some((part) => part.changed),
+  };
 }
 
 /* config/appSettings.js */
@@ -7623,6 +8696,29 @@ function buildPastFiscalMonthSet(
   return past;
 }
 
+/** 表示中期における本日の会計月ラベル（該当なしは null） */
+function getCurrentFiscalMonthLabel(
+  businessStartYear,
+  fiscalPeriod,
+  fiscalMonths,
+  date = new Date(),
+) {
+  const monthYearMap = buildMonthYearMap(businessStartYear, fiscalPeriod);
+  const refYear = date.getFullYear();
+  const refMonth = date.getMonth() + 1;
+
+  for (const monthLabel of fiscalMonths) {
+    const year = monthYearMap[monthLabel];
+    if (year == null) continue;
+    const monthNum = parseMonthLabelNumber(monthLabel);
+    if (monthNum == null) continue;
+    if (year === refYear && monthNum === refMonth) {
+      return monthLabel;
+    }
+  }
+  return null;
+}
+
 function getFiscalPeriodForDate(businessStartYear, date = new Date()) {
   const y = date.getFullYear();
   const m = date.getMonth() + 1;
@@ -7848,6 +8944,20 @@ const SETTINGS_EXPORT_VERSION = 1;
 
 const SETTINGS_EXPORT_APP_KEY = 'mga-app-settings';
 
+function prepareSettingsValueForExport(key, value) {
+  if (key === 'mga-ui-colors') return normalizeUiColorConfig(value);
+  if (key === 'mga-section-colors') return normalizeSectionColorConfig(value);
+  if (key !== SETTINGS_EXPORT_APP_KEY) return value;
+  return stripAppSettingsForExport(value);
+}
+
+function prepareSettingsValueForImport(key, value) {
+  if (key === 'mga-ui-colors') return normalizeUiColorConfig(value);
+  if (key === 'mga-section-colors') return normalizeSectionColorConfig(value);
+  if (key !== SETTINGS_EXPORT_APP_KEY) return value;
+  return mergeAppSettingsForImport(value);
+}
+
 /** Excluded from export/import (per-device font scale and row padding). */
 const APP_SETTINGS_EXCLUDED_KEYS = ['fontScale', 'rowPaddingScale', 'fontScaleUi'];
 
@@ -7870,6 +8980,7 @@ const ALL_SETTINGS_STORAGE_KEYS = [
   'mga-section-filter',
   'mga-ui-colors',
   'mga-csv-name-config',
+  'mga-month-display',
 ];
 
 function stripAppSettingsForExport(appSettings) {
@@ -7902,16 +9013,6 @@ function mergeAppSettingsForImport(imported) {
     }
   }
   return merged;
-}
-
-function prepareSettingsValueForExport(key, value) {
-  if (key !== SETTINGS_EXPORT_APP_KEY) return value;
-  return stripAppSettingsForExport(value);
-}
-
-function prepareSettingsValueForImport(key, value) {
-  if (key !== SETTINGS_EXPORT_APP_KEY) return value;
-  return mergeAppSettingsForImport(value);
 }
 
 function collectSettingsForExport() {
@@ -8489,6 +9590,7 @@ function mountRevenueSettingsPanel({
   getRevenuePlanSettings,
   setRevenuePlanSettings,
   refreshPlanTableIfNeeded,
+  getMonthDisplayConfig,
 }) {
   setPlanKpi(null);
 
@@ -8527,11 +9629,6 @@ function mountRevenueSettingsPanel({
   const actualAmountsByClient = rawPlanData
     ? collectRevenueActualAmountsFromPlanData(rawPlanData, fiscalMonths)
     : new Map();
-  const currentPastMonths = buildPastFiscalMonthSet(
-    appSettings.businessStartYear,
-    currentPeriod,
-    fiscalMonths,
-  );
 
   const journalClientKeys = new Set();
   if (rawPlanData) {
@@ -8610,8 +9707,13 @@ function mountRevenueSettingsPanel({
   }
 
   function getPastMonthsForPeriod(fiscalPeriod) {
-    if (fiscalPeriod === currentPeriod) return currentPastMonths;
-    return new Set();
+    return getSettingsLockedMonths({
+      config: getMonthDisplayConfig(),
+      businessStartYear: appSettings.businessStartYear,
+      fiscalPeriod,
+      fiscalMonths,
+      currentFiscalPeriod: currentPeriod,
+    });
   }
 
   function isMonthEditable(fiscalPeriod, month) {
@@ -8671,6 +9773,7 @@ function mountRevenueSettingsPanel({
     parseValue,
     onSave,
     allowShiftFillForward = false,
+    tabScopeId,
   }) {
     if (!editable) return;
     if (td.querySelector('input')) return;
@@ -8698,16 +9801,12 @@ function mountRevenueSettingsPanel({
     };
 
     input.addEventListener('keydown', (e) => {
-      if (e.isComposing) return;
-      if (e.key === 'Enter' || e.code === 'NumpadEnter') {
-        e.preventDefault();
-        finish(true, e.shiftKey);
-        return;
-      }
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        finish(false);
-      }
+      handlePlanAmountCellKeydown(e, {
+        finish,
+        td,
+        scopeId: tabScopeId,
+        allowShiftFillForward,
+      });
     });
     input.addEventListener('blur', () => {
       setTimeout(() => {
@@ -8730,6 +9829,7 @@ function mountRevenueSettingsPanel({
   }
 
   function appendPlanAmountCell(tr, {
+    month,
     monthIndex,
     value,
     prevValue,
@@ -8741,12 +9841,14 @@ function mountRevenueSettingsPanel({
     onSave,
     extraClass = '',
     allowShiftFillForward = false,
+    tabScopeId,
   }) {
     const td = document.createElement('td');
     td.className = `salary-plan-amount-cell ${extraClass}`.trim();
     applyPlanAmountVarianceClass(td, monthIndex, value, prevValue);
     if (editable) {
       td.classList.add('salary-plan-cell-editable');
+      tagPlanEditableCell(td, { month });
       td.title = title;
       td.textContent = formatValue(value);
       td.addEventListener('dblclick', () => {
@@ -8757,6 +9859,7 @@ function mountRevenueSettingsPanel({
           parseValue,
           onSave,
           allowShiftFillForward,
+          tabScopeId,
         });
       });
     } else {
@@ -8831,7 +9934,7 @@ function mountRevenueSettingsPanel({
       if (canDeleteClient(client)) {
         const deleteBtn = document.createElement('button');
         deleteBtn.type = 'button';
-        deleteBtn.className = 'employee-delete-btn';
+        deleteBtn.className = 'settings-delete-btn';
         deleteBtn.textContent = '\u524a\u9664';
         deleteBtn.addEventListener('click', () => {
           actionsWrap.replaceChildren();
@@ -8843,12 +9946,12 @@ function mountRevenueSettingsPanel({
 
           const confirmBtn = document.createElement('button');
           confirmBtn.type = 'button';
-          confirmBtn.className = 'employee-delete-confirm-btn';
+          confirmBtn.className = 'settings-delete-btn';
           confirmBtn.textContent = '\u524a\u9664\u3059\u308b';
 
           const cancelBtn = document.createElement('button');
           cancelBtn.type = 'button';
-          cancelBtn.className = 'employee-delete-cancel-btn';
+          cancelBtn.className = 'settings-delete-cancel-btn';
           cancelBtn.textContent = '\u30ad\u30e3\u30f3\u30bb\u30eb';
 
           confirmBtn.addEventListener('click', () => deleteClient(client, fiscalPeriod));
@@ -8973,6 +10076,7 @@ function mountRevenueSettingsPanel({
       const { kind, key } = rowKinds[rowIndex];
       const tr = document.createElement('tr');
       tr.className = `salary-plan-row-monthly revenue-plan-row revenue-plan-row--${key}`;
+      tagPlanEditableRow(tr, `${client.id}:${key}`);
 
       if (rowIndex === 0) {
         appendClientNameCell(tr, client, fiscalPeriod, rowKinds.length);
@@ -8991,11 +10095,13 @@ function mountRevenueSettingsPanel({
         if (key === 'manMonths') {
           const prevValue = prevMonth != null ? client.manMonths[prevMonth] : undefined;
           appendPlanAmountCell(tr, {
+            month,
             monthIndex: i,
             value: client.manMonths[month],
             prevValue,
             editable,
             rawValue: client.manMonths[month],
+            tabScopeId: `revenue-settings-${fiscalPeriod}`,
             title: '\u30c0\u30d6\u30eb\u30af\u30ea\u30c3\u30af\u3067\u7de8\u96c6\uFF08Shift+Enter \u3067\u5f8c\u7d9a\u6708\u3078\u540c\u5024\u3092\u53cd\u6620\u30000 \u3082\u53ef\uFF09',
             formatValue: formatManMonths,
             parseValue: parseManMonthInput,
@@ -9020,11 +10126,13 @@ function mountRevenueSettingsPanel({
             ? getEffectiveUnitPrice(client, prevMonth)
             : undefined;
           appendPlanAmountCell(tr, {
+            month,
             monthIndex: i,
             value: unitPrice,
             prevValue: prevUnitPrice,
             editable,
             rawValue: client.monthlyUnitPrice[month],
+            tabScopeId: `revenue-settings-${fiscalPeriod}`,
             title: '\u30c0\u30d6\u30eb\u30af\u30ea\u30c3\u30af\u3067\u7de8\u96c6\uFF08\u4eba\u6708\u5358\u4fa1\uFF09',
             formatValue: formatSalaryPlanYen,
             parseValue: parseSalaryPlanAmountInput,
@@ -9036,10 +10144,12 @@ function mountRevenueSettingsPanel({
         } else if (key === 'revenue') {
           const prevDisplay = prevMonth != null ? displayRevenue[prevMonth] : undefined;
           appendPlanAmountCell(tr, {
+            month,
             monthIndex: i,
             value: displayRevenue[month],
             prevValue: prevDisplay,
             editable: false,
+            tabScopeId: `revenue-settings-${fiscalPeriod}`,
             formatValue: formatSalaryPlanYen,
             extraClass: 'revenue-plan-revenue-cell',
           });
@@ -9304,6 +10414,8 @@ function mountRevenueSettingsPanel({
       tableWrap.appendChild(buildRevenuePlanTable(period));
       block.appendChild(tableWrap);
 
+      resumePlanCellTabEdit(block, `revenue-settings-${period}`);
+
       periodsContainer.appendChild(block);
     }
   }
@@ -9321,7 +10433,7 @@ function sumDisplayMonthlyTotal(display, fiscalMonths) {
   return total;
 }
 
-/** 支払い計画タブ内に諸経費計画のオーバーライドセクションを表示 */
+/** 支払い計画タブ内に諸経計画オーバーライドセクションを表示 */
 function mountExpensePlanOverrideSection({
   wrap,
   appSettings,
@@ -9329,21 +10441,22 @@ function mountExpensePlanOverrideSection({
   getExpensePlanOverrides,
   setExpensePlanOverrides,
   refreshPlanTableIfNeeded,
+  getMonthDisplayConfig,
 }) {
   const fiscalMonths = buildFiscalYearMonths(appSettings.fiscalEndMonth);
   const currentPeriod = appSettings.fiscalPeriod;
   const periodEntries = buildExpensePlanOverridePeriodEntries(currentPeriod);
-  const currentPastMonths = buildPastFiscalMonthSet(
-    appSettings.businessStartYear,
-    currentPeriod,
-    fiscalMonths,
-  );
 
   let expensePlanOverrides = getExpensePlanOverrides();
 
   function getPastMonthsForPeriod(fiscalPeriod) {
-    if (fiscalPeriod === currentPeriod) return currentPastMonths;
-    return new Set();
+    return getSettingsLockedMonths({
+      config: getMonthDisplayConfig(),
+      businessStartYear: appSettings.businessStartYear,
+      fiscalPeriod,
+      fiscalMonths,
+      currentFiscalPeriod: currentPeriod,
+    });
   }
 
   function isMonthEditable(fiscalPeriod, month) {
@@ -9404,16 +10517,11 @@ function mountExpensePlanOverrideSection({
     };
 
     input.addEventListener('keydown', (e) => {
-      if (e.isComposing) return;
-      if (e.key === 'Enter' || e.code === 'NumpadEnter') {
-        e.preventDefault();
-        finish(true, e.shiftKey);
-        return;
-      }
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        finish(false);
-      }
+      handlePlanAmountCellKeydown(e, {
+        finish,
+        td,
+        scopeId: `expense-override-${fiscalPeriod}`,
+      });
     });
     input.addEventListener('blur', () => {
       setTimeout(() => {
@@ -9437,6 +10545,7 @@ function mountExpensePlanOverrideSection({
     }
     if (editable) {
       td.classList.add('salary-plan-cell-editable');
+      tagPlanEditableCell(td, { month });
       td.title = "ダブルクリックで編集（Shift+Enter で後継月へ同額反映）";
       td.textContent = formatSalaryPlanYen(value);
       td.addEventListener('dblclick', () => {
@@ -9489,6 +10598,7 @@ function mountExpensePlanOverrideSection({
       );
       const tr = document.createElement('tr');
       tr.className = 'salary-plan-row-monthly';
+      tagPlanEditableRow(tr, account);
 
       const accountTd = document.createElement('td');
       accountTd.className = 'salary-plan-col-name';
@@ -9519,7 +10629,7 @@ function mountExpensePlanOverrideSection({
       actionsTd.className = 'expense-plan-override-col-actions';
       const removeBtn = document.createElement('button');
       removeBtn.type = 'button';
-      removeBtn.className = 'expense-plan-override-remove-btn';
+      removeBtn.className = 'settings-delete-btn';
       removeBtn.textContent = "削除";
       removeBtn.title = "この科目のオーバーライドを解除";
       removeBtn.addEventListener('click', () => {
@@ -9601,9 +10711,9 @@ function mountExpensePlanOverrideSection({
     const planHeader = document.createElement('div');
     planHeader.className = 'salary-plan-header salary-plan-header-spaced';
     planHeader.innerHTML = `
-      <h3 class="salary-plan-title">諸経費計画のオーバーライド</h3>
+      <h3 class="salary-plan-title">諸経計画オーバーライド</h3>
       <p class="salary-plan-desc">
-        自動補完（参照期の平均）を上書きする諸経勘定科目を指定します。オーバーライドした科目は平均補完の対象外となり、入力した月次の計画値が使われます（空欄は補完しません）。今期・来期のみ設定できます。今期の支払済み月は編集できません。双して入力した値は予実表にも反します。
+        自動補完（参照期の平均）を上書きする諸経勘定科目を指定します。オーバーライドした科目は平均補完の対象外となり、入力した月次の計画値が使われます（空欄は補完しません）。今期・来期のみ設定できます。今期の実績表示月は編集できません。予実表で計画表示に切り替えた月は編集できます。また入力した値は予実表にも反します。
       </p>
     `;
     section.appendChild(planHeader);
@@ -9622,6 +10732,8 @@ function mountExpensePlanOverrideSection({
       tableWrap.appendChild(buildOverrideTable(period));
       block.appendChild(tableWrap);
 
+      resumePlanCellTabEdit(block, `expense-override-${period}`);
+
       renderAddRow(period, block);
       section.appendChild(block);
     }
@@ -9634,6 +10746,439 @@ function mountExpensePlanOverrideSection({
   return {
     rerender: renderOverrideSection,
   };
+}
+
+/* ui/uiColorPanel.js */
+function dashTd(className = 'col-color-input') {
+  const td = document.createElement('td');
+  td.className = className;
+  td.textContent = '—';
+  return td;
+}
+
+function colorInputTd(value) {
+  const td = document.createElement('td');
+  td.className = 'col-color-input';
+  const input = document.createElement('input');
+  input.type = 'color';
+  input.className = 'section-color-input';
+  input.value = value;
+  input.title = value;
+  td.appendChild(input);
+  return { td, input };
+}
+
+function previewTd({ background, color, text, className = 'ui-color-preview-cell', html = null }) {
+  const td = document.createElement('td');
+  td.className = 'col-color-preview';
+  const span = document.createElement('span');
+  span.className = className;
+  if (background != null) span.style.background = background;
+  if (color != null) span.style.color = color;
+  if (html != null) span.innerHTML = html;
+  else span.textContent = text;
+  td.appendChild(span);
+  return { td, span };
+}
+
+function resetBtnTd(disabled) {
+  const td = document.createElement('td');
+  td.className = 'col-color-action';
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'section-color-reset-btn';
+  btn.textContent = 'デフォルト';
+  btn.disabled = disabled;
+  td.appendChild(btn);
+  return { td, btn };
+}
+
+function keysMatchDefaults(config, keys) {
+  const defaults = getDefaultUiColors(getUiColorMode(config));
+  return keys.every((key) => !isUiColorKeyCustom(config, key) && getUiColors(config)[key] === defaults[key]);
+}
+
+function applyKeys(config, keys, values) {
+  return setUiColorKeys(config, keys, values);
+}
+
+function mountUiColorPanel(container, {
+  getConfig,
+  setConfig,
+  data,
+  sectionColorConfig,
+  onRefreshPlanView,
+  onReRender,
+}) {
+  const panel = document.createElement('div');
+  panel.className = 'ui-color-panel';
+
+  const title = document.createElement('h2');
+  title.className = 'ui-color-panel-title';
+  title.textContent = '予実表全体';
+  panel.appendChild(title);
+
+  const persist = () => {
+    const config = getConfig();
+    saveUiColorConfig(config);
+    applyUiColors(config);
+  };
+
+  const refreshPlan = () => {
+    onRefreshPlanView?.();
+  };
+
+  const modeRow = document.createElement('div');
+  modeRow.className = 'ui-color-mode-row';
+  const modeLabel = document.createElement('label');
+  modeLabel.className = 'ui-color-mode-label';
+  modeLabel.textContent = '表示モード';
+  const modeSelect = document.createElement('select');
+  modeSelect.className = 'ui-color-mode-select app-settings-input';
+  modeSelect.setAttribute('aria-label', '表示モード');
+  for (const [value, label] of [['dark', 'ダークモード'], ['light', 'ライトモード']]) {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = label;
+    modeSelect.appendChild(option);
+  }
+  modeSelect.value = getUiColorMode(getConfig());
+  modeRow.append(modeLabel, modeSelect);
+  panel.appendChild(modeRow);
+
+  modeSelect.addEventListener('change', () => {
+    setConfig(switchUiColorMode(getConfig(), modeSelect.value));
+    persist();
+    refreshPlan();
+    onReRender?.();
+  });
+
+  const table = document.createElement('table');
+  table.className = 'expand-settings-table ui-color-table';
+  table.innerHTML = `
+    <thead>
+      <tr>
+        <th>項目</th>
+        <th class="col-color-input">背景色</th>
+        <th class="col-color-input">文字色</th>
+        <th class="col-color-preview">プレビュー</th>
+        <th class="col-color-action">操作</th>
+      </tr>
+    </thead>
+  `;
+
+  const tbody = document.createElement('tbody');
+
+  const addRow = (label, cells) => {
+    const tr = document.createElement('tr');
+    const labelTd = document.createElement('td');
+    labelTd.textContent = label;
+    tr.appendChild(labelTd);
+    for (const cell of cells) tr.appendChild(cell);
+    tbody.appendChild(tr);
+  };
+
+  const registerBgRow = (label, key, previewText, previewTextColor = '#ffffff') => {
+    const colors = getUiColors(getConfig());
+    const bg = colorInputTd(colors[key]);
+    const preview = previewTd({
+      background: colors[key],
+      color: previewTextColor,
+      text: previewText,
+    });
+    const reset = resetBtnTd(keysMatchDefaults(getConfig(), [key]));
+    addRow(label, [bg.td, dashTd(), preview.td, reset.td]);
+    const sync = (value) => {
+      setConfig(setUiColorKey(getConfig(), key, value));
+      persist();
+      bg.input.value = value;
+      bg.input.title = value;
+      preview.span.style.background = value;
+      reset.btn.disabled = keysMatchDefaults(getConfig(), [key]);
+    };
+    bg.input.addEventListener('input', () => sync(bg.input.value));
+    reset.btn.addEventListener('click', () => {
+      setConfig(resetUiColorKey(getConfig(), key));
+      persist();
+      const value = getDefaultUiColors(getUiColorMode(getConfig()))[key];
+      bg.input.value = value;
+      bg.input.title = value;
+      preview.span.style.background = value;
+      reset.btn.disabled = true;
+    });
+  };
+
+  const registerBgTextRow = (label, bgKey, textKey, previewText) => {
+    const colors = getUiColors(getConfig());
+    const bg = colorInputTd(colors[bgKey]);
+    const text = colorInputTd(colors[textKey]);
+    const preview = previewTd({
+      background: colors[bgKey],
+      color: colors[textKey],
+      text: previewText,
+    });
+    const reset = resetBtnTd(keysMatchDefaults(getConfig(), [bgKey, textKey]));
+    addRow(label, [bg.td, text.td, preview.td, reset.td]);
+    const sync = (bgVal, textVal) => {
+      setConfig(applyKeys(getConfig(), [bgKey, textKey], [bgVal, textVal]));
+      persist();
+      bg.input.value = bgVal;
+      bg.input.title = bgVal;
+      text.input.value = textVal;
+      text.input.title = textVal;
+      preview.span.style.background = bgVal;
+      preview.span.style.color = textVal;
+      reset.btn.disabled = keysMatchDefaults(getConfig(), [bgKey, textKey]);
+      refreshPlan();
+    };
+    bg.input.addEventListener('input', () => sync(bg.input.value, text.input.value));
+    text.input.addEventListener('input', () => sync(bg.input.value, text.input.value));
+    reset.btn.addEventListener('click', () => {
+      let next = resetUiColorKey(getConfig(), bgKey);
+      next = resetUiColorKey(next, textKey);
+      setConfig(next);
+      persist();
+      const defaults = getDefaultUiColors(getUiColorMode(getConfig()));
+      bg.input.value = defaults[bgKey];
+      bg.input.title = defaults[bgKey];
+      text.input.value = defaults[textKey];
+      text.input.title = defaults[textKey];
+      preview.span.style.background = defaults[bgKey];
+      preview.span.style.color = defaults[textKey];
+      reset.btn.disabled = true;
+      refreshPlan();
+    });
+  };
+
+  const registerTextRow = (label, key, previewText, {
+    previewBgKey = 'cellBg',
+    previewTextKey = null,
+    html = null,
+    opaque = true,
+    refresh = true,
+  } = {}) => {
+    const colors = getUiColors(getConfig());
+    const text = colorInputTd(colors[key]);
+    const preview = previewTd({
+      background: colors[previewBgKey],
+      color: previewTextKey ? colors[previewTextKey] : colors[key],
+      text: previewText,
+      html,
+    });
+    const reset = resetBtnTd(keysMatchDefaults(getConfig(), [key]));
+    addRow(label, [dashTd(), text.td, preview.td, reset.td]);
+    const sync = (value) => {
+      const nextVal = opaque ? opaqueHex(value) : value;
+      setConfig(setUiColorKey(getConfig(), key, nextVal));
+      persist();
+      text.input.value = nextVal;
+      text.input.title = nextVal;
+      const merged = getUiColors(getConfig());
+      if (previewTextKey) preview.span.style.color = merged[previewTextKey];
+      else preview.span.style.color = nextVal;
+      preview.span.style.background = merged[previewBgKey];
+      reset.btn.disabled = keysMatchDefaults(getConfig(), [key]);
+      if (refresh) refreshPlan();
+    };
+    text.input.addEventListener('input', () => sync(text.input.value));
+    reset.btn.addEventListener('click', () => {
+      setConfig(resetUiColorKey(getConfig(), key));
+      persist();
+      const defaults = getDefaultUiColors(getUiColorMode(getConfig()));
+      const nextVal = defaults[key];
+      text.input.value = nextVal;
+      text.input.title = nextVal;
+      const merged = getUiColors(getConfig());
+      if (previewTextKey) preview.span.style.color = merged[previewTextKey];
+      else preview.span.style.color = nextVal;
+      preview.span.style.background = merged[previewBgKey];
+      reset.btn.disabled = true;
+      if (refresh) refreshPlan();
+    });
+  };
+
+  const registerAccentRow = (label, key, previewText) => {
+    const colors = getUiColors(getConfig());
+    const text = colorInputTd(colors[key]);
+    const preview = previewTd({
+      background: colors.cellBg,
+      color: opaqueHex(colors[key]),
+      text: previewText,
+      className: 'ui-color-preview-cell ui-color-preview-hover',
+    });
+    preview.span.style.boxShadow = 'none';
+    preview.span.style.border = `1px solid ${opaqueHex(colors[key])}`;
+    const reset = resetBtnTd(keysMatchDefaults(getConfig(), [key]));
+    addRow(label, [dashTd(), text.td, preview.td, reset.td]);
+    const sync = (value) => {
+      const color = opaqueHex(value);
+      setConfig(setUiColorKey(getConfig(), key, color));
+      persist();
+      text.input.value = color;
+      text.input.title = color;
+      const { cellBg } = getUiColors(getConfig());
+      preview.span.style.background = cellBg;
+      preview.span.style.color = color;
+      preview.span.style.border = `1px solid ${color}`;
+      reset.btn.disabled = keysMatchDefaults(getConfig(), [key]);
+      refreshPlan();
+    };
+    text.input.addEventListener('input', () => sync(text.input.value));
+    reset.btn.addEventListener('click', () => {
+      setConfig(resetUiColorKey(getConfig(), key));
+      persist();
+      const color = getDefaultUiColors(getUiColorMode(getConfig()))[key];
+      text.input.value = color;
+      text.input.title = color;
+      const { cellBg } = getUiColors(getConfig());
+      preview.span.style.background = cellBg;
+      preview.span.style.color = color;
+      preview.span.style.border = `1px solid ${color}`;
+      reset.btn.disabled = true;
+      refreshPlan();
+    });
+  };
+
+  const registerBorderRow = (label, key, previewBgKey) => {
+    const colors = getUiColors(getConfig());
+    const border = colorInputTd(colors[key]);
+    const preview = previewTd({
+      background: colors[previewBgKey],
+      color: colors.textColor,
+      text: '枠線',
+      className: 'ui-color-preview-cell',
+    });
+    preview.span.style.border = `2px solid ${colors[key]}`;
+    const reset = resetBtnTd(keysMatchDefaults(getConfig(), [key]));
+    addRow(label, [border.td, dashTd(), preview.td, reset.td]);
+    const sync = (value) => {
+      setConfig(setUiColorKey(getConfig(), key, value));
+      persist();
+      border.input.value = value;
+      border.input.title = value;
+      const merged = getUiColors(getConfig());
+      preview.span.style.background = merged[previewBgKey];
+      preview.span.style.border = `2px solid ${value}`;
+      reset.btn.disabled = keysMatchDefaults(getConfig(), [key]);
+    };
+    border.input.addEventListener('input', () => sync(border.input.value));
+    reset.btn.addEventListener('click', () => {
+      setConfig(resetUiColorKey(getConfig(), key));
+      persist();
+      const merged = getUiColors(getConfig());
+      const value = merged[key];
+      border.input.value = value;
+      border.input.title = value;
+      preview.span.style.background = merged[previewBgKey];
+      preview.span.style.border = `2px solid ${value}`;
+      reset.btn.disabled = true;
+    });
+  };
+
+  const registerFillRow = (label, key, previewText) => {
+    const colors = getUiColors(getConfig());
+    const bg = colorInputTd(colors[key]);
+    const preview = previewTd({
+      background: colors[key],
+      color: colors.textColor,
+      text: previewText,
+    });
+    const reset = resetBtnTd(keysMatchDefaults(getConfig(), [key]));
+    addRow(label, [bg.td, dashTd(), preview.td, reset.td]);
+    const sync = (value) => {
+      const color = opaqueHex(value);
+      setConfig(setUiColorKey(getConfig(), key, color));
+      persist();
+      bg.input.value = color;
+      bg.input.title = color;
+      preview.span.style.background = color;
+      reset.btn.disabled = keysMatchDefaults(getConfig(), [key]);
+      refreshPlan();
+    };
+    bg.input.addEventListener('input', () => sync(bg.input.value));
+    reset.btn.addEventListener('click', () => {
+      setConfig(resetUiColorKey(getConfig(), key));
+      persist();
+      const color = getDefaultUiColors(getUiColorMode(getConfig()))[key];
+      bg.input.value = color;
+      bg.input.title = color;
+      preview.span.style.background = color;
+      reset.btn.disabled = true;
+      refreshPlan();
+    });
+  };
+
+  // 予実表レイアウト順
+  registerBgRow('ブラウザ（背景）', 'browserBg', '背景');
+  registerBgRow('設定パネル（背景）', 'settingsSurfaceBg', '背景');
+  registerBgRow('入力欄（背景）', 'settingsInputBg', '背景');
+  registerBorderRow('入力欄（枠線）', 'settingsInputBorder', 'settingsSurfaceBg');
+  registerBgRow('ボタン（背景）', 'settingsButtonBg', '背景');
+  registerBgRow('設定表行（ホバー）', 'settingsRowHoverBg', '背景');
+  registerBgTextRow('年行（ヘッダー）', 'yearRowBg', 'yearRowText', '2025年');
+  registerBgTextRow('月行（ヘッダー）', 'monthRowBg', 'monthRowText', '6月');
+  registerBgTextRow('当月列（オーバーレイ）', 'currentMonthBg', 'currentMonthBorder', '6月');
+  registerBgRow('決算整理列（オーバーレイ）', 'settlementMonthBg', '3月');
+  registerBgTextRow('セル（明細行）', 'cellBg', 'textColor', '¥1,234');
+  registerTextRow('注釈文・説明文', 'noteTextColor', '説明文のサンプル', {
+    previewBgKey: 'browserBg',
+    refresh: false,
+  });
+  registerTextRow('ヒント文', 'hintTextColor', '補足テキスト', {
+    previewBgKey: 'browserBg',
+    refresh: false,
+  });
+  registerTextRow('薄い・淡い文字', 'textDimColor', 'フッター・ヒント等', {
+    previewBgKey: 'browserBg',
+    refresh: false,
+  });
+  registerTextRow('マイナス値（金額）', 'negativeAmountColor', null, {
+    html: '<span class="amount-yen amount-negative amount-has-prefix"><span class="amount-prefix">-¥</span>1,234</span>',
+  });
+  registerTextRow('計画金額', 'planAmountColor', '¥1,234,567');
+  registerTextRow('金額差異', 'amountVarianceColor', '¥1,234,567');
+  registerFillRow('塗り色1（注目）', 'fillColor1', '注目行');
+  registerFillRow('塗り色2（注意）', 'fillColor2', '注意行');
+
+  const warningColors = getUiColors(getConfig());
+  const warningText = colorInputTd(warningColors.warningTextColor);
+  const warningPreview = previewTd({
+    background: getSectionBarColor('revenueVariance', data?.sections, sectionColorConfig, getUiColorMode(getConfig())),
+    color: warningColors.warningTextColor,
+    text: '売上高－売掛金',
+  });
+  const warningReset = resetBtnTd(keysMatchDefaults(getConfig(), ['warningTextColor']));
+  const warningBgTd = dashTd();
+  warningBgTd.title = '背景色は大項目色（売上高差異）を参照';
+  addRow('警告文字色', [warningBgTd, warningText.td, warningPreview.td, warningReset.td]);
+  warningText.input.addEventListener('input', () => {
+    const text = opaqueHex(warningText.input.value);
+    setConfig(setUiColorKey(getConfig(), 'warningTextColor', text));
+    persist();
+    warningText.input.value = text;
+    warningText.input.title = text;
+    warningPreview.span.style.color = text;
+    warningReset.btn.disabled = keysMatchDefaults(getConfig(), ['warningTextColor']);
+    refreshPlan();
+  });
+  warningReset.btn.addEventListener('click', () => {
+    setConfig(resetUiColorKey(getConfig(), 'warningTextColor'));
+    persist();
+    const text = getDefaultUiColors(getUiColorMode(getConfig())).warningTextColor;
+    warningText.input.value = text;
+    warningText.input.title = text;
+    warningPreview.span.style.color = text;
+    warningReset.btn.disabled = true;
+    refreshPlan();
+  });
+
+  registerAccentRow('展開可能項目（ハイライト）', 'expandableHighlight', '▶ 勘定科目');
+  registerAccentRow('マウスオーバー（行）', 'rowHoverBorder', 'ホバー');
+  registerAccentRow('行選択（枠線）', 'rowSelectionRing', '選択中');
+
+  table.appendChild(tbody);
+  panel.appendChild(table);
+  container.appendChild(panel);
 }
 
 /* ui/plan.js */
@@ -9653,6 +11198,43 @@ function shouldHighlightCurrentMonth() {
     appSettings.businessStartYear,
     appSettings.fiscalPeriod,
   ) === 'budget-actual';
+}
+
+function getHighlightFiscalMonth(date = new Date()) {
+  if (!shouldHighlightCurrentMonth()) return null;
+  return getCurrentFiscalMonthLabel(
+    appSettings.businessStartYear,
+    appSettings.fiscalPeriod,
+    FISCAL_MONTHS,
+    date,
+  );
+}
+
+const SETTLEMENT_FISCAL_MONTH = '決算整理';
+
+function planTableMonthHighlightClass(month, highlightFiscalMonth) {
+  if (month === SETTLEMENT_FISCAL_MONTH) return ' settlement-month';
+  if (month === highlightFiscalMonth) return ' current-month';
+  return '';
+}
+
+function syncPlanTableMonthHighlightClasses(el, month, highlightFiscalMonth) {
+  if (!el) return;
+  el.classList.toggle('settlement-month', month === SETTLEMENT_FISCAL_MONTH);
+  el.classList.toggle(
+    'current-month',
+    month !== SETTLEMENT_FISCAL_MONTH && month === highlightFiscalMonth,
+  );
+}
+
+function syncPlanTableHeaderMonthHighlights(table, highlightFiscalMonth) {
+  const yearThs = table.querySelectorAll('thead .year-row th.col-amount-month');
+  const monthThs = table.querySelectorAll('thead .month-row th.col-amount-month');
+  for (let mi = 0; mi < FISCAL_MONTHS.length; mi += 1) {
+    const month = FISCAL_MONTHS[mi];
+    syncPlanTableMonthHighlightClasses(yearThs[mi], month, highlightFiscalMonth);
+    syncPlanTableMonthHighlightClasses(monthThs[mi], month, highlightFiscalMonth);
+  }
 }
 
 function syncPeriodControls() {
@@ -9739,7 +11321,7 @@ async function setFiscalPeriod(nextPeriod) {
 
   if (isPlanOnlyPeriod(appSettings.businessStartYear, clamped)) {
     showPlanLoadingOverlay({ awaitLayout: true });
-    loadPlanOnlyPeriodData();
+    loadPlanOnlyPeriodData({ measureColumnWidths: true });
     return;
   }
 
@@ -9752,7 +11334,7 @@ async function setFiscalPeriod(nextPeriod) {
     const cached = planDataFromCache(expandConfig, getPeriodOptions());
     if (cached) {
       showPlanLoadingOverlay({ awaitLayout: true });
-      loadData(cached);
+      loadData(cached, { measureColumnWidths: true });
       return;
     }
   } catch (err) {
@@ -9764,7 +11346,7 @@ async function setFiscalPeriod(nextPeriod) {
 
   try {
     const loaded = await reloadPlanDataFromSavedFolder(expandConfig, getPeriodOptions());
-    loadData(loaded);
+    loadData(loaded, { measureColumnWidths: true });
   } catch (err) {
     cancelPlanLoadingOverlay();
     if (err?.code === 'NEEDS_PERMISSION' && err.handle) {
@@ -9801,12 +11383,15 @@ let generalLedgerText = null;
 let generalLedgerName = null;
 let sectionFilterConfig = {};
 let activeTab = 'plan';
-let currentMonth = '6月';
 let expandConfig = loadExpandConfig();
 let visibilityConfig = loadVisibilityConfig();
 let rowDisplayConfig = loadRowDisplayConfig();
 let expenseSortConfig = loadExpenseSortConfig();
 let sectionColorConfig = loadSectionColorConfig();
+
+function getPlanColorMode() {
+  return getUiColorMode(uiColorConfig);
+}
 let uiColorConfig = loadUiColorConfig();
 let csvNameConfig = loadCsvNameConfig();
 let appSettings = loadAppSettings();
@@ -9819,12 +11404,15 @@ let expensePlanOverrides = loadExpensePlanOverrides();
 let outsourcingPlans = loadOutsourcingPlans();
 let revenuePlans = loadRevenuePlans();
 let revenuePlanSettings = loadRevenuePlanSettings();
+let monthDisplayConfig = loadMonthDisplayConfig();
+applyClosedPeriodPlanPurgeIfNeeded();
 let employeeTenureTimerId = null;
 let journalEntriesCache = null;
 let drilldownIndex = null;
 let journalPopupEl = null;
 const expandedGroups = new Set();
 const rowHoverPlateControllers = new WeakMap();
+const planColumnPlateControllers = new WeakMap();
 const rowSelectionPlateControllers = new WeakMap();
 const rowContextMenuControllers = new WeakMap();
 const expandSettingsContextMenuControllers = new WeakMap();
@@ -9846,6 +11434,10 @@ let planLoadingShownAt = 0;
 const PLAN_LOADING_MIN_DISPLAY_MS = 150;
 /** 予実表を一度でも列幅確定まで表示済みなら true（以降の読み込みは列幅待ちしない） */
 let planTableInitialLayoutDone = false;
+/** 設定タブ表示中に破棄した表の列幅（復帰時の再計測を省略） */
+let lastPlanTableColumnWidths = null;
+/** フォント・余白変更など列幅の再計測が必要なとき true */
+let planTableLayoutInvalidated = false;
 
 let planTableColumnWidthScheduleGeneration = 0;
 
@@ -9870,6 +11462,24 @@ function setPlanKpi(margin) {
   }
   kpiEl.textContent = `総利益率 ${margin.toFixed(2)}%`;
   kpiEl.classList.toggle('plan-kpi-negative', margin < 0);
+}
+
+function cachePlanTableColumnWidthsFromDom() {
+  const table = root.querySelector('.plan-table');
+  if (!table) return;
+  lastPlanTableColumnWidths = readPlanTableColumnWidths(table);
+}
+
+function shouldShowPlanLoadingOnTabReturn() {
+  if (!data) return true;
+  if (!planTableInitialLayoutDone) return true;
+  if (planTableLayoutInvalidated) return true;
+  if (!hasStoredPlanTableColumnWidths(lastPlanTableColumnWidths)) return true;
+  return false;
+}
+
+function invalidatePlanTableLayout() {
+  planTableLayoutInvalidated = true;
 }
 
 function ensurePlanLoadingOverlay() {
@@ -10145,6 +11755,38 @@ function readPlanTableColumnWidths(table) {
   };
 }
 
+function hasStoredPlanTableColumnWidths(widths) {
+  if (!widths) return false;
+  return widths.categoryW > 0
+    || widths.labelW > 0
+    || widths.subW > 0
+    || widths.monthW > 0
+    || widths.extraW > 0;
+}
+
+function applyPreservedPlanTableColumnWidths(table, widths) {
+  if (!hasStoredPlanTableColumnWidths(widths)) return false;
+  let fitted = { ...widths };
+  const availableW = getPlanTableAvailableWidth(table);
+  fitted = shrinkPlanTableFlexColumnsToFit(table, fitted, availableW);
+  if (planTableOverflowsWrapContent(table)) {
+    fitted = shrinkPlanTableFlexColumnsToFit(table, fitted, availableW - 1);
+  }
+  applyPlanTableColumnWidths(table, fitted);
+  return true;
+}
+
+/** 列幅を内容から再計測する（期変更・初回表示・フォント変更など明示時のみ） */
+function measurePlanTableColumnWidths(table, { onSettled, beforeMeasure } = {}) {
+  if (!table?.isConnected) {
+    onSettled?.();
+    return;
+  }
+  const wrap = table.closest('.plan-table-wrap');
+  if (wrap) bindPlanTableColumnWidthSync(wrap, table);
+  schedulePlanTableColumnWidths(table, { onSettled, beforeMeasure });
+}
+
 function getPlanTableWrapContentWidth(wrap) {
   if (!wrap?.isConnected) return 0;
   const style = getComputedStyle(wrap);
@@ -10239,11 +11881,12 @@ function sectionFillsRowWithAccentBackground(sectionId) {
 }
 
 function isBsSectionForAccentTotal(sectionId) {
-  return (
-    sectionId === 'currentAssets' || sectionId === 'fixedAssets'
-    || sectionId === 'currentLiab' || sectionId === 'fixedLiab'
-    || sectionId === 'equity' || sectionId === 'cashBalance'
-  );
+  return BS_SECTION_IDS.has(sectionId);
+}
+
+/** BS・現預金は残高表示のため合計・平均列を出さない */
+function sectionHidesExtraColumns(sectionId) {
+  return BS_SECTION_IDS.has(sectionId);
 }
 
 /** 大項目色付け行か（BS・利益は各セクションの最重要行のみ） */
@@ -10463,6 +12106,250 @@ function measureSubColumnWidth(table, subEntries) {
   return max;
 }
 
+function getPlanTableMonthColumnIndex(monthLabel) {
+  return FISCAL_MONTHS.indexOf(monthLabel);
+}
+
+function getPlanColumnPlateClipRect(wrap, table) {
+  const body = planBody();
+  const wrapRect = wrap.getBoundingClientRect();
+  const tableRect = table.getBoundingClientRect();
+  if (!body) {
+    return { top: wrapRect.top, bottom: wrapRect.bottom };
+  }
+  const bodyRect = body.getBoundingClientRect();
+  return {
+    top: Math.max(bodyRect.top, tableRect.top),
+    bottom: Math.min(bodyRect.bottom, tableRect.bottom, wrapRect.bottom),
+  };
+}
+
+function isPlanMonthHeaderSticky(table) {
+  const yearTh = table.querySelector('.year-row th.col-amount-month');
+  const monthTh = table.querySelector('.month-row th.col-amount-month');
+  if (!yearTh || !monthTh) return false;
+  return yearTh.getBoundingClientRect().bottom <= monthTh.getBoundingClientRect().top + 1;
+}
+
+function applyFixedColumnPlate(plate, monthRect, topY, bottomY, clipRect) {
+  const clippedTop = Math.max(topY, clipRect.top);
+  const clippedBottom = Math.min(bottomY, clipRect.bottom);
+
+  if (clippedBottom <= clippedTop + 0.5) {
+    plate.hidden = true;
+    delete plate.dataset.plateKey;
+    return;
+  }
+
+  const left = Math.round(monthRect.left);
+  const top = Math.round(clippedTop);
+  const width = Math.round(monthRect.width);
+  const height = Math.round(clippedBottom - clippedTop);
+  const key = `${left}|${top}|${width}|${height}`;
+
+  if (plate.dataset.plateKey === key && !plate.hidden) return;
+
+  plate.dataset.plateKey = key;
+  plate.hidden = false;
+  plate.style.position = 'fixed';
+  plate.style.left = `${left}px`;
+  plate.style.width = `${width}px`;
+  plate.style.top = `${top}px`;
+  plate.style.height = `${height}px`;
+}
+
+/** tbody 列: 月行の直下から最終行まで（月行自体は含めない） */
+function positionPlanColumnBodyPlate(wrap, plate, table, monthIndex) {
+  const monthThs = table.querySelectorAll('thead .month-row th.col-amount-month');
+  const monthTh = monthThs[monthIndex];
+  if (!monthTh) {
+    plate.hidden = true;
+    delete plate.dataset.plateKey;
+    return;
+  }
+
+  const monthRect = monthTh.getBoundingClientRect();
+  let bottomY = monthRect.bottom;
+
+  const tbody = table.tBodies[0];
+  if (tbody) {
+    const rows = tbody.querySelectorAll('tr');
+    for (let i = rows.length - 1; i >= 0; i -= 1) {
+      const monthTds = rows[i].querySelectorAll('td.col-amount-month');
+      const td = monthTds[monthIndex];
+      if (td) {
+        bottomY = td.getBoundingClientRect().bottom;
+        break;
+      }
+    }
+  }
+
+  applyFixedColumnPlate(
+    plate,
+    monthRect,
+    monthRect.bottom,
+    bottomY,
+    getPlanColumnPlateClipRect(wrap, table),
+  );
+}
+
+/** thead 月行のみ: sticky ヘッダーに固定（viewport 基準・スクロール中は座標不変） */
+function positionPlanColumnHeaderPlate(wrap, plate, table, monthIndex) {
+  const monthThs = table.querySelectorAll('thead .month-row th.col-amount-month');
+  const monthTh = monthThs[monthIndex];
+  if (!monthTh) {
+    plate.hidden = true;
+    delete plate.dataset.plateKey;
+    return;
+  }
+
+  const monthRect = monthTh.getBoundingClientRect();
+  applyFixedColumnPlate(
+    plate,
+    monthRect,
+    monthRect.top,
+    monthRect.bottom,
+    getPlanColumnPlateClipRect(wrap, table),
+  );
+}
+
+function syncPlanColumnBodyPlates(wrap, table) {
+  const layer = wrap?.querySelector('.plan-column-plate-layer');
+  if (!layer || !table?.isConnected) return;
+
+  const highlightMonth = getHighlightFiscalMonth();
+  const currentIdx = highlightMonth ? getPlanTableMonthColumnIndex(highlightMonth) : -1;
+  const settlementIdx = getPlanTableMonthColumnIndex(SETTLEMENT_FISCAL_MONTH);
+
+  const currentBodyPlate = layer.querySelector('.plan-column-plate--current');
+  const settlementBodyPlate = layer.querySelector('.plan-column-plate--settlement');
+
+  if (currentBodyPlate) {
+    if (currentIdx >= 0) positionPlanColumnBodyPlate(wrap, currentBodyPlate, table, currentIdx);
+    else {
+      currentBodyPlate.hidden = true;
+      delete currentBodyPlate.dataset.plateKey;
+    }
+  }
+  if (settlementBodyPlate) {
+    if (settlementIdx >= 0) positionPlanColumnBodyPlate(wrap, settlementBodyPlate, table, settlementIdx);
+    else {
+      settlementBodyPlate.hidden = true;
+      delete settlementBodyPlate.dataset.plateKey;
+    }
+  }
+}
+
+function syncPlanColumnHeaderPlates(wrap, table) {
+  const layer = wrap?.querySelector('.plan-column-plate-layer');
+  if (!layer || !table?.isConnected) return;
+
+  const highlightMonth = getHighlightFiscalMonth();
+  const currentIdx = highlightMonth ? getPlanTableMonthColumnIndex(highlightMonth) : -1;
+  const settlementIdx = getPlanTableMonthColumnIndex(SETTLEMENT_FISCAL_MONTH);
+
+  const currentHeaderPlate = layer.querySelector('.plan-column-plate--current-header');
+  const settlementHeaderPlate = layer.querySelector('.plan-column-plate--settlement-header');
+
+  if (currentHeaderPlate) {
+    if (currentIdx >= 0) positionPlanColumnHeaderPlate(wrap, currentHeaderPlate, table, currentIdx);
+    else {
+      currentHeaderPlate.hidden = true;
+      delete currentHeaderPlate.dataset.plateKey;
+    }
+  }
+  if (settlementHeaderPlate) {
+    if (settlementIdx >= 0) positionPlanColumnHeaderPlate(wrap, settlementHeaderPlate, table, settlementIdx);
+    else {
+      settlementHeaderPlate.hidden = true;
+      delete settlementHeaderPlate.dataset.plateKey;
+    }
+  }
+}
+
+function syncPlanColumnPlates(wrap, table) {
+  syncPlanColumnHeaderPlates(wrap, table);
+  syncPlanColumnBodyPlates(wrap, table);
+}
+
+function bindPlanColumnPlates(wrap, table) {
+  const prev = planColumnPlateControllers.get(wrap);
+  prev?.abort();
+
+  let layer = wrap.querySelector('.plan-column-plate-layer');
+  if (!layer) {
+    layer = document.createElement('div');
+    layer.className = 'plan-column-plate-layer';
+    layer.setAttribute('aria-hidden', 'true');
+  }
+  wrap.appendChild(layer);
+
+  let currentBodyPlate = layer.querySelector('.plan-column-plate--current');
+  if (!currentBodyPlate) {
+    currentBodyPlate = document.createElement('div');
+    currentBodyPlate.className = 'plan-column-plate plan-column-plate--current';
+    layer.appendChild(currentBodyPlate);
+  }
+
+  let currentHeaderPlate = layer.querySelector('.plan-column-plate--current-header');
+  if (!currentHeaderPlate) {
+    currentHeaderPlate = document.createElement('div');
+    currentHeaderPlate.className = 'plan-column-plate plan-column-plate--current-header';
+    layer.appendChild(currentHeaderPlate);
+  }
+
+  let settlementBodyPlate = layer.querySelector('.plan-column-plate--settlement');
+  if (!settlementBodyPlate) {
+    settlementBodyPlate = document.createElement('div');
+    settlementBodyPlate.className = 'plan-column-plate plan-column-plate--settlement';
+    layer.appendChild(settlementBodyPlate);
+  }
+
+  let settlementHeaderPlate = layer.querySelector('.plan-column-plate--settlement-header');
+  if (!settlementHeaderPlate) {
+    settlementHeaderPlate = document.createElement('div');
+    settlementHeaderPlate.className = 'plan-column-plate plan-column-plate--settlement-header';
+    layer.appendChild(settlementHeaderPlate);
+  }
+
+  const controller = new AbortController();
+  const { signal } = controller;
+  planColumnPlateControllers.set(wrap, controller);
+
+  let syncRaf = 0;
+  const syncAll = () => {
+    if (syncRaf) cancelAnimationFrame(syncRaf);
+    syncRaf = requestAnimationFrame(() => {
+      syncRaf = 0;
+      syncPlanColumnPlates(wrap, table);
+    });
+  };
+  const syncOnScroll = () => {
+    if (syncRaf) cancelAnimationFrame(syncRaf);
+    syncRaf = requestAnimationFrame(() => {
+      syncRaf = 0;
+      syncPlanColumnBodyPlates(wrap, table);
+      const sticky = isPlanMonthHeaderSticky(table);
+      const wasSticky = wrap.dataset.planMonthHeaderPlatesSticky === '1';
+      // sticky 前後の切り替え時のみ月行板を再配置（固定後は viewport 座標が不変）
+      if (!sticky || !wasSticky) {
+        syncPlanColumnHeaderPlates(wrap, table);
+      }
+      wrap.dataset.planMonthHeaderPlatesSticky = sticky ? '1' : '0';
+    });
+  };
+  syncAll();
+
+  const scrollRoot = planBody() ?? wrap;
+  scrollRoot.addEventListener('scroll', syncOnScroll, { signal, passive: true });
+  wrap.addEventListener('scroll', syncOnScroll, { signal, passive: true });
+  window.addEventListener('resize', syncAll, { signal });
+
+  const resizeObserver = new ResizeObserver(syncAll);
+  resizeObserver.observe(table);
+  signal.addEventListener('abort', () => resizeObserver.disconnect());
+}
+
 function positionRowHoverPlate(wrap, plate, tr) {
   const labelCell = tr.querySelector('.col-label');
   const lastCell = tr.querySelector('td:last-child');
@@ -10628,8 +12515,8 @@ function applyRowDisplayPatch(targets, patch) {
   saveRowDisplayConfig(rowDisplayConfig);
 }
 
-/** 行の見た目設定（大きく表示・塗り色）だけ DOM に反映（テーブル全再描画は行わない） */
-function applyPlanRowDisplayState(table, targets, { remeasureColumns = false } = {}) {
+/** 行の見た目設定（大きく表示・塗り色）だけ DOM に反映する */
+function applyPlanRowDisplayState(table, targets) {
   if (!table || !targets.length || !data) return;
 
   const targetKeys = new Set(
@@ -10652,10 +12539,6 @@ function applyPlanRowDisplayState(table, targets, { remeasureColumns = false } =
     tr.classList.remove('row-fill-1', 'row-fill-2');
     const fillClass = getRowFillColorClass(section, row);
     if (fillClass) tr.classList.add(fillClass);
-  }
-
-  if (remeasureColumns) {
-    fixPlanTableColumnWidths(table);
   }
 }
 
@@ -10845,6 +12728,20 @@ function isRevenueManMonthMonthEditable(month, displayMode, pastMonthSet) {
   return true;
 }
 
+function shouldShowRevenueAmountInMonth(section, row, month, displayMode, pastMonthSet) {
+  if (section.id !== 'revenue' || displayMode !== 'budget-actual') return true;
+  if (!pastMonthSet.has(month)) return true;
+  if (row.type === 'plan' || row.type === 'man-month') return false;
+  if (row.planFillMonths?.includes(month)) return false;
+  return true;
+}
+
+function shouldShowPlanTableMonthAmount(section, row, month, amountCtx) {
+  const { displayMode, pastMonthSet, crossVarianceCtx } = amountCtx;
+  return shouldShowCrossVarianceMonth(section, row, month, crossVarianceCtx)
+    && shouldShowRevenueAmountInMonth(section, row, month, displayMode, pastMonthSet);
+}
+
 function persistRevenueManMonths(clientId, nextManMonths) {
   const fiscalMonths = buildFiscalYearMonths(appSettings.fiscalEndMonth);
   const clients = getPeriodClientEntries(revenuePlans, appSettings.fiscalPeriod, fiscalMonths);
@@ -10859,6 +12756,57 @@ function persistRevenueManMonths(clientId, nextManMonths) {
   refreshSectionColors();
   setPlanKpi(calcTotalProfitMargin(data));
   applyRevenueManMonthEditDom(root.querySelector('.plan-table'), clientId);
+}
+
+/** 人月編集後: 売上・利益の該当セルだけ DOM 更新する */
+function applyRevenueManMonthEditDom(table, clientId) {
+  if (!table || !data) return;
+  const amountCtx = getPlanTableAmountContext();
+  const revenueSection = data.sections.find((s) => s.id === 'revenue');
+  if (!revenueSection) return;
+
+  const fiscalMonths = buildFiscalYearMonths(appSettings.fiscalEndMonth);
+  const client = getClientEntry(revenuePlans, appSettings.fiscalPeriod, clientId, fiscalMonths);
+
+  const parentRowIds = new Set();
+  for (const row of revenueSection.rows) {
+    if (row.type === 'man-month' && row.revenueClientId === clientId) {
+      parentRowIds.add(row.parentRevenueRowId);
+    }
+  }
+  if (client) {
+    for (const row of revenueSection.rows) {
+      if (row.type === 'total' || row.type === 'man-month') continue;
+      if (row.label === client.accountLabel && row.subLabel === client.subLabel) {
+        parentRowIds.add(row.id);
+      }
+    }
+  }
+
+  for (const tr of [...table.querySelectorAll('tbody tr[data-section-id="revenue"][data-row-id]')]) {
+    const row = revenueSection.rows.find((r) => r.id === tr.dataset.rowId);
+    if (!row) {
+      if (tr.dataset.rowId?.endsWith('-mm')) tr.remove();
+      continue;
+    }
+    const shouldUpdate = row.type === 'total'
+      || (row.type === 'man-month' && row.revenueClientId === clientId)
+      || parentRowIds.has(row.id);
+    if (!shouldUpdate) continue;
+    if (row.type === 'man-month') {
+      updatePlanTableManMonthRowCells(tr, revenueSection, row, amountCtx);
+    } else {
+      updatePlanTableRevenueAmountRowCells(tr, revenueSection, row, amountCtx);
+    }
+  }
+
+  const profitSection = data.sections.find((s) => s.id === 'profit');
+  if (!profitSection) return;
+  for (const tr of table.querySelectorAll('tbody tr[data-section-id="profit"][data-row-id]')) {
+    const row = profitSection.rows.find((r) => r.id === tr.dataset.rowId);
+    if (!row || !rowVisibleInSection(profitSection, row)) continue;
+    updatePlanTableProfitRowCells(tr, profitSection, row, amountCtx);
+  }
 }
 
 function updatePlanTableManMonthRowCells(tr, section, row, amountCtx) {
@@ -10887,6 +12835,9 @@ function updatePlanTableManMonthRowCells(tr, section, row, amountCtx) {
 function updatePlanTableRevenueAmountRowCells(tr, section, row, amountCtx) {
   const { displayMode, pastMonthSet, crossVarianceCtx } = amountCtx;
   const amountType = row.type === 'variance' ? 'variance' : 'item';
+  const hideGroupTotal = row.type === 'group'
+    && expandedGroups.has(row.id)
+    && isHideTotalWhenExpanded(section.id, row.label, expandConfig);
   const monthTds = tr.querySelectorAll('td.col-amount-month');
   for (let mi = 0; mi < FISCAL_MONTHS.length; mi += 1) {
     const td = monthTds[mi];
@@ -10902,13 +12853,23 @@ function updatePlanTableRevenueAmountRowCells(tr, section, row, amountCtx) {
       shouldHighlightMonthDeltaFromPrevious(section, row, mi, displayMode, pastMonthSet),
     );
     td.classList.toggle('plan-amount-filled', Boolean(row.planFillMonths?.includes(m)));
-    const showAmount = shouldShowCrossVarianceMonth(section, row, m, crossVarianceCtx);
-    if (!showAmount) {
+    const showAmount = shouldShowPlanTableMonthAmount(section, row, m, amountCtx);
+    const hasDrilldown = !hideGroupTotal
+      && showAmount
+      && isDrilldownAvailable(section, row)
+      && hasDrilldownEntries(getDrilldownIndex(), section, row, m)
+      && !row.planFillMonths?.includes(m)
+      && !row.openingAdjustMonths?.includes(m);
+    td.classList.toggle('col-amount-drilldown', hasDrilldown);
+    td.ondblclick = hasDrilldown ? () => showJournalPopup(section, row, m) : null;
+    if (!showAmount || hideGroupTotal) {
       td.innerHTML = '';
+      td.removeAttribute('title');
       continue;
     }
-    if (td.classList.contains('col-amount-drilldown')) continue;
     td.innerHTML = formatAmount(val, amountType);
+    const drilldownHint = hasDrilldown ? '\u30c0\u30d6\u30eb\u30af\u30ea\u30c3\u30af\u3067\u4ed5\u8a33\u3092\u8868\u793a' : '';
+    applyAggregateCellTooltip(td, row, section, m, drilldownHint);
   }
 
   const extraTds = tr.querySelectorAll('td.col-amount-extra');
@@ -10962,43 +12923,6 @@ function updatePlanTableProfitRowCells(tr, section, row, amountCtx) {
     );
     td.innerHTML = formatAmount(row.values[col], amountType);
     applyAggregateCellTooltip(td, row, section, col);
-  }
-}
-
-/** 人月編集後: 売上・利益の該当セルだけ DOM 更新（列幅再計測・全再描画なし） */
-function applyRevenueManMonthEditDom(table, clientId) {
-  if (!table || !data) return;
-  const amountCtx = getPlanTableAmountContext();
-  const revenueSection = data.sections.find((s) => s.id === 'revenue');
-  if (!revenueSection) return;
-
-  const parentRowIds = new Set();
-  for (const row of revenueSection.rows) {
-    if (row.type === 'man-month' && row.revenueClientId === clientId) {
-      parentRowIds.add(row.parentRevenueRowId);
-    }
-  }
-
-  for (const tr of table.querySelectorAll('tbody tr[data-section-id="revenue"][data-row-id]')) {
-    const row = revenueSection.rows.find((r) => r.id === tr.dataset.rowId);
-    if (!row) continue;
-    const shouldUpdate = row.type === 'total'
-      || (row.type === 'man-month' && row.revenueClientId === clientId)
-      || parentRowIds.has(row.id);
-    if (!shouldUpdate) continue;
-    if (row.type === 'man-month') {
-      updatePlanTableManMonthRowCells(tr, revenueSection, row, amountCtx);
-    } else {
-      updatePlanTableRevenueAmountRowCells(tr, revenueSection, row, amountCtx);
-    }
-  }
-
-  const profitSection = data.sections.find((s) => s.id === 'profit');
-  if (!profitSection) return;
-  for (const tr of table.querySelectorAll('tbody tr[data-section-id="profit"][data-row-id]')) {
-    const row = profitSection.rows.find((r) => r.id === tr.dataset.rowId);
-    if (!row || !rowVisibleInSection(profitSection, row)) continue;
-    updatePlanTableProfitRowCells(tr, profitSection, row, amountCtx);
   }
 }
 
@@ -11057,16 +12981,22 @@ function startRevenueManMonthCellEdit(td, {
   };
 
   input.addEventListener('keydown', (e) => {
-    if (e.isComposing) return;
-    if (e.key === 'Enter' || e.code === 'NumpadEnter') {
-      e.preventDefault();
-      finish(true, e.shiftKey);
-      return;
-    }
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      finish(false);
-    }
+    handlePlanAmountCellKeydown(e, {
+      finish,
+      td,
+      allowShiftFillForward: true,
+      onTabNext: (nextTd, { nextMonth }) => {
+        if (!nextTd || !nextMonth) return;
+        requestAnimationFrame(() => {
+          startRevenueManMonthCellEdit(nextTd, {
+            clientId,
+            month: nextMonth,
+            displayMode,
+            pastMonthSet,
+          });
+        });
+      },
+    });
   });
   input.addEventListener('blur', () => {
     setTimeout(() => {
@@ -11203,9 +13133,7 @@ function showRowContextMenu(clientX, clientY, targets) {
     disabled: !styleTargets.length,
     onSelect: () => {
       applyRowDisplayPatch(styleTargets, { largeDisplay: largeState.next });
-      applyPlanRowDisplayState(root.querySelector('.plan-table'), styleTargets, {
-        remeasureColumns: true,
-      });
+      applyPlanRowDisplayState(root.querySelector('.plan-table'), styleTargets);
     },
   });
   appendContextMenuItem(menu, {
@@ -11558,6 +13486,9 @@ function fixPlanTableColumnWidths(table) {
   if (yearRow) {
     table.style.setProperty('--plan-thead-year-h', `${yearRow.offsetHeight}px`);
   }
+
+  const wrap = table.closest('.plan-table-wrap');
+  if (wrap) syncPlanColumnPlates(wrap, table);
 }
 
 /** フォントサイズ（--plan-font-scale）反映後に列幅を計測・見切れ補正する */
@@ -11701,6 +13632,48 @@ function bindPlanTableColumnWidthSync(wrap, table) {
   });
 }
 
+/** 保存済み列幅を維持し、ビューポート変化時は縮小のみ行う */
+function bindPlanTableColumnWidthViewportFit(wrap, table) {
+  abortActivePlanTableColumnWidthSync();
+
+  const prev = planTableColumnWidthControllers.get(wrap);
+  prev?.abort();
+
+  const controller = new AbortController();
+  const { signal } = controller;
+  activePlanTableColumnWidthAbort = controller;
+  planTableColumnWidthControllers.set(wrap, controller);
+
+  let raf = null;
+  let lastSyncAvailableWidth = -1;
+  const schedule = () => {
+    if (!table.isConnected) return;
+    const availableW = getPlanTableAvailableWidth(table);
+    if (availableW > 0 && availableW === lastSyncAvailableWidth) return;
+    lastSyncAvailableWidth = availableW;
+    if (raf !== null) cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(() => {
+      raf = null;
+      applyPreservedPlanTableColumnWidths(table, readPlanTableColumnWidths(table));
+    });
+  };
+
+  const observer = new ResizeObserver(schedule);
+  const scrollRoot = planBody() ?? wrap;
+  observer.observe(table);
+  observer.observe(scrollRoot);
+  if (scrollRoot !== wrap) observer.observe(wrap);
+  window.addEventListener('resize', schedule, { signal });
+
+  signal.addEventListener('abort', () => {
+    observer.disconnect();
+    if (raf !== null) cancelAnimationFrame(raf);
+    if (activePlanTableColumnWidthAbort === controller) {
+      activePlanTableColumnWidthAbort = null;
+    }
+  });
+}
+
 const FONT_SCALE_STEP = 0.05;
 const ROW_PADDING_SCALE_STEP = 0.05;
 const PLAN_SCALE_BTN_ICON = {
@@ -11757,6 +13730,7 @@ function applyPlanFontScaleSetting(scale) {
   saveAppSettings(appSettings);
   applyFontScale(appSettings.fontScale);
   refreshPlanFontScaleControl();
+  invalidatePlanTableLayout();
   if (fontScaleColumnWidthRaf !== null) {
     cancelAnimationFrame(fontScaleColumnWidthRaf);
   }
@@ -11764,7 +13738,7 @@ function applyPlanFontScaleSetting(scale) {
     fontScaleColumnWidthRaf = null;
     const table = root.querySelector('.plan-table');
     if (table && activeTab === 'plan' && data) {
-      fixPlanTableColumnWidths(table);
+      measurePlanTableColumnWidths(table);
     }
   });
 }
@@ -11812,6 +13786,7 @@ function applyPlanRowPaddingScaleSetting(scale) {
   saveAppSettings(appSettings);
   applyRowPaddingScale(appSettings.rowPaddingScale);
   refreshPlanRowPaddingScaleControl();
+  invalidatePlanTableLayout();
   if (rowPaddingColumnWidthRaf !== null) {
     cancelAnimationFrame(rowPaddingColumnWidthRaf);
   }
@@ -11819,7 +13794,7 @@ function applyPlanRowPaddingScaleSetting(scale) {
     rowPaddingColumnWidthRaf = null;
     const table = root.querySelector('.plan-table');
     if (table && activeTab === 'plan' && data) {
-      fixPlanTableColumnWidths(table);
+      measurePlanTableColumnWidths(table);
     }
   });
 }
@@ -11886,6 +13861,58 @@ function rowVisibleInSection(section, row) {
   return true;
 }
 
+function getSettingsLockedMonthsForPeriod(fiscalPeriod, fiscalMonths) {
+  return getSettingsLockedMonths({
+    config: monthDisplayConfig,
+    businessStartYear: appSettings.businessStartYear,
+    fiscalPeriod,
+    fiscalMonths,
+    currentFiscalPeriod: appSettings.fiscalPeriod,
+  });
+}
+
+function applyClosedPeriodPlanPurgeIfNeeded() {
+  const purged = purgeClosedPeriodPlanStorage({
+    businessStartYear: appSettings.businessStartYear,
+    revenuePlans,
+    salaryPlans,
+    salaryPlanSettings,
+    taxPaymentPlans,
+    outsourcingPlans,
+    expensePlanOverrides,
+    monthDisplayConfig,
+  });
+  if (!purged.changed) return false;
+  revenuePlans = purged.revenuePlans;
+  salaryPlans = purged.salaryPlans;
+  salaryPlanSettings = purged.salaryPlanSettings;
+  taxPaymentPlans = purged.taxPaymentPlans;
+  outsourcingPlans = purged.outsourcingPlans;
+  expensePlanOverrides = purged.expensePlanOverrides;
+  monthDisplayConfig = purged.monthDisplayConfig;
+  saveRevenuePlans(revenuePlans);
+  saveSalaryPlans(salaryPlans);
+  saveSalaryPlanSettings(salaryPlanSettings);
+  saveTaxPaymentPlans(taxPaymentPlans);
+  saveOutsourcingPlans(outsourcingPlans);
+  saveExpensePlanOverrides(expensePlanOverrides);
+  saveMonthDisplayConfig(monthDisplayConfig);
+  return true;
+}
+
+function buildPlanTablePastMonthSet(displayMode) {
+  if (displayMode === 'budget-actual') {
+    return buildBudgetActualMonthSets({
+      config: monthDisplayConfig,
+      businessStartYear: appSettings.businessStartYear,
+      fiscalPeriod: appSettings.fiscalPeriod,
+      fiscalMonths: FISCAL_MONTHS,
+    }).actualMonthSet;
+  }
+  if (displayMode === 'actual') return new Set(FISCAL_MONTHS);
+  return new Set();
+}
+
 function applyPlanColors(planData) {
   if (!planData) return null;
   const displayMode = getFiscalPeriodDisplayMode(
@@ -11901,6 +13928,7 @@ function applyPlanColors(planData) {
     fiscalEndMonth: appSettings.fiscalEndMonth,
     displayMode,
     legalWelfareRate: appSettings.legalWelfareRate,
+    monthDisplayConfig,
   });
   const withTaxPayments = enrichPlanDataWithTaxPaymentRows(enriched, {
     taxPaymentPlans,
@@ -11910,6 +13938,7 @@ function applyPlanColors(planData) {
     fiscalEndMonth: appSettings.fiscalEndMonth,
     displayMode,
     actualSourcePlanData: enriched,
+    monthDisplayConfig,
   });
   const withOutsourcing = enrichPlanDataWithOutsourcingRows(withTaxPayments, {
     outsourcingPlans,
@@ -11920,6 +13949,7 @@ function applyPlanColors(planData) {
     corpEntityMarkers: appSettings.corpEntityMarkers,
     consumptionTaxRates: appSettings.consumptionTaxRates,
     withholdingTaxRates: appSettings.withholdingTaxRates,
+    monthDisplayConfig,
   });
   const withRevenue = enrichPlanDataWithRevenueRows(withOutsourcing, {
     revenuePlans,
@@ -11928,6 +13958,7 @@ function applyPlanColors(planData) {
     fiscalEndMonth: appSettings.fiscalEndMonth,
     displayMode,
     consumptionTaxRates: appSettings.consumptionTaxRates,
+    monthDisplayConfig,
   });
   const withAverages = enrichPlanDataWithPeriodAverageFills(withRevenue, {
     expandConfig,
@@ -11936,6 +13967,7 @@ function applyPlanColors(planData) {
     fiscalEndMonth: appSettings.fiscalEndMonth,
     displayMode,
     expensePlanOverrides,
+    monthDisplayConfig,
   });
   const withCashOpening = enrichPlanDataWithCashFlowOpeningInflow(withAverages, {
     expandConfig,
@@ -11943,11 +13975,20 @@ function applyPlanColors(planData) {
     fiscalPeriod: appSettings.fiscalPeriod,
     fiscalEndMonth: appSettings.fiscalEndMonth,
     displayMode,
+    monthDisplayConfig,
   });
-  const withProfit = rebuildProfitSectionInPlanData(withCashOpening);
+  const withCashForecast = enrichPlanDataWithCashFlowForecast(withCashOpening, {
+    expandConfig,
+    businessStartYear: appSettings.businessStartYear,
+    fiscalPeriod: appSettings.fiscalPeriod,
+    fiscalEndMonth: appSettings.fiscalEndMonth,
+    displayMode,
+    monthDisplayConfig,
+  });
+  const withProfit = rebuildProfitSectionInPlanData(withCashForecast);
   const colored = {
     ...withProfit,
-    sections: applySectionColors(withProfit.sections, sectionColorConfig),
+    sections: applySectionColors(withProfit.sections, sectionColorConfig, getPlanColorMode()),
   };
   const withSga = insertSgaSummarySections(colored);
   const sorted = applyExpenseSortToPlanData(withSga, expenseSortConfig);
@@ -11970,8 +14011,8 @@ function rebuildPlanData() {
 }
 
 function styleSectionLabelCell(td, sectionId) {
-  const barColor = getSectionBarColor(sectionId, data?.sections, sectionColorConfig);
-  const textColor = getSectionTextColor(sectionId, data?.sections, sectionColorConfig);
+  const barColor = getSectionBarColor(sectionId, data?.sections, sectionColorConfig, getPlanColorMode());
+  const textColor = getSectionTextColor(sectionId, data?.sections, sectionColorConfig, getPlanColorMode());
   td.className = 'col-section-label';
   td.style.background = barColor;
   td.style.borderColor = barColor;
@@ -12094,7 +14135,95 @@ function showJournalPopup(section, row, month) {
   overlay.querySelector('.plan-journal-close').focus();
 }
 
+function getMainMenuItems() {
+  const panel = document.getElementById('plan-main-menu-panel');
+  if (!panel) return [];
+  return [...panel.querySelectorAll('.plan-main-menu-item')];
+}
+
+function isMainMenuOpen() {
+  const panel = document.getElementById('plan-main-menu-panel');
+  return panel != null && !panel.hidden;
+}
+
+function closeMainMenu({ returnFocus = false } = {}) {
+  const trigger = document.getElementById('plan-main-menu-trigger');
+  const panel = document.getElementById('plan-main-menu-panel');
+  if (!trigger || !panel) return;
+  panel.hidden = true;
+  trigger.setAttribute('aria-expanded', 'false');
+  if (returnFocus) trigger.focus();
+}
+
+function openMainMenu({ focusFirst = false } = {}) {
+  const trigger = document.getElementById('plan-main-menu-trigger');
+  const panel = document.getElementById('plan-main-menu-panel');
+  if (!trigger || !panel) return;
+  panel.hidden = false;
+  trigger.setAttribute('aria-expanded', 'true');
+  if (focusFirst) {
+    const items = getMainMenuItems();
+    if (items.length > 0) items[0].focus();
+  }
+}
+
+function focusMainMenuItemByOffset(items, currentIndex, offset) {
+  if (!items.length) return;
+  const base = currentIndex < 0 ? (offset > 0 ? -1 : 0) : currentIndex;
+  const next = (base + offset + items.length) % items.length;
+  items[next].focus();
+}
+
+function handleMainMenuPanelKeydown(e) {
+  const panel = document.getElementById('plan-main-menu-panel');
+  if (!panel || panel.hidden) return;
+
+  const items = getMainMenuItems();
+  if (!items.length) return;
+
+  const currentIndex = items.indexOf(document.activeElement);
+
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    focusMainMenuItemByOffset(items, currentIndex, 1);
+    return;
+  }
+  if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    focusMainMenuItemByOffset(items, currentIndex, -1);
+    return;
+  }
+  if (e.key === 'Home') {
+    e.preventDefault();
+    items[0].focus();
+    return;
+  }
+  if (e.key === 'End') {
+    e.preventDefault();
+    items[items.length - 1].focus();
+    return;
+  }
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    e.stopPropagation();
+    closeMainMenu({ returnFocus: true });
+    return;
+  }
+
+  if (!e.ctrlKey && !e.altKey && !e.metaKey && e.key.length === 1) {
+    const entry = getMainMenuEntryByShortcut(e.key);
+    if (entry) {
+      e.preventDefault();
+      executeMainMenuEntry(entry);
+    }
+  }
+}
+
 function handleEscapeKey() {
+  if (isMainMenuOpen()) {
+    closeMainMenu({ returnFocus: true });
+    return;
+  }
   if (journalPopupEl) {
     closeJournalPopup();
     return;
@@ -12110,26 +14239,44 @@ function handleEscapeKey() {
 }
 
 document.addEventListener('keydown', (ev) => {
+  if (ev.key === 'F10' && !ev.shiftKey && !ev.altKey && !ev.ctrlKey && !ev.metaKey) {
+    ev.preventDefault();
+    openMainMenu({ focusFirst: true });
+    return;
+  }
   if (ev.key === 'Escape') handleEscapeKey();
 });
 
 const MAIN_MENU_ENTRIES = [
-  { kind: 'item', value: 'plan', label: '予実表' },
+  { kind: 'item', value: 'plan', label: '予実表', shortcutKey: 'P' },
   { kind: 'heading', label: '設定' },
-  { kind: 'item', value: 'orders', label: '受注', indented: true },
-  { kind: 'item', value: 'taxrates', label: '税率定義', indented: true },
-  { kind: 'item', value: 'taxpayments', label: '支払い', indented: true },
-  { kind: 'item', value: 'employees', label: '人件費', indented: true },
-  { kind: 'item', value: 'outsourcing', label: '外注費', indented: true },
-  { kind: 'item', value: 'visibility', label: '表示', indented: true },
-  { kind: 'item', value: 'colors', label: '色', indented: true },
-  { kind: 'item', value: 'settings', label: 'その他', indented: true },
+  { kind: 'item', value: 'orders', label: '受注', indented: true, shortcutKey: 'O' },
+  { kind: 'item', value: 'taxrates', label: '税率定義', indented: true, shortcutKey: 'T' },
+  { kind: 'item', value: 'taxpayments', label: '支払い', indented: true, shortcutKey: 'Y' },
+  { kind: 'item', value: 'employees', label: '人件費', indented: true, shortcutKey: 'E' },
+  { kind: 'item', value: 'outsourcing', label: '外注費', indented: true, shortcutKey: 'U' },
+  { kind: 'item', value: 'visibility', label: '表示', indented: true, shortcutKey: 'V' },
+  { kind: 'item', value: 'colors', label: '色', indented: true, shortcutKey: 'C' },
+  { kind: 'item', value: 'settings', label: 'その他', indented: true, shortcutKey: 'S' },
   { kind: 'heading', label: '操作' },
-  { kind: 'item', value: 'action:settings-export', label: 'エクスポート', indented: true },
-  { kind: 'item', value: 'action:settings-import', label: 'インポート', indented: true },
-  { kind: 'item', value: 'action:reload-csv', label: '再読み込み', indented: true },
-  { kind: 'item', value: 'action:change-folder', label: 'フォルダ変更', indented: true },
+  { kind: 'item', value: 'action:settings-export', label: 'エクスポート', indented: true, shortcutKey: 'X' },
+  { kind: 'item', value: 'action:settings-import', label: 'インポート', indented: true, shortcutKey: 'I' },
+  { kind: 'item', value: 'action:reload-csv', label: '再読み込み', indented: true, shortcutKey: 'R' },
+  { kind: 'item', value: 'action:change-folder', label: 'フォルダ変更', indented: true, shortcutKey: 'F' },
 ];
+
+function getMainMenuEntryByShortcut(key) {
+  const normalized = key.length === 1 ? key.toUpperCase() : '';
+  if (!normalized) return null;
+  return MAIN_MENU_ENTRIES.find(
+    (entry) => entry.kind === 'item' && entry.shortcutKey?.toUpperCase() === normalized,
+  ) ?? null;
+}
+
+function executeMainMenuEntry(entry) {
+  handleMainMenuAction(entry.value);
+  closeMainMenu();
+}
 
 function renderMainTabs() {
   toolbar.hidden = activeTab !== 'plan';
@@ -12141,8 +14288,8 @@ function getFilterButtonColors(filterId) {
     return { background: cellBg, color: textColor };
   }
   return {
-    background: getSectionBarColor(filterId, data?.sections, sectionColorConfig),
-    color: getSectionTextColor(filterId, data?.sections, sectionColorConfig),
+    background: getSectionBarColor(filterId, data?.sections, sectionColorConfig, getPlanColorMode()),
+    color: getSectionTextColor(filterId, data?.sections, sectionColorConfig, getPlanColorMode()),
   };
 }
 
@@ -12200,10 +14347,10 @@ function syncPlanDataToCurrentPeriod() {
   journalEntriesCache = null;
 }
 
-function renderPlanViewAfterDataChange() {
+function renderPlanViewAfterDataChange({ measureColumnWidths = false } = {}) {
   syncPeriodControls();
   const render = () => {
-    renderView();
+    renderView({ measureColumnWidths });
     if (activeTab !== 'plan') finishPlanLoadingAfterLayout();
   };
   if (planLoadingVisible || planLoadingAwaitLayout) {
@@ -12213,11 +14360,11 @@ function renderPlanViewAfterDataChange() {
   }
 }
 
-function refreshPlanTable() {
+function refreshPlanTable({ measureColumnWidths = false } = {}) {
   syncPlanDataToCurrentPeriod();
   renderToolbar();
   abortActivePlanTableColumnWidthSync();
-  renderTable();
+  renderTable({ measureColumnWidths });
 }
 
 function clearEmployeeTenureTimer() {
@@ -12233,29 +14380,36 @@ function switchMainTab(nextTab) {
   const prevTab = activeTab;
   if (prevTab === 'plan' && nextTab !== 'plan') {
     resetPlanBodyScroll();
+    cachePlanTableColumnWidthsFromDom();
   }
   activeTab = nextTab;
   if (nextTab === 'plan' && prevTab !== 'plan') {
     resetPlanBodyScroll();
-    showPlanLoadingOverlay({ awaitLayout: true });
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        renderView();
-        if (!planLoadingAwaitLayout) return;
-        const table = root.querySelector('.plan-table');
-        if (!table && !data) finishPlanLoadingAfterLayout();
-      });
-    });
+    const showLoading = shouldShowPlanLoadingOnTabReturn();
+    if (showLoading) {
+      showPlanLoadingOverlay({ awaitLayout: true });
+    }
+    const render = () => {
+      renderView();
+      if (!showLoading || !planLoadingAwaitLayout) return;
+      const table = root.querySelector('.plan-table');
+      if (!table && !data) finishPlanLoadingAfterLayout();
+    };
+    if (showLoading) {
+      requestAnimationFrame(() => requestAnimationFrame(render));
+    } else {
+      render();
+    }
     return;
   }
   renderView();
 }
 
-function renderView() {
+function renderView({ measureColumnWidths = false } = {}) {
   if (activeTab !== 'employees') clearEmployeeTenureTimer();
   renderMainTabs();
   if (activeTab === 'plan') {
-    refreshPlanTable();
+    refreshPlanTable({ measureColumnWidths });
     if (planLoadingAwaitLayout && !data) finishPlanLoadingAfterLayout();
     else if (planLoadingAwaitLayout && !root.querySelector('.plan-table')) {
       finishPlanLoadingAfterLayout();
@@ -12275,15 +14429,7 @@ function getPlanTableAmountContext() {
     appSettings.businessStartYear,
     appSettings.fiscalPeriod,
   );
-  const pastMonthSet = displayMode === 'budget-actual'
-    ? buildPastFiscalMonthSet(
-      appSettings.businessStartYear,
-      appSettings.fiscalPeriod,
-      FISCAL_MONTHS,
-    )
-    : displayMode === 'actual'
-      ? new Set(FISCAL_MONTHS)
-      : new Set();
+  const pastMonthSet = buildPlanTablePastMonthSet(displayMode);
   return {
     displayMode,
     pastMonthSet,
@@ -12303,7 +14449,7 @@ function updateGroupRowAmountDisplay(tr, section, row, amountCtx) {
     const td = monthTds[mi];
     if (!td) continue;
     const val = row.values[m];
-    const showAmount = shouldShowCrossVarianceMonth(section, row, m, crossVarianceCtx);
+    const showAmount = shouldShowPlanTableMonthAmount(section, row, m, amountCtx);
     if (hideGroupTotal || !showAmount) {
       td.innerHTML = '';
       td.classList.remove('aggregate-formula-cell');
@@ -12318,11 +14464,12 @@ function updateGroupRowAmountDisplay(tr, section, row, amountCtx) {
   }
 
   const extraTds = tr.querySelectorAll('td.col-amount-extra');
+  const hideExtra = sectionHidesExtraColumns(section.id);
   for (let ei = 0; ei < EXTRA_COLUMNS.length; ei += 1) {
     const col = EXTRA_COLUMNS[ei];
     const td = extraTds[ei];
     if (!td) continue;
-    if (hideGroupTotal) {
+    if (hideExtra || hideGroupTotal) {
       td.innerHTML = '';
       td.classList.remove('aggregate-formula-cell');
       td.removeAttribute('title');
@@ -12333,7 +14480,7 @@ function updateGroupRowAmountDisplay(tr, section, row, amountCtx) {
   }
 }
 
-/** 展開状態だけ DOM に反映（列幅再計測・テーブル全再描画は行わない） */
+/** 展開状態だけ DOM に反映する */
 function applyPlanGroupExpandState(table) {
   if (!table || !data) return;
   const amountCtx = getPlanTableAmountContext();
@@ -12365,13 +14512,200 @@ function togglePlanGroupExpanded(groupId) {
   applyPlanGroupExpandState(root.querySelector('.plan-table'));
 }
 
-function renderTable() {
+function updatePlanMonthDisplayHeaderCell(th, monthLabel, displayMode, highlightFiscalMonth) {
+  const toggleTarget = displayMode === 'budget-actual' && isMonthDisplayToggleTarget(monthLabel);
+  syncPlanTableMonthHighlightClasses(th, monthLabel, highlightFiscalMonth);
+  if (!toggleTarget) {
+    th.classList.remove('month-display-toggle', 'month-display-actual', 'month-display-plan');
+    th.removeAttribute('role');
+    th.removeAttribute('aria-pressed');
+    th.removeAttribute('title');
+    if (th.tabIndex >= 0) th.tabIndex = -1;
+    return;
+  }
+  const mode = getMonthDisplayMode(
+    monthDisplayConfig,
+    appSettings.fiscalPeriod,
+    monthLabel,
+    appSettings.businessStartYear,
+    FISCAL_MONTHS,
+  );
+  th.classList.add('month-display-toggle');
+  th.classList.toggle('month-display-actual', mode === 'actual');
+  th.classList.toggle('month-display-plan', mode === 'plan');
+  th.title = getMonthDisplayClickHint(mode);
+  th.setAttribute('role', 'button');
+  th.tabIndex = 0;
+  th.setAttribute('aria-pressed', mode === 'plan' ? 'true' : 'false');
+}
+
+function updatePlanTableRowMonthCells(tr, section, row, {
+  displayMode,
+  pastMonthSet,
+  highlightFiscalMonth,
+  crossVarianceCtx,
+}) {
+  const hideGroupTotal = row.type === 'group'
+    && expandedGroups.has(row.id)
+    && isHideTotalWhenExpanded(section.id, row.label, expandConfig);
+  const isManMonthRow = isRevenueManMonthRow(section.id, row);
+  const monthTds = tr.querySelectorAll('td.col-amount-month');
+
+  for (let mi = 0; mi < FISCAL_MONTHS.length; mi += 1) {
+    const m = FISCAL_MONTHS[mi];
+    const td = monthTds[mi];
+    if (!td || td.querySelector('input')) continue;
+    const val = row.values[m];
+
+    syncPlanTableMonthHighlightClasses(td, m, highlightFiscalMonth);
+    td.classList.toggle(
+      'has-variance',
+      (row.type === 'variance' || row.type === 'sub-variance') && val !== 0,
+    );
+    td.classList.toggle(
+      'plan-amount-variance',
+      shouldHighlightMonthDeltaFromPrevious(section, row, mi, displayMode, pastMonthSet),
+    );
+    td.classList.toggle('plan-amount-filled', Boolean(row.planFillMonths?.includes(m)));
+
+    const showAmount = shouldShowPlanTableMonthAmount(section, row, m, {
+      displayMode,
+      pastMonthSet,
+      crossVarianceCtx,
+    });
+
+    if (isManMonthRow) {
+      if (!hideGroupTotal && showAmount) {
+        td.textContent = formatManMonths(val);
+        const editable = isRevenueManMonthMonthEditable(m, displayMode, pastMonthSet);
+        td.classList.toggle('plan-man-month-editable', editable);
+        td.classList.toggle('salary-plan-cell-editable', editable);
+        td.title = editable
+          ? '\u30c0\u30d6\u30eb\u30af\u30ea\u30c3\u30af\u3067\u7de8\u96c6\uFF08Shift+Enter \u3067\u5f8c\u7d9a\u6708\u3078\u540c\u5024\u3092\u53cd\u6620\u30000 \u3082\u53ef\uFF09'
+          : '';
+        td.ondblclick = editable
+          ? () => startRevenueManMonthCellEdit(td, {
+            clientId: row.revenueClientId,
+            month: m,
+            displayMode,
+            pastMonthSet,
+          })
+          : null;
+      } else {
+        td.textContent = '';
+        td.classList.remove('plan-man-month-editable', 'salary-plan-cell-editable');
+        td.removeAttribute('title');
+        td.ondblclick = null;
+      }
+      continue;
+    }
+
+    const amountType = row.type === 'variance' ? 'variance' : 'item';
+    const hasDrilldown = !hideGroupTotal
+      && showAmount
+      && isDrilldownAvailable(section, row)
+      && hasDrilldownEntries(getDrilldownIndex(), section, row, m)
+      && !row.planFillMonths?.includes(m)
+      && !row.openingAdjustMonths?.includes(m);
+
+    td.classList.toggle('col-amount-drilldown', hasDrilldown);
+    td.ondblclick = hasDrilldown ? () => showJournalPopup(section, row, m) : null;
+
+    if (hideGroupTotal || !showAmount) {
+      td.innerHTML = '';
+      td.removeAttribute('title');
+    } else {
+      td.innerHTML = formatAmount(val, amountType);
+      const drilldownHint = hasDrilldown ? '\u30c0\u30d6\u30eb\u30af\u30ea\u30c3\u30af\u3067\u4ed5\u8a33\u3092\u8868\u793a' : '';
+      applyAggregateCellTooltip(td, row, section, m, drilldownHint);
+    }
+  }
+
+  const extraTds = tr.querySelectorAll('td.col-amount-extra');
+  const hideExtra = sectionHidesExtraColumns(section.id);
+  for (let ei = 0; ei < EXTRA_COLUMNS.length; ei += 1) {
+    const col = EXTRA_COLUMNS[ei];
+    const td = extraTds[ei];
+    if (!td || td.querySelector('input')) continue;
+    const val = row.values[col];
+    td.classList.toggle(
+      'has-variance',
+      !hideExtra
+        && (row.type === 'variance' || row.type === 'sub-variance')
+        && val !== 0,
+    );
+    if (isManMonthRow) {
+      td.textContent = (hideExtra || hideGroupTotal) ? '' : formatManMonths(val);
+    } else {
+      const amountType = row.type === 'variance' ? 'variance' : 'item';
+      td.innerHTML = (hideExtra || hideGroupTotal) ? '' : formatAmount(val, amountType);
+      if (!hideExtra && !hideGroupTotal) applyAggregateCellTooltip(td, row, section, col);
+    }
+  }
+}
+
+function applyPlanMonthDisplayDom(table) {
+  if (!table || !data) return;
+  const displayMode = getFiscalPeriodDisplayMode(
+    appSettings.businessStartYear,
+    appSettings.fiscalPeriod,
+  );
+  const highlightFiscalMonth = getHighlightFiscalMonth();
+  const amountCtx = getPlanTableAmountContext();
+  const monthThs = table.querySelectorAll('thead .month-row th.col-amount-month');
+  for (let mi = 0; mi < FISCAL_MONTHS.length; mi += 1) {
+    const th = monthThs[mi];
+    if (th) updatePlanMonthDisplayHeaderCell(th, FISCAL_MONTHS[mi], displayMode, highlightFiscalMonth);
+  }
+  syncPlanTableHeaderMonthHighlights(table, highlightFiscalMonth);
+  syncPlanColumnPlates(table.closest('.plan-table-wrap'), table);
+
+  for (const tr of table.querySelectorAll('tbody tr[data-section-id]')) {
+    const section = data.sections.find((s) => s.id === tr.dataset.sectionId);
+    if (!section) continue;
+    const row = section.rows.find((r) => r.id === tr.dataset.rowId);
+    if (!row || !rowVisibleInSection(section, row)) continue;
+    updatePlanTableRowMonthCells(tr, section, row, {
+      ...amountCtx,
+      highlightFiscalMonth,
+    });
+  }
+
+  setPlanKpi(calcTotalProfitMargin(data));
+}
+
+function togglePlanMonthDisplay(monthLabel) {
+  const displayMode = getFiscalPeriodDisplayMode(
+    appSettings.businessStartYear,
+    appSettings.fiscalPeriod,
+  );
+  if (displayMode !== 'budget-actual' || !isMonthDisplayToggleTarget(monthLabel)) return;
+  monthDisplayConfig = toggleMonthDisplayMode(
+    monthDisplayConfig,
+    appSettings.fiscalPeriod,
+    monthLabel,
+    appSettings.businessStartYear,
+    FISCAL_MONTHS,
+  );
+  saveMonthDisplayConfig(monthDisplayConfig);
+  if (rawPlanData) {
+    data = applyPlanColors(rawPlanData);
+    applyPlanMonthDisplayDom(root.querySelector('.plan-table'));
+  }
+}
+
+function renderTable({ measureColumnWidths = false } = {}) {
   if (!data) return;
   closeJournalPopup();
   closeRowContextMenu();
-  abortActivePlanTableColumnWidthSync();
 
   const existingWrap = root.querySelector('.plan-table-wrap');
+  const existingTable = existingWrap?.querySelector('.plan-table');
+  const preservedWidths = existingTable
+    ? readPlanTableColumnWidths(existingTable)
+    : lastPlanTableColumnWidths;
+  abortActivePlanTableColumnWidthSync();
+
   const body = planBody();
   const preserveScroll = existingWrap != null;
   const scrollTop = preserveScroll ? (body?.scrollTop ?? existingWrap?.scrollTop ?? 0) : 0;
@@ -12380,20 +14714,12 @@ function renderTable() {
   setPlanKpi(calcTotalProfitMargin(data));
 
   const allSections = data.sections;
-  const highlightCurrentMonth = shouldHighlightCurrentMonth();
+  const highlightFiscalMonth = getHighlightFiscalMonth();
   const displayMode = getFiscalPeriodDisplayMode(
     appSettings.businessStartYear,
     appSettings.fiscalPeriod,
   );
-  const pastMonthSet = displayMode === 'budget-actual'
-    ? buildPastFiscalMonthSet(
-      appSettings.businessStartYear,
-      appSettings.fiscalPeriod,
-      FISCAL_MONTHS,
-    )
-    : displayMode === 'actual'
-      ? new Set(FISCAL_MONTHS)
-      : new Set();
+  const pastMonthSet = buildPlanTablePastMonthSet(displayMode);
 
   const crossVarianceCtx = buildRevenueReceivablesCrossVarianceContext(data.sections);
 
@@ -12413,16 +14739,17 @@ function renderTable() {
   const monthYear = getMonthYear();
   for (const m of FISCAL_MONTHS) {
     const y = monthYear[m];
+    const monthHighlightClass = planTableMonthHighlightClass(m, highlightFiscalMonth);
     if (y !== lastYear) {
       const th = document.createElement('th');
       th.colSpan = 1;
       th.textContent = `${y}年`;
-      th.className = 'col-amount col-amount-month year-row-label';
+      th.className = `col-amount col-amount-month year-row-label${monthHighlightClass}`;
       yearRow.appendChild(th);
       lastYear = y;
     } else {
       const th = document.createElement('th');
-      th.className = 'col-amount col-amount-month';
+      th.className = `col-amount col-amount-month${monthHighlightClass}`;
       yearRow.appendChild(th);
     }
   }
@@ -12439,8 +14766,30 @@ function renderTable() {
     '<th class="col-account-header" colspan="2">勘定科目</th><th class="col-sub">補助科目</th>';
   for (const m of FISCAL_MONTHS) {
     const th = document.createElement('th');
-    th.className = `col-amount col-amount-month${highlightCurrentMonth && m === currentMonth ? ' current-month' : ''}`;
+    const monthDisplayMode = displayMode === 'budget-actual' && isMonthDisplayToggleTarget(m)
+      ? getMonthDisplayMode(
+        monthDisplayConfig,
+        appSettings.fiscalPeriod,
+        m,
+        appSettings.businessStartYear,
+        FISCAL_MONTHS,
+      )
+      : null;
+    th.className = `col-amount col-amount-month${planTableMonthHighlightClass(m, highlightFiscalMonth)}${monthDisplayMode ? ` month-display-toggle month-display-${monthDisplayMode}` : ''}`;
     th.textContent = m;
+    if (monthDisplayMode) {
+      th.title = getMonthDisplayClickHint(monthDisplayMode);
+      th.setAttribute('role', 'button');
+      th.tabIndex = 0;
+      th.setAttribute('aria-pressed', monthDisplayMode === 'plan' ? 'true' : 'false');
+      th.addEventListener('click', () => togglePlanMonthDisplay(m));
+      th.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          togglePlanMonthDisplay(m);
+        }
+      });
+    }
     monthRow.appendChild(th);
   }
   for (const col of EXTRA_COLUMNS) {
@@ -12552,7 +14901,7 @@ function renderTable() {
         const m = FISCAL_MONTHS[mi];
         const td = document.createElement('td');
         const val = row.values[m];
-        td.className = `col-amount col-amount-month${highlightCurrentMonth && m === currentMonth ? ' current-month' : ''}`;
+        td.className = `col-amount col-amount-month${planTableMonthHighlightClass(m, highlightFiscalMonth)}`;
         if (
           (row.type === 'variance' || row.type === 'sub-variance')
           && val !== 0
@@ -12565,13 +14914,18 @@ function renderTable() {
         if (row.planFillMonths?.includes(m)) {
           td.classList.add('plan-amount-filled');
         }
-        const showAmount = shouldShowCrossVarianceMonth(section, row, m, crossVarianceCtx);
+        const showAmount = shouldShowPlanTableMonthAmount(section, row, m, {
+          displayMode,
+          pastMonthSet,
+          crossVarianceCtx,
+        });
 
         if (isManMonthRow) {
           if (!hideGroupTotal && showAmount) {
             td.textContent = formatManMonths(val);
             if (isRevenueManMonthMonthEditable(m, displayMode, pastMonthSet)) {
               td.classList.add('plan-man-month-editable', 'salary-plan-cell-editable');
+              tagPlanEditableCell(td, { rowKey: row.revenueClientId, month: m });
               td.title = '\u30c0\u30d6\u30eb\u30af\u30ea\u30c3\u30af\u3067\u7de8\u96c6\uFF08Shift+Enter \u3067\u5f8c\u7d9a\u6708\u3078\u540c\u5024\u3092\u53cd\u6620\u30000 \u3082\u53ef\uFF09';
               td.addEventListener('dblclick', () => {
                 startRevenueManMonthCellEdit(td, {
@@ -12615,18 +14969,20 @@ function renderTable() {
         const td = document.createElement('td');
         const val = row.values[col];
         td.className = 'col-amount col-amount-extra';
+        const hideExtra = sectionHidesExtraColumns(section.id);
         if (
-          (row.type === 'variance' || row.type === 'sub-variance')
+          !hideExtra
+          && (row.type === 'variance' || row.type === 'sub-variance')
           && val !== 0
         ) {
           td.classList.add('has-variance');
         }
         if (isManMonthRow) {
-          td.textContent = hideGroupTotal ? '' : formatManMonths(val);
+          td.textContent = (hideExtra || hideGroupTotal) ? '' : formatManMonths(val);
         } else {
           const amountType = row.type === 'variance' ? 'variance' : 'item';
-          td.innerHTML = hideGroupTotal ? '' : formatAmount(val, amountType);
-          if (!hideGroupTotal) {
+          td.innerHTML = (hideExtra || hideGroupTotal) ? '' : formatAmount(val, amountType);
+          if (!hideExtra && !hideGroupTotal) {
             applyAggregateCellTooltip(td, row, section, col);
           }
         }
@@ -12643,30 +14999,45 @@ function renderTable() {
   wrap.className = 'plan-table-wrap';
   wrap.appendChild(table);
   replaceRootPanel(wrap);
-  bindPlanTableColumnWidthSync(wrap, table);
   bindRowHoverPlate(wrap, table);
+  bindPlanColumnPlates(wrap, table);
   bindRowSelectionPlates(wrap, table);
   bindRowContextMenu(wrap, table);
   applyPlanSectionFilterState(table);
 
-  if (planLoadingAwaitLayout && planTableInitialLayoutDone) {
-    finishPlanLoadingAfterLayout();
-  }
-
   const scrollTarget = planBody() ?? wrap;
-  schedulePlanTableColumnWidths(table, {
-    onSettled: () => {
-      if (planTableInitialLayoutDone) return;
-      planTableInitialLayoutDone = true;
-      if (planLoadingAwaitLayout) finishPlanLoadingAfterLayout();
-    },
-    beforeMeasure: () => {
-      if (scrollTarget) {
-        scrollTarget.scrollTop = scrollTop;
-        scrollTarget.scrollLeft = scrollLeft;
-      }
-    },
-  });
+  const shouldMeasureColumnWidths = measureColumnWidths
+    || planTableLayoutInvalidated
+    || !hasStoredPlanTableColumnWidths(preservedWidths);
+
+  if (shouldMeasureColumnWidths) {
+    measurePlanTableColumnWidths(table, {
+      onSettled: () => {
+        planTableInitialLayoutDone = true;
+        lastPlanTableColumnWidths = readPlanTableColumnWidths(table);
+        planTableLayoutInvalidated = false;
+        if (planLoadingAwaitLayout) finishPlanLoadingAfterLayout();
+      },
+      beforeMeasure: () => {
+        if (scrollTarget) {
+          scrollTarget.scrollTop = scrollTop;
+          scrollTarget.scrollLeft = scrollLeft;
+        }
+      },
+    });
+  } else {
+    applyPreservedPlanTableColumnWidths(table, preservedWidths);
+    bindPlanTableColumnWidthViewportFit(wrap, table);
+    if (scrollTarget) {
+      scrollTarget.scrollTop = scrollTop;
+      scrollTarget.scrollLeft = scrollLeft;
+    }
+    lastPlanTableColumnWidths = readPlanTableColumnWidths(table);
+    planTableLayoutInvalidated = false;
+    if (planLoadingAwaitLayout) {
+      finishPlanLoadingAfterLayout();
+    }
+  }
 }
 
 function appendExpandSettingsCheckbox(cell, { checked, labelText, disabled, onChange }) {
@@ -12979,841 +15350,18 @@ function renderVisibilitySettings() {
 }
 
 function renderUiColorPanel(container) {
-  const panel = document.createElement('div');
-  panel.className = 'ui-color-panel';
-
-  const title = document.createElement('h2');
-  title.className = 'ui-color-panel-title';
-  title.textContent = '予実表全体';
-  panel.appendChild(title);
-
-  const colors = getUiColors(uiColorConfig);
-
-  const table = document.createElement('table');
-  table.className = 'expand-settings-table ui-color-table';
-  table.innerHTML = `
-    <thead>
-      <tr>
-        <th>項目</th>
-        <th class="col-color-input">背景色</th>
-        <th class="col-color-input">文字色</th>
-        <th class="col-color-preview">プレビュー</th>
-        <th class="col-color-action">操作</th>
-      </tr>
-    </thead>
-  `;
-
-  const tbody = document.createElement('tbody');
-
-  const appBgRow = document.createElement('tr');
-  const appBgLabelTd = document.createElement('td');
-  appBgLabelTd.textContent = '全体（背景）';
-
-  const appBgInputTd = document.createElement('td');
-  appBgInputTd.className = 'col-color-input';
-  const appBgInput = document.createElement('input');
-  appBgInput.type = 'color';
-  appBgInput.className = 'section-color-input';
-  appBgInput.value = colors.appBg;
-  appBgInput.title = colors.appBg;
-  appBgInputTd.appendChild(appBgInput);
-
-  const appBgTextTd = document.createElement('td');
-  appBgTextTd.className = 'col-color-input';
-  appBgTextTd.textContent = '—';
-
-  const appBgPreviewTd = document.createElement('td');
-  appBgPreviewTd.className = 'col-color-preview';
-  const appBgPreview = document.createElement('span');
-  appBgPreview.className = 'ui-color-preview-cell';
-  appBgPreview.style.background = colors.appBg;
-  appBgPreview.style.color = '#ffffff';
-  appBgPreview.textContent = '背景';
-  appBgPreviewTd.appendChild(appBgPreview);
-
-  const appBgActionTd = document.createElement('td');
-  appBgActionTd.className = 'col-color-action';
-  const appBgResetBtn = document.createElement('button');
-  appBgResetBtn.type = 'button';
-  appBgResetBtn.className = 'section-color-reset-btn';
-  appBgResetBtn.textContent = 'デフォルト';
-  appBgResetBtn.disabled = colors.appBg === getUiColors({}).appBg;
-  appBgActionTd.appendChild(appBgResetBtn);
-
-  appBgRow.append(appBgLabelTd, appBgInputTd, appBgTextTd, appBgPreviewTd, appBgActionTd);
-  tbody.appendChild(appBgRow);
-
-  const cellRow = document.createElement('tr');
-  const cellLabelTd = document.createElement('td');
-  cellLabelTd.textContent = 'セル（明細行）';
-
-  const cellBgInputTd = document.createElement('td');
-  cellBgInputTd.className = 'col-color-input';
-  const cellBgInput = document.createElement('input');
-  cellBgInput.type = 'color';
-  cellBgInput.className = 'section-color-input';
-  cellBgInput.value = colors.cellBg;
-  cellBgInput.title = colors.cellBg;
-  cellBgInputTd.appendChild(cellBgInput);
-
-  const cellTextInputTd = document.createElement('td');
-  cellTextInputTd.className = 'col-color-input';
-  const cellTextInput = document.createElement('input');
-  cellTextInput.type = 'color';
-  cellTextInput.className = 'section-color-input';
-  cellTextInput.value = colors.textColor;
-  cellTextInput.title = colors.textColor;
-  cellTextInputTd.appendChild(cellTextInput);
-
-  const cellPreviewTd = document.createElement('td');
-  cellPreviewTd.className = 'col-color-preview';
-  const cellPreview = document.createElement('span');
-  cellPreview.className = 'ui-color-preview-cell';
-  cellPreview.style.background = colors.cellBg;
-  cellPreview.style.color = colors.textColor;
-  cellPreview.textContent = '¥1,234';
-  cellPreviewTd.appendChild(cellPreview);
-
-  const cellActionTd = document.createElement('td');
-  cellActionTd.className = 'col-color-action';
-  const cellResetBtn = document.createElement('button');
-  cellResetBtn.type = 'button';
-  cellResetBtn.className = 'section-color-reset-btn';
-  cellResetBtn.textContent = 'デフォルト';
-  cellResetBtn.disabled = (
-    colors.cellBg === getUiColors({}).cellBg
-    && colors.textColor === getUiColors({}).textColor
-  );
-  cellActionTd.appendChild(cellResetBtn);
-
-  cellRow.append(cellLabelTd, cellBgInputTd, cellTextInputTd, cellPreviewTd, cellActionTd);
-  tbody.appendChild(cellRow);
-
-  const negativeRow = document.createElement('tr');
-  const negativeLabelTd = document.createElement('td');
-  negativeLabelTd.textContent = 'マイナス値（金額）';
-
-  const negativeBgTd = document.createElement('td');
-  negativeBgTd.className = 'col-color-input';
-  negativeBgTd.textContent = '—';
-
-  const negativeTextInputTd = document.createElement('td');
-  negativeTextInputTd.className = 'col-color-input';
-  const negativeTextInput = document.createElement('input');
-  negativeTextInput.type = 'color';
-  negativeTextInput.className = 'section-color-input';
-  negativeTextInput.value = colors.negativeAmountColor;
-  negativeTextInput.title = colors.negativeAmountColor;
-  negativeTextInputTd.appendChild(negativeTextInput);
-
-  const negativePreviewTd = document.createElement('td');
-  negativePreviewTd.className = 'col-color-preview';
-  const negativePreview = document.createElement('span');
-  negativePreview.className = 'ui-color-preview-cell';
-  negativePreview.style.background = colors.cellBg;
-  negativePreview.innerHTML = '<span class="amount-yen amount-negative amount-has-prefix"><span class="amount-prefix">-¥</span>1,234</span>';
-  negativePreviewTd.appendChild(negativePreview);
-
-  const negativeActionTd = document.createElement('td');
-  negativeActionTd.className = 'col-color-action';
-  const negativeResetBtn = document.createElement('button');
-  negativeResetBtn.type = 'button';
-  negativeResetBtn.className = 'section-color-reset-btn';
-  negativeResetBtn.textContent = 'デフォルト';
-  negativeResetBtn.disabled = (
-    colors.negativeAmountColor === getUiColors({}).negativeAmountColor
-  );
-  negativeActionTd.appendChild(negativeResetBtn);
-
-  negativeRow.append(negativeLabelTd, negativeBgTd, negativeTextInputTd, negativePreviewTd, negativeActionTd);
-  tbody.appendChild(negativeRow);
-
-  const yearRowSetting = document.createElement('tr');
-  const yearLabelTd = document.createElement('td');
-  yearLabelTd.textContent = '年行（ヘッダー）';
-
-  const yearBgInputTd = document.createElement('td');
-  yearBgInputTd.className = 'col-color-input';
-  const yearBgInput = document.createElement('input');
-  yearBgInput.type = 'color';
-  yearBgInput.className = 'section-color-input';
-  yearBgInput.value = colors.yearRowBg;
-  yearBgInput.title = colors.yearRowBg;
-  yearBgInputTd.appendChild(yearBgInput);
-
-  const yearTextInputTd = document.createElement('td');
-  yearTextInputTd.className = 'col-color-input';
-  const yearTextInput = document.createElement('input');
-  yearTextInput.type = 'color';
-  yearTextInput.className = 'section-color-input';
-  yearTextInput.value = colors.yearRowText;
-  yearTextInput.title = colors.yearRowText;
-  yearTextInputTd.appendChild(yearTextInput);
-
-  const yearPreviewTd = document.createElement('td');
-  yearPreviewTd.className = 'col-color-preview';
-  const yearPreview = document.createElement('span');
-  yearPreview.className = 'ui-color-preview-cell';
-  yearPreview.style.background = colors.yearRowBg;
-  yearPreview.style.color = colors.yearRowText;
-  yearPreview.textContent = '2025年';
-  yearPreviewTd.appendChild(yearPreview);
-
-  const yearActionTd = document.createElement('td');
-  yearActionTd.className = 'col-color-action';
-  const yearResetBtn = document.createElement('button');
-  yearResetBtn.type = 'button';
-  yearResetBtn.className = 'section-color-reset-btn';
-  yearResetBtn.textContent = 'デフォルト';
-  yearResetBtn.disabled = (
-    colors.yearRowBg === getUiColors({}).yearRowBg
-    && colors.yearRowText === getUiColors({}).yearRowText
-  );
-  yearActionTd.appendChild(yearResetBtn);
-
-  yearRowSetting.append(yearLabelTd, yearBgInputTd, yearTextInputTd, yearPreviewTd, yearActionTd);
-  tbody.appendChild(yearRowSetting);
-
-  const monthRow = document.createElement('tr');
-  const monthLabelTd = document.createElement('td');
-  monthLabelTd.textContent = '月行（ヘッダー）';
-
-  const monthBgInputTd = document.createElement('td');
-  monthBgInputTd.className = 'col-color-input';
-  const monthBgInput = document.createElement('input');
-  monthBgInput.type = 'color';
-  monthBgInput.className = 'section-color-input';
-  monthBgInput.value = colors.monthRowBg;
-  monthBgInput.title = colors.monthRowBg;
-  monthBgInputTd.appendChild(monthBgInput);
-
-  const monthTextInputTd = document.createElement('td');
-  monthTextInputTd.className = 'col-color-input';
-  const monthTextInput = document.createElement('input');
-  monthTextInput.type = 'color';
-  monthTextInput.className = 'section-color-input';
-  monthTextInput.value = colors.monthRowText;
-  monthTextInput.title = colors.monthRowText;
-  monthTextInputTd.appendChild(monthTextInput);
-
-  const monthPreviewTd = document.createElement('td');
-  monthPreviewTd.className = 'col-color-preview';
-  const monthPreview = document.createElement('span');
-  monthPreview.className = 'ui-color-preview-cell';
-  monthPreview.style.background = colors.monthRowBg;
-  monthPreview.style.color = colors.monthRowText;
-  monthPreview.textContent = '6月';
-  monthPreviewTd.appendChild(monthPreview);
-
-  const monthActionTd = document.createElement('td');
-  monthActionTd.className = 'col-color-action';
-  const monthResetBtn = document.createElement('button');
-  monthResetBtn.type = 'button';
-  monthResetBtn.className = 'section-color-reset-btn';
-  monthResetBtn.textContent = 'デフォルト';
-  monthResetBtn.disabled = (
-    colors.monthRowBg === getUiColors({}).monthRowBg
-    && colors.monthRowText === getUiColors({}).monthRowText
-  );
-  monthActionTd.appendChild(monthResetBtn);
-
-  monthRow.append(monthLabelTd, monthBgInputTd, monthTextInputTd, monthPreviewTd, monthActionTd);
-  tbody.appendChild(monthRow);
-
-  const expandableRow = document.createElement('tr');
-  const expandableLabelTd = document.createElement('td');
-  expandableLabelTd.textContent = '展開可能項目（ハイライト）';
-
-  const expandableBgInputTd = document.createElement('td');
-  expandableBgInputTd.className = 'col-color-input';
-  expandableBgInputTd.textContent = '—';
-
-  const expandableTextInputTd = document.createElement('td');
-  expandableTextInputTd.className = 'col-color-input';
-  const expandableTextInput = document.createElement('input');
-  expandableTextInput.type = 'color';
-  expandableTextInput.className = 'section-color-input';
-  expandableTextInput.value = colors.expandableHighlight;
-  expandableTextInput.title = colors.expandableHighlight;
-  expandableTextInputTd.appendChild(expandableTextInput);
-
-  const expandablePreviewTd = document.createElement('td');
-  expandablePreviewTd.className = 'col-color-preview';
-  const expandablePreview = document.createElement('span');
-  expandablePreview.className = 'ui-color-preview-cell ui-color-preview-hover';
-  expandablePreview.style.background = colors.cellBg;
-  expandablePreview.style.color = opaqueHex(colors.expandableHighlight);
-  expandablePreview.style.boxShadow = 'none';
-  expandablePreview.style.border = `1px solid ${opaqueHex(colors.expandableHighlight)}`;
-  expandablePreview.textContent = '▶ 勘定科目';
-  expandablePreviewTd.appendChild(expandablePreview);
-
-  const expandableActionTd = document.createElement('td');
-  expandableActionTd.className = 'col-color-action';
-  const expandableResetBtn = document.createElement('button');
-  expandableResetBtn.type = 'button';
-  expandableResetBtn.className = 'section-color-reset-btn';
-  expandableResetBtn.textContent = 'デフォルト';
-  expandableResetBtn.disabled = colors.expandableHighlight === getUiColors({}).expandableHighlight;
-  expandableActionTd.appendChild(expandableResetBtn);
-
-  expandableRow.append(
-    expandableLabelTd,
-    expandableBgInputTd,
-    expandableTextInputTd,
-    expandablePreviewTd,
-    expandableActionTd,
-  );
-  tbody.appendChild(expandableRow);
-
-  const hoverRow = document.createElement('tr');
-  const hoverLabelTd = document.createElement('td');
-  hoverLabelTd.textContent = 'マウスオーバー（行）';
-
-  const hoverBgInputTd = document.createElement('td');
-  hoverBgInputTd.className = 'col-color-input';
-  hoverBgInputTd.textContent = '—';
-
-  const hoverBorderInputTd = document.createElement('td');
-  hoverBorderInputTd.className = 'col-color-input';
-  const hoverBorderInput = document.createElement('input');
-  hoverBorderInput.type = 'color';
-  hoverBorderInput.className = 'section-color-input';
-  hoverBorderInput.value = colors.rowHoverBorder;
-  hoverBorderInput.title = colors.rowHoverBorder;
-  hoverBorderInputTd.appendChild(hoverBorderInput);
-
-  const hoverPreviewTd = document.createElement('td');
-  hoverPreviewTd.className = 'col-color-preview';
-  const hoverPreview = document.createElement('span');
-  hoverPreview.className = 'ui-color-preview-cell ui-color-preview-hover';
-  hoverPreview.style.background = colors.cellBg;
-  hoverPreview.style.color = colors.textColor;
-  hoverPreview.style.boxShadow = 'none';
-  hoverPreview.style.border = `1px solid ${opaqueHex(colors.rowHoverBorder)}`;
-  hoverPreview.textContent = 'ホバー';
-  hoverPreviewTd.appendChild(hoverPreview);
-
-  const hoverActionTd = document.createElement('td');
-  hoverActionTd.className = 'col-color-action';
-  const hoverResetBtn = document.createElement('button');
-  hoverResetBtn.type = 'button';
-  hoverResetBtn.className = 'section-color-reset-btn';
-  hoverResetBtn.textContent = 'デフォルト';
-  hoverResetBtn.disabled = colors.rowHoverBorder === getUiColors({}).rowHoverBorder;
-  hoverActionTd.appendChild(hoverResetBtn);
-
-  hoverRow.append(hoverLabelTd, hoverBgInputTd, hoverBorderInputTd, hoverPreviewTd, hoverActionTd);
-  tbody.appendChild(hoverRow);
-
-  const fill1Row = document.createElement('tr');
-  const fill1LabelTd = document.createElement('td');
-  fill1LabelTd.textContent = '塗り色１（注目）';
-
-  const fill1BgInputTd = document.createElement('td');
-  fill1BgInputTd.className = 'col-color-input';
-  const fill1BgInput = document.createElement('input');
-  fill1BgInput.type = 'color';
-  fill1BgInput.className = 'section-color-input';
-  fill1BgInput.value = colors.fillColor1;
-  fill1BgInput.title = colors.fillColor1;
-  fill1BgInputTd.appendChild(fill1BgInput);
-
-  const fill1TextTd = document.createElement('td');
-  fill1TextTd.className = 'col-color-input';
-  fill1TextTd.textContent = '—';
-
-  const fill1PreviewTd = document.createElement('td');
-  fill1PreviewTd.className = 'col-color-preview';
-  const fill1Preview = document.createElement('span');
-  fill1Preview.className = 'ui-color-preview-cell';
-  fill1Preview.style.background = colors.fillColor1;
-  fill1Preview.style.color = colors.textColor;
-  fill1Preview.textContent = '注目行';
-  fill1PreviewTd.appendChild(fill1Preview);
-
-  const fill1ActionTd = document.createElement('td');
-  fill1ActionTd.className = 'col-color-action';
-  const fill1ResetBtn = document.createElement('button');
-  fill1ResetBtn.type = 'button';
-  fill1ResetBtn.className = 'section-color-reset-btn';
-  fill1ResetBtn.textContent = 'デフォルト';
-  fill1ResetBtn.disabled = colors.fillColor1 === getUiColors({}).fillColor1;
-  fill1ActionTd.appendChild(fill1ResetBtn);
-
-  fill1Row.append(fill1LabelTd, fill1BgInputTd, fill1TextTd, fill1PreviewTd, fill1ActionTd);
-  tbody.appendChild(fill1Row);
-
-  const fill2Row = document.createElement('tr');
-  const fill2LabelTd = document.createElement('td');
-  fill2LabelTd.textContent = '塗り色２（注意）';
-
-  const fill2BgInputTd = document.createElement('td');
-  fill2BgInputTd.className = 'col-color-input';
-  const fill2BgInput = document.createElement('input');
-  fill2BgInput.type = 'color';
-  fill2BgInput.className = 'section-color-input';
-  fill2BgInput.value = colors.fillColor2;
-  fill2BgInput.title = colors.fillColor2;
-  fill2BgInputTd.appendChild(fill2BgInput);
-
-  const fill2TextTd = document.createElement('td');
-  fill2TextTd.className = 'col-color-input';
-  fill2TextTd.textContent = '—';
-
-  const fill2PreviewTd = document.createElement('td');
-  fill2PreviewTd.className = 'col-color-preview';
-  const fill2Preview = document.createElement('span');
-  fill2Preview.className = 'ui-color-preview-cell';
-  fill2Preview.style.background = colors.fillColor2;
-  fill2Preview.style.color = colors.textColor;
-  fill2Preview.textContent = '注意行';
-  fill2PreviewTd.appendChild(fill2Preview);
-
-  const fill2ActionTd = document.createElement('td');
-  fill2ActionTd.className = 'col-color-action';
-  const fill2ResetBtn = document.createElement('button');
-  fill2ResetBtn.type = 'button';
-  fill2ResetBtn.className = 'section-color-reset-btn';
-  fill2ResetBtn.textContent = 'デフォルト';
-  fill2ResetBtn.disabled = colors.fillColor2 === getUiColors({}).fillColor2;
-  fill2ActionTd.appendChild(fill2ResetBtn);
-
-  fill2Row.append(fill2LabelTd, fill2BgInputTd, fill2TextTd, fill2PreviewTd, fill2ActionTd);
-  tbody.appendChild(fill2Row);
-
-  const planAmountRow = document.createElement('tr');
-  const planAmountLabelTd = document.createElement('td');
-  planAmountLabelTd.textContent = '計画金額';
-
-  const planAmountBgInputTd = document.createElement('td');
-  planAmountBgInputTd.className = 'col-color-input';
-  planAmountBgInputTd.textContent = '—';
-
-  const planAmountTextInputTd = document.createElement('td');
-  planAmountTextInputTd.className = 'col-color-input';
-  const planAmountTextInput = document.createElement('input');
-  planAmountTextInput.type = 'color';
-  planAmountTextInput.className = 'section-color-input';
-  planAmountTextInput.value = colors.planAmountColor;
-  planAmountTextInput.title = colors.planAmountColor;
-  planAmountTextInputTd.appendChild(planAmountTextInput);
-
-  const planAmountPreviewTd = document.createElement('td');
-  planAmountPreviewTd.className = 'col-color-preview';
-  const planAmountPreview = document.createElement('span');
-  planAmountPreview.className = 'ui-color-preview-cell';
-  planAmountPreview.style.background = colors.cellBg;
-  planAmountPreview.style.color = colors.planAmountColor;
-  planAmountPreview.textContent = '¥1,234,567';
-  planAmountPreviewTd.appendChild(planAmountPreview);
-
-  const planAmountActionTd = document.createElement('td');
-  planAmountActionTd.className = 'col-color-action';
-  const planAmountResetBtn = document.createElement('button');
-  planAmountResetBtn.type = 'button';
-  planAmountResetBtn.className = 'section-color-reset-btn';
-  planAmountResetBtn.textContent = 'デフォルト';
-  planAmountResetBtn.disabled = colors.planAmountColor === getUiColors({}).planAmountColor;
-  planAmountActionTd.appendChild(planAmountResetBtn);
-
-  planAmountRow.append(
-    planAmountLabelTd,
-    planAmountBgInputTd,
-    planAmountTextInputTd,
-    planAmountPreviewTd,
-    planAmountActionTd,
-  );
-  tbody.appendChild(planAmountRow);
-
-  const varianceRow = document.createElement('tr');
-  const varianceLabelTd = document.createElement('td');
-  varianceLabelTd.textContent = '金額差異';
-
-  const varianceBgInputTd = document.createElement('td');
-  varianceBgInputTd.className = 'col-color-input';
-  varianceBgInputTd.textContent = '—';
-
-  const varianceTextInputTd = document.createElement('td');
-  varianceTextInputTd.className = 'col-color-input';
-  const varianceTextInput = document.createElement('input');
-  varianceTextInput.type = 'color';
-  varianceTextInput.className = 'section-color-input';
-  varianceTextInput.value = colors.amountVarianceColor;
-  varianceTextInput.title = colors.amountVarianceColor;
-  varianceTextInputTd.appendChild(varianceTextInput);
-
-  const variancePreviewTd = document.createElement('td');
-  variancePreviewTd.className = 'col-color-preview';
-  const variancePreview = document.createElement('span');
-  variancePreview.className = 'ui-color-preview-cell';
-  variancePreview.style.background = colors.cellBg;
-  variancePreview.style.color = colors.amountVarianceColor;
-  variancePreview.textContent = '¥1,234,567';
-  variancePreviewTd.appendChild(variancePreview);
-
-  const varianceActionTd = document.createElement('td');
-  varianceActionTd.className = 'col-color-action';
-  const varianceResetBtn = document.createElement('button');
-  varianceResetBtn.type = 'button';
-  varianceResetBtn.className = 'section-color-reset-btn';
-  varianceResetBtn.textContent = 'デフォルト';
-  varianceResetBtn.disabled = colors.amountVarianceColor === getUiColors({}).amountVarianceColor;
-  varianceActionTd.appendChild(varianceResetBtn);
-
-  varianceRow.append(
-    varianceLabelTd,
-    varianceBgInputTd,
-    varianceTextInputTd,
-    variancePreviewTd,
-    varianceActionTd,
-  );
-  tbody.appendChild(varianceRow);
-
-  const warningRow = document.createElement('tr');
-  const warningLabelTd = document.createElement('td');
-  warningLabelTd.textContent = '警告文字色';
-
-  const warningBgInputTd = document.createElement('td');
-  warningBgInputTd.className = 'col-color-input';
-  warningBgInputTd.textContent = '—';
-  warningBgInputTd.title = '背景色は大項目色（売上高差異）を参照';
-
-  const warningTextInputTd = document.createElement('td');
-  warningTextInputTd.className = 'col-color-input';
-  const warningTextInput = document.createElement('input');
-  warningTextInput.type = 'color';
-  warningTextInput.className = 'section-color-input';
-  warningTextInput.value = colors.warningTextColor;
-  warningTextInput.title = colors.warningTextColor;
-  warningTextInputTd.appendChild(warningTextInput);
-
-  const warningPreviewTd = document.createElement('td');
-  warningPreviewTd.className = 'col-color-preview';
-  const warningPreview = document.createElement('span');
-  warningPreview.className = 'ui-color-preview-cell';
-  warningPreview.style.background = getSectionBarColor('revenueVariance', data?.sections, sectionColorConfig);
-  warningPreview.style.color = colors.warningTextColor;
-  warningPreview.textContent = '売上高－売掛金';
-  warningPreviewTd.appendChild(warningPreview);
-
-  const warningActionTd = document.createElement('td');
-  warningActionTd.className = 'col-color-action';
-  const warningResetBtn = document.createElement('button');
-  warningResetBtn.type = 'button';
-  warningResetBtn.className = 'section-color-reset-btn';
-  warningResetBtn.textContent = 'デフォルト';
-  warningResetBtn.disabled = colors.warningTextColor === getUiColors({}).warningTextColor;
-  warningActionTd.appendChild(warningResetBtn);
-
-  warningRow.append(
-    warningLabelTd,
-    warningBgInputTd,
-    warningTextInputTd,
-    warningPreviewTd,
-    warningActionTd,
-  );
-  tbody.appendChild(warningRow);
-
-  table.appendChild(tbody);
-  panel.appendChild(table);
-  container.appendChild(panel);
-
-  const persistUiColors = () => {
-    saveUiColorConfig(uiColorConfig);
-    applyUiColors(uiColorConfig);
-  };
-
-  const refreshPlanView = () => {
-    if (activeTab === 'plan') refreshPlanTable();
-  };
-
-  const applyAppBg = (appBg) => {
-    uiColorConfig = { ...uiColorConfig, appBg };
-    persistUiColors();
-    appBgInput.value = appBg;
-    appBgInput.title = appBg;
-    appBgPreview.style.background = appBg;
-    appBgResetBtn.disabled = appBg === getUiColors({}).appBg;
-    refreshPlanView();
-  };
-
-  appBgInput.addEventListener('input', () => {
-    applyAppBg(appBgInput.value);
-  });
-
-  appBgResetBtn.addEventListener('click', () => {
-    applyAppBg(getUiColors({}).appBg);
-    appBgResetBtn.disabled = true;
-  });
-
-  const applyCellColors = (cellBg, textColor) => {
-    uiColorConfig = { ...uiColorConfig, cellBg, textColor };
-    persistUiColors();
-    cellBgInput.value = cellBg;
-    cellBgInput.title = cellBg;
-    cellTextInput.value = textColor;
-    cellTextInput.title = textColor;
-    cellPreview.style.background = cellBg;
-    cellPreview.style.color = textColor;
-    cellResetBtn.disabled = (
-      cellBg === getUiColors({}).cellBg
-      && textColor === getUiColors({}).textColor
-    );
-    negativePreview.style.background = cellBg;
-    refreshPlanView();
-  };
-
-  cellBgInput.addEventListener('input', () => {
-    applyCellColors(cellBgInput.value, cellTextInput.value);
-  });
-
-  cellTextInput.addEventListener('input', () => {
-    applyCellColors(cellBgInput.value, cellTextInput.value);
-  });
-
-  const applyNegativeColor = (negativeAmountColor) => {
-    uiColorConfig = { ...uiColorConfig, negativeAmountColor };
-    persistUiColors();
-    negativeTextInput.value = negativeAmountColor;
-    negativeTextInput.title = negativeAmountColor;
-    negativePreview.style.background = getUiColors(uiColorConfig).cellBg;
-    negativeResetBtn.disabled = (
-      negativeAmountColor === getUiColors({}).negativeAmountColor
-    );
-    refreshPlanView();
-  };
-
-  negativeTextInput.addEventListener('input', () => {
-    applyNegativeColor(negativeTextInput.value);
-  });
-
-  negativeResetBtn.addEventListener('click', () => {
-    applyNegativeColor(getUiColors({}).negativeAmountColor);
-    negativeResetBtn.disabled = true;
-  });
-
-  const applyYearRowColors = (yearRowBg, yearRowText) => {
-    uiColorConfig = { ...uiColorConfig, yearRowBg, yearRowText };
-    persistUiColors();
-    yearBgInput.value = yearRowBg;
-    yearBgInput.title = yearRowBg;
-    yearTextInput.value = yearRowText;
-    yearTextInput.title = yearRowText;
-    yearPreview.style.background = yearRowBg;
-    yearPreview.style.color = yearRowText;
-    yearResetBtn.disabled = (
-      yearRowBg === getUiColors({}).yearRowBg
-      && yearRowText === getUiColors({}).yearRowText
-    );
-    refreshPlanView();
-  };
-
-  yearBgInput.addEventListener('input', () => {
-    applyYearRowColors(yearBgInput.value, yearTextInput.value);
-  });
-
-  yearTextInput.addEventListener('input', () => {
-    applyYearRowColors(yearBgInput.value, yearTextInput.value);
-  });
-
-  yearResetBtn.addEventListener('click', () => {
-    const defaults = getUiColors({});
-    applyYearRowColors(defaults.yearRowBg, defaults.yearRowText);
-    yearResetBtn.disabled = true;
-  });
-
-  const applyMonthRowColors = (monthRowBg, monthRowText) => {
-    uiColorConfig = { ...uiColorConfig, monthRowBg, monthRowText };
-    persistUiColors();
-    monthBgInput.value = monthRowBg;
-    monthBgInput.title = monthRowBg;
-    monthTextInput.value = monthRowText;
-    monthTextInput.title = monthRowText;
-    monthPreview.style.background = monthRowBg;
-    monthPreview.style.color = monthRowText;
-    monthResetBtn.disabled = (
-      monthRowBg === getUiColors({}).monthRowBg
-      && monthRowText === getUiColors({}).monthRowText
-    );
-    refreshPlanView();
-  };
-
-  monthBgInput.addEventListener('input', () => {
-    applyMonthRowColors(monthBgInput.value, monthTextInput.value);
-  });
-
-  monthTextInput.addEventListener('input', () => {
-    applyMonthRowColors(monthBgInput.value, monthTextInput.value);
-  });
-
-  monthResetBtn.addEventListener('click', () => {
-    const defaults = getUiColors({});
-    applyMonthRowColors(defaults.monthRowBg, defaults.monthRowText);
-    monthResetBtn.disabled = true;
-  });
-
-  const applyExpandableHighlight = (expandableHighlight) => {
-    const color = opaqueHex(expandableHighlight);
-    uiColorConfig = { ...uiColorConfig, expandableHighlight: color };
-    persistUiColors();
-    expandableTextInput.value = color;
-    expandableTextInput.title = color;
-    const { cellBg } = getUiColors(uiColorConfig);
-    expandablePreview.style.background = cellBg;
-    expandablePreview.style.color = color;
-    expandablePreview.style.boxShadow = 'none';
-    expandablePreview.style.border = `1px solid ${color}`;
-    expandableResetBtn.disabled = color === getUiColors({}).expandableHighlight;
-    refreshPlanView();
-  };
-
-  expandableTextInput.addEventListener('input', () => {
-    applyExpandableHighlight(expandableTextInput.value);
-  });
-
-  expandableResetBtn.addEventListener('click', () => {
-    applyExpandableHighlight(getUiColors({}).expandableHighlight);
-    expandableResetBtn.disabled = true;
-  });
-
-  const applyRowHoverBorder = (rowHoverBorder) => {
-    const border = opaqueHex(rowHoverBorder);
-    uiColorConfig = { ...uiColorConfig, rowHoverBorder: border };
-    persistUiColors();
-    hoverBorderInput.value = border;
-    hoverBorderInput.title = border;
-    const { cellBg, textColor } = getUiColors(uiColorConfig);
-    hoverPreview.style.background = cellBg;
-    hoverPreview.style.color = textColor;
-    hoverPreview.style.boxShadow = 'none';
-    hoverPreview.style.border = `1px solid ${border}`;
-    hoverResetBtn.disabled = border === getUiColors({}).rowHoverBorder;
-    refreshPlanView();
-  };
-
-  hoverBorderInput.addEventListener('input', () => {
-    applyRowHoverBorder(hoverBorderInput.value);
-  });
-
-  hoverResetBtn.addEventListener('click', () => {
-    applyRowHoverBorder(getUiColors({}).rowHoverBorder);
-    hoverResetBtn.disabled = true;
-  });
-
-  const applyFillColor1 = (fillColor1) => {
-    const color = opaqueHex(fillColor1);
-    uiColorConfig = { ...uiColorConfig, fillColor1: color };
-    persistUiColors();
-    fill1BgInput.value = color;
-    fill1BgInput.title = color;
-    fill1Preview.style.background = color;
-    fill1ResetBtn.disabled = color === getUiColors({}).fillColor1;
-    refreshPlanView();
-  };
-
-  fill1BgInput.addEventListener('input', () => {
-    applyFillColor1(fill1BgInput.value);
-  });
-
-  fill1ResetBtn.addEventListener('click', () => {
-    applyFillColor1(getUiColors({}).fillColor1);
-    fill1ResetBtn.disabled = true;
-  });
-
-  const applyFillColor2 = (fillColor2) => {
-    const color = opaqueHex(fillColor2);
-    uiColorConfig = { ...uiColorConfig, fillColor2: color };
-    persistUiColors();
-    fill2BgInput.value = color;
-    fill2BgInput.title = color;
-    fill2Preview.style.background = color;
-    fill2ResetBtn.disabled = color === getUiColors({}).fillColor2;
-    refreshPlanView();
-  };
-
-  fill2BgInput.addEventListener('input', () => {
-    applyFillColor2(fill2BgInput.value);
-  });
-
-  fill2ResetBtn.addEventListener('click', () => {
-    applyFillColor2(getUiColors({}).fillColor2);
-    fill2ResetBtn.disabled = true;
-  });
-
-  const applyPlanAmountColor = (planAmountColor) => {
-    const color = opaqueHex(planAmountColor);
-    uiColorConfig = { ...uiColorConfig, planAmountColor: color };
-    persistUiColors();
-    planAmountTextInput.value = color;
-    planAmountTextInput.title = color;
-    planAmountPreview.style.color = color;
-    planAmountResetBtn.disabled = color === getUiColors({}).planAmountColor;
-    refreshPlanView();
-  };
-
-  planAmountTextInput.addEventListener('input', () => {
-    applyPlanAmountColor(planAmountTextInput.value);
-  });
-
-  planAmountResetBtn.addEventListener('click', () => {
-    applyPlanAmountColor(getUiColors({}).planAmountColor);
-    planAmountResetBtn.disabled = true;
-  });
-
-  const applyAmountVarianceColor = (amountVarianceColor) => {
-    const color = opaqueHex(amountVarianceColor);
-    uiColorConfig = { ...uiColorConfig, amountVarianceColor: color };
-    persistUiColors();
-    varianceTextInput.value = color;
-    varianceTextInput.title = color;
-    variancePreview.style.color = color;
-    varianceResetBtn.disabled = color === getUiColors({}).amountVarianceColor;
-    refreshPlanView();
-  };
-
-  varianceTextInput.addEventListener('input', () => {
-    applyAmountVarianceColor(varianceTextInput.value);
-  });
-
-  varianceResetBtn.addEventListener('click', () => {
-    applyAmountVarianceColor(getUiColors({}).amountVarianceColor);
-    varianceResetBtn.disabled = true;
-  });
-
-  const applyWarningTextColor = (warningTextColor) => {
-    const text = opaqueHex(warningTextColor);
-    uiColorConfig = { ...uiColorConfig, warningTextColor: text };
-    persistUiColors();
-    warningTextInput.value = text;
-    warningTextInput.title = text;
-    warningPreview.style.color = text;
-    warningResetBtn.disabled = text === getUiColors({}).warningTextColor;
-    refreshPlanView();
-  };
-
-  warningTextInput.addEventListener('input', () => {
-    applyWarningTextColor(warningTextInput.value);
-  });
-
-  warningResetBtn.addEventListener('click', () => {
-    applyWarningTextColor(getUiColors({}).warningTextColor);
-    warningResetBtn.disabled = true;
-  });
-
-  cellResetBtn.addEventListener('click', () => {
-    const defaults = getUiColors({});
-    uiColorConfig = { ...uiColorConfig, cellBg: defaults.cellBg, textColor: defaults.textColor };
-    persistUiColors();
-    cellBgInput.value = defaults.cellBg;
-    cellBgInput.title = defaults.cellBg;
-    cellTextInput.value = defaults.textColor;
-    cellTextInput.title = defaults.textColor;
-    cellPreview.style.background = defaults.cellBg;
-    cellPreview.style.color = defaults.textColor;
-    negativePreview.style.background = defaults.cellBg;
-    cellResetBtn.disabled = true;
-    refreshPlanView();
+  mountUiColorPanel(container, {
+    getConfig: () => uiColorConfig,
+    setConfig: (next) => { uiColorConfig = next; },
+    data,
+    sectionColorConfig,
+    onRefreshPlanView: () => {
+      refreshSectionColors();
+      if (activeTab === 'plan') refreshPlanTable();
+    },
+    onReRender: () => {
+      if (activeTab === 'colors') renderSectionColorSettings();
+    },
   });
 }
 
@@ -14009,7 +15557,7 @@ function bindTaxRateTable({ tbody, addBtn, getRates, normalizeRates, onUpdate })
       actionTd.className = 'col-tax-rate-actions';
       const deleteBtn = document.createElement('button');
       deleteBtn.type = 'button';
-      deleteBtn.className = 'tax-rate-delete-btn';
+      deleteBtn.className = 'settings-delete-btn';
       deleteBtn.textContent = '削除';
       deleteBtn.addEventListener('click', () => {
         tr.remove();
@@ -14100,7 +15648,7 @@ function bindWithholdingTaxTable({ tbody, addBtn, getRates, onUpdate }) {
       actionTd.className = 'col-tax-rate-actions';
       const deleteBtn = document.createElement('button');
       deleteBtn.type = 'button';
-      deleteBtn.className = 'tax-rate-delete-btn';
+      deleteBtn.className = 'settings-delete-btn';
       deleteBtn.textContent = '削除';
       deleteBtn.addEventListener('click', () => {
         tr.remove();
@@ -14300,7 +15848,7 @@ function renderTaxPaymentSettings() {
   const header = document.createElement('div');
   header.className = 'expand-settings-header tax-payment-settings-header';
   header.innerHTML = `
-    <p class="expand-settings-desc">租税公課・保険積立金・長期未払金・未払消費税・未払法人税等・法人税等・住民税・役員借入金の支払い計画を設定します。法人税等は予実表の「法人税」セクションに反映されます。住民税は市区町村ごとに入力し、合計が予実表に反映されます。今期の支払済み月は仕訳実績を表示します（編集不可）。未来の月のみダブルクリックで編集できます。住民税のみ過去月も入力でき、予実表にもその値が反映されます。Shift+Enter で入力した月以降の同額を後続月に反映します。</p>
+    <p class="expand-settings-desc">租税公課・保険積立金・長期未払金・未払消費税・未払法人税等・法人税等・住民税・役員借入金の支払い計画を設定します。法人税等は予実表の「法人税」セクションに反映されます。住民税は市区町村ごとに入力し、合計が予実表に反映されます。今期の実績表示月は仕訳実績を表示します（編集不可）。予実表で計画表示に切り替えた月は編集できます。住民税のみ過去月も入力でき、予実表にもその値が反映されます。Shift+Enter で入力した月以降の同額を後続月に反映します。</p>
     <div class="tax-payment-settings-controls">
       <div class="tax-payment-plan-years-row">
         <span class="app-settings-label">計画年数</span>
@@ -14348,11 +15896,6 @@ function renderTaxPaymentSettings() {
   const { byMunicipality: actualResidentTaxByMunicipality } = rawPlanData
     ? collectResidentTaxActualByMunicipality(rawPlanData, fiscalMonths)
     : { byMunicipality: new Map() };
-  const currentPastMonths = buildPastFiscalMonthSet(
-    appSettings.businessStartYear,
-    currentPeriod,
-    fiscalMonths,
-  );
 
   const municipalityNames = [
     ...collectResidentTaxMunicipalityNamesFromEmployees(employees),
@@ -14384,8 +15927,7 @@ function renderTaxPaymentSettings() {
   }
 
   function getPastMonthsForPeriod(fiscalPeriod) {
-    if (fiscalPeriod === currentPeriod) return currentPastMonths;
-    return new Set();
+    return getSettingsLockedMonthsForPeriod(fiscalPeriod, fiscalMonths);
   }
 
   function getAccountActualMonthly(account, fiscalPeriod) {
@@ -14520,16 +16062,11 @@ function renderTaxPaymentSettings() {
     };
 
     input.addEventListener('keydown', (e) => {
-      if (e.isComposing) return;
-      if (e.key === 'Enter' || e.code === 'NumpadEnter') {
-        e.preventDefault();
-        finish(true, e.shiftKey);
-        return;
-      }
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        finish(false);
-      }
+      handlePlanAmountCellKeydown(e, {
+        finish,
+        td,
+        scopeId: `tax-payment-${fiscalPeriod}`,
+      });
     });
     input.addEventListener('blur', () => {
       setTimeout(() => {
@@ -14582,16 +16119,11 @@ function renderTaxPaymentSettings() {
     };
 
     input.addEventListener('keydown', (e) => {
-      if (e.isComposing) return;
-      if (e.key === 'Enter' || e.code === 'NumpadEnter') {
-        e.preventDefault();
-        finish(true, e.shiftKey);
-        return;
-      }
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        finish(false);
-      }
+      handlePlanAmountCellKeydown(e, {
+        finish,
+        td,
+        scopeId: `tax-municipality-${fiscalPeriod}`,
+      });
     });
     input.addEventListener('blur', () => {
       setTimeout(() => {
@@ -14615,6 +16147,7 @@ function renderTaxPaymentSettings() {
     }
     if (editable) {
       td.classList.add('salary-plan-cell-editable');
+      tagPlanEditableCell(td, { month });
       td.title = 'ダブルクリックで編集（Shift+Enter で後続月へ同額反映）';
       td.textContent = formatSalaryPlanYen(value);
       td.addEventListener('dblclick', () => {
@@ -14644,6 +16177,7 @@ function renderTaxPaymentSettings() {
     }
     if (editable) {
       td.classList.add('salary-plan-cell-editable');
+      tagPlanEditableCell(td, { month });
       td.title = 'ダブルクリックで編集（Shift+Enter で後続月へ同額反映）';
       td.textContent = formatSalaryPlanYen(value);
       td.addEventListener('dblclick', () => {
@@ -14681,6 +16215,7 @@ function renderTaxPaymentSettings() {
       const displayMonthly = buildDisplayMonthly(account, fiscalPeriod);
       const tr = document.createElement('tr');
       tr.className = 'salary-plan-row-monthly';
+      tagPlanEditableRow(tr, account);
 
       const accountTd = document.createElement('td');
       accountTd.className = 'salary-plan-col-name';
@@ -14720,6 +16255,7 @@ function renderTaxPaymentSettings() {
       const displayMonthly = buildMunicipalityDisplayMonthly(entry, fiscalPeriod);
       const tr = document.createElement('tr');
       tr.className = 'salary-plan-row-monthly salary-plan-row-sub';
+      tagPlanEditableRow(tr, entry.id);
 
       const accountTd = document.createElement('td');
       accountTd.className = 'salary-plan-col-name';
@@ -14837,7 +16373,7 @@ function renderTaxPaymentSettings() {
       <h3 class="salary-plan-title">支払い計画表</h3>
       <p class="salary-plan-desc">
         決算月 ${appSettings.fiscalEndMonth}月 を基準とした12か月分です。
-        今期の支払済み月は仕訳実績を表示します（編集不可）。未来の月のみダブルクリックで編集できます。住民税のみ過去月も入力でき、予実表にもその値が反映されます。Shift+Enter で後続月へ同額を反映できます。
+        今期の実績表示月は仕訳実績を表示します（編集不可）。予実表で計画表示に切り替えた月はダブルクリックで編集できます。住民税のみ過去月も入力でき、予実表にもその値が反映されます。Shift+Enter で後続月へ同額を反映できます。
       </p>
     `;
     section.appendChild(planHeader);
@@ -14856,6 +16392,9 @@ function renderTaxPaymentSettings() {
       tableWrap.appendChild(buildTaxPaymentTable(period));
       block.appendChild(tableWrap);
 
+      resumePlanCellTabEdit(block, `tax-payment-${period}`);
+      resumePlanCellTabEdit(block, `tax-municipality-${period}`);
+
       section.appendChild(block);
     }
 
@@ -14867,6 +16406,7 @@ function renderTaxPaymentSettings() {
     wrap,
     appSettings,
     rawPlanData,
+    getMonthDisplayConfig: () => monthDisplayConfig,
     getExpensePlanOverrides: () => expensePlanOverrides,
     setExpensePlanOverrides: (next) => {
       expensePlanOverrides = next;
@@ -15040,7 +16580,7 @@ function renderEmployeeSettings() {
 
           const deleteBtn = document.createElement('button');
           deleteBtn.type = 'button';
-          deleteBtn.className = 'employee-delete-btn';
+          deleteBtn.className = 'settings-delete-btn';
           deleteBtn.textContent = '削除';
           deleteBtn.addEventListener('click', () => {
             actionsWrap.replaceChildren();
@@ -15052,12 +16592,12 @@ function renderEmployeeSettings() {
 
             const confirmBtn = document.createElement('button');
             confirmBtn.type = 'button';
-            confirmBtn.className = 'employee-delete-confirm-btn';
+            confirmBtn.className = 'settings-delete-btn';
             confirmBtn.textContent = '削除する';
 
             const cancelBtn = document.createElement('button');
             cancelBtn.type = 'button';
-            cancelBtn.className = 'employee-delete-cancel-btn';
+            cancelBtn.className = 'settings-delete-cancel-btn';
             cancelBtn.textContent = 'キャンセル';
 
             confirmBtn.addEventListener('click', () => {
@@ -15169,11 +16709,12 @@ function renderEmployeeSettings() {
         };
         if (rowKind === 'monthly') {
           nextPlan.monthly = fillForward
-            ? applyAmountFromMonthForward(
+            ? applyAmountFromMonthForwardSkippingPast(
               nextPlan.monthly,
               fiscalMonths,
               month,
               parsed,
+              getSettingsLockedMonthsForPeriod(fiscalPeriod, fiscalMonths),
             )
             : { ...nextPlan.monthly, [month]: parsed };
         } else {
@@ -15185,16 +16726,12 @@ function renderEmployeeSettings() {
     };
 
     input.addEventListener('keydown', (e) => {
-      if (e.isComposing) return;
-      if (e.key === 'Enter' || e.code === 'NumpadEnter') {
-        e.preventDefault();
-        finish(true, e.shiftKey && rowKind === 'monthly');
-        return;
-      }
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        finish(false);
-      }
+      handlePlanAmountCellKeydown(e, {
+        finish,
+        td,
+        scopeId: `salary-plan-${fiscalPeriod}`,
+        allowShiftFillForward: rowKind === 'monthly',
+      });
     });
     input.addEventListener('blur', () => {
       setTimeout(() => {
@@ -15225,6 +16762,7 @@ function renderEmployeeSettings() {
     }
     if (editable) {
       td.classList.add('salary-plan-cell-editable');
+      tagPlanEditableCell(td, { month });
       td.title = rowKind === 'monthly'
         ? 'ダブルクリックで編集（Shift+Enter で後続月へ同額反映）'
         : 'ダブルクリックで編集';
@@ -15340,11 +16878,12 @@ function renderEmployeeSettings() {
           rawValue,
         );
         const next = fillForward
-          ? applyAmountFromMonthForward(
+          ? applyAmountFromMonthForwardSkippingPast(
             { ...overtime },
             fiscalMonths,
             month,
             parsed,
+            getSettingsLockedMonthsForPeriod(fiscalPeriod, fiscalMonths),
           )
           : { ...overtime, [month]: parsed };
         persistOvertimePlan(next, fiscalPeriod, fiscalMonths);
@@ -15353,16 +16892,11 @@ function renderEmployeeSettings() {
     };
 
     input.addEventListener('keydown', (e) => {
-      if (e.isComposing) return;
-      if (e.key === 'Enter' || e.code === 'NumpadEnter') {
-        e.preventDefault();
-        finish(true, e.shiftKey);
-        return;
-      }
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        finish(false);
-      }
+      handlePlanAmountCellKeydown(e, {
+        finish,
+        td,
+        scopeId: `salary-overtime-${fiscalPeriod}`,
+      });
     });
     input.addEventListener('blur', () => {
       setTimeout(() => {
@@ -15383,20 +16917,27 @@ function renderEmployeeSettings() {
     value,
     prevValue,
   }) {
+    const editable = !getSettingsLockedMonthsForPeriod(fiscalPeriod, fiscalMonths).has(month);
     const td = document.createElement('td');
     td.className = 'salary-plan-amount-cell';
-    if (month === fiscalMonths[0]) {
+    if (month === fiscalMonths[0] && editable) {
       td.classList.add('salary-plan-amount-start-month');
     }
-    td.classList.add('salary-plan-cell-editable');
-    td.title = 'ダブルクリックで編集（Shift+Enter で後続月へ同額反映）';
-    td.textContent = formatSalaryPlanYen(value);
-    if (prevValue !== undefined && salaryPlanAmountDiffersFromPrevious(prevValue, value)) {
-      td.classList.add('salary-plan-amount-changed');
+    if (editable) {
+      td.classList.add('salary-plan-cell-editable');
+      tagPlanEditableCell(td, { month });
+      td.title = 'ダブルクリックで編集（Shift+Enter で後続月へ同額反映）';
+      td.textContent = formatSalaryPlanYen(value);
+      if (prevValue !== undefined && salaryPlanAmountDiffersFromPrevious(prevValue, value)) {
+        td.classList.add('salary-plan-amount-changed');
+      }
+      td.addEventListener('dblclick', () => {
+        startOvertimePlanCellEdit(td, month, fiscalMonths, fiscalPeriod);
+      });
+    } else {
+      td.classList.add('salary-plan-cell-disabled');
+      td.textContent = '';
     }
-    td.addEventListener('dblclick', () => {
-      startOvertimePlanCellEdit(td, month, fiscalMonths, fiscalPeriod);
-    });
     tr.appendChild(td);
   }
 
@@ -15422,6 +16963,7 @@ function renderEmployeeSettings() {
     const tbody = document.createElement('tbody');
     const tr = document.createElement('tr');
     tr.className = 'salary-plan-row-monthly';
+    tagPlanEditableRow(tr, 'overtime');
 
     const kindTd = document.createElement('td');
     kindTd.className = 'salary-plan-col-kind';
@@ -15557,6 +17099,7 @@ function renderEmployeeSettings() {
 
       const trMonthly = document.createElement('tr');
       trMonthly.className = 'salary-plan-row-monthly';
+      tagPlanEditableRow(trMonthly, `${emp.id}:monthly`);
 
       const noTd = document.createElement('td');
       noTd.className = 'salary-plan-col-no';
@@ -15592,7 +17135,7 @@ function renderEmployeeSettings() {
           fiscalPeriod,
           value: plan.monthly[month],
           prevValue,
-          editable: true,
+          editable: !getSettingsLockedMonthsForPeriod(fiscalPeriod, fiscalMonths).has(month),
         });
       }
 
@@ -15622,6 +17165,7 @@ function renderEmployeeSettings() {
       if (!isDirector) {
         const trBonus = document.createElement('tr');
         trBonus.className = 'salary-plan-row-bonus';
+        tagPlanEditableRow(trBonus, `${emp.id}:bonus`);
 
         const kindBonusTd = document.createElement('td');
         kindBonusTd.className = 'salary-plan-col-kind';
@@ -15630,7 +17174,8 @@ function renderEmployeeSettings() {
 
         for (let i = 0; i < fiscalMonths.length; i += 1) {
           const month = fiscalMonths[i];
-          const isEditable = bonusMonthLabels.includes(month);
+          const isEditable = bonusMonthLabels.includes(month)
+            && !getSettingsLockedMonthsForPeriod(fiscalPeriod, fiscalMonths).has(month);
           const prevValue = i > 0 ? plan.bonusMonthly[fiscalMonths[i - 1]] : undefined;
           appendSalaryPlanAmountCell(trBonus, {
             emp,
@@ -15791,6 +17336,8 @@ function renderEmployeeSettings() {
       tableWrap.appendChild(buildOvertimePlanTable(period, fiscalMonths));
       block.appendChild(tableWrap);
 
+      resumePlanCellTabEdit(block, `salary-overtime-${period}`);
+
       section.appendChild(block);
     }
 
@@ -15832,6 +17379,8 @@ function renderEmployeeSettings() {
         }),
       );
       block.appendChild(tableWrap);
+
+      resumePlanCellTabEdit(block, `salary-plan-${period}`);
 
       section.appendChild(block);
     }
@@ -15933,6 +17482,7 @@ function renderRevenueSettings() {
     setPlanKpi,
     appSettings,
     rawPlanData,
+    getMonthDisplayConfig: () => monthDisplayConfig,
     getRevenuePlans: () => revenuePlans,
     setRevenuePlans: (plans) => { revenuePlans = plans; },
     getRevenuePlanSettings: () => revenuePlanSettings,
@@ -15970,11 +17520,6 @@ function renderOutsourcingSettings() {
   const actualAmountsByVendor = rawPlanData
     ? collectOutsourcingActualAmountsFromPlanData(rawPlanData, fiscalMonths)
     : new Map();
-  const currentPastMonths = buildPastFiscalMonthSet(
-    appSettings.businessStartYear,
-    currentPeriod,
-    fiscalMonths,
-  );
 
   const journalVendorKeys = new Set();
   if (rawPlanData) {
@@ -15995,7 +17540,7 @@ function renderOutsourcingSettings() {
   header.innerHTML = `
     <p class="expand-settings-desc">
       外注費の支払い計画を設定します。今期の仕訳に存在する補助科目は自動で一覧に追加されます。
-      今期の支払済み月は仕訳実績を表示します（編集不可）。未来の月のみダブルクリックで編集でき、入力した月以降の同額は自動で引き継がれます。設定はブラウザに保存され、予実表の「外注費」セクションに反映されます。
+      今期の実績表示月は仕訳実績を表示します（編集不可）。予実表で計画表示に切り替えた月はダブルクリックで編集できます。Shift+Enter で入力した月以降の同額を後続月に反映します（0円も可）。Enter はその月のみ反映します。設定はブラウザに保存され、予実表の「外注費」セクションに反映されます。
     </p>
   `;
   wrap.appendChild(header);
@@ -16035,8 +17580,7 @@ function renderOutsourcingSettings() {
   }
 
   function getPastMonthsForPeriod(fiscalPeriod) {
-    if (fiscalPeriod === currentPeriod) return currentPastMonths;
-    return new Set();
+    return getSettingsLockedMonthsForPeriod(fiscalPeriod, fiscalMonths);
   }
 
   function buildDisplayMonthly(vendor, fiscalPeriod) {
@@ -16055,20 +17599,6 @@ function renderOutsourcingSettings() {
 
   function isMonthEditable(fiscalPeriod, month) {
     return !getPastMonthsForPeriod(fiscalPeriod).has(month);
-  }
-
-  function applyPlanAmountFromMonthForward(source, startMonth, amount, pastMonths) {
-    const next = { ...source };
-    const startIndex = fiscalMonths.indexOf(startMonth);
-    if (startIndex < 0) return next;
-    next[startMonth] = amount;
-    if (amount == null || amount === 0) return next;
-    for (let i = startIndex + 1; i < fiscalMonths.length; i += 1) {
-      const month = fiscalMonths[i];
-      if (pastMonths.has(month)) continue;
-      next[month] = amount;
-    }
-    return next;
   }
 
   function sumDisplayMonthlyTotal(display) {
@@ -16093,32 +17623,44 @@ function renderOutsourcingSettings() {
     input.spellcheck = false;
     input.value = rawValue != null && rawValue !== 0 ? String(rawValue) : '';
 
-    const finish = (save) => {
+    let editClosed = false;
+
+    const finish = (save, fillForward = false) => {
+      if (editClosed) return;
+      editClosed = true;
       if (save) {
-        const parsed = parseSalaryPlanAmountInput(input.value);
-        const pastMonths = getPastMonthsForPeriod(fiscalPeriod);
-        const nextMonthly = applyPlanAmountFromMonthForward(
-          { ...vendor.monthly },
-          month,
-          parsed,
-          pastMonths,
+        const parsed = parseSalaryPlanAmountInputWithFillForward(
+          input.value,
+          fillForward,
+          rawValue,
         );
+        const pastMonths = getPastMonthsForPeriod(fiscalPeriod);
+        const nextMonthly = fillForward
+          ? applyAmountFromMonthForwardSkippingPast(
+            vendor.monthly,
+            fiscalMonths,
+            month,
+            parsed,
+            pastMonths,
+          )
+          : { ...vendor.monthly, [month]: parsed };
         persistVendor({ ...vendor, monthly: nextMonthly }, fiscalPeriod);
       }
       renderPlanSection();
     };
 
     input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        finish(true);
-      }
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        finish(false);
-      }
+      handlePlanAmountCellKeydown(e, {
+        finish,
+        td,
+        scopeId: `outsourcing-${fiscalPeriod}`,
+      });
     });
-    input.addEventListener('blur', () => finish(true));
+    input.addEventListener('blur', () => {
+      setTimeout(() => {
+        if (!editClosed) finish(true, false);
+      }, 0);
+    });
 
     td.textContent = '';
     td.appendChild(input);
@@ -16141,7 +17683,8 @@ function renderOutsourcingSettings() {
     }
     if (editable) {
       td.classList.add('salary-plan-cell-editable');
-      td.title = 'ダブルクリックで編集';
+      tagPlanEditableCell(td, { month });
+      td.title = 'ダブルクリックで編集（Shift+Enter で後続月へ同額反映）';
       td.textContent = formatSalaryPlanYen(value);
       if (prevValue !== undefined && salaryPlanAmountDiffersFromPrevious(prevValue, value)) {
         td.classList.add('salary-plan-amount-changed');
@@ -16188,7 +17731,7 @@ function renderOutsourcingSettings() {
 
     const deleteBtn = document.createElement('button');
     deleteBtn.type = 'button';
-    deleteBtn.className = 'employee-delete-btn';
+    deleteBtn.className = 'settings-delete-btn';
     deleteBtn.textContent = '削除';
     deleteBtn.addEventListener('click', () => {
       actionsWrap.replaceChildren();
@@ -16200,12 +17743,12 @@ function renderOutsourcingSettings() {
 
       const confirmBtn = document.createElement('button');
       confirmBtn.type = 'button';
-      confirmBtn.className = 'employee-delete-confirm-btn';
+      confirmBtn.className = 'settings-delete-btn';
       confirmBtn.textContent = '削除する';
 
       const cancelBtn = document.createElement('button');
       cancelBtn.type = 'button';
-      cancelBtn.className = 'employee-delete-cancel-btn';
+      cancelBtn.className = 'settings-delete-cancel-btn';
       cancelBtn.textContent = 'キャンセル';
 
       confirmBtn.addEventListener('click', () => {
@@ -16264,6 +17807,7 @@ function renderOutsourcingSettings() {
     for (const vendor of vendors) {
       const tr = document.createElement('tr');
       tr.className = 'salary-plan-row-monthly';
+      tagPlanEditableRow(tr, vendor.id);
       const displayMonthly = buildDisplayMonthly(vendor, fiscalPeriod);
 
       const accountTd = document.createElement('td');
@@ -16441,7 +17985,7 @@ function renderOutsourcingSettings() {
         <h3 class="salary-plan-title">外注費支払い計画表</h3>
         <p class="salary-plan-desc">
           決算月 ${appSettings.fiscalEndMonth}月 を基準とした12か月分です。
-          今期の支払済み月は仕訳実績を表示します（編集不可）。未来の月のみダブルクリックで編集できます。
+          今期の実績表示月は仕訳実績を表示します（編集不可）。予実表で計画表示に切り替えた月はダブルクリックで編集できます。Shift+Enter で入力した月以降の同額を後続月に反映します（0円も可）。Enter はその月のみ反映します。
         </p>
       `;
       section.appendChild(planHeader);
@@ -16473,6 +18017,8 @@ function renderOutsourcingSettings() {
       tableWrap.className = 'salary-plan-table-wrap';
       tableWrap.appendChild(buildOutsourcingPlanTable(period));
       block.appendChild(tableWrap);
+
+      resumePlanCellTabEdit(block, `outsourcing-${period}`);
 
       periodsContainer.appendChild(block);
     }
@@ -16513,7 +18059,7 @@ function renderOtherSettings() {
             <input type="file" accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml"
               id="brand-logo-file" hidden />
             <button type="button" class="plan-csv-btn" id="brand-logo-load-btn">画像を読み込む</button>
-            <button type="button" class="expand-reset-btn brand-logo-clear-btn" id="brand-logo-clear-btn" hidden>削除</button>
+            <button type="button" class="settings-delete-btn brand-logo-clear-btn" id="brand-logo-clear-btn" hidden>削除</button>
           </div>
         </div>
         <label class="app-settings-field other-settings-brand-field other-settings-brand-text-field">
@@ -16783,7 +18329,11 @@ function renderSectionColorSettings() {
   sectionTitle.textContent = '大項目';
   sectionPanel.appendChild(sectionTitle);
 
-  const defs = collectSectionColorDefs(data?.sections ?? rawPlanData?.sections ?? [], sectionColorConfig);
+  const defs = collectSectionColorDefs(
+    data?.sections ?? rawPlanData?.sections ?? [],
+    sectionColorConfig,
+    getPlanColorMode(),
+  );
   if (defs.length === 0) {
     const empty = document.createElement('p');
     empty.className = 'expand-settings-empty';
@@ -16852,11 +18402,13 @@ function renderSectionColorSettings() {
     tr.append(labelTd, bgInputTd, textInputTd, previewTd, actionTd);
     tbody.appendChild(tr);
 
-    const applySectionColors = (barColor, textColor) => {
-      sectionColorConfig = {
-        ...sectionColorConfig,
-        [def.sectionId]: { barColor, textColor },
-      };
+    const applySectionColorOverride = (barColor, textColor) => {
+      sectionColorConfig = setSectionColorOverride(
+        sectionColorConfig,
+        getPlanColorMode(),
+        def.sectionId,
+        { barColor, textColor },
+      );
       saveSectionColorConfig(sectionColorConfig);
       refreshSectionColors();
       bgInput.value = barColor;
@@ -16871,19 +18423,22 @@ function renderSectionColorSettings() {
     };
 
     bgInput.addEventListener('input', () => {
-      applySectionColors(bgInput.value, textInput.value);
+      applySectionColorOverride(bgInput.value, textInput.value);
     });
 
     textInput.addEventListener('input', () => {
-      applySectionColors(bgInput.value, textInput.value);
+      applySectionColorOverride(bgInput.value, textInput.value);
     });
 
     resetBtn.addEventListener('click', () => {
-      sectionColorConfig = { ...sectionColorConfig };
-      delete sectionColorConfig[def.sectionId];
+      sectionColorConfig = resetSectionColorOverride(
+        sectionColorConfig,
+        getPlanColorMode(),
+        def.sectionId,
+      );
       saveSectionColorConfig(sectionColorConfig);
       refreshSectionColors();
-      const colors = getSectionColors(def.sectionId, sectionColorConfig);
+      const colors = getSectionColors(def.sectionId, sectionColorConfig, getPlanColorMode());
       bgInput.value = colors.barColor;
       bgInput.title = colors.barColor;
       textInput.value = colors.textColor;
@@ -16905,7 +18460,7 @@ function renderSectionColorSettings() {
   wrap.appendChild(columns);
 
   wrap.querySelector('#ui-color-reset-btn').addEventListener('click', () => {
-    uiColorConfig = {};
+    uiColorConfig = resetUiColorModeOverrides(uiColorConfig, getPlanColorMode());
     saveUiColorConfig(uiColorConfig);
     applyUiColors(uiColorConfig);
     renderSectionColorSettings();
@@ -16913,7 +18468,7 @@ function renderSectionColorSettings() {
   });
 
   wrap.querySelector('#section-color-reset-btn').addEventListener('click', () => {
-    sectionColorConfig = {};
+    sectionColorConfig = resetSectionColorModeOverrides(sectionColorConfig, getPlanColorMode());
     saveSectionColorConfig(sectionColorConfig);
     refreshSectionColors();
     renderSectionColorSettings();
@@ -17113,14 +18668,6 @@ function handleMainMenuAction(value) {
   }
 }
 
-function closeMainMenu() {
-  const trigger = document.getElementById('plan-main-menu-trigger');
-  const panel = document.getElementById('plan-main-menu-panel');
-  if (!trigger || !panel) return;
-  panel.hidden = true;
-  trigger.setAttribute('aria-expanded', 'false');
-}
-
 function buildMainMenu() {
   const panel = document.getElementById('plan-main-menu-panel');
   if (!panel) return;
@@ -17146,10 +18693,26 @@ function buildMainMenu() {
     if (entry.indented) btn.classList.add('plan-main-menu-item--indented');
     else btn.classList.add('plan-main-menu-item--top');
     btn.role = 'menuitem';
-    btn.textContent = entry.label;
+    if (entry.shortcutKey) {
+      btn.dataset.shortcutKey = entry.shortcutKey;
+      btn.setAttribute('aria-keyshortcuts', entry.shortcutKey);
+    }
+
+    const labelSpan = document.createElement('span');
+    labelSpan.className = 'plan-main-menu-item-label';
+    labelSpan.textContent = entry.label;
+    btn.appendChild(labelSpan);
+
+    if (entry.shortcutKey) {
+      const keySpan = document.createElement('span');
+      keySpan.className = 'plan-main-menu-item-key';
+      keySpan.textContent = `[ ${entry.shortcutKey} ]`;
+      keySpan.setAttribute('aria-hidden', 'true');
+      btn.appendChild(keySpan);
+    }
+
     btn.addEventListener('click', () => {
-      handleMainMenuAction(entry.value);
-      closeMainMenu();
+      executeMainMenuEntry(entry);
     });
     panel.appendChild(btn);
   }
@@ -17167,18 +18730,13 @@ function bindMainMenu() {
     e.stopPropagation();
     const willOpen = panel.hidden;
     closeMainMenu();
-    if (willOpen) {
-      panel.hidden = false;
-      trigger.setAttribute('aria-expanded', 'true');
-    }
+    if (willOpen) openMainMenu();
   });
+
+  panel.addEventListener('keydown', handleMainMenuPanelKeydown);
 
   document.addEventListener('click', (e) => {
     if (!menu.contains(e.target)) closeMainMenu();
-  });
-
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') closeMainMenu();
   });
 }
 
@@ -17200,6 +18758,8 @@ function reloadAllSettingsFromStorage() {
   outsourcingPlans = loadOutsourcingPlans();
   revenuePlans = loadRevenuePlans();
   revenuePlanSettings = loadRevenuePlanSettings();
+  monthDisplayConfig = loadMonthDisplayConfig();
+  applyClosedPeriodPlanPurgeIfNeeded();
 
   applyUiColors(uiColorConfig);
   applyBrandSettings(appSettings);
@@ -17263,7 +18823,7 @@ function bindSettingsImportExport() {
   });
 }
 
-function loadPlanOnlyPeriodData() {
+function loadPlanOnlyPeriodData({ measureColumnWidths = false } = {}) {
   journalEntriesCache = null;
   invalidateDrilldownIndex();
   closeJournalPopup();
@@ -17276,10 +18836,14 @@ function loadPlanOnlyPeriodData() {
     : buildFullPlan('', null, expandConfig);
   rawPlanData = planData;
   data = applyPlanColors(planData);
-  renderPlanViewAfterDataChange();
+  if (measureColumnWidths) {
+    planTableInitialLayoutDone = false;
+    invalidatePlanTableLayout();
+  }
+  renderPlanViewAfterDataChange({ measureColumnWidths });
 }
 
-function loadData(loaded) {
+function loadData(loaded, { measureColumnWidths = false } = {}) {
   journalText = loaded.journalText;
   bsText = loaded.bsText;
   generalLedgerText = loaded.generalLedgerText ?? null;
@@ -17289,7 +18853,11 @@ function loadData(loaded) {
   closeJournalPopup();
   rawPlanData = loaded.data;
   data = applyPlanColors(loaded.data);
-  renderPlanViewAfterDataChange();
+  if (measureColumnWidths) {
+    planTableInitialLayoutDone = false;
+    invalidatePlanTableLayout();
+  }
+  renderPlanViewAfterDataChange({ measureColumnWidths });
 }
 
 async function init() {

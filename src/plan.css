@@ -1,10 +1,19 @@
 :root {
   --plan-font-scale: 0.85;
   --plan-row-padding-scale: 1;
+  --plan-browser-bg: #262626;
 }
 
 html {
   font-size: calc(100% * var(--plan-font-scale));
+  min-height: 100%;
+  background: var(--plan-browser-bg);
+}
+
+body {
+  margin: 0;
+  min-height: 100%;
+  background: var(--plan-browser-bg);
 }
 
 .plan-app {
@@ -17,25 +26,33 @@ html {
   --plan-shadow-md: 0 4px 16px rgba(0, 0, 0, 0.32);
   --plan-shadow-header: 0 1px 0 rgba(255, 255, 255, 0.05), 0 10px 28px rgba(0, 0, 0, 0.26);
   --plan-font-ui: "Segoe UI", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Meiryo UI", Meiryo, sans-serif;
-  --plan-bg: #262626;
-  --plan-surface: color-mix(in srgb, var(--plan-bg) 55%, #0a0a0f);
+  --plan-bg: #353535;
+  --plan-surface: #19191a;
   --plan-cell-bg: #262626;
-  --plan-border: color-mix(in srgb, var(--plan-text) 14%, var(--plan-bg));
+  --plan-border: color-mix(in srgb, var(--plan-text) 14%, var(--plan-browser-bg));
   --plan-text: #ffffff;
   --plan-muted: #ffffff;
-  --plan-text-dim: rgba(255, 255, 255, 0.5);
-  --plan-text-faint: rgba(255, 255, 255, 0.35);
+  --plan-note-text: #c9c9c9;
+  --plan-hint-text: #b3b3b3;
+  --plan-text-dim: #929292;
   --plan-accent: #ff0000;
-  /** 設定画面の入力欄（ページ背景より明るくして編集可能と分かるように） */
-  --plan-editor-bg: color-mix(in srgb, var(--plan-cell-bg) 72%, var(--plan-text) 10%);
-  --plan-editor-border: color-mix(in srgb, var(--plan-text) 22%, var(--plan-cell-bg));
-  --plan-editor-bg-hover: color-mix(in srgb, var(--plan-cell-bg) 65%, var(--plan-text) 14%);
-  --plan-editor-border-hover: color-mix(in srgb, var(--plan-text) 28%, var(--plan-cell-bg));
-  --plan-editor-bg-focus: color-mix(in srgb, var(--plan-cell-bg) 60%, var(--plan-text) 18%);
-  --plan-editor-border-focus: color-mix(in srgb, var(--plan-text) 38%, var(--plan-cell-bg));
+  /** 設定画面の入力欄・セレクト */
+  --plan-editor-bg: #353535;
+  --plan-editor-border: #565656;
+  --plan-editor-bg-hover: color-mix(in srgb, var(--plan-editor-bg) 85%, var(--plan-text) 15%);
+  --plan-editor-border-hover: color-mix(in srgb, var(--plan-text) 28%, var(--plan-editor-bg));
+  --plan-editor-bg-focus: color-mix(in srgb, var(--plan-editor-bg) 78%, var(--plan-text) 18%);
+  --plan-editor-border-focus: color-mix(in srgb, var(--plan-text) 38%, var(--plan-editor-bg));
   --plan-editor-focus-ring: color-mix(in srgb, var(--plan-text) 22%, transparent);
-  --plan-hover-surface: color-mix(in srgb, var(--plan-cell-bg) 88%, var(--plan-text) 12%);
+  /** 設定画面のボタン・表行ホバー */
+  --plan-settings-button-bg: #262626;
+  --plan-settings-row-hover: #2e2e2e;
+  --plan-hover-surface: color-mix(in srgb, var(--plan-settings-button-bg) 88%, var(--plan-text) 12%);
   --plan-negative-amount: #ff0000;
+  --plan-delete-btn-bg: #dc2626;
+  --plan-delete-btn-bg-hover: #b91c1c;
+  --plan-delete-btn-border: #b91c1c;
+  --plan-delete-btn-text: #ffffff;
   --plan-year-row-bg: #c65911;
   --plan-year-row-text: #ffffff;
   --plan-month-row-bg: #595959;
@@ -45,6 +62,10 @@ html {
   --current-month-overlay-head: rgba(128, 0, 0, 0.34);
   --current-month-overlay-hover: rgba(128, 0, 0, 0.22);
   --current-month-overlay-total: rgba(128, 0, 0, 0.32);
+  --settlement-month-overlay: rgba(0, 0, 0, 0.28);
+  --settlement-month-ring: rgba(0, 0, 0, 0.55);
+  --settlement-month-overlay-head: rgba(0, 0, 0, 0.34);
+  --settlement-month-overlay-total: rgba(0, 0, 0, 0.32);
   --row-selection-ring: #ffff00;
   --row-hover-border: #00ffff;
   --plan-expandable-highlight: #00ffff;
@@ -71,7 +92,7 @@ html {
   min-height: 100vh;
   height: 100vh;
   overflow: hidden;
-  background: var(--plan-bg);
+  background: var(--plan-browser-bg);
   color: var(--plan-text);
   font-family: var(--plan-font-ui);
   -webkit-font-smoothing: antialiased;
@@ -102,7 +123,7 @@ html {
   top: 0;
   z-index: 100;
   padding: 0.875rem 1.25rem 0.625rem;
-  background: var(--plan-bg);
+  background: var(--plan-browser-bg);
 }
 
 .plan-header-top {
@@ -441,7 +462,10 @@ html {
 }
 
 .plan-main-menu-item {
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
   box-sizing: border-box;
   width: calc(100% - 0.5rem);
   margin: 0 0.25rem;
@@ -458,6 +482,20 @@ html {
   transition: background var(--plan-duration) var(--plan-ease), box-shadow var(--plan-duration) var(--plan-ease);
 }
 
+.plan-main-menu-item-label {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.plan-main-menu-item-key {
+  flex: 0 0 auto;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--plan-text-dim);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+
 .plan-main-menu-item--top {
   margin-top: 0.05rem;
   font-weight: 700;
@@ -466,10 +504,11 @@ html {
 .plan-main-menu-item--indented {
   padding-left: 1.45rem;
   font-weight: 500;
-  color: color-mix(in srgb, var(--plan-text) 92%, var(--plan-bg));
+  color: color-mix(in srgb, var(--plan-text) 92%, var(--plan-browser-bg));
 }
 
 .plan-main-menu-item:hover,
+.plan-main-menu-item:focus,
 .plan-main-menu-item:focus-visible {
   outline: none;
   background: var(--plan-hover-surface);
@@ -498,7 +537,7 @@ html {
 .expand-settings-desc {
   margin: 0;
   font-size: 0.75rem;
-  color: rgba(255, 255, 255, 0.75);
+  color: var(--plan-note-text);
   max-width: 42rem;
   line-height: 1.5;
 }
@@ -542,7 +581,7 @@ html {
   margin: 0;
   flex: 0 1 auto;
   font-size: 0.7rem;
-  color: rgba(255, 255, 255, 0.55);
+  color: var(--plan-hint-text);
   line-height: 1.4;
   white-space: nowrap;
 }
@@ -581,15 +620,14 @@ html {
   max-width: 100%;
 }
 
-.expense-plan-override-add-btn,
-.expense-plan-override-remove-btn {
+.expense-plan-override-add-btn {
   border: 1px solid var(--plan-border);
   border-radius: var(--plan-radius-sm);
   padding: 0.35rem 0.75rem;
   font-size: 0.72rem;
   font-weight: 600;
   cursor: pointer;
-  background: var(--plan-cell-bg);
+  background: var(--plan-settings-button-bg);
   color: var(--plan-text);
 }
 
@@ -598,8 +636,7 @@ html {
   cursor: not-allowed;
 }
 
-.expense-plan-override-add-btn:hover:not(:disabled),
-.expense-plan-override-remove-btn:hover {
+.expense-plan-override-add-btn:hover:not(:disabled) {
   background: var(--plan-hover-surface);
 }
 
@@ -623,7 +660,7 @@ html {
   font-size: 0.72rem;
   font-weight: 600;
   cursor: pointer;
-  background: var(--plan-cell-bg);
+  background: var(--plan-settings-button-bg);
   color: var(--plan-text);
   transition: background var(--plan-duration) var(--plan-ease), box-shadow var(--plan-duration) var(--plan-ease);
 }
@@ -757,7 +794,7 @@ select.app-settings-input {
 .app-settings-hint {
   margin: 0;
   font-size: 0.72rem;
-  color: rgba(255, 255, 255, 0.65);
+  color: var(--plan-hint-text);
   line-height: 1.5;
 }
 
@@ -1104,22 +1141,6 @@ select.app-settings-input {
   width: 5.5rem;
 }
 
-.consumption-tax-rate-delete-btn,
-.tax-rate-delete-btn {
-  border: 1px solid var(--plan-border);
-  border-radius: 4px;
-  padding: 0.2rem 0.45rem;
-  font-size: 0.68rem;
-  background: transparent;
-  color: rgba(255, 255, 255, 0.75);
-  cursor: pointer;
-}
-
-.consumption-tax-rate-delete-btn:hover,
-.tax-rate-delete-btn:hover {
-  background: rgba(255, 255, 255, 0.06);
-}
-
 .consumption-tax-rate-add-btn,
 .tax-rate-add-btn {
   align-self: flex-start;
@@ -1134,7 +1155,7 @@ select.app-settings-input {
 }
 
 .expand-settings-empty {
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--plan-text-dim);
   font-size: 0.8rem;
 }
 
@@ -1160,13 +1181,13 @@ select.app-settings-input {
   top: 0;
   background: var(--plan-surface);
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.85);
+  color: var(--plan-note-text);
   text-align: center;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.18);
 }
 
 .expand-settings-table tbody tr:hover td:not(.col-section-label) {
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--plan-settings-row-hover);
 }
 
 .expand-section-row td:first-child {
@@ -1228,6 +1249,24 @@ select.app-settings-input {
   border-bottom: 1px solid var(--plan-border);
 }
 
+.ui-color-mode-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin: 0 0 1rem;
+}
+
+.ui-color-mode-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--plan-text);
+}
+
+.ui-color-mode-select {
+  min-width: 9rem;
+}
+
 .color-settings-columns {
   display: flex;
   flex-wrap: wrap;
@@ -1265,7 +1304,7 @@ select.app-settings-input {
 
 
 .ui-color-table .col-color-none {
-  color: rgba(255, 255, 255, 0.35);
+  color: var(--plan-text-dim);
   text-align: center;
 }
 
@@ -1293,7 +1332,7 @@ select.app-settings-input {
   padding: 0.25rem 0.5rem;
   font-size: 0.68rem;
   cursor: pointer;
-  background: var(--plan-cell-bg);
+  background: var(--plan-settings-button-bg);
   color: var(--plan-text);
   transition: background var(--plan-duration) var(--plan-ease), box-shadow var(--plan-duration) var(--plan-ease);
 }
@@ -1359,7 +1398,7 @@ select.app-settings-input {
 
 .expand-settings-table .col-row-type {
   width: 1%;
-  color: rgba(255, 255, 255, 0.65);
+  color: var(--plan-hint-text);
   font-size: 0.68rem;
 }
 
@@ -1369,7 +1408,7 @@ select.app-settings-input {
 }
 
 .expand-settings-table .col-subs {
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--plan-hint-text);
   font-size: 0.68rem;
 }
 
@@ -1414,7 +1453,7 @@ select.app-settings-input {
 .expand-default-hint {
   font-size: 0.62rem;
   font-weight: 400;
-  color: rgba(255, 255, 255, 0.4);
+  color: var(--plan-text-dim);
 }
 
 .plan-filter-btn {
@@ -1464,6 +1503,7 @@ select.app-settings-input {
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
+  background: var(--plan-browser-bg);
   scrollbar-gutter: stable;
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--plan-text) 22%, transparent) transparent;
@@ -1493,7 +1533,7 @@ select.app-settings-input {
 .plan-footer {
   padding: 0.45rem 1rem 1.5rem;
   border-top: 1px solid var(--plan-border);
-  background: linear-gradient(180deg, color-mix(in srgb, var(--plan-bg) 96%, var(--plan-surface)) 0%, var(--plan-bg) 100%);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--plan-browser-bg) 96%, var(--plan-surface)) 0%, var(--plan-browser-bg) 100%);
   text-align: center;
   line-height: 1.5;
 }
@@ -1511,6 +1551,45 @@ select.app-settings-input {
   --plan-table-inline-margin: 1rem;
   padding-inline: var(--plan-table-inline-margin);
   padding-bottom: 1.5rem;
+  background: var(--plan-browser-bg);
+}
+
+.plan-column-plate-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 7;
+  overflow: visible;
+}
+
+.plan-column-plate {
+  position: fixed;
+  box-sizing: border-box;
+  pointer-events: none;
+}
+
+/* tbody 列: 月行の下から */
+.plan-column-plate--current {
+  background-color: var(--current-month-overlay);
+  border-left: 1px solid var(--current-month-ring);
+  border-right: 1px solid var(--current-month-ring);
+  border-top: none;
+  border-bottom: none;
+}
+
+.plan-column-plate--settlement {
+  background-color: var(--settlement-month-overlay);
+}
+
+/* thead 月行専用 */
+.plan-column-plate--current-header {
+  background-color: var(--current-month-overlay-head);
+  border: 1px solid var(--current-month-ring);
+  border-bottom: none;
+}
+
+.plan-column-plate--settlement-header {
+  background-color: var(--settlement-month-overlay-head);
 }
 
 .plan-row-hover-plate {
@@ -1760,8 +1839,8 @@ select.app-settings-input {
   top: 0;
   font-size: var(--plan-table-font-standard);
   padding: 0.2rem 0.5rem;
-  background: var(--plan-bg);
-  border-color: var(--plan-bg);
+  background: var(--plan-browser-bg);
+  border-color: var(--plan-browser-bg);
   border-top-width: 0;
   color: var(--plan-text);
 }
@@ -1784,6 +1863,34 @@ select.app-settings-input {
   border-color: var(--plan-month-row-bg);
   border-bottom-color: var(--plan-cell-bg);
   color: var(--plan-month-row-text);
+}
+
+.plan-table thead .month-row th.month-display-toggle {
+  cursor: pointer;
+  user-select: none;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22);
+}
+
+.plan-table thead .month-row th.month-display-toggle.month-display-plan {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--plan-amount-color) 45%, transparent);
+}
+
+.plan-table thead .month-row th.month-display-toggle:focus-visible {
+  outline: 1px solid color-mix(in srgb, var(--plan-amount-color) 70%, white);
+  outline-offset: -2px;
+}
+
+.plan-table thead .month-row th.month-display-actual {
+  color: var(--plan-month-row-text);
+}
+
+.plan-table thead .month-row th.month-display-plan {
+  color: var(--plan-amount-color);
+}
+
+.plan-table thead .month-row th.month-display-plan.current-month,
+.plan-table thead .month-row th.month-display-plan.settlement-month {
+  color: var(--plan-amount-color);
 }
 
 .plan-table thead .month-row th:is(.col-label, .col-sub) {
@@ -1845,6 +1952,7 @@ select.app-settings-input {
 
 .plan-table tbody td.col-category .col-category-note {
   font-size: 0.5em;
+  color: var(--section-text-dim, var(--plan-text-dim));
 }
 
 .plan-table tbody td.col-category.col-category-placeholder {
@@ -1897,30 +2005,9 @@ select.app-settings-input {
   max-width: var(--plan-col-amount-extra-w);
 }
 
-.col-amount.current-month {
+/* 当月・決算整理列: 行の横罫線を消し、列オーバーレイ板の下で段差が出ないようにする */
+.plan-table :is(th, td).col-amount:is(.current-month, .settlement-month) {
   border-top-width: 0 !important;
-  border-bottom-width: 0 !important;
-  border-left: 1px solid var(--current-month-ring) !important;
-  border-right: 1px solid var(--current-month-ring) !important;
-}
-
-/* tbody: 塗り色の上に当月オーバーレイを重ねる（background では row-fill に負けるため） */
-.plan-table tbody .col-amount.current-month {
-  position: relative;
-  box-shadow: inset 0 0 0 9999px var(--current-month-overlay);
-}
-
-thead .col-amount.current-month {
-  background-color: var(--plan-month-row-bg) !important;
-  box-shadow: inset 0 0 0 9999px var(--current-month-overlay-head);
-  color: var(--plan-month-row-text);
-}
-
-.plan-table thead th.col-amount.current-month {
-  z-index: 5;
-}
-
-.plan-table thead .month-row th.col-amount.current-month {
   border-bottom-width: 0 !important;
 }
 
@@ -1941,11 +2028,6 @@ tr.row-section-total .col-category {
 .plan-table tbody tr.row-fill-2 td:not(.col-category) {
   background: var(--plan-fill-color-2) !important;
   border-color: var(--plan-fill-color-2) !important;
-}
-
-.plan-table tbody tr.row-fill-1 td.col-amount.current-month,
-.plan-table tbody tr.row-fill-2 td.col-amount.current-month {
-  box-shadow: inset 0 0 0 9999px var(--current-month-overlay);
 }
 
 .plan-table tbody tr.row-plan-amount td.col-amount,
@@ -1978,16 +2060,6 @@ tr.row-section-total .col-sub {
 }
 
 tr.row-section-total .col-amount {
-  color: var(--section-text);
-}
-
-tr.row-section-total .col-amount.current-month {
-  --current-month-overlay: var(--current-month-overlay-total);
-  box-shadow: inset 0 0 0 9999px var(--current-month-overlay);
-  border-top-width: 0 !important;
-  border-bottom-width: 0 !important;
-  border-left: 1px solid var(--current-month-ring) !important;
-  border-right: 1px solid var(--current-month-ring) !important;
   color: var(--section-text);
 }
 
@@ -2144,21 +2216,21 @@ tr.row-profit .col-amount {
 }
 
 tr.row-variance td {
-  background: rgba(220, 38, 38, 0.06);
-  border-color: rgba(220, 38, 38, 0.06);
+  background: color-mix(in srgb, var(--plan-negative-amount) 6%, transparent);
+  border-color: color-mix(in srgb, var(--plan-negative-amount) 6%, transparent);
   font-weight: 600;
 }
 
 tr.row-variance .col-label,
 tr.row-variance .col-sub {
-  background: rgba(220, 38, 38, 0.06);
-  color: #ff0000;
+  background: color-mix(in srgb, var(--plan-negative-amount) 6%, transparent);
+  color: var(--plan-negative-amount);
 }
 
 tr.row-variance .col-amount.has-variance {
-  background: rgba(255, 0, 0, 0.2) !important;
-  border-color: rgba(255, 0, 0, 0.2) !important;
-  color: #ff0000;
+  background: color-mix(in srgb, var(--plan-negative-amount) 20%, transparent) !important;
+  border-color: color-mix(in srgb, var(--plan-negative-amount) 20%, transparent) !important;
+  color: var(--plan-negative-amount);
 }
 
 tr.row-warning-summary td {
@@ -2178,22 +2250,22 @@ tr.row-warning-summary .col-amount .amount-prefix {
 }
 
 tr.row-sub-variance td {
-  background: rgba(255, 0, 0, 0.06);
-  border-color: rgba(255, 0, 0, 0.06);
+  background: color-mix(in srgb, var(--plan-negative-amount) 6%, transparent);
+  border-color: color-mix(in srgb, var(--plan-negative-amount) 6%, transparent);
 }
 
 tr.row-sub-variance .col-sub {
-  color: #ff0000;
+  color: var(--plan-negative-amount);
   font-weight: 600;
 }
 
 tr.row-sub-variance .col-amount.has-variance {
-  color: #ff0000 !important;
+  color: var(--plan-negative-amount) !important;
   font-weight: 600;
 }
 
 .amount-variance-ok {
-  color: var(--plan-text-faint);
+  color: var(--plan-text-dim);
 }
 
 .amount-negative {
@@ -2299,7 +2371,7 @@ tr.row-sub-variance .col-amount.has-variance {
 }
 
 .plan-error {
-  color: #ff0000;
+  color: var(--plan-negative-amount);
 }
 
 .plan-csv-load {
@@ -2328,7 +2400,7 @@ tr.row-sub-variance .col-amount.has-variance {
 }
 
 .plan-csv-error {
-  color: #ff6666 !important;
+  color: color-mix(in srgb, var(--plan-negative-amount) 75%, white) !important;
 }
 
 .plan-csv-drop {
@@ -2442,7 +2514,7 @@ tr.row-sub-variance .col-amount.has-variance {
   line-height: 1;
 }
 
-.salary-plan-table td.col-out-actions .employee-delete-btn {
+.salary-plan-table td.col-out-actions .settings-delete-btn {
   padding: 0.08rem 0.3rem;
   font-size: 0.62rem;
   line-height: 1.2;
@@ -2562,7 +2634,7 @@ tr.row-sub-variance .col-amount.has-variance {
   line-height: 1.2;
   border: 1px solid var(--plan-border, #c8c8c8);
   border-radius: 3px;
-  background: var(--plan-bg, #fff);
+  background: var(--plan-editor-bg);
   color: var(--plan-text);
   cursor: pointer;
 }
@@ -2707,55 +2779,51 @@ tr.row-sub-variance .col-amount.has-variance {
 
 .employee-delete-prompt {
   font-size: 0.65rem;
-  color: var(--plan-text-faint);
+  color: var(--plan-text-dim);
   line-height: 1.3;
 }
 
-.employee-delete-confirm-btn,
+.settings-delete-btn {
+  border: 1px solid var(--plan-delete-btn-border);
+  border-radius: var(--plan-radius-sm);
+  padding: 0.2rem 0.5rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+  background: var(--plan-delete-btn-bg);
+  color: var(--plan-delete-btn-text);
+  white-space: nowrap;
+}
+
+.settings-delete-btn:hover:not(:disabled) {
+  background: var(--plan-delete-btn-bg-hover);
+}
+
+.settings-delete-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.settings-delete-cancel-btn,
 .employee-delete-cancel-btn {
-  border-radius: 4px;
+  border: 1px solid var(--plan-border);
+  border-radius: var(--plan-radius-sm);
   padding: 0.2rem 0.4rem;
   font-size: 0.65rem;
   font-weight: 600;
   cursor: pointer;
   background: transparent;
+  color: var(--plan-text-dim);
 }
 
-.employee-delete-confirm-btn {
-  border: 1px solid rgba(248, 113, 113, 0.55);
-  color: #fca5a5;
-}
-
-.employee-delete-confirm-btn:hover {
-  background: rgba(248, 113, 113, 0.12);
-}
-
-.employee-delete-cancel-btn {
-  border: 1px solid var(--plan-border);
-  color: var(--plan-text-faint);
-}
-
+.settings-delete-cancel-btn:hover,
 .employee-delete-cancel-btn:hover {
   background: rgba(255, 255, 255, 0.04);
 }
 
 .employee-settings-table tbody tr.employee-row-inactive td {
-  color: var(--plan-text-faint);
-}
-
-.employee-delete-btn {
-  border: 1px solid rgba(248, 113, 113, 0.45);
-  border-radius: 4px;
-  padding: 0.2rem 0.5rem;
-  font-size: 0.68rem;
-  font-weight: 600;
-  cursor: pointer;
-  background: transparent;
-  color: #fca5a5;
-}
-
-.employee-delete-btn:hover {
-  background: rgba(248, 113, 113, 0.12);
+  color: var(--plan-text-dim);
 }
 
 .salary-plan-section {
@@ -2784,7 +2852,7 @@ tr.row-sub-variance .col-amount.has-variance {
 .salary-plan-desc {
   margin: 0;
   font-size: 0.75rem;
-  color: var(--plan-text-faint);
+  color: var(--plan-text-dim);
   line-height: 1.5;
 }
 
@@ -2815,7 +2883,7 @@ tr.row-sub-variance .col-amount.has-variance {
 
 .salary-plan-bonus-month-field-label {
   font-size: 0.72rem;
-  color: var(--plan-text-faint);
+  color: var(--plan-text-dim);
 }
 
 .salary-plan-bonus-month-select {
@@ -2823,7 +2891,7 @@ tr.row-sub-variance .col-amount.has-variance {
   padding: 0.25rem 0.4rem;
   border: 1px solid var(--plan-border);
   border-radius: 4px;
-  background: var(--plan-bg);
+  background: var(--plan-editor-bg);
   color: var(--plan-text);
   font-size: 0.72rem;
 }
@@ -2858,7 +2926,7 @@ tr.row-sub-variance .col-amount.has-variance {
   padding: 0.25rem 0.4rem;
   border: 1px solid var(--plan-border);
   border-radius: 4px;
-  background: var(--plan-bg);
+  background: var(--plan-editor-bg);
   color: var(--plan-text);
   font-size: 0.72rem;
   text-align: right;
@@ -2866,7 +2934,7 @@ tr.row-sub-variance .col-amount.has-variance {
 
 .salary-plan-travel-allowance-suffix {
   font-size: 0.72rem;
-  color: var(--plan-text-faint);
+  color: var(--plan-text-dim);
 }
 
 .salary-plan-col-bonus-month {
@@ -3019,7 +3087,7 @@ tr.row-sub-variance .col-amount.has-variance {
 }
 
 .salary-plan-row-bonus td.salary-plan-col-kind {
-  color: var(--plan-text-faint);
+  color: var(--plan-text-dim);
 }
 
 .salary-plan-total-row td {
@@ -3048,13 +3116,7 @@ tr.row-sub-variance .col-amount.has-variance {
 
 .plan-csv-hint {
   font-size: 0.75rem !important;
-  color: var(--plan-text-faint) !important;
-}
-
-/* 当月列: 行種別の枠線より優先して横線を消す */
-.plan-table :is(th, td).col-amount.current-month {
-  border-top-width: 0 !important;
-  border-bottom-width: 0 !important;
+  color: var(--plan-text-dim) !important;
 }
 
 @media (max-width: 768px) {
@@ -3144,7 +3206,7 @@ body.plan-journal-open {
 .plan-journal-count {
   margin: 0 0 0.5rem;
   font-size: 0.75rem;
-  color: rgba(255, 255, 255, 0.65);
+  color: var(--plan-hint-text);
 }
 
 .plan-journal-table {

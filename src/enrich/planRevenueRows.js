@@ -3,8 +3,8 @@ import {
   EXTRA_COLUMNS,
   enrichRowValues,
 } from '../parse/parseJournal.js';
+import { buildBudgetActualMonthSets } from '../config/monthDisplayConfig.js';
 import {
-  buildPastFiscalMonthSet,
   buildMonthYearMap,
 } from '../config/appSettings.js';
 import { buildFiscalYearMonths } from '../config/salaryPlanConfig.js';
@@ -56,11 +56,22 @@ function revMakePlanRow(id, label, subLabel, values) {
   };
 }
 
-function revMergePlanIntoCsvRow(csvRow, planMonthValues, fiscalMonths, skipPlanFillMonths = null) {
+function revMergePlanIntoCsvRow(
+  csvRow,
+  planMonthValues,
+  fiscalMonths,
+  skipPlanFillMonths = null,
+  forcePlanMonths = null,
+) {
   const months = revRawValuesFromRow(csvRow);
   const planFillMonths = [];
   for (const m of fiscalMonths) {
     if (skipPlanFillMonths?.has(m)) continue;
+    if (forcePlanMonths?.has(m)) {
+      months[m] = planMonthValues[m] ?? 0;
+      planFillMonths.push(m);
+      continue;
+    }
     if (revIsMissingCsvMonthValue(months[m]) && (planMonthValues[m] ?? 0) !== 0) {
       months[m] = planMonthValues[m];
       planFillMonths.push(m);
@@ -150,7 +161,61 @@ function revInsertManMonthRows(rows, clients, fiscalMonths) {
   return result;
 }
 
-function revRebuildRevenueRows(rows, clients, fiscalMonths, skipPlanFillMonths = null, taxOptions = null) {
+function revHasBudgetActualMonthFilter(skipPlanFillMonths, forcePlanMonths) {
+  return (skipPlanFillMonths?.size ?? 0) > 0 || (forcePlanMonths?.size ?? 0) > 0;
+}
+
+/** plan / man-month: hide plan values in actual-display months (budget-actual). */
+function revApplyBudgetActualMonthDisplayToPlanRow(
+  row,
+  fiscalMonths,
+  skipPlanFillMonths,
+  forcePlanMonths,
+) {
+  if (row.type !== 'plan' && row.type !== 'man-month') return row;
+  if (!revHasBudgetActualMonthFilter(skipPlanFillMonths, forcePlanMonths)) return row;
+
+  const months = revRawValuesFromRow(row);
+  const planFillMonths = [];
+  for (const m of fiscalMonths) {
+    if (skipPlanFillMonths?.has(m)) {
+      months[m] = 0;
+      continue;
+    }
+    if (forcePlanMonths?.has(m) && (months[m] ?? 0) !== 0) {
+      planFillMonths.push(m);
+    }
+  }
+  return {
+    ...row,
+    values: enrichRowValues(months, 'flow'),
+    planFillMonths,
+  };
+}
+
+function revApplyBudgetActualMonthDisplayToRows(
+  rows,
+  fiscalMonths,
+  skipPlanFillMonths,
+  forcePlanMonths,
+) {
+  if (!revHasBudgetActualMonthFilter(skipPlanFillMonths, forcePlanMonths)) return rows;
+  return rows.map((row) => revApplyBudgetActualMonthDisplayToPlanRow(
+    row,
+    fiscalMonths,
+    skipPlanFillMonths,
+    forcePlanMonths,
+  ));
+}
+
+function revRebuildRevenueRows(
+  rows,
+  clients,
+  fiscalMonths,
+  skipPlanFillMonths = null,
+  taxOptions = null,
+  forcePlanMonths = null,
+) {
   const totalRow = rows.find((r) => r.type === 'total');
   const body = rows.filter((r) => r.type !== 'plan' && r.type !== 'total' && r.type !== 'man-month');
   const planRows = revBuildClientPlanRows(clients, fiscalMonths, taxOptions);
@@ -162,7 +227,7 @@ function revRebuildRevenueRows(rows, clients, fiscalMonths, skipPlanFillMonths =
     if (!client) return row;
     matchedClientIds.add(client.id);
     const planMonths = revRawValuesFromRow({ values: revBuildClientPlanValues(client, fiscalMonths, taxOptions) });
-    return revMergePlanIntoCsvRow(row, planMonths, fiscalMonths, skipPlanFillMonths);
+    return revMergePlanIntoCsvRow(row, planMonths, fiscalMonths, skipPlanFillMonths, forcePlanMonths);
   });
 
   const orphanPlanRows = planRows.filter((row) => {
@@ -208,6 +273,7 @@ export function enrichPlanDataWithRevenueRows(planData, {
   fiscalEndMonth,
   displayMode,
   consumptionTaxRates,
+  monthDisplayConfig,
 }) {
   const fiscalMonths = buildFiscalYearMonths(fiscalEndMonth);
   const revenueIdx = planData.sections.findIndex((s) => s.id === 'revenue');
@@ -230,13 +296,26 @@ export function enrichPlanDataWithRevenueRows(planData, {
   }
 
   const extraCandidates = revCollectPlanVisibilityCandidates(planRows);
-  const skipPlanFillMonths = displayMode === 'budget-actual'
-    ? buildPastFiscalMonthSet(businessStartYear, fiscalPeriod, fiscalMonths)
-    : null;
+  let skipPlanFillMonths = null;
+  let forcePlanMonths = null;
+  if (displayMode === 'budget-actual') {
+    ({ skipPlanFillMonths, forcePlanMonths } = buildBudgetActualMonthSets({
+      config: monthDisplayConfig,
+      businessStartYear,
+      fiscalPeriod,
+      fiscalMonths,
+    }));
+  }
 
   if (revenueIdx < 0) {
     if (planRows.length === 0) return planData;
-    const rowsWithManMonths = revInsertManMonthRows(planRows, clients, fiscalMonths);
+    let rowsWithManMonths = revInsertManMonthRows(planRows, clients, fiscalMonths);
+    rowsWithManMonths = revApplyBudgetActualMonthDisplayToRows(
+      rowsWithManMonths,
+      fiscalMonths,
+      skipPlanFillMonths,
+      forcePlanMonths,
+    );
     return {
       ...planData,
       sections: [...planData.sections, {
@@ -259,9 +338,16 @@ export function enrichPlanDataWithRevenueRows(planData, {
     fiscalMonths,
     skipPlanFillMonths,
     taxOptions,
+    forcePlanMonths,
   );
 
   rows = revInsertManMonthRows(rows, clients, fiscalMonths);
+  rows = revApplyBudgetActualMonthDisplayToRows(
+    rows,
+    fiscalMonths,
+    skipPlanFillMonths,
+    forcePlanMonths,
+  );
 
   const totalIdx = rows.findIndex((r) => r.type === 'total');
   if (totalIdx >= 0) {

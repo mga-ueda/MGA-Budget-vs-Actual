@@ -2,7 +2,7 @@ import {
   FISCAL_MONTHS,
   enrichRowValues,
 } from '../parse/parseJournal.js';
-import { buildPastFiscalMonthSet } from '../config/appSettings.js';
+import { buildBudgetActualMonthSets } from '../config/monthDisplayConfig.js';
 import { buildFiscalYearMonths } from '../config/salaryPlanConfig.js';
 import { planDataFromCache } from '../csv/csvLoader.js';
 import { canonicalExpenseAccount } from '../config/expenseAccountConfig.js';
@@ -87,11 +87,22 @@ function buildAveragePlanMonthValues(referenceRow, fiscalMonths) {
   return months;
 }
 
-function mergePlanIntoCsvRow(csvRow, planMonthValues, fiscalMonths, skipPlanFillMonths = null) {
+function mergePlanIntoCsvRow(
+  csvRow,
+  planMonthValues,
+  fiscalMonths,
+  skipPlanFillMonths = null,
+  forcePlanMonths = null,
+) {
   const months = rawValuesFromRow(csvRow);
   const planFillMonths = [];
   for (const m of fiscalMonths) {
     if (skipPlanFillMonths?.has(m)) continue;
+    if (forcePlanMonths?.has(m)) {
+      months[m] = planMonthValues[m] ?? 0;
+      planFillMonths.push(m);
+      continue;
+    }
     if (isMissingCsvMonthValue(months[m]) && (planMonthValues[m] ?? 0) !== 0) {
       months[m] = planMonthValues[m];
       planFillMonths.push(m);
@@ -104,13 +115,24 @@ function mergePlanIntoCsvRow(csvRow, planMonthValues, fiscalMonths, skipPlanFill
   };
 }
 
-function mergeOverrideIntoCsvRow(csvRow, overrideMonthly, fiscalMonths, skipPlanFillMonths = null) {
+function mergeOverrideIntoCsvRow(
+  csvRow,
+  overrideMonthly,
+  fiscalMonths,
+  skipPlanFillMonths = null,
+  forcePlanMonths = null,
+) {
   const months = rawValuesFromRow(csvRow);
   const planFillMonths = [];
   for (const m of fiscalMonths) {
     if (skipPlanFillMonths?.has(m)) continue;
     const overrideVal = overrideMonthly[m];
     if (overrideVal === null || overrideVal === undefined) continue;
+    if (forcePlanMonths?.has(m)) {
+      months[m] = overrideVal;
+      planFillMonths.push(m);
+      continue;
+    }
     if (isMissingCsvMonthValue(months[m])) {
       months[m] = overrideVal;
       planFillMonths.push(m);
@@ -140,6 +162,7 @@ function enrichSectionRowsWithAverageFill(
   rowFilter,
   skipPlanFillMonths = null,
   expenseOverrideMap = null,
+  forcePlanMonths = null,
 ) {
   const overrideTargetIds = buildExpenseOverrideTargetIds(section.rows, expenseOverrideMap);
 
@@ -151,13 +174,13 @@ function enrichSectionRowsWithAverageFill(
     const overrideMonthly = expenseOverrideMap?.get(account);
     if (overrideMonthly) {
       if (!overrideTargetIds.has(row.id)) return row;
-      return mergeOverrideIntoCsvRow(row, overrideMonthly, fiscalMonths, skipPlanFillMonths);
+      return mergeOverrideIntoCsvRow(row, overrideMonthly, fiscalMonths, skipPlanFillMonths, forcePlanMonths);
     }
 
     const refRow = refMap.get(rowKey(row));
     const planMonths = buildAveragePlanMonthValues(refRow, fiscalMonths);
     if (!planMonths) return row;
-    return mergePlanIntoCsvRow(row, planMonths, fiscalMonths, skipPlanFillMonths);
+    return mergePlanIntoCsvRow(row, planMonths, fiscalMonths, skipPlanFillMonths, forcePlanMonths);
   });
 
   const totalIdx = rows.findIndex((r) => r.type === 'total');
@@ -193,6 +216,7 @@ export function enrichPlanDataWithPeriodAverageFills(planData, {
   fiscalEndMonth,
   displayMode,
   expensePlanOverrides,
+  monthDisplayConfig,
 }) {
   if (displayMode !== 'plan' && displayMode !== 'budget-actual') {
     return planData;
@@ -209,9 +233,16 @@ export function enrichPlanDataWithPeriodAverageFills(planData, {
   if (!refPlanData) return planData;
 
   const fiscalMonths = buildFiscalYearMonths(fiscalEndMonth);
-  const skipPlanFillMonths = displayMode === 'budget-actual'
-    ? buildPastFiscalMonthSet(businessStartYear, fiscalPeriod, fiscalMonths)
-    : null;
+  let skipPlanFillMonths = null;
+  let forcePlanMonths = null;
+  if (displayMode === 'budget-actual') {
+    ({ skipPlanFillMonths, forcePlanMonths } = buildBudgetActualMonthSets({
+      config: monthDisplayConfig,
+      businessStartYear,
+      fiscalPeriod,
+      fiscalMonths,
+    }));
+  }
   const expenseOverrideMap = buildExpenseOverrideMapForPeriod(
     expensePlanOverrides ?? {},
     fiscalPeriod,
@@ -232,6 +263,8 @@ export function enrichPlanDataWithPeriodAverageFills(planData, {
         fiscalMonths,
         isInterestRow,
         skipPlanFillMonths,
+        null,
+        forcePlanMonths,
       );
     }
     if (section.id === EXPENSE_SECTION_ID) {
@@ -242,6 +275,7 @@ export function enrichPlanDataWithPeriodAverageFills(planData, {
         null,
         skipPlanFillMonths,
         expenseOverrideMap,
+        forcePlanMonths,
       );
     }
     if (section.id === OTHER_SECTION_ID) {
@@ -251,6 +285,8 @@ export function enrichPlanDataWithPeriodAverageFills(planData, {
         fiscalMonths,
         isFillableOtherRow,
         skipPlanFillMonths,
+        null,
+        forcePlanMonths,
       );
     }
     return section;

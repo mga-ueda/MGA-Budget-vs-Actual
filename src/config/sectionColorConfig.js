@@ -84,9 +84,18 @@ export function saveSectionColorConfig(config) {
   localStorage.setItem(SECTION_COLOR_STORAGE_KEY, JSON.stringify(normalizeSectionColorConfig(config)));
 }
 
-function normalizeSectionColorConfig(config) {
+const SECTION_COLOR_MODE_KEYS = new Set(['dark', 'light']);
+
+function isPerModeSectionColorConfig(config) {
+  if (!config || typeof config !== 'object') return false;
+  const keys = Object.keys(config);
+  if (keys.length === 0) return false;
+  return keys.every((key) => SECTION_COLOR_MODE_KEYS.has(key));
+}
+
+function normalizeSectionOverrides(raw = {}) {
   const normalized = {};
-  const migrated = { ...config };
+  const migrated = { ...raw };
   if (migrated.receivables && !migrated.revenueVariance) {
     migrated.revenueVariance = migrated.receivables;
   }
@@ -104,10 +113,59 @@ function normalizeSectionColorConfig(config) {
   return normalized;
 }
 
-export function getSectionColors(sectionId, config = {}) {
+export function normalizeSectionColorConfig(config = {}) {
+  if (!config || typeof config !== 'object') {
+    return { dark: {}, light: {} };
+  }
+  if (isPerModeSectionColorConfig(config)) {
+    return {
+      dark: normalizeSectionOverrides(config.dark),
+      light: normalizeSectionOverrides(config.light),
+    };
+  }
+  return {
+    dark: normalizeSectionOverrides(config),
+    light: {},
+  };
+}
+
+function getSectionColorModeBucket(config, mode = 'dark') {
+  const normalized = normalizeSectionColorConfig(config);
+  return normalized[mode === 'light' ? 'light' : 'dark'] ?? {};
+}
+
+export function setSectionColorOverride(config, mode, sectionId, { barColor, textColor }) {
+  const normalized = normalizeSectionColorConfig(config);
+  const modeKey = mode === 'light' ? 'light' : 'dark';
+  return {
+    ...normalized,
+    [modeKey]: {
+      ...normalized[modeKey],
+      [sectionId]: { barColor, textColor },
+    },
+  };
+}
+
+export function resetSectionColorOverride(config, mode, sectionId) {
+  const normalized = normalizeSectionColorConfig(config);
+  const modeKey = mode === 'light' ? 'light' : 'dark';
+  const bucket = { ...normalized[modeKey] };
+  delete bucket[sectionId];
+  return { ...normalized, [modeKey]: bucket };
+}
+
+/** 指定モードの大項目色上書きをすべて削除 */
+export function resetSectionColorModeOverrides(config, mode = 'dark') {
+  const normalized = normalizeSectionColorConfig(config);
+  const modeKey = mode === 'light' ? 'light' : 'dark';
+  return { ...normalized, [modeKey]: {} };
+}
+
+export function getSectionColors(sectionId, config = {}, mode = 'dark') {
   const defaults = DEFAULT_SECTION_COLORS[sectionId] ?? FALLBACK;
-  const override = config[sectionId]
-    ?? (sectionId === 'revenueVariance' ? config.receivables : undefined);
+  const bucket = getSectionColorModeBucket(config, mode);
+  const override = bucket[sectionId]
+    ?? (sectionId === 'revenueVariance' ? bucket.receivables : undefined);
   if (!override) return { ...defaults };
   if (typeof override === 'string') return { ...defaults, barColor: override };
   return {
@@ -117,9 +175,9 @@ export function getSectionColors(sectionId, config = {}) {
   };
 }
 
-export function applySectionColors(sections, config) {
+export function applySectionColors(sections, config, mode = 'dark') {
   return sections.map((s) => {
-    const { color, barColor, textColor } = getSectionColors(s.id, config);
+    const { color, barColor, textColor } = getSectionColors(s.id, config, mode);
     return { ...s, color, barColor, textColor };
   });
 }
@@ -132,16 +190,17 @@ function resolveSectionColorLabel(section) {
   return registry?.label ?? section.id;
 }
 
-export function collectSectionColorDefs(sections = [], config = {}) {
+export function collectSectionColorDefs(sections = [], config = {}, mode = 'dark') {
   const labels = new Map(SECTION_COLOR_SECTION_DEFS.map((d) => [d.id, d.label]));
   for (const s of sections) {
     labels.set(s.id, resolveSectionColorLabel(s));
   }
 
+  const bucket = getSectionColorModeBucket(config, mode);
   const registryIds = new Set(SECTION_COLOR_SECTION_DEFS.map((d) => d.id));
   const defs = SECTION_COLOR_SECTION_DEFS.map(({ id }) => {
     const defaults = DEFAULT_SECTION_COLORS[id] ?? FALLBACK;
-    const current = getSectionColors(id, config);
+    const current = getSectionColors(id, config, mode);
     return {
       sectionId: id,
       label: labels.get(id) ?? id,
@@ -151,14 +210,14 @@ export function collectSectionColorDefs(sections = [], config = {}) {
       defaultColor: defaults.color,
       defaultBarColor: defaults.barColor,
       defaultTextColor: defaults.textColor,
-      isCustom: Object.prototype.hasOwnProperty.call(config, id),
+      isCustom: Object.prototype.hasOwnProperty.call(bucket, id),
     };
   });
 
   for (const s of sections) {
     if (registryIds.has(s.id)) continue;
     const defaults = DEFAULT_SECTION_COLORS[s.id] ?? FALLBACK;
-    const current = getSectionColors(s.id, config);
+    const current = getSectionColors(s.id, config, mode);
     defs.push({
       sectionId: s.id,
       label: resolveSectionColorLabel(s),
@@ -168,21 +227,21 @@ export function collectSectionColorDefs(sections = [], config = {}) {
       defaultColor: defaults.color,
       defaultBarColor: defaults.barColor,
       defaultTextColor: defaults.textColor,
-      isCustom: Object.prototype.hasOwnProperty.call(config, s.id),
+      isCustom: Object.prototype.hasOwnProperty.call(bucket, s.id),
     });
   }
 
   return defs;
 }
 
-export function getSectionBarColor(sectionId, sections, config = {}) {
+export function getSectionBarColor(sectionId, sections, config = {}, mode = 'dark') {
   const section = sections?.find((s) => s.id === sectionId);
   if (section?.barColor) return section.barColor;
-  return getSectionColors(sectionId, config).barColor;
+  return getSectionColors(sectionId, config, mode).barColor;
 }
 
-export function getSectionTextColor(sectionId, sections, config = {}) {
+export function getSectionTextColor(sectionId, sections, config = {}, mode = 'dark') {
   const section = sections?.find((s) => s.id === sectionId);
   if (section?.textColor) return section.textColor;
-  return getSectionColors(sectionId, config).textColor;
+  return getSectionColors(sectionId, config, mode).textColor;
 }
