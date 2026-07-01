@@ -562,6 +562,60 @@ html {
   white-space: nowrap;
 }
 
+.expense-plan-override-section {
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--plan-border);
+}
+
+.expense-plan-override-add-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.expense-plan-override-select {
+  min-width: 12rem;
+  max-width: 100%;
+}
+
+.expense-plan-override-add-btn,
+.expense-plan-override-remove-btn {
+  border: 1px solid var(--plan-border);
+  border-radius: var(--plan-radius-sm);
+  padding: 0.35rem 0.75rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  background: var(--plan-cell-bg);
+  color: var(--plan-text);
+}
+
+.expense-plan-override-add-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.expense-plan-override-add-btn:hover:not(:disabled),
+.expense-plan-override-remove-btn:hover {
+  background: var(--plan-hover-surface);
+}
+
+.expense-plan-override-col-actions {
+  width: 4.5rem;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.expense-plan-override-empty {
+  text-align: center;
+  color: var(--plan-text-muted);
+  font-size: 0.78rem;
+  padding: 0.75rem;
+}
+
 .expand-reset-btn {
   border: 1px solid var(--plan-border);
   border-radius: var(--plan-radius-sm);

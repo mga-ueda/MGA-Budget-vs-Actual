@@ -3769,6 +3769,141 @@ function buildPaymentPlanPeriodEntries(currentPeriod, planYears) {
   return entries;
 }
 
+/* config/expensePlanOverrideConfig.js */
+const EXPENSE_PLAN_OVERRIDE_STORAGE_KEY = 'mga-expense-plan-overrides';
+
+function normalizeAmount(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+}
+
+function emptyMonthly(fiscalMonths) {
+  const monthly = {};
+  for (const month of fiscalMonths) monthly[month] = null;
+  return monthly;
+}
+
+function normalizeExpenseOverrideMonthly(plan, fiscalMonths) {
+  const monthly = emptyMonthly(fiscalMonths);
+  if (plan && typeof plan === 'object') {
+    for (const month of fiscalMonths) {
+      monthly[month] = normalizeAmount(plan[month]);
+    }
+  }
+  return monthly;
+}
+
+function loadExpensePlanOverrides() {
+  try {
+    const raw = localStorage.getItem(EXPENSE_PLAN_OVERRIDE_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveExpensePlanOverrides(overrides) {
+  localStorage.setItem(EXPENSE_PLAN_OVERRIDE_STORAGE_KEY, JSON.stringify(overrides));
+  return overrides;
+}
+
+/** 支払い計画オーバーライドの対象期間（今期・来期） */
+function buildExpensePlanOverridePeriodEntries(currentPeriod) {
+  return [
+    { period: currentPeriod, label: "今期" },
+    { period: currentPeriod + 1, label: "来期" },
+  ];
+}
+
+function getExpenseOverrideAccounts(overrides, fiscalPeriod) {
+  const stored = overrides[String(fiscalPeriod)];
+  if (!stored || typeof stored !== 'object') return [];
+  return Object.keys(stored).sort((a, b) => a.localeCompare(b, 'ja'));
+}
+
+function getExpenseOverrideMonthly(overrides, fiscalPeriod, account, fiscalMonths) {
+  const stored = overrides[String(fiscalPeriod)]?.[account];
+  return normalizeExpenseOverrideMonthly(stored, fiscalMonths);
+}
+
+function setExpenseOverrideMonthly(overrides, fiscalPeriod, account, monthly, fiscalMonths) {
+  const periodKey = String(fiscalPeriod);
+  const next = { ...overrides };
+  if (!next[periodKey]) next[periodKey] = {};
+  next[periodKey] = {
+    ...next[periodKey],
+    [account]: normalizeExpenseOverrideMonthly(monthly, fiscalMonths),
+  };
+  return saveExpensePlanOverrides(next);
+}
+
+function addExpenseOverrideAccount(overrides, fiscalPeriod, account, fiscalMonths) {
+  const canonical = canonicalExpenseAccount(account);
+  if (!canonical) return overrides;
+  const existing = getExpenseOverrideAccounts(overrides, fiscalPeriod);
+  if (existing.includes(canonical)) return overrides;
+  return setExpenseOverrideMonthly(
+    overrides,
+    fiscalPeriod,
+    canonical,
+    emptyMonthly(fiscalMonths),
+    fiscalMonths,
+  );
+}
+
+function removeExpenseOverrideAccount(overrides, fiscalPeriod, account) {
+  const periodKey = String(fiscalPeriod);
+  const stored = overrides[periodKey];
+  if (!stored || !stored[account]) return overrides;
+  const next = { ...overrides, [periodKey]: { ...stored } };
+  delete next[periodKey][account];
+  if (Object.keys(next[periodKey]).length === 0) delete next[periodKey];
+  return saveExpensePlanOverrides(next);
+}
+
+/** オーバーライド対象期間の科目→月次マップ */
+function buildExpenseOverrideMapForPeriod(overrides, fiscalPeriod, fiscalMonths) {
+  const map = new Map();
+  for (const account of getExpenseOverrideAccounts(overrides, fiscalPeriod)) {
+    map.set(account, getExpenseOverrideMonthly(overrides, fiscalPeriod, account, fiscalMonths));
+  }
+  return map;
+}
+
+/** プルダウン用の諸経勘定科目候補 */
+function collectExpenseOverrideAccountCandidates(planData, selectedAccounts = []) {
+  const selected = new Set(selectedAccounts);
+  const accounts = new Set(EXPENSE_SECTION_ACCOUNTS);
+  const expenseSection = planData?.sections?.find((s) => s.id === 'expense');
+  if (expenseSection) {
+    for (const row of expenseSection.rows) {
+      if (row.type === 'total' || row.type === 'plan') continue;
+      accounts.add(canonicalExpenseAccount(row.label));
+    }
+  }
+  return [...accounts]
+    .filter((account) => !selected.has(account))
+    .sort((a, b) => a.localeCompare(b, 'ja'));
+}
+
+/** オーバーライドを適用する行を特定 */
+function resolveExpenseOverrideTargetRow(rows, account) {
+  const canonical = canonicalExpenseAccount(account);
+  const matching = rows.filter((row) => {
+    if (row.type === 'total' || row.type === 'plan' || row.type === 'breakdown') return false;
+    return canonicalExpenseAccount(row.label) === canonical;
+  });
+  const leafRows = matching.filter((row) => row.type === 'item' || row.type === 'sub');
+  if (leafRows.length === 1) return leafRows[0];
+  const groupRow = matching.find((row) => row.type === 'group');
+  if (leafRows.length > 1 && groupRow) return groupRow;
+  const items = matching.filter((row) => row.type === 'item');
+  if (items.length === 1) return items[0];
+  return null;
+}
+
 /* config/outsourcingPlanConfig.js */
 const OUTSOURCING_PLAN_STORAGE_KEY = 'mga-outsourcing-plans';
 
@@ -6737,16 +6872,56 @@ function mergePlanIntoCsvRow(csvRow, planMonthValues, fiscalMonths, skipPlanFill
   };
 }
 
+function mergeOverrideIntoCsvRow(csvRow, overrideMonthly, fiscalMonths, skipPlanFillMonths = null) {
+  const months = rawValuesFromRow(csvRow);
+  const planFillMonths = [];
+  for (const m of fiscalMonths) {
+    if (skipPlanFillMonths?.has(m)) continue;
+    const overrideVal = overrideMonthly[m];
+    if (overrideVal === null || overrideVal === undefined) continue;
+    if (isMissingCsvMonthValue(months[m])) {
+      months[m] = overrideVal;
+      planFillMonths.push(m);
+    }
+  }
+  return {
+    ...csvRow,
+    values: enrichRowValues(months, 'flow'),
+    planFillMonths,
+  };
+}
+
+function buildExpenseOverrideTargetIds(rows, expenseOverrideMap) {
+  const ids = new Set();
+  if (!expenseOverrideMap) return ids;
+  for (const account of expenseOverrideMap.keys()) {
+    const target = resolveExpenseOverrideTargetRow(rows, account);
+    if (target) ids.add(target.id);
+  }
+  return ids;
+}
+
 function enrichSectionRowsWithAverageFill(
   section,
   refMap,
   fiscalMonths,
   rowFilter,
   skipPlanFillMonths = null,
+  expenseOverrideMap = null,
 ) {
+  const overrideTargetIds = buildExpenseOverrideTargetIds(section.rows, expenseOverrideMap);
+
   const rows = section.rows.map((row) => {
     if (row.type === 'total' || row.type === 'plan') return row;
     if (rowFilter && !rowFilter(row)) return row;
+
+    const account = canonicalExpenseAccount(row.label);
+    const overrideMonthly = expenseOverrideMap?.get(account);
+    if (overrideMonthly) {
+      if (!overrideTargetIds.has(row.id)) return row;
+      return mergeOverrideIntoCsvRow(row, overrideMonthly, fiscalMonths, skipPlanFillMonths);
+    }
+
     const refRow = refMap.get(rowKey(row));
     const planMonths = buildAveragePlanMonthValues(refRow, fiscalMonths);
     if (!planMonths) return row;
@@ -6785,6 +6960,7 @@ function enrichPlanDataWithPeriodAverageFills(planData, {
   fiscalPeriod,
   fiscalEndMonth,
   displayMode,
+  expensePlanOverrides,
 }) {
   if (displayMode !== 'plan' && displayMode !== 'budget-actual') {
     return planData;
@@ -6804,6 +6980,11 @@ function enrichPlanDataWithPeriodAverageFills(planData, {
   const skipPlanFillMonths = displayMode === 'budget-actual'
     ? buildPastFiscalMonthSet(businessStartYear, fiscalPeriod, fiscalMonths)
     : null;
+  const expenseOverrideMap = buildExpenseOverrideMapForPeriod(
+    expensePlanOverrides ?? {},
+    fiscalPeriod,
+    fiscalMonths,
+  );
   const refNonOperating = refPlanData.sections.find((s) => s.id === NON_OPERATING_SECTION_ID);
   const refExpense = refPlanData.sections.find((s) => s.id === EXPENSE_SECTION_ID);
   const refOther = refPlanData.sections.find((s) => s.id === OTHER_SECTION_ID);
@@ -6828,6 +7009,7 @@ function enrichPlanDataWithPeriodAverageFills(planData, {
         fiscalMonths,
         null,
         skipPlanFillMonths,
+        expenseOverrideMap,
       );
     }
     if (section.id === OTHER_SECTION_ID) {
@@ -7598,6 +7780,7 @@ const ALL_SETTINGS_STORAGE_KEYS = [
   'mga-salary-plan-settings',
   'mga-tax-payment-plans',
   'mga-tax-payment-settings',
+  'mga-expense-plan-overrides',
   'mga-outsourcing-plans',
   'mga-revenue-plans',
   'mga-revenue-plan-settings',
@@ -9051,6 +9234,330 @@ function mountRevenueSettingsPanel({
   replaceRootPanel(wrap);
 }
 
+/* ui/expensePlanOverrideSettings.js */
+const SECTION_CLASS = 'expense-plan-override-section';
+
+function sumDisplayMonthlyTotal(display, fiscalMonths) {
+  let total = 0;
+  for (const month of fiscalMonths) total += display[month] ?? 0;
+  return total;
+}
+
+/** 支払い計画タブ内に諸経費計画のオーバーライドセクションを表示 */
+function mountExpensePlanOverrideSection({
+  wrap,
+  appSettings,
+  rawPlanData,
+  getExpensePlanOverrides,
+  setExpensePlanOverrides,
+  refreshPlanTableIfNeeded,
+}) {
+  const fiscalMonths = buildFiscalYearMonths(appSettings.fiscalEndMonth);
+  const currentPeriod = appSettings.fiscalPeriod;
+  const periodEntries = buildExpensePlanOverridePeriodEntries(currentPeriod);
+  const currentPastMonths = buildPastFiscalMonthSet(
+    appSettings.businessStartYear,
+    currentPeriod,
+    fiscalMonths,
+  );
+
+  let expensePlanOverrides = getExpensePlanOverrides();
+
+  function getPastMonthsForPeriod(fiscalPeriod) {
+    if (fiscalPeriod === currentPeriod) return currentPastMonths;
+    return new Set();
+  }
+
+  function isMonthEditable(fiscalPeriod, month) {
+    return !getPastMonthsForPeriod(fiscalPeriod).has(month);
+  }
+
+  function persistMonthly(account, monthly, fiscalPeriod) {
+    expensePlanOverrides = setExpenseOverrideMonthly(
+      expensePlanOverrides,
+      fiscalPeriod,
+      account,
+      monthly,
+      fiscalMonths,
+    );
+    setExpensePlanOverrides(expensePlanOverrides);
+    refreshPlanTableIfNeeded();
+  }
+
+  function startCellEdit(td, account, month, fiscalPeriod) {
+    if (!isMonthEditable(fiscalPeriod, month)) return;
+    if (td.querySelector('input')) return;
+
+    const plan = getExpenseOverrideMonthly(expensePlanOverrides, fiscalPeriod, account, fiscalMonths);
+    const rawValue = plan[month];
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.inputMode = 'numeric';
+    input.className = 'salary-plan-amount-input';
+    input.autocomplete = 'off';
+    input.spellcheck = false;
+    input.value = rawValue != null && rawValue !== 0 ? String(rawValue) : '';
+
+    let editClosed = false;
+
+    const finish = (save, fillForward = false) => {
+      if (editClosed) return;
+      editClosed = true;
+      if (save) {
+        const parsed = parseSalaryPlanAmountInputWithFillForward(
+          input.value,
+          fillForward,
+          rawValue,
+        );
+        const pastMonths = getPastMonthsForPeriod(fiscalPeriod);
+        const next = fillForward
+          ? applyAmountFromMonthForwardSkippingPast(
+            plan,
+            fiscalMonths,
+            month,
+            parsed,
+            pastMonths,
+          )
+          : { ...plan, [month]: parsed };
+        persistMonthly(account, next, fiscalPeriod);
+      }
+      renderOverrideSection();
+    };
+
+    input.addEventListener('keydown', (e) => {
+      if (e.isComposing) return;
+      if (e.key === 'Enter' || e.code === 'NumpadEnter') {
+        e.preventDefault();
+        finish(true, e.shiftKey);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        finish(false);
+      }
+    });
+    input.addEventListener('blur', () => {
+      setTimeout(() => {
+        if (!editClosed) finish(true, false);
+      }, 0);
+    });
+
+    td.textContent = '';
+    td.appendChild(input);
+    input.focus();
+    input.select();
+  }
+
+  function appendAmountCell(tr, { account, month, fiscalPeriod, value, prevValue, editable }) {
+    const td = document.createElement('td');
+    td.className = 'salary-plan-amount-cell';
+    if (month === fiscalMonths[0]) {
+      td.classList.add('salary-plan-amount-start-month');
+    } else if (prevValue !== undefined && salaryPlanAmountDiffersFromPrevious(prevValue, value)) {
+      td.classList.add('salary-plan-amount-changed');
+    }
+    if (editable) {
+      td.classList.add('salary-plan-cell-editable');
+      td.title = "ダブルクリックで編集（Shift+Enter で後継月へ同額反映）";
+      td.textContent = formatSalaryPlanYen(value);
+      td.addEventListener('dblclick', () => {
+        startCellEdit(td, account, month, fiscalPeriod);
+      });
+    } else {
+      td.classList.add('salary-plan-cell-disabled');
+      td.textContent = formatSalaryPlanYen(value);
+    }
+    tr.appendChild(td);
+  }
+
+  function buildOverrideTable(fiscalPeriod) {
+    const accounts = getExpenseOverrideAccounts(expensePlanOverrides, fiscalPeriod);
+    const table = document.createElement('table');
+    table.className = 'expand-settings-table salary-plan-table expense-plan-override-table';
+
+    const headerLabels = ["勘定科目", ...fiscalMonths, "合計", ''];
+    const thead = document.createElement('thead');
+    const headerRow = document.createElement('tr');
+    for (const label of headerLabels) {
+      const th = document.createElement('th');
+      th.textContent = label;
+      if (label === "勘定科目") th.className = 'salary-plan-col-name';
+      else if (label === "合計") th.className = 'salary-plan-col-total';
+      else if (label === '') th.className = 'expense-plan-override-col-actions';
+      else th.className = 'salary-plan-col-month';
+      headerRow.appendChild(th);
+    }
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    if (accounts.length === 0) {
+      const emptyTr = document.createElement('tr');
+      const emptyTd = document.createElement('td');
+      emptyTd.colSpan = headerLabels.length;
+      emptyTd.className = 'expense-plan-override-empty';
+      emptyTd.textContent = "オーバーライドする科目がありません。下のプルダウンから追加してください。";
+      emptyTr.appendChild(emptyTd);
+      tbody.appendChild(emptyTr);
+    }
+
+    for (const account of accounts) {
+      const displayMonthly = getExpenseOverrideMonthly(
+        expensePlanOverrides,
+        fiscalPeriod,
+        account,
+        fiscalMonths,
+      );
+      const tr = document.createElement('tr');
+      tr.className = 'salary-plan-row-monthly';
+
+      const accountTd = document.createElement('td');
+      accountTd.className = 'salary-plan-col-name';
+      accountTd.textContent = account;
+      tr.appendChild(accountTd);
+
+      for (let i = 0; i < fiscalMonths.length; i += 1) {
+        const month = fiscalMonths[i];
+        const editable = isMonthEditable(fiscalPeriod, month);
+        const prevMonth = i > 0 ? fiscalMonths[i - 1] : null;
+        const prevValue = prevMonth != null ? displayMonthly[prevMonth] : undefined;
+        appendAmountCell(tr, {
+          account,
+          month,
+          fiscalPeriod,
+          value: displayMonthly[month],
+          prevValue,
+          editable,
+        });
+      }
+
+      const totalTd = document.createElement('td');
+      totalTd.className = 'salary-plan-col-total';
+      totalTd.textContent = formatSalaryPlanYen(sumDisplayMonthlyTotal(displayMonthly, fiscalMonths));
+      tr.appendChild(totalTd);
+
+      const actionsTd = document.createElement('td');
+      actionsTd.className = 'expense-plan-override-col-actions';
+      const removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.className = 'expense-plan-override-remove-btn';
+      removeBtn.textContent = "削除";
+      removeBtn.title = "この科目のオーバーライドを解除";
+      removeBtn.addEventListener('click', () => {
+        expensePlanOverrides = removeExpenseOverrideAccount(
+          expensePlanOverrides,
+          fiscalPeriod,
+          account,
+        );
+        setExpensePlanOverrides(expensePlanOverrides);
+        refreshPlanTableIfNeeded();
+        renderOverrideSection();
+      });
+      actionsTd.appendChild(removeBtn);
+      tr.appendChild(actionsTd);
+
+      tbody.appendChild(tr);
+    }
+
+    table.appendChild(tbody);
+    return table;
+  }
+
+  function renderAddRow(fiscalPeriod, block) {
+    const accounts = getExpenseOverrideAccounts(expensePlanOverrides, fiscalPeriod);
+    const candidates = collectExpenseOverrideAccountCandidates(rawPlanData, accounts);
+    const addRow = document.createElement('div');
+    addRow.className = 'expense-plan-override-add-row';
+
+    const select = document.createElement('select');
+    select.className = 'app-settings-input expense-plan-override-select';
+    select.setAttribute('aria-label', "オーバーライドする諸経勘定科目");
+
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = candidates.length > 0
+      ? "科目を選択…"
+      : "追加できる科目がありません";
+    placeholder.disabled = true;
+    placeholder.selected = true;
+    select.appendChild(placeholder);
+
+    for (const account of candidates) {
+      const opt = document.createElement('option');
+      opt.value = account;
+      opt.textContent = account;
+      select.appendChild(opt);
+    }
+
+    const addBtn = document.createElement('button');
+    addBtn.type = 'button';
+    addBtn.className = 'expense-plan-override-add-btn';
+    addBtn.textContent = "追加";
+    addBtn.disabled = candidates.length === 0;
+    addBtn.addEventListener('click', () => {
+      const account = select.value;
+      if (!account) return;
+      expensePlanOverrides = addExpenseOverrideAccount(
+        expensePlanOverrides,
+        fiscalPeriod,
+        account,
+        fiscalMonths,
+      );
+      setExpensePlanOverrides(expensePlanOverrides);
+      refreshPlanTableIfNeeded();
+      renderOverrideSection();
+    });
+
+    addRow.appendChild(select);
+    addRow.appendChild(addBtn);
+    block.appendChild(addRow);
+  }
+
+  function renderOverrideSection() {
+    wrap.querySelector(`.${SECTION_CLASS}`)?.remove();
+
+    const section = document.createElement('div');
+    section.className = `salary-plan-section ${SECTION_CLASS}`;
+
+    const planHeader = document.createElement('div');
+    planHeader.className = 'salary-plan-header salary-plan-header-spaced';
+    planHeader.innerHTML = `
+      <h3 class="salary-plan-title">諸経費計画のオーバーライド</h3>
+      <p class="salary-plan-desc">
+        自動補完（参照期の平均）を上書きする諸経勘定科目を指定します。オーバーライドした科目は平均補完の対象外となり、入力した月次の計画値が使われます（空欄は補完しません）。今期・来期のみ設定できます。今期の支払済み月は編集できません。双して入力した値は予実表にも反します。
+      </p>
+    `;
+    section.appendChild(planHeader);
+
+    for (const { period, label } of periodEntries) {
+      const block = document.createElement('div');
+      block.className = 'salary-plan-period-block';
+
+      const blockTitle = document.createElement('h4');
+      blockTitle.className = 'salary-plan-period-title';
+      blockTitle.textContent = `${label}（${formatFiscalPeriodLabel(period)}）`;
+      block.appendChild(blockTitle);
+
+      const tableWrap = document.createElement('div');
+      tableWrap.className = 'salary-plan-table-wrap';
+      tableWrap.appendChild(buildOverrideTable(period));
+      block.appendChild(tableWrap);
+
+      renderAddRow(period, block);
+      section.appendChild(block);
+    }
+
+    wrap.appendChild(section);
+  }
+
+  renderOverrideSection();
+
+  return {
+    rerender: renderOverrideSection,
+  };
+}
+
 /* ui/plan.js */
 function getPeriodOptions() {
   return {
@@ -9230,6 +9737,7 @@ let salaryPlans = loadSalaryPlans();
 let salaryPlanSettings = loadSalaryPlanSettings();
 let taxPaymentPlans = loadTaxPaymentPlans();
 let paymentPlanSettings = loadPaymentPlanSettings();
+let expensePlanOverrides = loadExpensePlanOverrides();
 let outsourcingPlans = loadOutsourcingPlans();
 let revenuePlans = loadRevenuePlans();
 let revenuePlanSettings = loadRevenuePlanSettings();
@@ -9265,6 +9773,13 @@ let planTableColumnWidthScheduleGeneration = 0;
 
 const root = document.getElementById('plan-root');
 const planBody = () => document.querySelector('.plan-body');
+
+function resetPlanBodyScroll() {
+  const body = planBody();
+  if (!body) return;
+  body.scrollTop = 0;
+  body.scrollLeft = 0;
+}
 const mainTabs = document.getElementById('plan-main-tabs');
 const toolbar = document.getElementById('plan-toolbar');
 const kpiEl = document.getElementById('plan-kpi');
@@ -11094,6 +11609,7 @@ function applyPlanColors(planData) {
     fiscalPeriod: appSettings.fiscalPeriod,
     fiscalEndMonth: appSettings.fiscalEndMonth,
     displayMode,
+    expensePlanOverrides,
   });
   const withCashOpening = enrichPlanDataWithCashFlowOpeningInflow(withAverages, {
     expandConfig,
@@ -11389,8 +11905,12 @@ function switchMainTab(nextTab) {
   if (nextTab === 'expand') nextTab = 'visibility';
   if (nextTab === 'csvnames') nextTab = 'settings';
   const prevTab = activeTab;
+  if (prevTab === 'plan' && nextTab !== 'plan') {
+    resetPlanBodyScroll();
+  }
   activeTab = nextTab;
   if (nextTab === 'plan' && prevTab !== 'plan') {
+    resetPlanBodyScroll();
     showPlanLoadingOverlay({ awaitLayout: true });
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
@@ -11527,8 +12047,9 @@ function renderTable() {
 
   const existingWrap = root.querySelector('.plan-table-wrap');
   const body = planBody();
-  const scrollTop = body?.scrollTop ?? existingWrap?.scrollTop ?? 0;
-  const scrollLeft = body?.scrollLeft ?? existingWrap?.scrollLeft ?? 0;
+  const preserveScroll = existingWrap != null;
+  const scrollTop = preserveScroll ? (body?.scrollTop ?? existingWrap?.scrollTop ?? 0) : 0;
+  const scrollLeft = preserveScroll ? (body?.scrollLeft ?? existingWrap?.scrollLeft ?? 0) : 0;
 
   setPlanKpi(calcTotalProfitMargin(data));
 
@@ -13989,6 +14510,16 @@ function renderTaxPaymentSettings() {
   }
 
   renderPlanSection();
+  mountExpensePlanOverrideSection({
+    wrap,
+    appSettings,
+    rawPlanData,
+    getExpensePlanOverrides: () => expensePlanOverrides,
+    setExpensePlanOverrides: (next) => {
+      expensePlanOverrides = next;
+    },
+    refreshPlanTableIfNeeded,
+  });
   replaceRootPanel(wrap);
 }
 
@@ -16312,6 +16843,7 @@ function reloadAllSettingsFromStorage() {
   salaryPlanSettings = loadSalaryPlanSettings();
   taxPaymentPlans = loadTaxPaymentPlans();
   paymentPlanSettings = loadPaymentPlanSettings();
+  expensePlanOverrides = loadExpensePlanOverrides();
   outsourcingPlans = loadOutsourcingPlans();
   revenuePlans = loadRevenuePlans();
   revenuePlanSettings = loadRevenuePlanSettings();

@@ -230,6 +230,10 @@ import {
   filterVisibleResidentTaxMunicipalities,
 } from '../config/taxPaymentConfig.js';
 import {
+  loadExpensePlanOverrides,
+} from '../config/expensePlanOverrideConfig.js';
+import { mountExpensePlanOverrideSection } from './expensePlanOverrideSettings.js';
+import {
   loadOutsourcingPlans,
   getPeriodVendorEntries,
   setVendorEntry,
@@ -421,6 +425,7 @@ let salaryPlans = loadSalaryPlans();
 let salaryPlanSettings = loadSalaryPlanSettings();
 let taxPaymentPlans = loadTaxPaymentPlans();
 let paymentPlanSettings = loadPaymentPlanSettings();
+let expensePlanOverrides = loadExpensePlanOverrides();
 let outsourcingPlans = loadOutsourcingPlans();
 let revenuePlans = loadRevenuePlans();
 let revenuePlanSettings = loadRevenuePlanSettings();
@@ -456,6 +461,13 @@ let planTableColumnWidthScheduleGeneration = 0;
 
 const root = document.getElementById('plan-root');
 const planBody = () => document.querySelector('.plan-body');
+
+function resetPlanBodyScroll() {
+  const body = planBody();
+  if (!body) return;
+  body.scrollTop = 0;
+  body.scrollLeft = 0;
+}
 const mainTabs = document.getElementById('plan-main-tabs');
 const toolbar = document.getElementById('plan-toolbar');
 const kpiEl = document.getElementById('plan-kpi');
@@ -2285,6 +2297,7 @@ function applyPlanColors(planData) {
     fiscalPeriod: appSettings.fiscalPeriod,
     fiscalEndMonth: appSettings.fiscalEndMonth,
     displayMode,
+    expensePlanOverrides,
   });
   const withCashOpening = enrichPlanDataWithCashFlowOpeningInflow(withAverages, {
     expandConfig,
@@ -2580,8 +2593,12 @@ function switchMainTab(nextTab) {
   if (nextTab === 'expand') nextTab = 'visibility';
   if (nextTab === 'csvnames') nextTab = 'settings';
   const prevTab = activeTab;
+  if (prevTab === 'plan' && nextTab !== 'plan') {
+    resetPlanBodyScroll();
+  }
   activeTab = nextTab;
   if (nextTab === 'plan' && prevTab !== 'plan') {
+    resetPlanBodyScroll();
     showPlanLoadingOverlay({ awaitLayout: true });
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
@@ -2718,8 +2735,9 @@ function renderTable() {
 
   const existingWrap = root.querySelector('.plan-table-wrap');
   const body = planBody();
-  const scrollTop = body?.scrollTop ?? existingWrap?.scrollTop ?? 0;
-  const scrollLeft = body?.scrollLeft ?? existingWrap?.scrollLeft ?? 0;
+  const preserveScroll = existingWrap != null;
+  const scrollTop = preserveScroll ? (body?.scrollTop ?? existingWrap?.scrollTop ?? 0) : 0;
+  const scrollLeft = preserveScroll ? (body?.scrollLeft ?? existingWrap?.scrollLeft ?? 0) : 0;
 
   setPlanKpi(calcTotalProfitMargin(data));
 
@@ -5180,6 +5198,16 @@ function renderTaxPaymentSettings() {
   }
 
   renderPlanSection();
+  mountExpensePlanOverrideSection({
+    wrap,
+    appSettings,
+    rawPlanData,
+    getExpensePlanOverrides: () => expensePlanOverrides,
+    setExpensePlanOverrides: (next) => {
+      expensePlanOverrides = next;
+    },
+    refreshPlanTableIfNeeded,
+  });
   replaceRootPanel(wrap);
 }
 
@@ -7503,6 +7531,7 @@ function reloadAllSettingsFromStorage() {
   salaryPlanSettings = loadSalaryPlanSettings();
   taxPaymentPlans = loadTaxPaymentPlans();
   paymentPlanSettings = loadPaymentPlanSettings();
+  expensePlanOverrides = loadExpensePlanOverrides();
   outsourcingPlans = loadOutsourcingPlans();
   revenuePlans = loadRevenuePlans();
   revenuePlanSettings = loadRevenuePlanSettings();

@@ -13,6 +13,7 @@ export const ALL_SETTINGS_STORAGE_KEYS = [
   'mga-salary-plan-settings',
   'mga-tax-payment-plans',
   'mga-tax-payment-settings',
+  'mga-expense-plan-overrides',
   'mga-outsourcing-plans',
   'mga-revenue-plans',
   'mga-revenue-plan-settings',

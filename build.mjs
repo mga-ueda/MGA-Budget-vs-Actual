@@ -26,6 +26,7 @@ const FILES = [
   'config/employeeConfig.js',
   'config/salaryPlanConfig.js',
   'config/taxPaymentConfig.js',
+  'config/expensePlanOverrideConfig.js',
   'config/outsourcingPlanConfig.js',
   'config/revenuePlanConfig.js',
   'enrich/planEmployeeSalaryRows.js',
@@ -40,6 +41,7 @@ const FILES = [
   'csv/csvFolder.js',
   'csv/csvLoader.js',
   'ui/revenueSettings.js',
+  'ui/expensePlanOverrideSettings.js',
   'ui/plan.js',
 ];
 
