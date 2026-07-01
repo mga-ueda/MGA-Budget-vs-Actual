@@ -34,6 +34,7 @@ const FILES = [
   'enrich/planTaxPaymentRows.js',
   'enrich/planOutsourcingRows.js',
   'enrich/planRevenueRows.js',
+  'enrich/planMiscIncomeRows.js',
   'enrich/planPeriodAverageFill.js',
   'enrich/planCashFlowOpening.js',
   'enrich/planCashFlowForecast.js',

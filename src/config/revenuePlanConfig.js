@@ -513,3 +513,44 @@ export function computeRevenuePlanMonthlyTotals(clients, fiscalMonths) {
 export function sumClientMonthlyTotal(entry, fiscalMonths) {
   return computeClientPlanTotal(entry, fiscalMonths);
 }
+export const MISC_INCOME_ACCOUNT = '雑収入';
+
+/** 雑収入計画の対象期間（今期・来期） */
+export function buildMiscIncomePlanPeriodEntries(currentPeriod) {
+  return [
+    { period: currentPeriod, label: '今期' },
+    { period: currentPeriod + 1, label: '来期' },
+  ];
+}
+
+function normalizeMiscIncomeMonthly(plan, fiscalMonths) {
+  const monthly = emptyMonthly(fiscalMonths);
+  if (plan && typeof plan === 'object') {
+    for (const month of fiscalMonths) {
+      monthly[month] = normalizeAmount(plan[month]);
+    }
+  }
+  return monthly;
+}
+
+export function getMiscIncomeMonthly(plans, fiscalPeriod, fiscalMonths) {
+  const periodKey = String(fiscalPeriod);
+  const raw = plans[periodKey]?.miscIncome;
+  return normalizeMiscIncomeMonthly(raw, fiscalMonths);
+}
+
+export function setMiscIncomeMonthly(plans, fiscalPeriod, monthly, fiscalMonths) {
+  const periodKey = String(fiscalPeriod);
+  const prev = plans[periodKey] ?? {};
+  return saveRevenuePlans({
+    ...plans,
+    [periodKey]: {
+      ...prev,
+      miscIncome: normalizeMiscIncomeMonthly(monthly, fiscalMonths),
+    },
+  });
+}
+
+export function miscIncomeHasPlanValues(monthly, fiscalMonths) {
+  return fiscalMonths.some((month) => (monthly[month] ?? 0) !== 0);
+}

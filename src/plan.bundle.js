@@ -959,6 +959,17 @@ const SETTLEMENT_MONTH_RING_ALPHA = CURRENT_MONTH_RING_ALPHA;
 const SETTLEMENT_MONTH_OVERLAY_HEAD_ALPHA = CURRENT_MONTH_OVERLAY_HEAD_ALPHA;
 const SETTLEMENT_MONTH_OVERLAY_TOTAL_ALPHA = CURRENT_MONTH_OVERLAY_TOTAL_ALPHA;
 
+const JOURNAL_OVERLAY_ALPHA = 0.65;
+const JOURNAL_MODAL_SHADOW_ALPHA = 0.45;
+const JOURNAL_ROW_HOVER_ALPHA = 0.03;
+const JOURNAL_CLOSE_HOVER_ALPHA = 0.08;
+
+const CONTEXT_MENU_SHADOW_ALPHA = 0.45;
+const CONTEXT_MENU_ITEM_HOVER_ALPHA = 0.08;
+const LOADING_OVERLAY_ALPHA = 0.38;
+const CSV_DROP_ACTIVE_BG_ALPHA = 0.08;
+const BONUS_MONTH_COLUMN_ALPHA = 0.08;
+
 const UI_COLOR_MODES = ['dark', 'light'];
 
 const SHARED_UI_COLORS = {
@@ -992,6 +1003,36 @@ const DEFAULT_UI_COLORS_DARK = {
   expandableHighlight: '#00ffff',
   rowHoverBorder: '#00ffff',
   rowSelectionRing: '#ffff00',
+  journalOverlayBg: '#000000',
+  journalModalBg: '#1e1e28',
+  journalModalShadowBg: '#000000',
+  journalRowHoverBg: '#ffffff',
+  journalCloseHoverBg: '#ffffff',
+  journalTextColor: '#ffffff',
+  journalHintTextColor: '#B3B3B3',
+  journalTableHeaderBg: '#262626',
+  accentColor: '#ff0000',
+  deleteBtnBg: '#dc2626',
+  deleteBtnBgHover: '#b91c1c',
+  deleteBtnBorder: '#b91c1c',
+  deleteBtnText: '#ffffff',
+  tableHeaderBg: '#1e1e28',
+  contextMenuBg: '#1e1e28',
+  contextMenuShadowBg: '#000000',
+  contextMenuItemHoverBg: '#ffffff',
+  periodModeBudgetActualBg: '#0891b2',
+  periodModeActualBg: '#16a34a',
+  periodModePlanBg: '#ea580c',
+  periodModeTextColor: '#ffffff',
+  loadingOverlayBg: '#08080e',
+  statusOkColor: '#86efac',
+  statusErrorColor: '#fca5a5',
+  statusInvalidColor: '#ef4444',
+  primaryButtonBgStart: '#3b82f6',
+  primaryButtonBgEnd: '#2563eb',
+  primaryButtonTextColor: '#ffffff',
+  interactiveAccentColor: '#2563eb',
+  bonusMonthColumnBg: '#86efac',
   ...SHARED_UI_COLORS,
 };
 
@@ -1019,6 +1060,36 @@ const DEFAULT_UI_COLORS_LIGHT = {
   expandableHighlight: '#0078D4',
   rowHoverBorder: '#0078D4',
   rowSelectionRing: '#E6B800',
+  journalOverlayBg: '#000000',
+  journalModalBg: '#FFFFFF',
+  journalModalShadowBg: '#000000',
+  journalRowHoverBg: '#000000',
+  journalCloseHoverBg: '#000000',
+  journalTextColor: '#1A1A1A',
+  journalHintTextColor: '#5C5C5C',
+  journalTableHeaderBg: '#FFFFFF',
+  accentColor: '#0078D4',
+  deleteBtnBg: '#dc2626',
+  deleteBtnBgHover: '#b91c1c',
+  deleteBtnBorder: '#b91c1c',
+  deleteBtnText: '#ffffff',
+  tableHeaderBg: '#E8E8E8',
+  contextMenuBg: '#FFFFFF',
+  contextMenuShadowBg: '#000000',
+  contextMenuItemHoverBg: '#000000',
+  periodModeBudgetActualBg: '#0891b2',
+  periodModeActualBg: '#16a34a',
+  periodModePlanBg: '#ea580c',
+  periodModeTextColor: '#ffffff',
+  loadingOverlayBg: '#000000',
+  statusOkColor: '#15803d',
+  statusErrorColor: '#dc2626',
+  statusInvalidColor: '#ef4444',
+  primaryButtonBgStart: '#3b82f6',
+  primaryButtonBgEnd: '#2563eb',
+  primaryButtonTextColor: '#ffffff',
+  interactiveAccentColor: '#2563eb',
+  bonusMonthColumnBg: '#86efac',
   ...SHARED_UI_COLORS,
   negativeAmountColor: '#C00000',
 };
@@ -1224,19 +1295,73 @@ function applyUiColors(config = {}) {
     currentMonthBg, currentMonthBorder, settlementMonthBg,
     rowHoverBorder, rowSelectionRing,
     expandableHighlight,
+    journalOverlayBg, journalModalBg, journalModalShadowBg,
+    journalRowHoverBg, journalCloseHoverBg,
+    journalTextColor, journalHintTextColor, journalTableHeaderBg,
+    accentColor,
+    deleteBtnBg, deleteBtnBgHover, deleteBtnBorder, deleteBtnText,
+    tableHeaderBg,
+    contextMenuBg, contextMenuShadowBg, contextMenuItemHoverBg,
+    periodModeBudgetActualBg, periodModeActualBg, periodModePlanBg, periodModeTextColor,
+    loadingOverlayBg,
+    statusOkColor, statusErrorColor, statusInvalidColor,
+    primaryButtonBgStart, primaryButtonBgEnd, primaryButtonTextColor,
+    interactiveAccentColor,
+    bonusMonthColumnBg,
     fillColor1, fillColor2,
     planAmountColor, amountVarianceColor,
     warningTextColor,
   } = colors;
 
-  document.documentElement.style.setProperty('--plan-browser-bg', browserBg);
-  document.documentElement.dataset.planColorMode = getUiColorMode(config);
+  const doc = document.documentElement;
+  const borderMix = `color-mix(in srgb, ${opaqueHex(textColor)} 14%, ${opaqueHex(browserBg)})`;
+
+  doc.style.setProperty('--plan-browser-bg', browserBg);
+  doc.dataset.planColorMode = getUiColorMode(config);
+  doc.style.setProperty('--plan-border', borderMix);
+  doc.style.setProperty('--plan-text', textColor);
+  doc.style.setProperty('--plan-text-dim', opaqueHex(textDimColor));
+  doc.style.setProperty('--plan-accent', opaqueHex(accentColor));
+  doc.style.setProperty(
+    '--plan-journal-overlay',
+    hexToRgba(journalOverlayBg, JOURNAL_OVERLAY_ALPHA),
+  );
+  doc.style.setProperty('--plan-journal-modal-bg', opaqueHex(journalModalBg));
+  doc.style.setProperty(
+    '--plan-journal-modal-shadow',
+    hexToRgba(journalModalShadowBg, JOURNAL_MODAL_SHADOW_ALPHA),
+  );
+  doc.style.setProperty(
+    '--plan-journal-row-hover',
+    hexToRgba(journalRowHoverBg, JOURNAL_ROW_HOVER_ALPHA),
+  );
+  doc.style.setProperty(
+    '--plan-journal-close-hover',
+    hexToRgba(journalCloseHoverBg, JOURNAL_CLOSE_HOVER_ALPHA),
+  );
+  doc.style.setProperty('--plan-journal-text', opaqueHex(journalTextColor));
+  doc.style.setProperty('--plan-journal-hint-text', opaqueHex(journalHintTextColor));
+  doc.style.setProperty('--plan-journal-table-header-bg', opaqueHex(journalTableHeaderBg));
+  doc.style.setProperty('--plan-context-menu-bg', opaqueHex(contextMenuBg));
+  doc.style.setProperty(
+    '--plan-context-menu-shadow',
+    hexToRgba(contextMenuShadowBg, CONTEXT_MENU_SHADOW_ALPHA),
+  );
+  doc.style.setProperty(
+    '--plan-context-menu-item-hover',
+    hexToRgba(contextMenuItemHoverBg, CONTEXT_MENU_ITEM_HOVER_ALPHA),
+  );
+  doc.style.setProperty(
+    '--plan-loading-overlay',
+    hexToRgba(loadingOverlayBg, LOADING_OVERLAY_ALPHA),
+  );
 
   const root = document.querySelector('.plan-app');
   if (!root) return;
 
   root.dataset.planColorMode = getUiColorMode(config);
   root.style.setProperty('--plan-browser-bg', browserBg);
+  root.style.setProperty('--plan-border', borderMix);
   root.style.setProperty('--plan-surface', opaqueHex(settingsSurfaceBg));
   root.style.setProperty('--plan-editor-bg', opaqueHex(settingsInputBg));
   root.style.setProperty('--plan-editor-border', opaqueHex(settingsInputBorder));
@@ -1250,6 +1375,31 @@ function applyUiColors(config = {}) {
   root.style.setProperty('--plan-hint-text', opaqueHex(hintTextColor));
   root.style.setProperty('--plan-text-dim', opaqueHex(textDimColor));
   root.style.setProperty('--plan-negative-amount', negativeAmountColor);
+  root.style.setProperty('--plan-accent', opaqueHex(accentColor));
+  root.style.setProperty('--plan-delete-btn-bg', opaqueHex(deleteBtnBg));
+  root.style.setProperty('--plan-delete-btn-bg-hover', opaqueHex(deleteBtnBgHover));
+  root.style.setProperty('--plan-delete-btn-border', opaqueHex(deleteBtnBorder));
+  root.style.setProperty('--plan-delete-btn-text', opaqueHex(deleteBtnText));
+  root.style.setProperty('--plan-table-header-bg', opaqueHex(tableHeaderBg));
+  root.style.setProperty('--plan-period-mode-budget-actual-bg', opaqueHex(periodModeBudgetActualBg));
+  root.style.setProperty('--plan-period-mode-actual-bg', opaqueHex(periodModeActualBg));
+  root.style.setProperty('--plan-period-mode-plan-bg', opaqueHex(periodModePlanBg));
+  root.style.setProperty('--plan-period-mode-text', opaqueHex(periodModeTextColor));
+  root.style.setProperty('--plan-status-ok', opaqueHex(statusOkColor));
+  root.style.setProperty('--plan-status-error', opaqueHex(statusErrorColor));
+  root.style.setProperty('--plan-status-invalid', opaqueHex(statusInvalidColor));
+  root.style.setProperty('--plan-primary-btn-start', opaqueHex(primaryButtonBgStart));
+  root.style.setProperty('--plan-primary-btn-end', opaqueHex(primaryButtonBgEnd));
+  root.style.setProperty('--plan-primary-btn-text', opaqueHex(primaryButtonTextColor));
+  root.style.setProperty('--plan-interactive-accent', opaqueHex(interactiveAccentColor));
+  root.style.setProperty(
+    '--plan-csv-drop-active-bg',
+    hexToRgba(interactiveAccentColor, CSV_DROP_ACTIVE_BG_ALPHA),
+  );
+  root.style.setProperty(
+    '--plan-bonus-month-column-bg',
+    hexToRgba(bonusMonthColumnBg, BONUS_MONTH_COLUMN_ALPHA),
+  );
   root.style.setProperty('--plan-year-row-bg', yearRowBg);
   root.style.setProperty('--plan-year-row-text', yearRowText);
   root.style.setProperty('--plan-month-row-bg', monthRowBg);
@@ -5019,6 +5169,47 @@ function computeRevenuePlanMonthlyTotals(clients, fiscalMonths) {
 function sumClientMonthlyTotal(entry, fiscalMonths) {
   return computeClientPlanTotal(entry, fiscalMonths);
 }
+const MISC_INCOME_ACCOUNT = '雑収入';
+
+/** 雑収入計画の対象期間（今期・来期） */
+function buildMiscIncomePlanPeriodEntries(currentPeriod) {
+  return [
+    { period: currentPeriod, label: '今期' },
+    { period: currentPeriod + 1, label: '来期' },
+  ];
+}
+
+function normalizeMiscIncomeMonthly(plan, fiscalMonths) {
+  const monthly = emptyMonthly(fiscalMonths);
+  if (plan && typeof plan === 'object') {
+    for (const month of fiscalMonths) {
+      monthly[month] = normalizeAmount(plan[month]);
+    }
+  }
+  return monthly;
+}
+
+function getMiscIncomeMonthly(plans, fiscalPeriod, fiscalMonths) {
+  const periodKey = String(fiscalPeriod);
+  const raw = plans[periodKey]?.miscIncome;
+  return normalizeMiscIncomeMonthly(raw, fiscalMonths);
+}
+
+function setMiscIncomeMonthly(plans, fiscalPeriod, monthly, fiscalMonths) {
+  const periodKey = String(fiscalPeriod);
+  const prev = plans[periodKey] ?? {};
+  return saveRevenuePlans({
+    ...plans,
+    [periodKey]: {
+      ...prev,
+      miscIncome: normalizeMiscIncomeMonthly(monthly, fiscalMonths),
+    },
+  });
+}
+
+function miscIncomeHasPlanValues(monthly, fiscalMonths) {
+  return fiscalMonths.some((month) => (monthly[month] ?? 0) !== 0);
+}
 
 /* enrich/planEmployeeSalaryRows.js */
 const DIRECTOR_ACCOUNT = '役員報酬';
@@ -6552,13 +6743,14 @@ function outIsOutsourcingDetailRow(row) {
   return row.type === 'item' || row.type === 'sub';
 }
 
-function outMakePlanRow(id, label, subLabel, values) {
+function outMakePlanRow(id, label, subLabel, values, vendorId) {
   return {
     id,
     label,
     subLabel,
     type: 'plan',
     values,
+    outsourcingVendorId: vendorId,
   };
 }
 
@@ -6609,6 +6801,7 @@ function outBuildVendorPlanRows(vendors, fiscalMonths) {
       vendor.accountLabel,
       vendor.subLabel,
       values,
+      vendor.id,
     ));
   }
   return rows;
@@ -6636,7 +6829,10 @@ function outRebuildOutsourcingRows(
     if (!vendor) return row;
     matchedVendorIds.add(vendor.id);
     const planMonths = outRawValuesFromRow({ values: outBuildVendorPlanValues(vendor, fiscalMonths) });
-    return outMergePlanIntoCsvRow(row, planMonths, fiscalMonths, skipPlanFillMonths, forcePlanMonths);
+    return {
+      ...outMergePlanIntoCsvRow(row, planMonths, fiscalMonths, skipPlanFillMonths, forcePlanMonths),
+      outsourcingVendorId: vendor.id,
+    };
   });
 
   const orphanPlanRows = planRows.filter((row) => {
@@ -7365,6 +7561,236 @@ function collectRevenueSubaccountsFromPlanData(planData) {
     result.push({ accountLabel: account, subLabel: sub });
   }
   return result;
+}
+
+/* enrich/planMiscIncomeRows.js */
+const MI_NON_OPERATING_SECTION_ID = 'nonOperating';
+const NON_OPERATING_SECTION_LABEL = '営業外収益';
+const NON_OPERATING_TOTAL_LABEL = '営業外収益合計';
+
+function miEmptyRawMonthValues() {
+  const values = {};
+  for (const m of FISCAL_MONTHS) values[m] = 0;
+  return values;
+}
+
+function miAddRawMonthValues(target, source) {
+  for (const m of FISCAL_MONTHS) {
+    target[m] += source[m] ?? 0;
+  }
+}
+
+function miIsMissingCsvMonthValue(value) {
+  return value === undefined || value === null || value === 0;
+}
+
+function miRawValuesFromRow(row) {
+  const values = miEmptyRawMonthValues();
+  miAddRawMonthValues(values, row.values);
+  return values;
+}
+
+function miMergePlanIntoCsvRow(
+  csvRow,
+  planMonthValues,
+  fiscalMonths,
+  skipPlanFillMonths = null,
+  forcePlanMonths = null,
+) {
+  const months = miRawValuesFromRow(csvRow);
+  const planFillMonths = [];
+  for (const m of fiscalMonths) {
+    if (skipPlanFillMonths?.has(m)) continue;
+    if (forcePlanMonths?.has(m)) {
+      months[m] = planMonthValues[m] ?? 0;
+      planFillMonths.push(m);
+      continue;
+    }
+    if (miIsMissingCsvMonthValue(months[m]) && (planMonthValues[m] ?? 0) !== 0) {
+      months[m] = planMonthValues[m];
+      planFillMonths.push(m);
+    }
+  }
+  return {
+    ...csvRow,
+    values: enrichRowValues(months, 'flow'),
+    planFillMonths,
+  };
+}
+
+function miIsMiscIncomeAccount(label) {
+  if (!label) return false;
+  const normalized = String(label).normalize('NFKC');
+  const canonical = MISC_INCOME_ACCOUNT.normalize('NFKC');
+  if (normalized === canonical) return true;
+  return normalized.charCodeAt(0) === 0x96d1 && normalized.endsWith('入');
+}
+
+function miIsMiscIncomePlanRow(row) {
+  return row.type === 'plan' && row.id === 'misc-income-plan';
+}
+
+function miIsMiscIncomeDetailRow(row) {
+  if (row.type === 'total' || row.type === 'breakdown') return false;
+  if (miIsMiscIncomePlanRow(row)) return false;
+  return miIsMiscIncomeAccount(row.label);
+}
+
+function miResolveMiscIncomeTargetRow(rows) {
+  const matching = rows.filter(miIsMiscIncomeDetailRow);
+  const leafRows = matching.filter((row) => row.type === 'item' || row.type === 'sub');
+  if (leafRows.length === 1) return leafRows[0];
+  const groupRow = matching.find((row) => row.type === 'group');
+  if (leafRows.length > 1 && groupRow) return groupRow;
+  const items = matching.filter((row) => row.type === 'item');
+  if (items.length === 1) return items[0];
+  return null;
+}
+
+function miBuildPlanRowValues(monthly, fiscalMonths) {
+  const values = miEmptyRawMonthValues();
+  for (const m of fiscalMonths) {
+    const amount = monthly[m] ?? 0;
+    if (amount !== 0) values[m] = amount;
+  }
+  return enrichRowValues(values, 'flow');
+}
+
+function miMakeMiscIncomePlanRow(monthly, fiscalMonths) {
+  return {
+    id: 'misc-income-plan',
+    label: MISC_INCOME_ACCOUNT,
+    subLabel: '',
+    type: 'plan',
+    values: miBuildPlanRowValues(monthly, fiscalMonths),
+  };
+}
+
+function miSumNonOperatingSectionRows(rows) {
+  const total = miEmptyRawMonthValues();
+  for (const row of rows) {
+    if (row.type === 'total') continue;
+    if (row.type === 'item' || row.type === 'group' || row.type === 'plan') {
+      miAddRawMonthValues(total, row.values);
+    }
+  }
+  return enrichRowValues(total, 'flow');
+}
+
+function miEnrichNonOperatingSection(section, monthly, fiscalMonths, skipPlanFillMonths, forcePlanMonths) {
+  const baseRows = section.rows.filter((row) => !miIsMiscIncomePlanRow(row));
+  const targetRow = miResolveMiscIncomeTargetRow(baseRows);
+  let rows = baseRows;
+
+  if (targetRow) {
+    rows = baseRows.map((row) => {
+      if (row.id !== targetRow.id) return row;
+      return miMergePlanIntoCsvRow(
+        row,
+        monthly,
+        fiscalMonths,
+        skipPlanFillMonths,
+        forcePlanMonths,
+      );
+    });
+  } else {
+    const planRow = miMakeMiscIncomePlanRow(monthly, fiscalMonths);
+    const totalIdx = baseRows.findIndex((row) => row.type === 'total');
+    if (totalIdx >= 0) {
+      rows = [
+        ...baseRows.slice(0, totalIdx),
+        planRow,
+        ...baseRows.slice(totalIdx),
+      ];
+    } else {
+      rows = [...baseRows, planRow];
+    }
+  }
+
+  const totalIdx = rows.findIndex((row) => row.type === 'total');
+  if (totalIdx >= 0) {
+    rows = rows.map((row, idx) => {
+      if (idx !== totalIdx) return row;
+      return {
+        ...row,
+        values: miSumNonOperatingSectionRows(rows),
+      };
+    });
+  }
+
+  return { ...section, rows };
+}
+
+function miCreateNonOperatingSection(monthly, fiscalMonths) {
+  const planRow = miMakeMiscIncomePlanRow(monthly, fiscalMonths);
+  return {
+    id: MI_NON_OPERATING_SECTION_ID,
+    label: NON_OPERATING_SECTION_LABEL,
+    filter: 'income',
+    rows: [
+      planRow,
+      {
+        id: 'no-total',
+        label: NON_OPERATING_TOTAL_LABEL,
+        subLabel: '',
+        type: 'total',
+        values: planRow.values,
+      },
+    ],
+  };
+}
+
+/** 営業外収益の雑収入行に受注設定の計画をマージする（今期・来期のみ）。 */
+function enrichPlanDataWithMiscIncomeRows(planData, {
+  revenuePlans,
+  businessStartYear,
+  fiscalPeriod,
+  fiscalEndMonth,
+  displayMode,
+  monthDisplayConfig,
+}) {
+  if (displayMode !== 'plan' && displayMode !== 'budget-actual') {
+    return planData;
+  }
+
+  const fiscalMonths = buildFiscalYearMonths(fiscalEndMonth);
+  const monthly = getMiscIncomeMonthly(revenuePlans ?? {}, fiscalPeriod, fiscalMonths);
+  if (!miscIncomeHasPlanValues(monthly, fiscalMonths)) {
+    return planData;
+  }
+
+  let skipPlanFillMonths = null;
+  let forcePlanMonths = null;
+  if (displayMode === 'budget-actual') {
+    ({ skipPlanFillMonths, forcePlanMonths } = buildBudgetActualMonthSets({
+      config: monthDisplayConfig,
+      businessStartYear,
+      fiscalPeriod,
+      fiscalMonths,
+    }));
+  }
+
+  const sectionIdx = planData.sections.findIndex((s) => s.id === MI_NON_OPERATING_SECTION_ID);
+  if (sectionIdx < 0) {
+    const section = miCreateNonOperatingSection(monthly, fiscalMonths);
+    return {
+      ...planData,
+      sections: [...planData.sections, section],
+    };
+  }
+
+  const sections = planData.sections.map((section, idx) => {
+    if (idx !== sectionIdx) return section;
+    return miEnrichNonOperatingSection(
+      section,
+      monthly,
+      fiscalMonths,
+      skipPlanFillMonths,
+      forcePlanMonths,
+    );
+  });
+
+  return { ...planData, sections };
 }
 
 /* enrich/planPeriodAverageFill.js */
@@ -10420,7 +10846,200 @@ function mountRevenueSettingsPanel({
     }
   }
 
+  function renderMiscIncomePlanSection() {
+    const miscPeriodEntries = buildMiscIncomePlanPeriodEntries(currentPeriod);
+
+    function persistMiscIncomeMonthly(monthly, fiscalPeriod) {
+      revenuePlans = setMiscIncomeMonthly(revenuePlans, fiscalPeriod, monthly, fiscalMonths);
+      setRevenuePlans(revenuePlans);
+      refreshPlanTableIfNeeded();
+    }
+
+    function appendMiscIncomeAmountCell(tr, {
+      month,
+      monthIndex,
+      value,
+      prevValue,
+      editable,
+      fiscalPeriod,
+      displayMonthly,
+    }) {
+      const td = document.createElement('td');
+      td.className = 'salary-plan-amount-cell';
+      applyPlanAmountVarianceClass(td, monthIndex, value, prevValue);
+      if (editable) {
+        td.classList.add('salary-plan-cell-editable');
+        tagPlanEditableCell(td, { month });
+        td.title = '\u30c0\u30d6\u30eb\u30af\u30ea\u30c3\u30af\u3067\u7de8\u96c6\uff08Shift+Enter \u3067\u5f8c\u7d9a\u6708\u3078\u540c\u984d\u3092\u53cd\u6620\uff09';
+        td.textContent = formatSalaryPlanYen(value);
+        td.addEventListener('dblclick', () => {
+          if (td.querySelector('input')) return;
+
+          const rawValue = displayMonthly[month];
+          const input = document.createElement('input');
+          input.type = 'text';
+          input.inputMode = 'numeric';
+          input.className = 'salary-plan-amount-input';
+          input.autocomplete = 'off';
+          input.spellcheck = false;
+          input.value = rawValue != null && rawValue !== 0 ? String(rawValue) : '';
+
+          let editClosed = false;
+          const finish = (save, fillForward = false) => {
+            if (editClosed) return;
+            editClosed = true;
+            if (save) {
+              const parsed = parseSalaryPlanAmountInputWithFillForward(
+                input.value,
+                fillForward,
+                rawValue,
+              );
+              const pastMonths = getPastMonthsForPeriod(fiscalPeriod);
+              const next = fillForward
+                ? applyAmountFromMonthForwardSkippingPast(
+                  displayMonthly,
+                  fiscalMonths,
+                  month,
+                  parsed,
+                  pastMonths,
+                )
+                : { ...displayMonthly, [month]: parsed };
+              persistMiscIncomeMonthly(next, fiscalPeriod);
+            }
+            renderMiscIncomePlanSection();
+          };
+
+          input.addEventListener('keydown', (e) => {
+            handlePlanAmountCellKeydown(e, {
+              finish,
+              td,
+              scopeId: `misc-income-${fiscalPeriod}`,
+            });
+          });
+          input.addEventListener('blur', () => {
+            setTimeout(() => {
+              if (!editClosed) finish(true, false);
+            }, 0);
+          });
+
+          td.textContent = '';
+          td.appendChild(input);
+          input.focus();
+          input.select();
+        });
+      } else {
+        td.classList.add('salary-plan-cell-disabled');
+        td.textContent = formatSalaryPlanYen(value);
+      }
+      tr.appendChild(td);
+    }
+
+    function buildMiscIncomeTable(fiscalPeriod) {
+      const displayMonthly = getMiscIncomeMonthly(revenuePlans, fiscalPeriod, fiscalMonths);
+      const table = document.createElement('table');
+      table.className = 'expand-settings-table salary-plan-table misc-income-plan-table';
+
+      const headerLabels = [
+        '\u9805\u76ee',
+        ...fiscalMonths,
+        '\u5408\u8a08',
+      ];
+
+      const thead = document.createElement('thead');
+      const headerRow = document.createElement('tr');
+      for (const label of headerLabels) {
+        const th = document.createElement('th');
+        th.textContent = label;
+        if (label === '\u9805\u76ee') th.className = 'salary-plan-col-name';
+        else if (label === '\u5408\u8a08') th.className = 'salary-plan-col-total';
+        else th.className = 'salary-plan-col-month';
+        headerRow.appendChild(th);
+      }
+      thead.appendChild(headerRow);
+      table.appendChild(thead);
+
+      const tbody = document.createElement('tbody');
+      const tr = document.createElement('tr');
+      tr.className = 'salary-plan-row-monthly';
+      tagPlanEditableRow(tr, `misc-income-${fiscalPeriod}`);
+
+      const accountTd = document.createElement('td');
+      accountTd.className = 'salary-plan-col-name';
+      accountTd.textContent = MISC_INCOME_ACCOUNT;
+      tr.appendChild(accountTd);
+
+      let rowTotal = 0;
+      for (let i = 0; i < fiscalMonths.length; i += 1) {
+        const month = fiscalMonths[i];
+        const editable = isMonthEditable(fiscalPeriod, month);
+        const prevMonth = i > 0 ? fiscalMonths[i - 1] : null;
+        const prevValue = prevMonth != null ? displayMonthly[prevMonth] : undefined;
+        const value = displayMonthly[month];
+        rowTotal += value ?? 0;
+
+        appendMiscIncomeAmountCell(tr, {
+          month,
+          monthIndex: i,
+          value,
+          prevValue,
+          editable,
+          fiscalPeriod,
+          displayMonthly,
+        });
+      }
+
+      const totalTd = document.createElement('td');
+      totalTd.className = 'salary-plan-col-total';
+      totalTd.textContent = formatSalaryPlanYen(rowTotal);
+      tr.appendChild(totalTd);
+
+      tbody.appendChild(tr);
+      table.appendChild(tbody);
+      return table;
+    }
+
+    wrap.querySelector('.misc-income-plan-section')?.remove();
+
+    const section = document.createElement('div');
+    section.className = 'salary-plan-section misc-income-plan-section';
+
+    const planHeader = document.createElement('div');
+    planHeader.className = 'salary-plan-header salary-plan-header-spaced';
+    planHeader.innerHTML = `
+      <h3 class="salary-plan-title">\u96d1\u6536\u5165\u8a08\u753b</h3>
+      <p class="salary-plan-desc">
+        \u55b6\u696d\u5916\u6536\u76ca\u306e\u300c\u96d1\u6536\u5165\u300d\u306e\u6708\u6b21\u8a08\u753b\u3092\u5165\u529b\u3057\u307e\u3059\u3002\u4eca\u671f\u30fb\u6765\u671f\u306e\u307f\u8a2d\u5b9a\u3067\u304d\u307e\u3059\u3002\u4eca\u671f\u306e\u5b9f\u7e3e\u8868\u793a\u6708\u306f\u7de8\u96c6\u3067\u304d\u307e\u305b\u3093\u3002\u8a2d\u5b9a\u306f\u4e88\u5b9f\u8868\u306e\u300c\u55b6\u696d\u5916\u6536\u76ca\u300d\u306b\u53cd\u6620\u3055\u308c\u307e\u3059\u3002
+      </p>
+    `;
+    section.appendChild(planHeader);
+
+    const periodsContainer = document.createElement('div');
+    periodsContainer.className = 'misc-income-plan-periods outsourcing-plan-periods';
+
+    for (const { period, label } of miscPeriodEntries) {
+      const block = document.createElement('div');
+      block.className = 'salary-plan-period-block';
+
+      const blockTitle = document.createElement('h4');
+      blockTitle.className = 'salary-plan-period-title';
+      blockTitle.textContent = `${label}${String.fromCodePoint(0xFF08)}${formatFiscalPeriodLabel(period)}${String.fromCodePoint(0xFF09)}`;
+      block.appendChild(blockTitle);
+
+      const tableWrap = document.createElement('div');
+      tableWrap.className = 'salary-plan-table-wrap';
+      tableWrap.appendChild(buildMiscIncomeTable(period));
+      block.appendChild(tableWrap);
+
+      resumePlanCellTabEdit(block, `misc-income-${period}`);
+      periodsContainer.appendChild(block);
+    }
+
+    section.appendChild(periodsContainer);
+    wrap.appendChild(section);
+  }
+
   renderPlanSection();
+  renderMiscIncomePlanSection();
   replaceRootPanel(wrap);
 }
 
@@ -11108,6 +11727,47 @@ function mountUiColorPanel(container, {
     });
   };
 
+  const JOURNAL_OVERLAY_ALPHA = 0.65;
+  const JOURNAL_MODAL_SHADOW_ALPHA = 0.45;
+  const JOURNAL_ROW_HOVER_ALPHA = 0.03;
+  const JOURNAL_CLOSE_HOVER_ALPHA = 0.08;
+  const CONTEXT_MENU_SHADOW_ALPHA = 0.45;
+  const CONTEXT_MENU_ITEM_HOVER_ALPHA = 0.08;
+  const LOADING_OVERLAY_ALPHA = 0.38;
+
+  const registerJournalTintRow = (label, key, alpha, previewText, previewBgKey = 'journalModalBg') => {
+    const colors = getUiColors(getConfig());
+    const bg = colorInputTd(colors[key]);
+    const preview = previewTd({
+      background: hexToRgba(colors[key], alpha),
+      color: colors.textColor,
+      text: previewText,
+    });
+    preview.span.style.boxShadow = `inset 0 0 0 1px ${hexToRgba(colors[previewBgKey] ?? colors.cellBg, 1)}`;
+    const reset = resetBtnTd(keysMatchDefaults(getConfig(), [key]));
+    addRow(label, [bg.td, dashTd(), preview.td, reset.td]);
+    const syncPreview = (merged) => {
+      bg.input.value = merged[key];
+      bg.input.title = merged[key];
+      preview.span.style.background = hexToRgba(merged[key], alpha);
+      preview.span.style.color = merged.textColor;
+      preview.span.style.boxShadow = `inset 0 0 0 1px ${opaqueHex(merged[previewBgKey] ?? merged.cellBg)}`;
+      reset.btn.disabled = keysMatchDefaults(getConfig(), [key]);
+    };
+    const sync = (value) => {
+      const color = opaqueHex(value);
+      setConfig(setUiColorKey(getConfig(), key, color));
+      persist();
+      syncPreview(getUiColors(getConfig()));
+    };
+    bg.input.addEventListener('input', () => sync(bg.input.value));
+    reset.btn.addEventListener('click', () => {
+      setConfig(resetUiColorKey(getConfig(), key));
+      persist();
+      syncPreview(getUiColors(getConfig()));
+    });
+  };
+
   // 予実表レイアウト順
   registerBgRow('ブラウザ（背景）', 'browserBg', '背景');
   registerBgRow('設定パネル（背景）', 'settingsSurfaceBg', '背景');
@@ -11172,7 +11832,60 @@ function mountUiColorPanel(container, {
     refreshPlan();
   });
 
-  registerAccentRow('展開可能項目（ハイライト）', 'expandableHighlight', '▶ 勘定科目');
+  registerAccentRow('展開可能項目・仕訳セル（ハイライト）', 'expandableHighlight', '▶ 勘定科目');
+  registerJournalTintRow('仕訳詳細（背面オーバーレイ）', 'journalOverlayBg', JOURNAL_OVERLAY_ALPHA, '背面', 'browserBg');
+  registerBgRow('仕訳詳細（モーダル背景）', 'journalModalBg', 'モーダル');
+  registerTextRow('仕訳詳細（文字色）', 'journalTextColor', '仕訳明細', {
+    previewBgKey: 'journalModalBg',
+    refresh: false,
+  });
+  registerTextRow('仕訳詳細（補足文）', 'journalHintTextColor', '件数・空欄メッセージ', {
+    previewBgKey: 'journalModalBg',
+    refresh: false,
+  });
+  registerBgRow('仕訳詳細（表ヘッダー背景）', 'journalTableHeaderBg', '見出し');
+  registerJournalTintRow('仕訳詳細（モーダル影）', 'journalModalShadowBg', JOURNAL_MODAL_SHADOW_ALPHA, '影');
+  registerJournalTintRow('仕訳詳細（行ホバー）', 'journalRowHoverBg', JOURNAL_ROW_HOVER_ALPHA, '行');
+  registerJournalTintRow('仕訳詳細（閉じる・ホバー）', 'journalCloseHoverBg', JOURNAL_CLOSE_HOVER_ALPHA, '×');
+  registerBgRow('予実表（固定ヘッダー背景）', 'tableHeaderBg', '見出し');
+  registerBgRow('右クリックメニュー（背景）', 'contextMenuBg', 'メニュー');
+  registerJournalTintRow('右クリックメニュー（影）', 'contextMenuShadowBg', CONTEXT_MENU_SHADOW_ALPHA, '影', 'contextMenuBg');
+  registerJournalTintRow('右クリックメニュー（行ホバー）', 'contextMenuItemHoverBg', CONTEXT_MENU_ITEM_HOVER_ALPHA, '行', 'contextMenuBg');
+  registerBgRow('表示モード「予実」（背景）', 'periodModeBudgetActualBg', '予実');
+  registerBgRow('表示モード「実績」（背景）', 'periodModeActualBg', '予実');
+  registerBgRow('表示モード「計画」（背景）', 'periodModePlanBg', '予実');
+  registerTextRow('表示モードバッジ（文字）', 'periodModeTextColor', '予実', {
+    previewBgKey: 'periodModeBudgetActualBg',
+    refresh: false,
+  });
+  registerJournalTintRow('読み込み中（オーバーレイ）', 'loadingOverlayBg', LOADING_OVERLAY_ALPHA, '読み込み', 'browserBg');
+  registerTextRow('成功・OK表示', 'statusOkColor', 'OK', {
+    previewBgKey: 'browserBg',
+    refresh: false,
+  });
+  registerTextRow('エラー表示', 'statusErrorColor', 'NG', {
+    previewBgKey: 'browserBg',
+    refresh: false,
+  });
+  registerBorderRow('入力エラー（枠線）', 'statusInvalidColor', 'settingsSurfaceBg');
+  registerBgRow('主要ボタン（グラデ開始）', 'primaryButtonBgStart', '開く');
+  registerBgRow('主要ボタン（グラデ終了）', 'primaryButtonBgEnd', '開く');
+  registerTextRow('主要ボタン（文字）', 'primaryButtonTextColor', '開く', {
+    previewBgKey: 'primaryButtonBgStart',
+    previewTextKey: 'primaryButtonTextColor',
+    refresh: false,
+  });
+  registerAccentRow('操作強調（スライダー・D&D等）', 'interactiveAccentColor', '強調');
+  registerJournalTintRow('賞与月列（ハイライト）', 'bonusMonthColumnBg', 0.08, '賞与月', 'cellBg');
+  registerBgRow('削除ボタン（背景）', 'deleteBtnBg', '削除', '#ffffff');
+  registerBgRow('削除ボタン（ホバー）', 'deleteBtnBgHover', '削除', '#ffffff');
+  registerBorderRow('削除ボタン（枠線）', 'deleteBtnBorder', 'cellBg');
+  registerTextRow('削除ボタン（文字）', 'deleteBtnText', '削除', {
+    previewBgKey: 'deleteBtnBg',
+    previewTextKey: 'deleteBtnText',
+    refresh: false,
+  });
+  registerAccentRow('アクセンント（選択マーク等）', 'accentColor', '✓ 選択');
   registerAccentRow('マウスオーバー（行）', 'rowHoverBorder', 'ホバー');
   registerAccentRow('行選択（枠線）', 'rowSelectionRing', '選択中');
 
@@ -12175,7 +12888,9 @@ function positionPlanColumnBodyPlate(wrap, plate, table, monthIndex) {
   if (tbody) {
     const rows = tbody.querySelectorAll('tr');
     for (let i = rows.length - 1; i >= 0; i -= 1) {
-      const monthTds = rows[i].querySelectorAll('td.col-amount-month');
+      const row = rows[i];
+      if (row.hidden) continue;
+      const monthTds = row.querySelectorAll('td.col-amount-month');
       const td = monthTds[monthIndex];
       if (td) {
         bottomY = td.getBoundingClientRect().bottom;
@@ -12728,6 +13443,31 @@ function isRevenueManMonthMonthEditable(month, displayMode, pastMonthSet) {
   return true;
 }
 
+function getOutsourcingVendorIdFromRow(row) {
+  if (row.outsourcingVendorId) return row.outsourcingVendorId;
+  if (row.type === 'plan' && typeof row.id === 'string' && row.id.startsWith('out-plan-')) {
+    return row.id.slice('out-plan-'.length);
+  }
+  return null;
+}
+
+function isOutsourcingPlanMonthEditable(month, displayMode, pastMonthSet) {
+  if (displayMode === 'actual') return false;
+  if (displayMode === 'budget-actual' && pastMonthSet.has(month)) return false;
+  return true;
+}
+
+function isOutsourcingPlanRowEditable(section, row) {
+  if (section.id !== 'outsourcing') return false;
+  if (row.type === 'breakdown' || row.type === 'total' || row.type === 'variance') return false;
+  return Boolean(getOutsourcingVendorIdFromRow(row));
+}
+
+function isOutsourcingPlanCellEditable(section, row, month, displayMode, pastMonthSet) {
+  return isOutsourcingPlanRowEditable(section, row)
+    && isOutsourcingPlanMonthEditable(month, displayMode, pastMonthSet);
+}
+
 function shouldShowRevenueAmountInMonth(section, row, month, displayMode, pastMonthSet) {
   if (section.id !== 'revenue' || displayMode !== 'budget-actual') return true;
   if (!pastMonthSet.has(month)) return true;
@@ -13006,6 +13746,104 @@ function startRevenueManMonthCellEdit(td, {
 
   td.classList.add('plan-man-month-editing');
   td.textContent = '';
+  td.appendChild(input);
+  input.focus();
+  input.select();
+}
+
+function persistOutsourcingVendorMonthly(vendorId, nextMonthly) {
+  const fiscalMonths = buildFiscalYearMonths(appSettings.fiscalEndMonth);
+  const vendor = getVendorEntry(outsourcingPlans, appSettings.fiscalPeriod, vendorId, fiscalMonths);
+  if (!vendor) return;
+  outsourcingPlans = setVendorEntry(
+    outsourcingPlans,
+    appSettings.fiscalPeriod,
+    { ...vendor, monthly: nextMonthly },
+    fiscalMonths,
+  );
+  syncPlanDataToCurrentPeriod();
+  refreshPlanTable();
+}
+
+function startOutsourcingPlanCellEdit(td, {
+  vendorId,
+  month,
+  displayMode,
+  pastMonthSet,
+}) {
+  if (!isOutsourcingPlanMonthEditable(month, displayMode, pastMonthSet)) return;
+  if (td.querySelector('input')) return;
+
+  const fiscalMonths = buildFiscalYearMonths(appSettings.fiscalEndMonth);
+  const vendor = getVendorEntry(outsourcingPlans, appSettings.fiscalPeriod, vendorId, fiscalMonths);
+  if (!vendor) return;
+
+  const rawValue = vendor.monthly[month];
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.inputMode = 'numeric';
+  input.className = 'salary-plan-amount-input';
+  input.autocomplete = 'off';
+  input.spellcheck = false;
+  input.value = rawValue != null && rawValue !== 0 ? String(rawValue) : '';
+
+  let editClosed = false;
+
+  const finish = (save, fillForward = false) => {
+    if (editClosed) return;
+    editClosed = true;
+    td.classList.remove('plan-outsourcing-editing');
+    if (save) {
+      const parsed = parseSalaryPlanAmountInputWithFillForward(
+        input.value,
+        fillForward,
+        rawValue,
+      );
+      const lockedMonths = getSettingsLockedMonthsForPeriod(appSettings.fiscalPeriod, fiscalMonths);
+      const nextMonthly = fillForward
+        ? applyAmountFromMonthForwardSkippingPast(
+          vendor.monthly,
+          fiscalMonths,
+          month,
+          parsed,
+          lockedMonths,
+        )
+        : { ...vendor.monthly, [month]: parsed };
+      input.remove();
+      persistOutsourcingVendorMonthly(vendorId, nextMonthly);
+      return;
+    }
+    input.remove();
+    td.innerHTML = formatAmount(rawValue, 'item');
+  };
+
+  input.addEventListener('keydown', (e) => {
+    handlePlanAmountCellKeydown(e, {
+      finish,
+      td,
+      scopeId: 'plan-table-outsourcing',
+      onTabNext: (nextTd, { nextMonth }) => {
+        if (!nextTd || !nextMonth) return;
+        requestAnimationFrame(() => {
+          startOutsourcingPlanCellEdit(nextTd, {
+            vendorId,
+            month: nextMonth,
+            displayMode,
+            pastMonthSet,
+          });
+        });
+      },
+    });
+  });
+  input.addEventListener('blur', () => {
+    setTimeout(() => {
+      if (!editClosed) finish(true, false);
+    }, 0);
+  });
+
+  td.classList.add('plan-outsourcing-editing');
+  td.innerHTML = '';
   td.appendChild(input);
   input.focus();
   input.select();
@@ -13849,7 +14687,10 @@ function handleSectionFilterClick(filterId, ev) {
   }
   saveSectionFilterConfig(sectionFilterConfig, sectionIds);
   renderToolbar();
-  applyPlanSectionFilterState(root.querySelector('.plan-table'));
+  const table = root.querySelector('.plan-table');
+  applyPlanSectionFilterState(table);
+  const wrap = table?.closest('.plan-table-wrap');
+  if (wrap && table) syncPlanColumnPlates(wrap, table);
 }
 
 function rowVisibleInSection(section, row) {
@@ -13960,7 +14801,15 @@ function applyPlanColors(planData) {
     consumptionTaxRates: appSettings.consumptionTaxRates,
     monthDisplayConfig,
   });
-  const withAverages = enrichPlanDataWithPeriodAverageFills(withRevenue, {
+  const withMiscIncome = enrichPlanDataWithMiscIncomeRows(withRevenue, {
+    revenuePlans,
+    businessStartYear: appSettings.businessStartYear,
+    fiscalPeriod: appSettings.fiscalPeriod,
+    fiscalEndMonth: appSettings.fiscalEndMonth,
+    displayMode,
+    monthDisplayConfig,
+  });
+  const withAverages = enrichPlanDataWithPeriodAverageFills(withMiscIncome, {
     expandConfig,
     businessStartYear: appSettings.businessStartYear,
     fiscalPeriod: appSettings.fiscalPeriod,
@@ -14600,6 +15449,52 @@ function updatePlanTableRowMonthCells(tr, section, row, {
       continue;
     }
 
+    const outsourcingVendorId = getOutsourcingVendorIdFromRow(row);
+    const isOutsourcingEditableRow = isOutsourcingPlanRowEditable(section, row);
+
+    if (isOutsourcingEditableRow) {
+      if (hideGroupTotal || !showAmount) {
+        td.innerHTML = '';
+        td.classList.remove('salary-plan-cell-editable');
+        td.removeAttribute('title');
+        td.ondblclick = null;
+        td.classList.remove('col-amount-drilldown');
+        continue;
+      }
+
+      const amountType = row.type === 'variance' ? 'variance' : 'item';
+      const editable = isOutsourcingPlanCellEditable(section, row, m, displayMode, pastMonthSet);
+      const hasDrilldown = !editable
+        && isDrilldownAvailable(section, row)
+        && hasDrilldownEntries(getDrilldownIndex(), section, row, m)
+        && !row.planFillMonths?.includes(m)
+        && !row.openingAdjustMonths?.includes(m);
+
+      td.innerHTML = formatAmount(val, amountType);
+      td.classList.toggle('salary-plan-cell-editable', editable);
+      td.classList.toggle('col-amount-drilldown', hasDrilldown);
+
+      if (editable) {
+        tagPlanEditableCell(td, { rowKey: outsourcingVendorId, month: m });
+        td.title = 'ダブルクリックで編集（Shift+Enter で後続月へ同額反映）';
+        td.ondblclick = () => startOutsourcingPlanCellEdit(td, {
+          vendorId: outsourcingVendorId,
+          month: m,
+          displayMode,
+          pastMonthSet,
+        });
+      } else if (hasDrilldown) {
+        td.removeAttribute('title');
+        td.ondblclick = () => showJournalPopup(section, row, m);
+        applyAggregateCellTooltip(td, row, section, m, 'ダブルクリックで仕訳を表示');
+      } else {
+        td.removeAttribute('title');
+        td.ondblclick = null;
+        applyAggregateCellTooltip(td, row, section, m, '');
+      }
+      continue;
+    }
+
     const amountType = row.type === 'variance' ? 'variance' : 'item';
     const hasDrilldown = !hideGroupTotal
       && showAmount
@@ -14824,6 +15719,10 @@ function renderTable({ measureColumnWidths = false } = {}) {
       tr.dataset.rowKey = visibilityRowKey(section.id, row);
       syncRowSelection(tr);
       if (row.id) tr.dataset.rowId = row.id;
+      const outsourcingVendorId = getOutsourcingVendorIdFromRow(row);
+      if (section.id === 'outsourcing' && outsourcingVendorId) {
+        tagPlanEditableRow(tr, outsourcingVendorId);
+      }
       if (row.parentId) {
         tr.dataset.parentId = row.parentId;
         if (!expandedGroups.has(row.parentId)) tr.classList.add('is-expand-collapsed');
@@ -14935,6 +15834,45 @@ function renderTable({ measureColumnWidths = false } = {}) {
                   pastMonthSet,
                 });
               });
+            }
+          }
+          tr.appendChild(td);
+          continue;
+        }
+
+        const outsourcingVendorId = getOutsourcingVendorIdFromRow(row);
+        const isOutsourcingEditableRow = isOutsourcingPlanRowEditable(section, row);
+
+        if (isOutsourcingEditableRow) {
+          if (!hideGroupTotal && showAmount) {
+            const amountType = row.type === 'variance' ? 'variance' : 'item';
+            td.innerHTML = formatAmount(val, amountType);
+            const editable = isOutsourcingPlanCellEditable(section, row, m, displayMode, pastMonthSet);
+            const hasDrilldown = !editable
+              && isDrilldownAvailable(section, row)
+              && hasDrilldownEntries(getDrilldownIndex(), section, row, m)
+              && !row.planFillMonths?.includes(m)
+              && !row.openingAdjustMonths?.includes(m);
+            if (editable) {
+              td.classList.add('salary-plan-cell-editable');
+              tagPlanEditableCell(td, { rowKey: outsourcingVendorId, month: m });
+              td.title = 'ダブルクリックで編集（Shift+Enter で後続月へ同額反映）';
+              td.addEventListener('dblclick', () => {
+                startOutsourcingPlanCellEdit(td, {
+                  vendorId: outsourcingVendorId,
+                  month: m,
+                  displayMode,
+                  pastMonthSet,
+                });
+              });
+            } else if (hasDrilldown) {
+              td.classList.add('col-amount-drilldown');
+              td.addEventListener('dblclick', () => {
+                showJournalPopup(section, row, m);
+              });
+              applyAggregateCellTooltip(td, row, section, m, 'ダブルクリックで仕訳を表示');
+            } else {
+              applyAggregateCellTooltip(td, row, section, m, '');
             }
           }
           tr.appendChild(td);

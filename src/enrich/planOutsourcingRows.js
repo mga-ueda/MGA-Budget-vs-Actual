@@ -56,13 +56,14 @@ function outIsOutsourcingDetailRow(row) {
   return row.type === 'item' || row.type === 'sub';
 }
 
-function outMakePlanRow(id, label, subLabel, values) {
+function outMakePlanRow(id, label, subLabel, values, vendorId) {
   return {
     id,
     label,
     subLabel,
     type: 'plan',
     values,
+    outsourcingVendorId: vendorId,
   };
 }
 
@@ -113,6 +114,7 @@ function outBuildVendorPlanRows(vendors, fiscalMonths) {
       vendor.accountLabel,
       vendor.subLabel,
       values,
+      vendor.id,
     ));
   }
   return rows;
@@ -140,7 +142,10 @@ function outRebuildOutsourcingRows(
     if (!vendor) return row;
     matchedVendorIds.add(vendor.id);
     const planMonths = outRawValuesFromRow({ values: outBuildVendorPlanValues(vendor, fiscalMonths) });
-    return outMergePlanIntoCsvRow(row, planMonths, fiscalMonths, skipPlanFillMonths, forcePlanMonths);
+    return {
+      ...outMergePlanIntoCsvRow(row, planMonths, fiscalMonths, skipPlanFillMonths, forcePlanMonths),
+      outsourcingVendorId: vendor.id,
+    };
   });
 
   const orphanPlanRows = planRows.filter((row) => {

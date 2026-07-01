@@ -10,6 +10,7 @@ import {
   saveUiColorConfig,
   applyUiColors,
   opaqueHex,
+  hexToRgba,
 } from '../config/uiColorConfig.js';
 import { getSectionBarColor } from '../config/sectionColorConfig.js';
 
@@ -372,6 +373,47 @@ export function mountUiColorPanel(container, {
     });
   };
 
+  const JOURNAL_OVERLAY_ALPHA = 0.65;
+  const JOURNAL_MODAL_SHADOW_ALPHA = 0.45;
+  const JOURNAL_ROW_HOVER_ALPHA = 0.03;
+  const JOURNAL_CLOSE_HOVER_ALPHA = 0.08;
+  const CONTEXT_MENU_SHADOW_ALPHA = 0.45;
+  const CONTEXT_MENU_ITEM_HOVER_ALPHA = 0.08;
+  const LOADING_OVERLAY_ALPHA = 0.38;
+
+  const registerJournalTintRow = (label, key, alpha, previewText, previewBgKey = 'journalModalBg') => {
+    const colors = getUiColors(getConfig());
+    const bg = colorInputTd(colors[key]);
+    const preview = previewTd({
+      background: hexToRgba(colors[key], alpha),
+      color: colors.textColor,
+      text: previewText,
+    });
+    preview.span.style.boxShadow = `inset 0 0 0 1px ${hexToRgba(colors[previewBgKey] ?? colors.cellBg, 1)}`;
+    const reset = resetBtnTd(keysMatchDefaults(getConfig(), [key]));
+    addRow(label, [bg.td, dashTd(), preview.td, reset.td]);
+    const syncPreview = (merged) => {
+      bg.input.value = merged[key];
+      bg.input.title = merged[key];
+      preview.span.style.background = hexToRgba(merged[key], alpha);
+      preview.span.style.color = merged.textColor;
+      preview.span.style.boxShadow = `inset 0 0 0 1px ${opaqueHex(merged[previewBgKey] ?? merged.cellBg)}`;
+      reset.btn.disabled = keysMatchDefaults(getConfig(), [key]);
+    };
+    const sync = (value) => {
+      const color = opaqueHex(value);
+      setConfig(setUiColorKey(getConfig(), key, color));
+      persist();
+      syncPreview(getUiColors(getConfig()));
+    };
+    bg.input.addEventListener('input', () => sync(bg.input.value));
+    reset.btn.addEventListener('click', () => {
+      setConfig(resetUiColorKey(getConfig(), key));
+      persist();
+      syncPreview(getUiColors(getConfig()));
+    });
+  };
+
   // 予実表レイアウト順
   registerBgRow('ブラウザ（背景）', 'browserBg', '背景');
   registerBgRow('設定パネル（背景）', 'settingsSurfaceBg', '背景');
@@ -436,7 +478,60 @@ export function mountUiColorPanel(container, {
     refreshPlan();
   });
 
-  registerAccentRow('展開可能項目（ハイライト）', 'expandableHighlight', '▶ 勘定科目');
+  registerAccentRow('展開可能項目・仕訳セル（ハイライト）', 'expandableHighlight', '▶ 勘定科目');
+  registerJournalTintRow('仕訳詳細（背面オーバーレイ）', 'journalOverlayBg', JOURNAL_OVERLAY_ALPHA, '背面', 'browserBg');
+  registerBgRow('仕訳詳細（モーダル背景）', 'journalModalBg', 'モーダル');
+  registerTextRow('仕訳詳細（文字色）', 'journalTextColor', '仕訳明細', {
+    previewBgKey: 'journalModalBg',
+    refresh: false,
+  });
+  registerTextRow('仕訳詳細（補足文）', 'journalHintTextColor', '件数・空欄メッセージ', {
+    previewBgKey: 'journalModalBg',
+    refresh: false,
+  });
+  registerBgRow('仕訳詳細（表ヘッダー背景）', 'journalTableHeaderBg', '見出し');
+  registerJournalTintRow('仕訳詳細（モーダル影）', 'journalModalShadowBg', JOURNAL_MODAL_SHADOW_ALPHA, '影');
+  registerJournalTintRow('仕訳詳細（行ホバー）', 'journalRowHoverBg', JOURNAL_ROW_HOVER_ALPHA, '行');
+  registerJournalTintRow('仕訳詳細（閉じる・ホバー）', 'journalCloseHoverBg', JOURNAL_CLOSE_HOVER_ALPHA, '×');
+  registerBgRow('予実表（固定ヘッダー背景）', 'tableHeaderBg', '見出し');
+  registerBgRow('右クリックメニュー（背景）', 'contextMenuBg', 'メニュー');
+  registerJournalTintRow('右クリックメニュー（影）', 'contextMenuShadowBg', CONTEXT_MENU_SHADOW_ALPHA, '影', 'contextMenuBg');
+  registerJournalTintRow('右クリックメニュー（行ホバー）', 'contextMenuItemHoverBg', CONTEXT_MENU_ITEM_HOVER_ALPHA, '行', 'contextMenuBg');
+  registerBgRow('表示モード「予実」（背景）', 'periodModeBudgetActualBg', '予実');
+  registerBgRow('表示モード「実績」（背景）', 'periodModeActualBg', '予実');
+  registerBgRow('表示モード「計画」（背景）', 'periodModePlanBg', '予実');
+  registerTextRow('表示モードバッジ（文字）', 'periodModeTextColor', '予実', {
+    previewBgKey: 'periodModeBudgetActualBg',
+    refresh: false,
+  });
+  registerJournalTintRow('読み込み中（オーバーレイ）', 'loadingOverlayBg', LOADING_OVERLAY_ALPHA, '読み込み', 'browserBg');
+  registerTextRow('成功・OK表示', 'statusOkColor', 'OK', {
+    previewBgKey: 'browserBg',
+    refresh: false,
+  });
+  registerTextRow('エラー表示', 'statusErrorColor', 'NG', {
+    previewBgKey: 'browserBg',
+    refresh: false,
+  });
+  registerBorderRow('入力エラー（枠線）', 'statusInvalidColor', 'settingsSurfaceBg');
+  registerBgRow('主要ボタン（グラデ開始）', 'primaryButtonBgStart', '開く');
+  registerBgRow('主要ボタン（グラデ終了）', 'primaryButtonBgEnd', '開く');
+  registerTextRow('主要ボタン（文字）', 'primaryButtonTextColor', '開く', {
+    previewBgKey: 'primaryButtonBgStart',
+    previewTextKey: 'primaryButtonTextColor',
+    refresh: false,
+  });
+  registerAccentRow('操作強調（スライダー・D&D等）', 'interactiveAccentColor', '強調');
+  registerJournalTintRow('賞与月列（ハイライト）', 'bonusMonthColumnBg', 0.08, '賞与月', 'cellBg');
+  registerBgRow('削除ボタン（背景）', 'deleteBtnBg', '削除', '#ffffff');
+  registerBgRow('削除ボタン（ホバー）', 'deleteBtnBgHover', '削除', '#ffffff');
+  registerBorderRow('削除ボタン（枠線）', 'deleteBtnBorder', 'cellBg');
+  registerTextRow('削除ボタン（文字）', 'deleteBtnText', '削除', {
+    previewBgKey: 'deleteBtnBg',
+    previewTextKey: 'deleteBtnText',
+    refresh: false,
+  });
+  registerAccentRow('アクセンント（選択マーク等）', 'accentColor', '✓ 選択');
   registerAccentRow('マウスオーバー（行）', 'rowHoverBorder', 'ホバー');
   registerAccentRow('行選択（枠線）', 'rowSelectionRing', '選択中');
 

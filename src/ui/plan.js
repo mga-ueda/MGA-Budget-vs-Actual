@@ -172,6 +172,7 @@ import { enrichPlanDataWithEmployeeSalaryRows } from '../enrich/planEmployeeSala
 import { enrichPlanDataWithTaxPaymentRows, collectPaymentActualAmountsFromPlanData, collectResidentTaxActualByMunicipality, collectResidentTaxSubaccountsFromPlanData } from '../enrich/planTaxPaymentRows.js';
 import { enrichPlanDataWithOutsourcingRows, collectOutsourcingSubaccountsFromPlanData, collectOutsourcingActualAmountsFromPlanData } from '../enrich/planOutsourcingRows.js';
 import { enrichPlanDataWithRevenueRows } from '../enrich/planRevenueRows.js';
+import { enrichPlanDataWithMiscIncomeRows } from '../enrich/planMiscIncomeRows.js';
 import { enrichPlanDataWithPeriodAverageFills } from '../enrich/planPeriodAverageFill.js';
 import { enrichPlanDataWithCashFlowOpeningInflow } from '../enrich/planCashFlowOpening.js';
 import { enrichPlanDataWithCashFlowForecast } from '../enrich/planCashFlowForecast.js';
@@ -267,6 +268,7 @@ import {
   loadOutsourcingPlans,
   saveOutsourcingPlans,
   getPeriodVendorEntries,
+  getVendorEntry,
   setVendorEntry,
   removeVendorEntry,
   createManualVendor,
@@ -1281,7 +1283,9 @@ function positionPlanColumnBodyPlate(wrap, plate, table, monthIndex) {
   if (tbody) {
     const rows = tbody.querySelectorAll('tr');
     for (let i = rows.length - 1; i >= 0; i -= 1) {
-      const monthTds = rows[i].querySelectorAll('td.col-amount-month');
+      const row = rows[i];
+      if (row.hidden) continue;
+      const monthTds = row.querySelectorAll('td.col-amount-month');
       const td = monthTds[monthIndex];
       if (td) {
         bottomY = td.getBoundingClientRect().bottom;
@@ -1834,6 +1838,31 @@ function isRevenueManMonthMonthEditable(month, displayMode, pastMonthSet) {
   return true;
 }
 
+function getOutsourcingVendorIdFromRow(row) {
+  if (row.outsourcingVendorId) return row.outsourcingVendorId;
+  if (row.type === 'plan' && typeof row.id === 'string' && row.id.startsWith('out-plan-')) {
+    return row.id.slice('out-plan-'.length);
+  }
+  return null;
+}
+
+function isOutsourcingPlanMonthEditable(month, displayMode, pastMonthSet) {
+  if (displayMode === 'actual') return false;
+  if (displayMode === 'budget-actual' && pastMonthSet.has(month)) return false;
+  return true;
+}
+
+function isOutsourcingPlanRowEditable(section, row) {
+  if (section.id !== 'outsourcing') return false;
+  if (row.type === 'breakdown' || row.type === 'total' || row.type === 'variance') return false;
+  return Boolean(getOutsourcingVendorIdFromRow(row));
+}
+
+function isOutsourcingPlanCellEditable(section, row, month, displayMode, pastMonthSet) {
+  return isOutsourcingPlanRowEditable(section, row)
+    && isOutsourcingPlanMonthEditable(month, displayMode, pastMonthSet);
+}
+
 function shouldShowRevenueAmountInMonth(section, row, month, displayMode, pastMonthSet) {
   if (section.id !== 'revenue' || displayMode !== 'budget-actual') return true;
   if (!pastMonthSet.has(month)) return true;
@@ -2112,6 +2141,104 @@ function startRevenueManMonthCellEdit(td, {
 
   td.classList.add('plan-man-month-editing');
   td.textContent = '';
+  td.appendChild(input);
+  input.focus();
+  input.select();
+}
+
+function persistOutsourcingVendorMonthly(vendorId, nextMonthly) {
+  const fiscalMonths = buildFiscalYearMonths(appSettings.fiscalEndMonth);
+  const vendor = getVendorEntry(outsourcingPlans, appSettings.fiscalPeriod, vendorId, fiscalMonths);
+  if (!vendor) return;
+  outsourcingPlans = setVendorEntry(
+    outsourcingPlans,
+    appSettings.fiscalPeriod,
+    { ...vendor, monthly: nextMonthly },
+    fiscalMonths,
+  );
+  syncPlanDataToCurrentPeriod();
+  refreshPlanTable();
+}
+
+function startOutsourcingPlanCellEdit(td, {
+  vendorId,
+  month,
+  displayMode,
+  pastMonthSet,
+}) {
+  if (!isOutsourcingPlanMonthEditable(month, displayMode, pastMonthSet)) return;
+  if (td.querySelector('input')) return;
+
+  const fiscalMonths = buildFiscalYearMonths(appSettings.fiscalEndMonth);
+  const vendor = getVendorEntry(outsourcingPlans, appSettings.fiscalPeriod, vendorId, fiscalMonths);
+  if (!vendor) return;
+
+  const rawValue = vendor.monthly[month];
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.inputMode = 'numeric';
+  input.className = 'salary-plan-amount-input';
+  input.autocomplete = 'off';
+  input.spellcheck = false;
+  input.value = rawValue != null && rawValue !== 0 ? String(rawValue) : '';
+
+  let editClosed = false;
+
+  const finish = (save, fillForward = false) => {
+    if (editClosed) return;
+    editClosed = true;
+    td.classList.remove('plan-outsourcing-editing');
+    if (save) {
+      const parsed = parseSalaryPlanAmountInputWithFillForward(
+        input.value,
+        fillForward,
+        rawValue,
+      );
+      const lockedMonths = getSettingsLockedMonthsForPeriod(appSettings.fiscalPeriod, fiscalMonths);
+      const nextMonthly = fillForward
+        ? applyAmountFromMonthForwardSkippingPast(
+          vendor.monthly,
+          fiscalMonths,
+          month,
+          parsed,
+          lockedMonths,
+        )
+        : { ...vendor.monthly, [month]: parsed };
+      input.remove();
+      persistOutsourcingVendorMonthly(vendorId, nextMonthly);
+      return;
+    }
+    input.remove();
+    td.innerHTML = formatAmount(rawValue, 'item');
+  };
+
+  input.addEventListener('keydown', (e) => {
+    handlePlanAmountCellKeydown(e, {
+      finish,
+      td,
+      scopeId: 'plan-table-outsourcing',
+      onTabNext: (nextTd, { nextMonth }) => {
+        if (!nextTd || !nextMonth) return;
+        requestAnimationFrame(() => {
+          startOutsourcingPlanCellEdit(nextTd, {
+            vendorId,
+            month: nextMonth,
+            displayMode,
+            pastMonthSet,
+          });
+        });
+      },
+    });
+  });
+  input.addEventListener('blur', () => {
+    setTimeout(() => {
+      if (!editClosed) finish(true, false);
+    }, 0);
+  });
+
+  td.classList.add('plan-outsourcing-editing');
+  td.innerHTML = '';
   td.appendChild(input);
   input.focus();
   input.select();
@@ -2955,7 +3082,10 @@ function handleSectionFilterClick(filterId, ev) {
   }
   saveSectionFilterConfig(sectionFilterConfig, sectionIds);
   renderToolbar();
-  applyPlanSectionFilterState(root.querySelector('.plan-table'));
+  const table = root.querySelector('.plan-table');
+  applyPlanSectionFilterState(table);
+  const wrap = table?.closest('.plan-table-wrap');
+  if (wrap && table) syncPlanColumnPlates(wrap, table);
 }
 
 function rowVisibleInSection(section, row) {
@@ -3066,7 +3196,15 @@ function applyPlanColors(planData) {
     consumptionTaxRates: appSettings.consumptionTaxRates,
     monthDisplayConfig,
   });
-  const withAverages = enrichPlanDataWithPeriodAverageFills(withRevenue, {
+  const withMiscIncome = enrichPlanDataWithMiscIncomeRows(withRevenue, {
+    revenuePlans,
+    businessStartYear: appSettings.businessStartYear,
+    fiscalPeriod: appSettings.fiscalPeriod,
+    fiscalEndMonth: appSettings.fiscalEndMonth,
+    displayMode,
+    monthDisplayConfig,
+  });
+  const withAverages = enrichPlanDataWithPeriodAverageFills(withMiscIncome, {
     expandConfig,
     businessStartYear: appSettings.businessStartYear,
     fiscalPeriod: appSettings.fiscalPeriod,
@@ -3706,6 +3844,52 @@ function updatePlanTableRowMonthCells(tr, section, row, {
       continue;
     }
 
+    const outsourcingVendorId = getOutsourcingVendorIdFromRow(row);
+    const isOutsourcingEditableRow = isOutsourcingPlanRowEditable(section, row);
+
+    if (isOutsourcingEditableRow) {
+      if (hideGroupTotal || !showAmount) {
+        td.innerHTML = '';
+        td.classList.remove('salary-plan-cell-editable');
+        td.removeAttribute('title');
+        td.ondblclick = null;
+        td.classList.remove('col-amount-drilldown');
+        continue;
+      }
+
+      const amountType = row.type === 'variance' ? 'variance' : 'item';
+      const editable = isOutsourcingPlanCellEditable(section, row, m, displayMode, pastMonthSet);
+      const hasDrilldown = !editable
+        && isDrilldownAvailable(section, row)
+        && hasDrilldownEntries(getDrilldownIndex(), section, row, m)
+        && !row.planFillMonths?.includes(m)
+        && !row.openingAdjustMonths?.includes(m);
+
+      td.innerHTML = formatAmount(val, amountType);
+      td.classList.toggle('salary-plan-cell-editable', editable);
+      td.classList.toggle('col-amount-drilldown', hasDrilldown);
+
+      if (editable) {
+        tagPlanEditableCell(td, { rowKey: outsourcingVendorId, month: m });
+        td.title = 'ダブルクリックで編集（Shift+Enter で後続月へ同額反映）';
+        td.ondblclick = () => startOutsourcingPlanCellEdit(td, {
+          vendorId: outsourcingVendorId,
+          month: m,
+          displayMode,
+          pastMonthSet,
+        });
+      } else if (hasDrilldown) {
+        td.removeAttribute('title');
+        td.ondblclick = () => showJournalPopup(section, row, m);
+        applyAggregateCellTooltip(td, row, section, m, 'ダブルクリックで仕訳を表示');
+      } else {
+        td.removeAttribute('title');
+        td.ondblclick = null;
+        applyAggregateCellTooltip(td, row, section, m, '');
+      }
+      continue;
+    }
+
     const amountType = row.type === 'variance' ? 'variance' : 'item';
     const hasDrilldown = !hideGroupTotal
       && showAmount
@@ -3930,6 +4114,10 @@ function renderTable({ measureColumnWidths = false } = {}) {
       tr.dataset.rowKey = visibilityRowKey(section.id, row);
       syncRowSelection(tr);
       if (row.id) tr.dataset.rowId = row.id;
+      const outsourcingVendorId = getOutsourcingVendorIdFromRow(row);
+      if (section.id === 'outsourcing' && outsourcingVendorId) {
+        tagPlanEditableRow(tr, outsourcingVendorId);
+      }
       if (row.parentId) {
         tr.dataset.parentId = row.parentId;
         if (!expandedGroups.has(row.parentId)) tr.classList.add('is-expand-collapsed');
@@ -4041,6 +4229,45 @@ function renderTable({ measureColumnWidths = false } = {}) {
                   pastMonthSet,
                 });
               });
+            }
+          }
+          tr.appendChild(td);
+          continue;
+        }
+
+        const outsourcingVendorId = getOutsourcingVendorIdFromRow(row);
+        const isOutsourcingEditableRow = isOutsourcingPlanRowEditable(section, row);
+
+        if (isOutsourcingEditableRow) {
+          if (!hideGroupTotal && showAmount) {
+            const amountType = row.type === 'variance' ? 'variance' : 'item';
+            td.innerHTML = formatAmount(val, amountType);
+            const editable = isOutsourcingPlanCellEditable(section, row, m, displayMode, pastMonthSet);
+            const hasDrilldown = !editable
+              && isDrilldownAvailable(section, row)
+              && hasDrilldownEntries(getDrilldownIndex(), section, row, m)
+              && !row.planFillMonths?.includes(m)
+              && !row.openingAdjustMonths?.includes(m);
+            if (editable) {
+              td.classList.add('salary-plan-cell-editable');
+              tagPlanEditableCell(td, { rowKey: outsourcingVendorId, month: m });
+              td.title = 'ダブルクリックで編集（Shift+Enter で後続月へ同額反映）';
+              td.addEventListener('dblclick', () => {
+                startOutsourcingPlanCellEdit(td, {
+                  vendorId: outsourcingVendorId,
+                  month: m,
+                  displayMode,
+                  pastMonthSet,
+                });
+              });
+            } else if (hasDrilldown) {
+              td.classList.add('col-amount-drilldown');
+              td.addEventListener('dblclick', () => {
+                showJournalPopup(section, row, m);
+              });
+              applyAggregateCellTooltip(td, row, section, m, 'ダブルクリックで仕訳を表示');
+            } else {
+              applyAggregateCellTooltip(td, row, section, m, '');
             }
           }
           tr.appendChild(td);

@@ -4,12 +4,14 @@ import {
   formatSalaryPlanYen,
   salaryPlanAmountDiffersFromPrevious,
   buildFiscalYearMonths,
+  applyAmountFromMonthForwardSkippingPast,
 } from '../config/salaryPlanConfig.js';
 import {
   DEFAULT_REVENUE_PLAN_YEARS,
   getRevenuePlanYears,
   setRevenuePlanYears,
   buildRevenuePlanPeriodEntries,
+  buildMiscIncomePlanPeriodEntries,
   getPeriodClientEntries,
   setClientEntry,
   removeClientEntry,
@@ -22,6 +24,9 @@ import {
   getEffectiveUnitPrice,
   parseManMonthInput,
   formatManMonths,
+  MISC_INCOME_ACCOUNT,
+  getMiscIncomeMonthly,
+  setMiscIncomeMonthly,
 } from '../config/revenuePlanConfig.js';
 import {
   handlePlanAmountCellKeydown,
@@ -918,6 +923,199 @@ export function mountRevenueSettingsPanel({
     }
   }
 
+  function renderMiscIncomePlanSection() {
+    const miscPeriodEntries = buildMiscIncomePlanPeriodEntries(currentPeriod);
+
+    function persistMiscIncomeMonthly(monthly, fiscalPeriod) {
+      revenuePlans = setMiscIncomeMonthly(revenuePlans, fiscalPeriod, monthly, fiscalMonths);
+      setRevenuePlans(revenuePlans);
+      refreshPlanTableIfNeeded();
+    }
+
+    function appendMiscIncomeAmountCell(tr, {
+      month,
+      monthIndex,
+      value,
+      prevValue,
+      editable,
+      fiscalPeriod,
+      displayMonthly,
+    }) {
+      const td = document.createElement('td');
+      td.className = 'salary-plan-amount-cell';
+      applyPlanAmountVarianceClass(td, monthIndex, value, prevValue);
+      if (editable) {
+        td.classList.add('salary-plan-cell-editable');
+        tagPlanEditableCell(td, { month });
+        td.title = '\u30c0\u30d6\u30eb\u30af\u30ea\u30c3\u30af\u3067\u7de8\u96c6\uff08Shift+Enter \u3067\u5f8c\u7d9a\u6708\u3078\u540c\u984d\u3092\u53cd\u6620\uff09';
+        td.textContent = formatSalaryPlanYen(value);
+        td.addEventListener('dblclick', () => {
+          if (td.querySelector('input')) return;
+
+          const rawValue = displayMonthly[month];
+          const input = document.createElement('input');
+          input.type = 'text';
+          input.inputMode = 'numeric';
+          input.className = 'salary-plan-amount-input';
+          input.autocomplete = 'off';
+          input.spellcheck = false;
+          input.value = rawValue != null && rawValue !== 0 ? String(rawValue) : '';
+
+          let editClosed = false;
+          const finish = (save, fillForward = false) => {
+            if (editClosed) return;
+            editClosed = true;
+            if (save) {
+              const parsed = parseSalaryPlanAmountInputWithFillForward(
+                input.value,
+                fillForward,
+                rawValue,
+              );
+              const pastMonths = getPastMonthsForPeriod(fiscalPeriod);
+              const next = fillForward
+                ? applyAmountFromMonthForwardSkippingPast(
+                  displayMonthly,
+                  fiscalMonths,
+                  month,
+                  parsed,
+                  pastMonths,
+                )
+                : { ...displayMonthly, [month]: parsed };
+              persistMiscIncomeMonthly(next, fiscalPeriod);
+            }
+            renderMiscIncomePlanSection();
+          };
+
+          input.addEventListener('keydown', (e) => {
+            handlePlanAmountCellKeydown(e, {
+              finish,
+              td,
+              scopeId: `misc-income-${fiscalPeriod}`,
+            });
+          });
+          input.addEventListener('blur', () => {
+            setTimeout(() => {
+              if (!editClosed) finish(true, false);
+            }, 0);
+          });
+
+          td.textContent = '';
+          td.appendChild(input);
+          input.focus();
+          input.select();
+        });
+      } else {
+        td.classList.add('salary-plan-cell-disabled');
+        td.textContent = formatSalaryPlanYen(value);
+      }
+      tr.appendChild(td);
+    }
+
+    function buildMiscIncomeTable(fiscalPeriod) {
+      const displayMonthly = getMiscIncomeMonthly(revenuePlans, fiscalPeriod, fiscalMonths);
+      const table = document.createElement('table');
+      table.className = 'expand-settings-table salary-plan-table misc-income-plan-table';
+
+      const headerLabels = [
+        '\u9805\u76ee',
+        ...fiscalMonths,
+        '\u5408\u8a08',
+      ];
+
+      const thead = document.createElement('thead');
+      const headerRow = document.createElement('tr');
+      for (const label of headerLabels) {
+        const th = document.createElement('th');
+        th.textContent = label;
+        if (label === '\u9805\u76ee') th.className = 'salary-plan-col-name';
+        else if (label === '\u5408\u8a08') th.className = 'salary-plan-col-total';
+        else th.className = 'salary-plan-col-month';
+        headerRow.appendChild(th);
+      }
+      thead.appendChild(headerRow);
+      table.appendChild(thead);
+
+      const tbody = document.createElement('tbody');
+      const tr = document.createElement('tr');
+      tr.className = 'salary-plan-row-monthly';
+      tagPlanEditableRow(tr, `misc-income-${fiscalPeriod}`);
+
+      const accountTd = document.createElement('td');
+      accountTd.className = 'salary-plan-col-name';
+      accountTd.textContent = MISC_INCOME_ACCOUNT;
+      tr.appendChild(accountTd);
+
+      let rowTotal = 0;
+      for (let i = 0; i < fiscalMonths.length; i += 1) {
+        const month = fiscalMonths[i];
+        const editable = isMonthEditable(fiscalPeriod, month);
+        const prevMonth = i > 0 ? fiscalMonths[i - 1] : null;
+        const prevValue = prevMonth != null ? displayMonthly[prevMonth] : undefined;
+        const value = displayMonthly[month];
+        rowTotal += value ?? 0;
+
+        appendMiscIncomeAmountCell(tr, {
+          month,
+          monthIndex: i,
+          value,
+          prevValue,
+          editable,
+          fiscalPeriod,
+          displayMonthly,
+        });
+      }
+
+      const totalTd = document.createElement('td');
+      totalTd.className = 'salary-plan-col-total';
+      totalTd.textContent = formatSalaryPlanYen(rowTotal);
+      tr.appendChild(totalTd);
+
+      tbody.appendChild(tr);
+      table.appendChild(tbody);
+      return table;
+    }
+
+    wrap.querySelector('.misc-income-plan-section')?.remove();
+
+    const section = document.createElement('div');
+    section.className = 'salary-plan-section misc-income-plan-section';
+
+    const planHeader = document.createElement('div');
+    planHeader.className = 'salary-plan-header salary-plan-header-spaced';
+    planHeader.innerHTML = `
+      <h3 class="salary-plan-title">\u96d1\u6536\u5165\u8a08\u753b</h3>
+      <p class="salary-plan-desc">
+        \u55b6\u696d\u5916\u6536\u76ca\u306e\u300c\u96d1\u6536\u5165\u300d\u306e\u6708\u6b21\u8a08\u753b\u3092\u5165\u529b\u3057\u307e\u3059\u3002\u4eca\u671f\u30fb\u6765\u671f\u306e\u307f\u8a2d\u5b9a\u3067\u304d\u307e\u3059\u3002\u4eca\u671f\u306e\u5b9f\u7e3e\u8868\u793a\u6708\u306f\u7de8\u96c6\u3067\u304d\u307e\u305b\u3093\u3002\u8a2d\u5b9a\u306f\u4e88\u5b9f\u8868\u306e\u300c\u55b6\u696d\u5916\u6536\u76ca\u300d\u306b\u53cd\u6620\u3055\u308c\u307e\u3059\u3002
+      </p>
+    `;
+    section.appendChild(planHeader);
+
+    const periodsContainer = document.createElement('div');
+    periodsContainer.className = 'misc-income-plan-periods outsourcing-plan-periods';
+
+    for (const { period, label } of miscPeriodEntries) {
+      const block = document.createElement('div');
+      block.className = 'salary-plan-period-block';
+
+      const blockTitle = document.createElement('h4');
+      blockTitle.className = 'salary-plan-period-title';
+      blockTitle.textContent = `${label}${String.fromCodePoint(0xFF08)}${formatFiscalPeriodLabel(period)}${String.fromCodePoint(0xFF09)}`;
+      block.appendChild(blockTitle);
+
+      const tableWrap = document.createElement('div');
+      tableWrap.className = 'salary-plan-table-wrap';
+      tableWrap.appendChild(buildMiscIncomeTable(period));
+      block.appendChild(tableWrap);
+
+      resumePlanCellTabEdit(block, `misc-income-${period}`);
+      periodsContainer.appendChild(block);
+    }
+
+    section.appendChild(periodsContainer);
+    wrap.appendChild(section);
+  }
+
   renderPlanSection();
+  renderMiscIncomePlanSection();
   replaceRootPanel(wrap);
 }

@@ -55,12 +55,61 @@ const L = {
     0x80cc, 0x666f, 0x8272, 0x306f, 0x5927, 0x9805, 0x76ee, 0x8272, 0xff08, 0x58f2, 0x4e0a, 0x9ad8, 0x5dee, 0x7570, 0xff09, 0x3092, 0x53c2, 0x7167,
   ),
   warningPreview: jp(0x58f2, 0x4e0a, 0x9ad8, 0xff0d, 0x58f2, 0x639b, 0x91d1),
-  expandable: jp(0x5c55, 0x958b, 0x53ef, 0x80fd, 0x9805, 0x76ee, 0xff08, 0x30cf, 0x30a4, 0x30e9, 0x30a4, 0x30c8, 0xff09),
+  expandable: jp(0x5c55, 0x958b, 0x53ef, 0x80fd, 0x9805, 0x76ee, 0x30fb, 0x4ed5, 0x8a33, 0x30bb, 0x30eb, 0xff08, 0x30cf, 0x30a4, 0x30e9, 0x30a4, 0x30c8, 0xff09),
   expandablePreview: jp(0x25b6, 0x20, 0x52d8, 0x5b9a, 0x79d1, 0x76ee),
   hover: jp(0x30de, 0x30a6, 0x30b9, 0x30aa, 0x30fc, 0x30d0, 0x30fc, 0xff08, 0x884c, 0xff09),
   hoverPreview: jp(0x30db, 0x30d0, 0x30fc),
   selection: jp(0x884c, 0x9078, 0x629e, 0xff08, 0x67a0, 0x7dda, 0xff09),
   selectionPreview: jp(0x9078, 0x629e, 0x4e2d),
+  accentColor: jp(0x30a2, 0x30af, 0x30bb, 0x30f3, 0x30f3, 0x30c8, 0xff08, 0x9078, 0x629e, 0x30de, 0x30fc, 0x30af, 0x7b49, 0xff09),
+  accentPreview: jp(0x2713, 0x20, 0x9078, 0x629e),
+  deleteBtnBg: jp(0x524a, 0x9664, 0x30dc, 0x30bf, 0x30f3, 0xff08, 0x80cc, 0x666f, 0xff09),
+  deleteBtnHover: jp(0x524a, 0x9664, 0x30dc, 0x30bf, 0x30f3, 0xff08, 0x30db, 0x30d0, 0x30fc, 0xff09),
+  deleteBtnBorder: jp(0x524a, 0x9664, 0x30dc, 0x30bf, 0x30f3, 0xff08, 0x67a0, 0x7dda, 0xff09),
+  deleteBtnText: jp(0x524a, 0x9664, 0x30dc, 0x30bf, 0x30f3, 0xff08, 0x6587, 0x5b57, 0xff09),
+  deletePreview: jp(0x524a, 0x9664),
+  tableHeaderBg: jp(0x4e88, 0x5b9f, 0x8868, 0xff08, 0x56fa, 0x5b9a, 0x30d8, 0x30c3, 0x30c0, 0x30fc, 0x80cc, 0x666f, 0xff09),
+  tableHeaderPreview: jp(0x898b, 0x51fa, 0x3057),
+  contextMenuBg: jp(0x53f3, 0x30af, 0x30ea, 0x30c3, 0x30af, 0x30e1, 0x30cb, 0x30e5, 0x30fc, 0xff08, 0x80cc, 0x666f, 0xff09),
+  contextMenuShadow: jp(0x53f3, 0x30af, 0x30ea, 0x30c3, 0x30af, 0x30e1, 0x30cb, 0x30e5, 0x30fc, 0xff08, 0x5f71, 0xff09),
+  contextMenuHover: jp(0x53f3, 0x30af, 0x30ea, 0x30c3, 0x30af, 0x30e1, 0x30cb, 0x30e5, 0x30fc, 0xff08, 0x884c, 0x30db, 0x30d0, 0x30fc, 0xff09),
+  contextMenuPreview: jp(0x30e1, 0x30cb, 0x30e5, 0x30fc),
+  periodModeBudgetActual: jp(0x8868, 0x793a, 0x30e2, 0x30fc, 0x30c9, 0x300c, 0x4e88, 0x5b9f, 0x300d, 0xff08, 0x80cc, 0x666f, 0xff09),
+  periodModeActual: jp(0x8868, 0x793a, 0x30e2, 0x30fc, 0x30c9, 0x300c, 0x5b9f, 0x7e3e, 0x300d, 0xff08, 0x80cc, 0x666f, 0xff09),
+  periodModePlan: jp(0x8868, 0x793a, 0x30e2, 0x30fc, 0x30c9, 0x300c, 0x8a08, 0x753b, 0x300d, 0xff08, 0x80cc, 0x666f, 0xff09),
+  periodModeText: jp(0x8868, 0x793a, 0x30e2, 0x30fc, 0x30c9, 0x30d0, 0x30c3, 0x30b8, 0xff08, 0x6587, 0x5b57, 0xff09),
+  periodModePreview: jp(0x4e88, 0x5b9f),
+  loadingOverlay: jp(0x8aad, 0x307f, 0x8fbc, 0x307f, 0x4e2d, 0xff08, 0x30aa, 0x30fc, 0x30d0, 0x30fc, 0x30ec, 0x30a4, 0xff09),
+  loadingPreview: jp(0x8aad, 0x307f, 0x8fbc, 0x307f),
+  statusOk: jp(0x6210, 0x529f, 0x30fb, 0x4f, 0x4b, 0x8868, 0x793a),
+  statusError: jp(0x30a8, 0x30e9, 0x30fc, 0x8868, 0x793a),
+  statusInvalid: jp(0x5165, 0x529b, 0x30a8, 0x30e9, 0x30fc, 0xff08, 0x67a0, 0x7dda, 0xff09),
+  statusOkPreview: jp(0x4f, 0x4b),
+  statusErrorPreview: jp(0x4e, 0x47),
+  primaryBtnStart: jp(0x4e3b, 0x8981, 0x30dc, 0x30bf, 0x30f3, 0xff08, 0x30b0, 0x30e9, 0x30c7, 0x958b, 0x59cb, 0xff09),
+  primaryBtnEnd: jp(0x4e3b, 0x8981, 0x30dc, 0x30bf, 0x30f3, 0xff08, 0x30b0, 0x30e9, 0x30c7, 0x7d42, 0x4e86, 0xff09),
+  primaryBtnText: jp(0x4e3b, 0x8981, 0x30dc, 0x30bf, 0x30f3, 0xff08, 0x6587, 0x5b57, 0xff09),
+  primaryBtnPreview: jp(0x958b, 0x304f),
+  interactiveAccent: jp(0x64cd, 0x4f5c, 0x5f37, 0x8abf, 0xff08, 0x30b9, 0x30e9, 0x30a4, 0x30c0, 0x30fc, 0x30fb, 0x44, 0x26, 0x44, 0x7b49, 0xff09),
+  interactivePreview: jp(0x5f37, 0x8abf),
+  bonusMonthColumn: jp(0x8cde, 0x4e0e, 0x6708, 0x5217, 0xff08, 0x30cf, 0x30a4, 0x30e9, 0x30a4, 0x30c8, 0xff09),
+  bonusPreview: jp(0x8cde, 0x4e0e, 0x6708),
+  journalOverlay: jp(0x4ed5, 0x8a33, 0x8a73, 0x7d30, 0xff08, 0x80cc, 0x9762, 0x30aa, 0x30fc, 0x30d0, 0x30fc, 0x30ec, 0x30a4, 0xff09),
+  journalModal: jp(0x4ed5, 0x8a33, 0x8a73, 0x7d30, 0xff08, 0x30e2, 0x30fc, 0x30c0, 0x30eb, 0x80cc, 0x666f, 0xff09),
+  journalText: jp(0x4ed5, 0x8a33, 0x8a73, 0x7d30, 0xff08, 0x6587, 0x5b57, 0x8272, 0xff09),
+  journalHint: jp(0x4ed5, 0x8a33, 0x8a73, 0x7d30, 0xff08, 0x88dc, 0x8db3, 0x6587, 0xff09),
+  journalTableHeader: jp(0x4ed5, 0x8a33, 0x8a73, 0x7d30, 0xff08, 0x8868, 0x30d8, 0x30c3, 0x30c0, 0x30fc, 0x80cc, 0x666f, 0xff09),
+  journalShadow: jp(0x4ed5, 0x8a33, 0x8a73, 0x7d30, 0xff08, 0x30e2, 0x30fc, 0x30c0, 0x30eb, 0x5f71, 0xff09),
+  journalRowHover: jp(0x4ed5, 0x8a33, 0x8a73, 0x7d30, 0xff08, 0x884c, 0x30db, 0x30d0, 0x30fc, 0xff09),
+  journalCloseHover: jp(0x4ed5, 0x8a33, 0x8a73, 0x7d30, 0xff08, 0x9589, 0x3058, 0x308b, 0x30fb, 0x30db, 0x30d0, 0x30fc, 0xff09),
+  journalTextPreview: jp(0x4ed5, 0x8a33, 0x660e, 0x7d30),
+  journalHintPreview: jp(0x4ef6, 0x6570, 0x30fb, 0x7a7a, 0x6b04, 0x30e1, 0x30c3, 0x30bb, 0x30fc, 0x30b8),
+  journalHeaderPreview: jp(0x898b, 0x51fa, 0x3057),
+  journalModalPreview: jp(0x30e2, 0x30fc, 0x30c0, 0x30eb),
+  journalBackPreview: jp(0x80cc, 0x9762),
+  journalRowPreview: jp(0x884c),
+  journalClosePreview: jp(0x00d7),
+  journalShadowPreview: jp(0x5f71),
   modeLabel: jp(0x8868, 0x793a, 0x30e2, 0x30fc, 0x30c9),
   modeDark: jp(0x30c0, 0x30fc, 0x30af, 0x30e2, 0x30fc, 0x30c9),
   modeLight: jp(0x30e9, 0x30a4, 0x30c8, 0x30e2, 0x30fc, 0x30c9),
@@ -80,6 +129,7 @@ const content = `import {
   saveUiColorConfig,
   applyUiColors,
   opaqueHex,
+  hexToRgba,
 } from '../config/uiColorConfig.js';
 import { getSectionBarColor } from '../config/sectionColorConfig.js';
 
@@ -442,6 +492,47 @@ export function mountUiColorPanel(container, {
     });
   };
 
+  const JOURNAL_OVERLAY_ALPHA = 0.65;
+  const JOURNAL_MODAL_SHADOW_ALPHA = 0.45;
+  const JOURNAL_ROW_HOVER_ALPHA = 0.03;
+  const JOURNAL_CLOSE_HOVER_ALPHA = 0.08;
+  const CONTEXT_MENU_SHADOW_ALPHA = 0.45;
+  const CONTEXT_MENU_ITEM_HOVER_ALPHA = 0.08;
+  const LOADING_OVERLAY_ALPHA = 0.38;
+
+  const registerJournalTintRow = (label, key, alpha, previewText, previewBgKey = 'journalModalBg') => {
+    const colors = getUiColors(getConfig());
+    const bg = colorInputTd(colors[key]);
+    const preview = previewTd({
+      background: hexToRgba(colors[key], alpha),
+      color: colors.textColor,
+      text: previewText,
+    });
+    preview.span.style.boxShadow = \`inset 0 0 0 1px \${hexToRgba(colors[previewBgKey] ?? colors.cellBg, 1)}\`;
+    const reset = resetBtnTd(keysMatchDefaults(getConfig(), [key]));
+    addRow(label, [bg.td, dashTd(), preview.td, reset.td]);
+    const syncPreview = (merged) => {
+      bg.input.value = merged[key];
+      bg.input.title = merged[key];
+      preview.span.style.background = hexToRgba(merged[key], alpha);
+      preview.span.style.color = merged.textColor;
+      preview.span.style.boxShadow = \`inset 0 0 0 1px \${opaqueHex(merged[previewBgKey] ?? merged.cellBg)}\`;
+      reset.btn.disabled = keysMatchDefaults(getConfig(), [key]);
+    };
+    const sync = (value) => {
+      const color = opaqueHex(value);
+      setConfig(setUiColorKey(getConfig(), key, color));
+      persist();
+      syncPreview(getUiColors(getConfig()));
+    };
+    bg.input.addEventListener('input', () => sync(bg.input.value));
+    reset.btn.addEventListener('click', () => {
+      setConfig(resetUiColorKey(getConfig(), key));
+      persist();
+      syncPreview(getUiColors(getConfig()));
+    });
+  };
+
   // ${L.layoutComment}
   registerBgRow('${L.browserBg}', 'browserBg', '${L.bgPreview}');
   registerBgRow('${L.settingsSurfaceBg}', 'settingsSurfaceBg', '${L.bgPreview}');
@@ -507,6 +598,59 @@ export function mountUiColorPanel(container, {
   });
 
   registerAccentRow('${L.expandable}', 'expandableHighlight', '${L.expandablePreview}');
+  registerJournalTintRow('${L.journalOverlay}', 'journalOverlayBg', JOURNAL_OVERLAY_ALPHA, '${L.journalBackPreview}', 'browserBg');
+  registerBgRow('${L.journalModal}', 'journalModalBg', '${L.journalModalPreview}');
+  registerTextRow('${L.journalText}', 'journalTextColor', '${L.journalTextPreview}', {
+    previewBgKey: 'journalModalBg',
+    refresh: false,
+  });
+  registerTextRow('${L.journalHint}', 'journalHintTextColor', '${L.journalHintPreview}', {
+    previewBgKey: 'journalModalBg',
+    refresh: false,
+  });
+  registerBgRow('${L.journalTableHeader}', 'journalTableHeaderBg', '${L.journalHeaderPreview}');
+  registerJournalTintRow('${L.journalShadow}', 'journalModalShadowBg', JOURNAL_MODAL_SHADOW_ALPHA, '${L.journalShadowPreview}');
+  registerJournalTintRow('${L.journalRowHover}', 'journalRowHoverBg', JOURNAL_ROW_HOVER_ALPHA, '${L.journalRowPreview}');
+  registerJournalTintRow('${L.journalCloseHover}', 'journalCloseHoverBg', JOURNAL_CLOSE_HOVER_ALPHA, '${L.journalClosePreview}');
+  registerBgRow('${L.tableHeaderBg}', 'tableHeaderBg', '${L.tableHeaderPreview}');
+  registerBgRow('${L.contextMenuBg}', 'contextMenuBg', '${L.contextMenuPreview}');
+  registerJournalTintRow('${L.contextMenuShadow}', 'contextMenuShadowBg', CONTEXT_MENU_SHADOW_ALPHA, '${L.journalShadowPreview}', 'contextMenuBg');
+  registerJournalTintRow('${L.contextMenuHover}', 'contextMenuItemHoverBg', CONTEXT_MENU_ITEM_HOVER_ALPHA, '${L.journalRowPreview}', 'contextMenuBg');
+  registerBgRow('${L.periodModeBudgetActual}', 'periodModeBudgetActualBg', '${L.periodModePreview}');
+  registerBgRow('${L.periodModeActual}', 'periodModeActualBg', '${L.periodModePreview}');
+  registerBgRow('${L.periodModePlan}', 'periodModePlanBg', '${L.periodModePreview}');
+  registerTextRow('${L.periodModeText}', 'periodModeTextColor', '${L.periodModePreview}', {
+    previewBgKey: 'periodModeBudgetActualBg',
+    refresh: false,
+  });
+  registerJournalTintRow('${L.loadingOverlay}', 'loadingOverlayBg', LOADING_OVERLAY_ALPHA, '${L.loadingPreview}', 'browserBg');
+  registerTextRow('${L.statusOk}', 'statusOkColor', '${L.statusOkPreview}', {
+    previewBgKey: 'browserBg',
+    refresh: false,
+  });
+  registerTextRow('${L.statusError}', 'statusErrorColor', '${L.statusErrorPreview}', {
+    previewBgKey: 'browserBg',
+    refresh: false,
+  });
+  registerBorderRow('${L.statusInvalid}', 'statusInvalidColor', 'settingsSurfaceBg');
+  registerBgRow('${L.primaryBtnStart}', 'primaryButtonBgStart', '${L.primaryBtnPreview}');
+  registerBgRow('${L.primaryBtnEnd}', 'primaryButtonBgEnd', '${L.primaryBtnPreview}');
+  registerTextRow('${L.primaryBtnText}', 'primaryButtonTextColor', '${L.primaryBtnPreview}', {
+    previewBgKey: 'primaryButtonBgStart',
+    previewTextKey: 'primaryButtonTextColor',
+    refresh: false,
+  });
+  registerAccentRow('${L.interactiveAccent}', 'interactiveAccentColor', '${L.interactivePreview}');
+  registerJournalTintRow('${L.bonusMonthColumn}', 'bonusMonthColumnBg', 0.08, '${L.bonusPreview}', 'cellBg');
+  registerBgRow('${L.deleteBtnBg}', 'deleteBtnBg', '${L.deletePreview}', '#ffffff');
+  registerBgRow('${L.deleteBtnHover}', 'deleteBtnBgHover', '${L.deletePreview}', '#ffffff');
+  registerBorderRow('${L.deleteBtnBorder}', 'deleteBtnBorder', 'cellBg');
+  registerTextRow('${L.deleteBtnText}', 'deleteBtnText', '${L.deletePreview}', {
+    previewBgKey: 'deleteBtnBg',
+    previewTextKey: 'deleteBtnText',
+    refresh: false,
+  });
+  registerAccentRow('${L.accentColor}', 'accentColor', '${L.accentPreview}');
   registerAccentRow('${L.hover}', 'rowHoverBorder', '${L.hoverPreview}');
   registerAccentRow('${L.selection}', 'rowSelectionRing', '${L.selectionPreview}');
 
