@@ -73,8 +73,10 @@ function makePlanRow(id, label, subLabel, values) {
 function sumNonPlanRows(rows) {
   const total = emptyRawMonthValues();
   for (const row of rows) {
-    if (row.type === 'plan' || row.type === 'total') continue;
-    addRawMonthValues(total, row.values);
+    if (row.type === 'total' || row.type === 'breakdown' || row.type === 'sub' || row.type === 'plan') continue;
+    if (row.type === 'item' || row.type === 'group') {
+      addRawMonthValues(total, row.values);
+    }
   }
   return enrichRowValues(total, 'flow');
 }

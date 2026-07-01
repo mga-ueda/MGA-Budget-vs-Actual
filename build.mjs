@@ -30,6 +30,7 @@ const FILES = [
   'config/expensePlanOverrideConfig.js',
   'config/outsourcingPlanConfig.js',
   'config/revenuePlanConfig.js',
+  'config/planKpiConfig.js',
   'enrich/planEmployeeSalaryRows.js',
   'enrich/planTaxPaymentRows.js',
   'enrich/planOutsourcingRows.js',

@@ -1027,21 +1027,138 @@ export function parseJournalCsv(text) {
   return buildFullPlan(text, null);
 }
 
-export function calcTotalProfitMargin(data) {
-  const profitSection = data.sections.find((s) => s.id === 'profit');
-  const ordinaryProfit = profitSection?.rows.find((r) => r.id === 'ord-profit');
+const DIRECTOR_LABOR_PATTERN = /^役員報酬/;
+const STAFF_LABOR_PATTERN = /^給料手当/;
+const KPI_OVERTIME_SUB_PATTERN = /残業手当/;
 
-  const revenue = data.sections.find((s) => s.id === 'revenue');
+function getProfitMarginDenominator(data) {
+  const revenue = data?.sections?.find((s) => s.id === 'revenue');
   const revTotal = getTotalRow(revenue);
-
-  const nonOperating = data.sections.find((s) => s.id === 'nonOperating');
+  const nonOperating = data?.sections?.find((s) => s.id === 'nonOperating');
   const nonOpTotal = getTotalRow(nonOperating);
-
   const sales = revTotal?.values.合計 ?? 0;
   const nonOpIncome = nonOpTotal?.values.合計 ?? 0;
-  const denominator = sales + nonOpIncome;
-  if (denominator === 0) return null;
+  return sales + nonOpIncome;
+}
 
+/** 労働分配率の分母（付加価値 = 営業利益 + 人件費合計） */
+function getLaborShareDenominator(data) {
+  const profitSection = data?.sections?.find((s) => s.id === 'profit');
+  const operating = profitSection?.rows.find((r) => r.id === 'op-profit')?.values.合計 ?? 0;
+  const personnel = data?.sections?.find((s) => s.id === 'personnel');
+  const personnelTotal = getTotalRow(personnel)?.values.合計 ?? 0;
+  return operating + personnelTotal;
+}
+
+function sumPersonnelAccountByPattern(section, labelPattern) {
+  if (!section?.rows) return 0;
+  let total = 0;
+  for (const row of section.rows) {
+    if (row.type !== 'item' && row.type !== 'group') continue;
+    if (!labelPattern.test(row.label ?? '')) continue;
+    total += row.values?.合計 ?? 0;
+  }
+  return total;
+}
+
+function calcShareRatePercent(numerator, denominator) {
+  if (!denominator) return null;
+  return (numerator / denominator) * 100;
+}
+
+function countPersonnelHeadcountByPattern(section, labelPattern, { excludeOvertime = false } = {}) {
+  if (!section?.rows) return 0;
+  let count = 0;
+  for (const row of section.rows) {
+    if (!labelPattern.test(row.label ?? '')) continue;
+    if ((row.values?.合計 ?? 0) === 0) continue;
+    if (row.type === 'sub') {
+      if (excludeOvertime && KPI_OVERTIME_SUB_PATTERN.test(row.subLabel ?? '')) continue;
+      if (row.subLabel && row.subLabel !== '補助科目なし') count += 1;
+      continue;
+    }
+    if (row.type === 'item' && row.subLabel && row.subLabel !== '補助科目なし') {
+      count += 1;
+    }
+  }
+  return count;
+}
+
+/** 人件費行から役員・社員人数を推定（従業員マスタ未設定時のフォールバック） */
+function inferPersonnelHeadcounts(personnel) {
+  if (!personnel?.rows) return { directorCount: 0, staffCount: 0 };
+  let directorCount = 0;
+  let staffCount = 0;
+  for (const row of personnel.rows) {
+    if (row.type !== 'plan') continue;
+    if (row.id?.startsWith('emp-plan-d-')) {
+      if ((row.values?.合計 ?? 0) !== 0) directorCount += 1;
+    } else if (row.id?.startsWith('emp-plan-m-')) staffCount += 1;
+  }
+  if (directorCount > 0 || staffCount > 0) {
+    return { directorCount, staffCount };
+  }
+  return {
+    directorCount: countPersonnelHeadcountByPattern(personnel, DIRECTOR_LABOR_PATTERN),
+    staffCount: countPersonnelHeadcountByPattern(personnel, STAFF_LABOR_PATTERN, {
+      excludeOvertime: true,
+    }),
+  };
+}
+
+function calcPayGapRatio(directorTotal, staffTotal, directorCount, staffCount) {
+  if (!directorCount || !staffCount || staffTotal <= 0) return null;
+  const directorAvg = directorTotal / directorCount;
+  const staffAvg = staffTotal / staffCount;
+  if (staffAvg <= 0) return null;
+  return directorAvg / staffAvg;
+}
+
+/** 総利益率・労働分配率・格差倍率（ヘッダー KPI 用） */
+export function calcPlanKpiMetrics(data, options = {}) {
+  if (!data?.sections) return null;
+  const profitDenominator = getProfitMarginDenominator(data);
+  const valueAdded = getLaborShareDenominator(data);
+
+  const profitSection = data.sections.find((s) => s.id === 'profit');
+  const ordinaryProfit = profitSection?.rows.find((r) => r.id === 'ord-profit');
   const ordinary = ordinaryProfit?.values.合計 ?? 0;
-  return (ordinary / denominator) * 100;
+
+  const personnel = data.sections.find((s) => s.id === 'personnel');
+  const personnelTotal = getTotalRow(personnel)?.values.合計 ?? 0;
+  const directorTotal = sumPersonnelAccountByPattern(personnel, DIRECTOR_LABOR_PATTERN);
+  const staffTotal = personnelTotal - directorTotal;
+
+  let directorCount = options.directorCount;
+  let staffCount = options.staffCount;
+  if (directorCount == null || staffCount == null) {
+    const inferred = inferPersonnelHeadcounts(personnel);
+    directorCount = directorCount ?? inferred.directorCount;
+    staffCount = staffCount ?? inferred.staffCount;
+  }
+
+  const nullLabor = {
+    laborShareRate: null,
+    directorLaborShareRate: null,
+    staffLaborShareRate: null,
+    payGapRatio: calcPayGapRatio(directorTotal, staffTotal, directorCount, staffCount),
+  };
+
+  return {
+    profitMargin: profitDenominator
+      ? calcShareRatePercent(ordinary, profitDenominator)
+      : null,
+    ...(valueAdded > 0
+      ? {
+        laborShareRate: calcShareRatePercent(personnelTotal, valueAdded),
+        directorLaborShareRate: calcShareRatePercent(directorTotal, valueAdded),
+        staffLaborShareRate: calcShareRatePercent(staffTotal, valueAdded),
+        payGapRatio: calcPayGapRatio(directorTotal, staffTotal, directorCount, staffCount),
+      }
+      : nullLabor),
+  };
+}
+
+export function calcTotalProfitMargin(data) {
+  return calcPlanKpiMetrics(data)?.profitMargin ?? null;
 }

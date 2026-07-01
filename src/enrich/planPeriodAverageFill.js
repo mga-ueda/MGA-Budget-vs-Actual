@@ -40,11 +40,14 @@ function rawValuesFromRow(row) {
   return values;
 }
 
-function sumNonPlanRows(rows) {
+function sumNonPlanRows(rows, { includePlanRows = false } = {}) {
   const total = emptyRawMonthValues();
   for (const row of rows) {
-    if (row.type === 'plan' || row.type === 'total') continue;
-    addRawMonthValues(total, row.values);
+    if (row.type === 'total' || row.type === 'breakdown' || row.type === 'sub') continue;
+    if (row.type === 'plan' && !includePlanRows) continue;
+    if (row.type === 'item' || row.type === 'group' || row.type === 'plan') {
+      addRawMonthValues(total, row.values);
+    }
   }
   return enrichRowValues(total, 'flow');
 }
@@ -187,7 +190,9 @@ function enrichSectionRowsWithAverageFill(
   if (totalIdx >= 0) {
     rows[totalIdx] = {
       ...rows[totalIdx],
-      values: sumNonPlanRows(rows),
+      values: sumNonPlanRows(rows, {
+        includePlanRows: section.id === OTHER_SECTION_ID,
+      }),
     };
   }
 

@@ -1,3 +1,4 @@
+import { getPlanKpiTooltip } from '../config/planKpiConfig.js';
 import {
   getAggregateFormulaLabel,
   getAggregateFormulaDetail,
@@ -5,7 +6,7 @@ import {
 } from '../parse/aggregateFormula.js';
 import {
   formatYen,
-  calcTotalProfitMargin,
+  calcPlanKpiMetrics,
   buildFullPlan,
   zeroOutPlanData,
   FISCAL_MONTHS,
@@ -560,16 +561,87 @@ function resetPlanBodyScroll() {
 }
 const mainTabs = document.getElementById('plan-main-tabs');
 const toolbar = document.getElementById('plan-toolbar');
-const kpiEl = document.getElementById('plan-kpi');
+const kpiMainEl = document.getElementById('plan-kpi-main');
+const kpiSubEl = document.getElementById('plan-kpi-sub');
 
-function setPlanKpi(margin) {
-  if (margin === null || margin === undefined) {
-    kpiEl.textContent = '—';
-    kpiEl.classList.remove('plan-kpi-negative');
+function formatKpiRate(value) {
+  if (value === null || value === undefined) return '—';
+  return `${value.toFixed(2)}%`;
+}
+
+function formatKpiMultiple(value) {
+  if (value === null || value === undefined) return '—';
+  return `${value.toFixed(2)}倍`;
+}
+
+function buildPlanKpiOptions() {
+  const active = employees.filter(isSalaryPlanEmployee);
+  if (active.length === 0) return {};
+  const fiscalMonths = buildFiscalYearMonths(appSettings.fiscalEndMonth);
+  const directorCount = active
+    .filter(isDirectorEmployee)
+    .filter((emp) => {
+      const plan = getEmployeeSalaryPlan(
+        salaryPlans,
+        appSettings.fiscalPeriod,
+        emp.id,
+        emp,
+        fiscalMonths,
+      );
+      return computeSalaryPlanEmployeeTotal(plan, fiscalMonths) > 0;
+    })
+    .length;
+  return {
+    directorCount,
+    staffCount: active.filter((emp) => !isDirectorEmployee(emp)).length,
+  };
+}
+
+function createKpiItem(label, valueText, tooltipKey, className, numericValue = null) {
+  const span = document.createElement('span');
+  span.className = className;
+  span.title = getPlanKpiTooltip(tooltipKey, numericValue);
+  span.textContent = `${label} ${valueText}`;
+  return span;
+}
+
+function setPlanKpi(metrics) {
+  if (!kpiMainEl || !kpiSubEl) return;
+  if (metrics === null || metrics === undefined) {
+    kpiMainEl.replaceChildren();
+    kpiMainEl.textContent = '—';
+    kpiSubEl.replaceChildren();
+    kpiMainEl.classList.remove('plan-kpi-negative');
     return;
   }
-  kpiEl.textContent = `総利益率 ${margin.toFixed(2)}%`;
-  kpiEl.classList.toggle('plan-kpi-negative', margin < 0);
+  const margin = metrics.profitMargin;
+  kpiMainEl.replaceChildren();
+  kpiMainEl.appendChild(createKpiItem(
+    '総利益率',
+    margin != null ? formatKpiRate(margin) : '—',
+    'profitMargin',
+    'plan-kpi-main-item',
+    margin,
+  ));
+  kpiMainEl.classList.toggle('plan-kpi-negative', margin != null && margin < 0);
+
+  kpiSubEl.replaceChildren();
+  const subItems = [
+    ['労働分配率', formatKpiRate(metrics.laborShareRate), 'laborShareRate', metrics.laborShareRate],
+    ['役員労働分配率', formatKpiRate(metrics.directorLaborShareRate), 'directorLaborShareRate', metrics.directorLaborShareRate],
+    ['社員労働分配率', formatKpiRate(metrics.staffLaborShareRate), 'staffLaborShareRate', metrics.staffLaborShareRate],
+    ['格差倍率', formatKpiMultiple(metrics.payGapRatio), 'payGapRatio', metrics.payGapRatio],
+  ];
+  subItems.forEach(([label, value, tooltipKey, numericValue], index) => {
+    if (index > 0) {
+      const sep = document.createElement('span');
+      sep.className = 'plan-kpi-sep';
+      sep.textContent = ' / ';
+      sep.setAttribute('aria-hidden', 'true');
+      kpiSubEl.appendChild(sep);
+    }
+    kpiSubEl.appendChild(createKpiItem(label, value, tooltipKey, 'plan-kpi-sub-item', numericValue));
+  });
 }
 
 function cachePlanTableColumnWidthsFromDom() {
@@ -1889,7 +1961,7 @@ function persistRevenueManMonths(clientId, nextManMonths) {
     fiscalMonths,
   );
   refreshSectionColors();
-  setPlanKpi(calcTotalProfitMargin(data));
+  setPlanKpi(calcPlanKpiMetrics(data, buildPlanKpiOptions()));
   applyRevenueManMonthEditDom(root.querySelector('.plan-table'), clientId);
 }
 
@@ -3961,7 +4033,7 @@ function applyPlanMonthDisplayDom(table) {
     });
   }
 
-  setPlanKpi(calcTotalProfitMargin(data));
+  setPlanKpi(calcPlanKpiMetrics(data, buildPlanKpiOptions()));
 }
 
 function togglePlanMonthDisplay(monthLabel) {
@@ -4001,7 +4073,7 @@ function renderTable({ measureColumnWidths = false } = {}) {
   const scrollTop = preserveScroll ? (body?.scrollTop ?? existingWrap?.scrollTop ?? 0) : 0;
   const scrollLeft = preserveScroll ? (body?.scrollLeft ?? existingWrap?.scrollLeft ?? 0) : 0;
 
-  setPlanKpi(calcTotalProfitMargin(data));
+  setPlanKpi(calcPlanKpiMetrics(data, buildPlanKpiOptions()));
 
   const allSections = data.sections;
   const highlightFiscalMonth = getHighlightFiscalMonth();

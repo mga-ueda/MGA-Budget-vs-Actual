@@ -2448,23 +2448,140 @@ function parseJournalCsv(text) {
   return buildFullPlan(text, null);
 }
 
-function calcTotalProfitMargin(data) {
-  const profitSection = data.sections.find((s) => s.id === 'profit');
-  const ordinaryProfit = profitSection?.rows.find((r) => r.id === 'ord-profit');
+const DIRECTOR_LABOR_PATTERN = /^役員報酬/;
+const STAFF_LABOR_PATTERN = /^給料手当/;
+const KPI_OVERTIME_SUB_PATTERN = /残業手当/;
 
-  const revenue = data.sections.find((s) => s.id === 'revenue');
+function getProfitMarginDenominator(data) {
+  const revenue = data?.sections?.find((s) => s.id === 'revenue');
   const revTotal = getTotalRow(revenue);
-
-  const nonOperating = data.sections.find((s) => s.id === 'nonOperating');
+  const nonOperating = data?.sections?.find((s) => s.id === 'nonOperating');
   const nonOpTotal = getTotalRow(nonOperating);
-
   const sales = revTotal?.values.合計 ?? 0;
   const nonOpIncome = nonOpTotal?.values.合計 ?? 0;
-  const denominator = sales + nonOpIncome;
-  if (denominator === 0) return null;
+  return sales + nonOpIncome;
+}
 
+/** 労働分配率の分母（付加価値 = 営業利益 + 人件費合計） */
+function getLaborShareDenominator(data) {
+  const profitSection = data?.sections?.find((s) => s.id === 'profit');
+  const operating = profitSection?.rows.find((r) => r.id === 'op-profit')?.values.合計 ?? 0;
+  const personnel = data?.sections?.find((s) => s.id === 'personnel');
+  const personnelTotal = getTotalRow(personnel)?.values.合計 ?? 0;
+  return operating + personnelTotal;
+}
+
+function sumPersonnelAccountByPattern(section, labelPattern) {
+  if (!section?.rows) return 0;
+  let total = 0;
+  for (const row of section.rows) {
+    if (row.type !== 'item' && row.type !== 'group') continue;
+    if (!labelPattern.test(row.label ?? '')) continue;
+    total += row.values?.合計 ?? 0;
+  }
+  return total;
+}
+
+function calcShareRatePercent(numerator, denominator) {
+  if (!denominator) return null;
+  return (numerator / denominator) * 100;
+}
+
+function countPersonnelHeadcountByPattern(section, labelPattern, { excludeOvertime = false } = {}) {
+  if (!section?.rows) return 0;
+  let count = 0;
+  for (const row of section.rows) {
+    if (!labelPattern.test(row.label ?? '')) continue;
+    if ((row.values?.合計 ?? 0) === 0) continue;
+    if (row.type === 'sub') {
+      if (excludeOvertime && KPI_OVERTIME_SUB_PATTERN.test(row.subLabel ?? '')) continue;
+      if (row.subLabel && row.subLabel !== '補助科目なし') count += 1;
+      continue;
+    }
+    if (row.type === 'item' && row.subLabel && row.subLabel !== '補助科目なし') {
+      count += 1;
+    }
+  }
+  return count;
+}
+
+/** 人件費行から役員・社員人数を推定（従業員マスタ未設定時のフォールバック） */
+function inferPersonnelHeadcounts(personnel) {
+  if (!personnel?.rows) return { directorCount: 0, staffCount: 0 };
+  let directorCount = 0;
+  let staffCount = 0;
+  for (const row of personnel.rows) {
+    if (row.type !== 'plan') continue;
+    if (row.id?.startsWith('emp-plan-d-')) {
+      if ((row.values?.合計 ?? 0) !== 0) directorCount += 1;
+    } else if (row.id?.startsWith('emp-plan-m-')) staffCount += 1;
+  }
+  if (directorCount > 0 || staffCount > 0) {
+    return { directorCount, staffCount };
+  }
+  return {
+    directorCount: countPersonnelHeadcountByPattern(personnel, DIRECTOR_LABOR_PATTERN),
+    staffCount: countPersonnelHeadcountByPattern(personnel, STAFF_LABOR_PATTERN, {
+      excludeOvertime: true,
+    }),
+  };
+}
+
+function calcPayGapRatio(directorTotal, staffTotal, directorCount, staffCount) {
+  if (!directorCount || !staffCount || staffTotal <= 0) return null;
+  const directorAvg = directorTotal / directorCount;
+  const staffAvg = staffTotal / staffCount;
+  if (staffAvg <= 0) return null;
+  return directorAvg / staffAvg;
+}
+
+/** 総利益率・労働分配率・格差倍率（ヘッダー KPI 用） */
+function calcPlanKpiMetrics(data, options = {}) {
+  if (!data?.sections) return null;
+  const profitDenominator = getProfitMarginDenominator(data);
+  const valueAdded = getLaborShareDenominator(data);
+
+  const profitSection = data.sections.find((s) => s.id === 'profit');
+  const ordinaryProfit = profitSection?.rows.find((r) => r.id === 'ord-profit');
   const ordinary = ordinaryProfit?.values.合計 ?? 0;
-  return (ordinary / denominator) * 100;
+
+  const personnel = data.sections.find((s) => s.id === 'personnel');
+  const personnelTotal = getTotalRow(personnel)?.values.合計 ?? 0;
+  const directorTotal = sumPersonnelAccountByPattern(personnel, DIRECTOR_LABOR_PATTERN);
+  const staffTotal = personnelTotal - directorTotal;
+
+  let directorCount = options.directorCount;
+  let staffCount = options.staffCount;
+  if (directorCount == null || staffCount == null) {
+    const inferred = inferPersonnelHeadcounts(personnel);
+    directorCount = directorCount ?? inferred.directorCount;
+    staffCount = staffCount ?? inferred.staffCount;
+  }
+
+  const nullLabor = {
+    laborShareRate: null,
+    directorLaborShareRate: null,
+    staffLaborShareRate: null,
+    payGapRatio: calcPayGapRatio(directorTotal, staffTotal, directorCount, staffCount),
+  };
+
+  return {
+    profitMargin: profitDenominator
+      ? calcShareRatePercent(ordinary, profitDenominator)
+      : null,
+    ...(valueAdded > 0
+      ? {
+        laborShareRate: calcShareRatePercent(personnelTotal, valueAdded),
+        directorLaborShareRate: calcShareRatePercent(directorTotal, valueAdded),
+        staffLaborShareRate: calcShareRatePercent(staffTotal, valueAdded),
+        payGapRatio: calcPayGapRatio(directorTotal, staffTotal, directorCount, staffCount),
+      }
+      : nullLabor),
+  };
+}
+
+function calcTotalProfitMargin(data) {
+  return calcPlanKpiMetrics(data)?.profitMargin ?? null;
 }
 
 /* parse/aggregateFormula.js */
@@ -5211,6 +5328,86 @@ function miscIncomeHasPlanValues(monthly, fiscalMonths) {
   return fiscalMonths.some((month) => (monthly[month] ?? 0) !== 0);
 }
 
+/* config/planKpiConfig.js */
+/** 自動生成 — 編集は scripts/gen-plan-kpi-config.mjs の PLAN_KPI_MESSAGES から行う */
+const PLAN_KPI_TOOLTIPS = {
+  profitMargin: {
+    rangeMin: 3,
+    rangeMax: 8,
+    formula: "経常利益÷(売上高合計+営業外収益合計)×100",
+    benchmark: "約3～8％(業種により差が大きい)",
+    tipHigh: "利益率は良好です。成長投資（設備・採用・研修）や内部留保のバランスを検討しましょう。",
+    tipLow: "売上の確保・単価見直し、外注費・諸経費の見直しで収益改善を検討しましょう。人件費の効率化も確認してください。",
+  },
+  laborShareRate: {
+    rangeMin: 60,
+    rangeMax: 70,
+    formula: "人件費合計÷付加価値×100",
+    formulaNote: "付加価値 = 営業利益 + 人件費合計",
+    benchmark: "約60～70％",
+    tipHigh: "人件費が付加価値に対して高めです。採用計画・残業・賞与の見直しや、1人あたり売上・利益の向上を検討しましょう。",
+    tipLow: "人件費比率が低めです。待遇の競争力や採用・定着リスクがないか確認しましょう。過度なコスト削減になっていないかも点検してください。",
+  },
+  directorLaborShareRate: {
+    rangeMin: 5,
+    rangeMax: 15,
+    formula: "役員報酬÷付加価値×100",
+    formulaNote: "報酬ゼロの役員は人数に含めません",
+    benchmark: "約5～15％",
+    tipHigh: "役員報酬が付加価値に対して高めです。報酬水準・人数・業務分担の見直しを検討しましょう。",
+    tipLow: "役員報酬が低めです。役員の負担過多や、適正な報酬・インセンティブが確保できているか確認しましょう。",
+  },
+  staffLaborShareRate: {
+    rangeMin: 45,
+    rangeMax: 60,
+    formula: "(人件費合計−役員報酬)÷付加価値×100",
+    formulaNote: "社員の人件費は給料・法定福利費などを含みます",
+    benchmark: "約45～60％",
+    tipHigh: "社員の人件費が高めです。給与・賞与・残業・法定福利費・人数の見直しや生産性向上で改善を検討しましょう。",
+    tipLow: "社員の人件費が低めです。給与水準の競争力、採用・定着・モチベーションへの影響を確認しましょう。",
+  },
+  payGapRatio: {
+    rangeMin: 3,
+    rangeMax: 6,
+    formula: "役員1人あたり平均報酬÷社員1人あたり平均人件費",
+    formulaNote: "報酬ゼロの役員は人数に含めません",
+    benchmark: "約3～6倍",
+    tipHigh: "役員と社員の報酬格差が大きめです。役員報酬の見直しや、社員側の待遇改善のバランスを検討しましょう。",
+    tipLow: "報酬格差が小さめです。役員の適正報酬や責任範囲との整合を確認しましょう。",
+  }
+};
+
+function getKpiValueStatus(value, rangeMin, rangeMax) {
+  if (value === null || value === undefined || Number.isNaN(value)) return null;
+  if (value > rangeMax) return 'high';
+  if (value < rangeMin) return 'low';
+  return 'ok';
+}
+
+function getPlanKpiTooltip(key, value = null) {
+  const item = PLAN_KPI_TOOLTIPS[key];
+  if (!item) return '';
+  const lines = [`【計算式】`, item.formula, ''];
+  if (item.formulaNote) lines.push(item.formulaNote, '');
+  lines.push(`【中小企業の目安】`, item.benchmark, '');
+
+  const status = getKpiValueStatus(value, item.rangeMin, item.rangeMax);
+  if (status === 'high') lines.push('※現在は目安より高めです', '');
+  else if (status === 'low') lines.push('※現在は目安より低めです', '');
+  else if (status === 'ok') lines.push('※現在は目安の範囲内です', '');
+
+  lines.push(
+    `【TIPS】`,
+    '',
+    `【目安より高い場合】`,
+    item.tipHigh,
+    '',
+    `【目安より低い場合】`,
+    item.tipLow,
+  );
+  return lines.join('\n');
+}
+
 /* enrich/planEmployeeSalaryRows.js */
 const DIRECTOR_ACCOUNT = '役員報酬';
 const SALARY_ACCOUNT = '給料手当';
@@ -5263,8 +5460,10 @@ function makePlanRow(id, label, subLabel, values) {
 function sumNonPlanRows(rows) {
   const total = emptyRawMonthValues();
   for (const row of rows) {
-    if (row.type === 'plan' || row.type === 'total') continue;
-    addRawMonthValues(total, row.values);
+    if (row.type === 'total' || row.type === 'breakdown' || row.type === 'sub' || row.type === 'plan') continue;
+    if (row.type === 'item' || row.type === 'group') {
+      addRawMonthValues(total, row.values);
+    }
   }
   return enrichRowValues(total, 'flow');
 }
@@ -6848,8 +7047,10 @@ function outRebuildOutsourcingRows(
 function outSumNonPlanRows(rows) {
   const total = outEmptyRawMonthValues();
   for (const row of rows) {
-    if (row.type === 'plan' || row.type === 'total' || row.type === 'breakdown') continue;
-    outAddRawMonthValues(total, row.values);
+    if (row.type === 'total' || row.type === 'breakdown' || row.type === 'sub') continue;
+    if (row.type === 'item' || row.type === 'group' || row.type === 'plan') {
+      outAddRawMonthValues(total, row.values);
+    }
   }
   return enrichRowValues(total, 'flow');
 }
@@ -7823,11 +8024,14 @@ function rawValuesFromRow(row) {
   return values;
 }
 
-function sumNonPlanRows(rows) {
+function sumNonPlanRows(rows, { includePlanRows = false } = {}) {
   const total = emptyRawMonthValues();
   for (const row of rows) {
-    if (row.type === 'plan' || row.type === 'total') continue;
-    addRawMonthValues(total, row.values);
+    if (row.type === 'total' || row.type === 'breakdown' || row.type === 'sub') continue;
+    if (row.type === 'plan' && !includePlanRows) continue;
+    if (row.type === 'item' || row.type === 'group' || row.type === 'plan') {
+      addRawMonthValues(total, row.values);
+    }
   }
   return enrichRowValues(total, 'flow');
 }
@@ -7970,7 +8174,9 @@ function enrichSectionRowsWithAverageFill(
   if (totalIdx >= 0) {
     rows[totalIdx] = {
       ...rows[totalIdx],
-      values: sumNonPlanRows(rows),
+      values: sumNonPlanRows(rows, {
+        includePlanRows: section.id === OTHER_SECTION_ID,
+      }),
     };
   }
 
@@ -12165,16 +12371,87 @@ function resetPlanBodyScroll() {
 }
 const mainTabs = document.getElementById('plan-main-tabs');
 const toolbar = document.getElementById('plan-toolbar');
-const kpiEl = document.getElementById('plan-kpi');
+const kpiMainEl = document.getElementById('plan-kpi-main');
+const kpiSubEl = document.getElementById('plan-kpi-sub');
 
-function setPlanKpi(margin) {
-  if (margin === null || margin === undefined) {
-    kpiEl.textContent = '—';
-    kpiEl.classList.remove('plan-kpi-negative');
+function formatKpiRate(value) {
+  if (value === null || value === undefined) return '—';
+  return `${value.toFixed(2)}%`;
+}
+
+function formatKpiMultiple(value) {
+  if (value === null || value === undefined) return '—';
+  return `${value.toFixed(2)}倍`;
+}
+
+function buildPlanKpiOptions() {
+  const active = employees.filter(isSalaryPlanEmployee);
+  if (active.length === 0) return {};
+  const fiscalMonths = buildFiscalYearMonths(appSettings.fiscalEndMonth);
+  const directorCount = active
+    .filter(isDirectorEmployee)
+    .filter((emp) => {
+      const plan = getEmployeeSalaryPlan(
+        salaryPlans,
+        appSettings.fiscalPeriod,
+        emp.id,
+        emp,
+        fiscalMonths,
+      );
+      return computeSalaryPlanEmployeeTotal(plan, fiscalMonths) > 0;
+    })
+    .length;
+  return {
+    directorCount,
+    staffCount: active.filter((emp) => !isDirectorEmployee(emp)).length,
+  };
+}
+
+function createKpiItem(label, valueText, tooltipKey, className, numericValue = null) {
+  const span = document.createElement('span');
+  span.className = className;
+  span.title = getPlanKpiTooltip(tooltipKey, numericValue);
+  span.textContent = `${label} ${valueText}`;
+  return span;
+}
+
+function setPlanKpi(metrics) {
+  if (!kpiMainEl || !kpiSubEl) return;
+  if (metrics === null || metrics === undefined) {
+    kpiMainEl.replaceChildren();
+    kpiMainEl.textContent = '—';
+    kpiSubEl.replaceChildren();
+    kpiMainEl.classList.remove('plan-kpi-negative');
     return;
   }
-  kpiEl.textContent = `総利益率 ${margin.toFixed(2)}%`;
-  kpiEl.classList.toggle('plan-kpi-negative', margin < 0);
+  const margin = metrics.profitMargin;
+  kpiMainEl.replaceChildren();
+  kpiMainEl.appendChild(createKpiItem(
+    '総利益率',
+    margin != null ? formatKpiRate(margin) : '—',
+    'profitMargin',
+    'plan-kpi-main-item',
+    margin,
+  ));
+  kpiMainEl.classList.toggle('plan-kpi-negative', margin != null && margin < 0);
+
+  kpiSubEl.replaceChildren();
+  const subItems = [
+    ['労働分配率', formatKpiRate(metrics.laborShareRate), 'laborShareRate', metrics.laborShareRate],
+    ['役員労働分配率', formatKpiRate(metrics.directorLaborShareRate), 'directorLaborShareRate', metrics.directorLaborShareRate],
+    ['社員労働分配率', formatKpiRate(metrics.staffLaborShareRate), 'staffLaborShareRate', metrics.staffLaborShareRate],
+    ['格差倍率', formatKpiMultiple(metrics.payGapRatio), 'payGapRatio', metrics.payGapRatio],
+  ];
+  subItems.forEach(([label, value, tooltipKey, numericValue], index) => {
+    if (index > 0) {
+      const sep = document.createElement('span');
+      sep.className = 'plan-kpi-sep';
+      sep.textContent = ' / ';
+      sep.setAttribute('aria-hidden', 'true');
+      kpiSubEl.appendChild(sep);
+    }
+    kpiSubEl.appendChild(createKpiItem(label, value, tooltipKey, 'plan-kpi-sub-item', numericValue));
+  });
 }
 
 function cachePlanTableColumnWidthsFromDom() {
@@ -13494,7 +13771,7 @@ function persistRevenueManMonths(clientId, nextManMonths) {
     fiscalMonths,
   );
   refreshSectionColors();
-  setPlanKpi(calcTotalProfitMargin(data));
+  setPlanKpi(calcPlanKpiMetrics(data, buildPlanKpiOptions()));
   applyRevenueManMonthEditDom(root.querySelector('.plan-table'), clientId);
 }
 
@@ -15566,7 +15843,7 @@ function applyPlanMonthDisplayDom(table) {
     });
   }
 
-  setPlanKpi(calcTotalProfitMargin(data));
+  setPlanKpi(calcPlanKpiMetrics(data, buildPlanKpiOptions()));
 }
 
 function togglePlanMonthDisplay(monthLabel) {
@@ -15606,7 +15883,7 @@ function renderTable({ measureColumnWidths = false } = {}) {
   const scrollTop = preserveScroll ? (body?.scrollTop ?? existingWrap?.scrollTop ?? 0) : 0;
   const scrollLeft = preserveScroll ? (body?.scrollLeft ?? existingWrap?.scrollLeft ?? 0) : 0;
 
-  setPlanKpi(calcTotalProfitMargin(data));
+  setPlanKpi(calcPlanKpiMetrics(data, buildPlanKpiOptions()));
 
   const allSections = data.sections;
   const highlightFiscalMonth = getHighlightFiscalMonth();

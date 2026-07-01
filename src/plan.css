@@ -165,9 +165,10 @@ body {
   margin-bottom: 0.625rem;
   position: relative;
   box-sizing: border-box;
-  padding-block: 10px;
-  min-height: calc(var(--plan-header-top-height) + 20px);
-  height: calc(var(--plan-header-top-height) + 20px);
+  padding-top: 10px;
+  padding-bottom: 5px;
+  min-height: calc(var(--plan-header-top-height) + 15px);
+  height: calc(var(--plan-header-top-height) + 15px);
 }
 
 .plan-logo {
@@ -371,6 +372,9 @@ body {
 }
 
 .plan-kpi {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
   font-size: 1.25rem;
   font-weight: 700;
   color: var(--plan-text);
@@ -381,8 +385,34 @@ body {
   letter-spacing: -0.02em;
 }
 
-.plan-kpi.plan-kpi-negative {
+.plan-kpi-main.plan-kpi-negative {
   color: var(--plan-negative-amount);
+}
+
+.plan-kpi-main-item,
+.plan-kpi-sub-item {
+  cursor: help;
+}
+
+.plan-kpi-main-item:hover,
+.plan-kpi-sub-item:hover {
+  color: var(--plan-expandable-highlight);
+}
+
+.plan-kpi-sep {
+  cursor: default;
+  text-decoration: none;
+}
+
+.plan-kpi-sub {
+  margin-top: 0.2rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--plan-muted);
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.35;
 }
 
 .plan-header-nav {
@@ -394,7 +424,7 @@ body {
   min-width: 0;
   overflow-x: auto;
   scrollbar-width: thin;
-  padding-bottom: 10px;
+  padding-bottom: 0;
 }
 
 .plan-header-nav::-webkit-scrollbar {
