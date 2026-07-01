@@ -35,7 +35,7 @@ function getDefaultPlanFromMonth(fiscalMonths = FISCAL_MONTHS) {
   return idx >= 0 ? fiscalMonths[idx] : fiscalMonths[0];
 }
 
-/** 計画表示が始まる月の会計月インデックス（未設定は最初のト0グル対象月） */
+/** 計画表示が始まる月の会計月インデックス（未設定は最初のトグル対象月） */
 export function getFirstPlanMonthIndex(config, fiscalPeriod, fiscalMonths = FISCAL_MONTHS) {
   const periodKey = String(fiscalPeriod);
   const entry = config?.[periodKey];

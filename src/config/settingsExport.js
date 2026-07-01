@@ -20,7 +20,7 @@ function prepareSettingsValueForImport(key, value) {
   return mergeAppSettingsForImport(value);
 }
 
-/** Excluded from export/import (per-device font scale and row padding). */
+/** エクスポート／インポート対象外（端末ごとのフォント倍率・行余白）。 */
 const APP_SETTINGS_EXCLUDED_KEYS = ['fontScale', 'rowPaddingScale', 'fontScaleUi'];
 
 export const ALL_SETTINGS_STORAGE_KEYS = [

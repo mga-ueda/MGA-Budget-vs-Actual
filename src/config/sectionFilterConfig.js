@@ -1,16 +1,16 @@
 const SECTION_FILTER_STORAGE_KEY = 'mga-section-filter';
 
-/** Section has a visible category-column label (filter button target). */
+/** 区分列ラベルが表示される大項目（フィルターボタンの対象）。 */
 export function isPlanSectionFilterTarget(section) {
   return Boolean(section?.label) && !section.hideCategory;
 }
 
-/** section.id list in plan table order. */
+/** 予実表の並び順での section.id 一覧。 */
 export function getPlanSectionFilterIds(sections = []) {
   return sections.filter(isPlanSectionFilterTarget).map((s) => s.id);
 }
 
-/** Filter key for row visibility (rows without category follow a parent section). */
+/** 行表示のフィルターキー（区分のない行は親大項目に従う）。 */
 export function getSectionFilterKey(section) {
   if (!section) return null;
   if (isPlanSectionFilterTarget(section)) return section.id;
@@ -51,7 +51,7 @@ export function isAllSectionFiltersEnabled(config, sectionIds = []) {
   return sectionIds.every((id) => config[id] !== false);
 }
 
-/** True when only filterId is enabled (solo display). */
+/** filterId のみが有効なとき（単独表示）。 */
 export function isSoloSectionFilter(config, sectionIds = [], filterId) {
   return sectionIds.every((id) => config[id] === (id === filterId));
 }

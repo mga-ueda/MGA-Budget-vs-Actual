@@ -882,17 +882,17 @@ function getSectionTextColor(sectionId, sections, config = {}, mode = 'dark') {
 /* config/sectionFilterConfig.js */
 const SECTION_FILTER_STORAGE_KEY = 'mga-section-filter';
 
-/** Section has a visible category-column label (filter button target). */
+/** 区分列ラベルが表示される大項目（フィルターボタンの対象）。 */
 function isPlanSectionFilterTarget(section) {
   return Boolean(section?.label) && !section.hideCategory;
 }
 
-/** section.id list in plan table order. */
+/** 予実表の並び順での section.id 一覧。 */
 function getPlanSectionFilterIds(sections = []) {
   return sections.filter(isPlanSectionFilterTarget).map((s) => s.id);
 }
 
-/** Filter key for row visibility (rows without category follow a parent section). */
+/** 行表示のフィルターキー（区分のない行は親大項目に従う）。 */
 function getSectionFilterKey(section) {
   if (!section) return null;
   if (isPlanSectionFilterTarget(section)) return section.id;
@@ -933,7 +933,7 @@ function isAllSectionFiltersEnabled(config, sectionIds = []) {
   return sectionIds.every((id) => config[id] !== false);
 }
 
-/** True when only filterId is enabled (solo display). */
+/** filterId のみが有効なとき（単独表示）。 */
 function isSoloSectionFilter(config, sectionIds = [], filterId) {
   return sectionIds.every((id) => config[id] === (id === filterId));
 }
@@ -5125,7 +5125,7 @@ function sumRowClusterMonthValues(rows) {
   return total;
 }
 
-/** Plan rows があればその合計、なければ CSV 行の合計 */
+/** 計画行があればその合計、なければ CSV 行の合計 */
 function combineCsvAndPlanClusterTotals(csvRows, planRows, fiscalMonths) {
   if (planRows.length > 0) {
     return sumRowClusterMonthValues(planRows);
@@ -7118,7 +7118,7 @@ function revHasBudgetActualMonthFilter(skipPlanFillMonths, forcePlanMonths) {
   return (skipPlanFillMonths?.size ?? 0) > 0 || (forcePlanMonths?.size ?? 0) > 0;
 }
 
-/** plan / man-month: hide plan values in actual-display months (budget-actual). */
+/** 計画行・人月行: 実績表示月では計画値を非表示（予実モード）。 */
 function revApplyBudgetActualMonthDisplayToPlanRow(
   row,
   fiscalMonths,
@@ -8201,7 +8201,7 @@ function getDefaultPlanFromMonth(fiscalMonths = FISCAL_MONTHS) {
   return idx >= 0 ? fiscalMonths[idx] : fiscalMonths[0];
 }
 
-/** 計画表示が始まる月の会計月インデックス（未設定は最初のト0グル対象月） */
+/** 計画表示が始まる月の会計月インデックス（未設定は最初のトグル対象月） */
 function getFirstPlanMonthIndex(config, fiscalPeriod, fiscalMonths = FISCAL_MONTHS) {
   const periodKey = String(fiscalPeriod);
   const entry = config?.[periodKey];
@@ -8958,7 +8958,7 @@ function prepareSettingsValueForImport(key, value) {
   return mergeAppSettingsForImport(value);
 }
 
-/** Excluded from export/import (per-device font scale and row padding). */
+/** エクスポート／インポート対象外（端末ごとのフォント倍率・行余白）。 */
 const APP_SETTINGS_EXCLUDED_KEYS = ['fontScale', 'rowPaddingScale', 'fontScaleUi'];
 
 const ALL_SETTINGS_STORAGE_KEYS = [

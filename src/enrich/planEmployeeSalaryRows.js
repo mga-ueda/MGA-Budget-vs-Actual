@@ -126,7 +126,7 @@ function sumRowClusterMonthValues(rows) {
   return total;
 }
 
-/** Plan rows があればその合計、なければ CSV 行の合計 */
+/** 計画行があればその合計、なければ CSV 行の合計 */
 function combineCsvAndPlanClusterTotals(csvRows, planRows, fiscalMonths) {
   if (planRows.length > 0) {
     return sumRowClusterMonthValues(planRows);

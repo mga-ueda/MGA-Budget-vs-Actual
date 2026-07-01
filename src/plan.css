@@ -1532,8 +1532,7 @@ select.app-settings-input {
 
 .plan-footer {
   padding: 0.45rem 1rem 1.5rem;
-  border-top: 1px solid var(--plan-border);
-  background: linear-gradient(180deg, color-mix(in srgb, var(--plan-browser-bg) 96%, var(--plan-surface)) 0%, var(--plan-browser-bg) 100%);
+  background: transparent;
   text-align: center;
   line-height: 1.5;
 }

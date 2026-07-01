@@ -97,7 +97,7 @@ function updateExpenseAccountConfig(accounts) {
     arrayBlock,
   );
   if (updated === source) {
-    throw new Error('EXPENSE_SECTION_ACCOUNTSのfOfに失敗しました');
+    throw new Error('EXPENSE_SECTION_ACCOUNTSの更新に失敗しました');
   }
   writeFileSync(configPath, updated, { encoding: 'utf8' });
 }
@@ -138,7 +138,7 @@ if (unchanged) {
   updateExpenseAccountConfig(merged);
   execSync('node scripts/check-encoding.mjs', { cwd: repoRoot, stdio: 'inherit' });
   execSync('node build.mjs', { cwd: repoRoot, stdio: 'inherit' });
-  console.log(`fOfしました: ${configPath}`);
+  console.log(`更新しました: ${configPath}`);
   console.log(`追加 ${additions.length} 科目: ${additions.join('、') || 'なし'}`);
   console.log(`合計 ${merged.length} 科目。 ${outputPath} を出力しました。`);
 }

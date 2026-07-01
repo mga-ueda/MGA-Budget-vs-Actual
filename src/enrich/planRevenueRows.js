@@ -165,7 +165,7 @@ function revHasBudgetActualMonthFilter(skipPlanFillMonths, forcePlanMonths) {
   return (skipPlanFillMonths?.size ?? 0) > 0 || (forcePlanMonths?.size ?? 0) > 0;
 }
 
-/** plan / man-month: hide plan values in actual-display months (budget-actual). */
+/** 計画行・人月行: 実績表示月では計画値を非表示（予実モード）。 */
 function revApplyBudgetActualMonthDisplayToPlanRow(
   row,
   fiscalMonths,
