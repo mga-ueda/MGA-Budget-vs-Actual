@@ -18,7 +18,7 @@ import { visibilityRowKey, rowTypeLabel } from '../config/visibilityConfig.js';
 const REV_NO_SUB_LABEL = '補助科目なし';
 const REVENUE_SECTION_LABEL = '売上高';
 const REVENUE_ACCOUNT_LABEL = '売上高';
-const REV_MAN_MONTH_SUB_LABEL = '\u4eba\u6708';
+const REV_MAN_MONTH_SUB_LABEL = '人月';
 
 function revEmptyRawMonthValues() {
   const values = {};

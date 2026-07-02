@@ -1,5 +1,5 @@
 /**
- * 全期の仕訳 CSVから諸経費勘定科目を掃描し、expenseAccountConfig.jsを更新する。
+ * 全期の仕訳 CSVから諸経費勘定科目をスキャンし、expenseAccountConfig.jsを更新する。
  * 実行: scan-expense.bat または node scripts/scan-expense-accounts.mjs
  */
 import { readFileSync, writeFileSync, existsSync } from 'fs';

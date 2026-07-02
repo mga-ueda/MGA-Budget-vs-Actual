@@ -1,6 +1,6 @@
 import { getFiscalPeriodForDate } from './appSettings.js';
 
-/** 期番号キーのエントリから指定期未未のデータを削除する。 */
+/** 期番号キーのエントリから指定した期より前のデータを削除する。 */
 export function purgePeriodKeyedStorage(storageObject, firstKeptPeriod) {
   if (!storageObject || typeof storageObject !== 'object') {
     return { data: storageObject, changed: false };
@@ -17,7 +17,7 @@ export function purgePeriodKeyedStorage(storageObject, firstKeptPeriod) {
   return { data: next, changed };
 }
 
-/** 終了した期の計画データをまとに削除する。 */
+/** 終了した期の計画データをまとめて削除する。 */
 export function purgeClosedPeriodPlanStorage({
   businessStartYear,
   date = new Date(),

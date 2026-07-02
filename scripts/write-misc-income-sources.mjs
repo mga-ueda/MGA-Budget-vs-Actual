@@ -152,7 +152,7 @@ function miIsMiscIncomeAccount(label) {
   const normalized = String(label).normalize('NFKC');
   const canonical = MISC_INCOME_ACCOUNT.normalize('NFKC');
   if (normalized === canonical) return true;
-  return normalized.charCodeAt(0) === 0x96d1 && normalized.endsWith('\u5165');
+  return normalized.charCodeAt(0) === 0x96d1 && normalized.endsWith('入');
 }
 
 function miIsMiscIncomePlanRow(row) {

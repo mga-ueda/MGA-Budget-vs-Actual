@@ -41,10 +41,10 @@ import {
 import { buildMonthYearMap, formatFiscalPeriodLabel } from '../config/appSettings.js';
 import { getSettingsLockedMonths } from '../config/monthDisplayConfig.js';
 
-const REVENUE_ACCOUNT = '\u58f2\u4e0a\u9ad8';
-const ROW_MAN_MONTHS = '\u4eba\u6708';
-const ROW_UNIT_PRICE = '\u4eba\u6708\u5358\u4fa1';
-const ROW_REVENUE = '\u58f2\u4e0a';
+const REVENUE_ACCOUNT = '売上高';
+const ROW_MAN_MONTHS = '人月';
+const ROW_UNIT_PRICE = '人月単価';
+const ROW_REVENUE = '売上';
 
 function cloneMonthly(source, fiscalMonths) {
   const next = {};
@@ -150,12 +150,12 @@ export function mountRevenueSettingsPanel({
   header.className = 'expand-settings-header tax-payment-settings-header';
   header.innerHTML = `
     <p class="expand-settings-desc">
-      \u58f2\u4e0a\u9ad8\u306e\u53d7\u6ce8\u8a08\u753b\u3092\u4eba\u6708\u3067\u5165\u529b\u3057\u307e\u3059\u3002\u53d7\u6ce8\u5148\u3054\u3068\u306b\u6708\u3054\u3068\u306e\u4eba\u6708\u5358\u4fa1\u3092\u5165\u529b\u3057\u307e\u3059\u3002\u58f2\u4e0a\u306f\u5b9f\u7e3e\u6708\u306f\u4ed5\u8a33CSV\u306e\u5b9f\u7e3e\u3001\u305d\u308c\u4ee5\u5916\u306f\u4eba\u6708\u00d7\u5358\u4fa1\u306e\u8a08\u753b\uFF08\u6D88\u8CBB\u7A0E\u8FBC\uFF09\u3067\u3059\u3002\u4eba\u6708\u306f Shift+Enter \u3067\u5165\u529b\u6708\u4ee5\u964d\u306b\u540c\u5024\u3092\u5f15\u304d\u7d99\u304e\u307e\u3059\uFF080 \u3082\u53ef\uFF09\u3002Enter \u306f\u305d\u306e\u6708\u306e\u307f\u53cd\u6620\u3057\u307e\u3059\u3002\u4eca\u671f\u306e\u5b9f\u7e3e\u6708\u306f\u4ed5\u8a33\u5b9f\u7e3e\u6708\u3068\u3057\u3066\u7de8\u96c6\u4e0d\u53ef\u3067\u3059\u3002\u8a2d\u5b9a\u306f\u30d6\u30e9\u30a6\u30b6\u306b\u4fdd\u5b58\u3055\u308c\u3001\u4e88\u5b9f\u8868\u306e\u300c\u58f2\u4e0a\u9ad8\u300d\u306b\u53cd\u6620\u3055\u308c\u307e\u3059\u3002
+      売上高の受注計画を人月で入力します。受注先ごとに月ごとの人月単価を入力します。売上は実績月は仕訳CSVの実績、それ以外は人月\u00d7単価の計画（消費税込）です。人月は Shift+Enter で入力月以降に同値を引き継ぎます（0 も可）。Enter はその月のみ反映します。今期の実績月は仕訳実績月として編集不可です。設定はブラウザに保存され、予実表の「売上高」に反映されます。
     </p>
     <div class="tax-payment-settings-controls">
       <div class="tax-payment-plan-years-row">
-        <span class="app-settings-label">\u8a08\u753b\u5e74\u6570</span>
-        <p class="tax-payment-plan-years-hint">\u4eca\u671f\u3092\u542b\u3080\u5e74\u6570\u3067\u3059\u3002\u30c7\u30d5\u30a9\u30eb\u30c8\u306f ${DEFAULT_REVENUE_PLAN_YEARS} \u5e74\u3067\u3059\u3002</p>
+        <span class="app-settings-label">計画年数</span>
+        <p class="tax-payment-plan-years-hint">今期を含む年数です。デフォルトは ${DEFAULT_REVENUE_PLAN_YEARS} 年です。</p>
         <input
           type="number"
           class="app-settings-input tax-payment-plan-years-input"
@@ -166,7 +166,7 @@ export function mountRevenueSettingsPanel({
           inputmode="numeric"
           autocomplete="off"
           spellcheck="false"
-          aria-label="\u8a08\u753b\u5e74\u6570"
+          aria-label="計画年数"
         />
       </div>
     </div>
@@ -381,7 +381,7 @@ export function mountRevenueSettingsPanel({
   function deleteClient(client, fiscalPeriod) {
     revenuePlans = removeClientEntry(revenuePlans, fiscalPeriod, client.id, fiscalMonths);
     setRevenuePlans(revenuePlans);
-    showStatus(`${client.subLabel} \u3092\u524a\u9664\u3057\u307e\u3057\u305f\u3002`);
+    showStatus(`${client.subLabel} を削除しました。`);
     renderPlanSection();
     refreshPlanTableIfNeeded();
   }
@@ -406,7 +406,7 @@ export function mountRevenueSettingsPanel({
     upBtn.type = 'button';
     upBtn.className = 'revenue-client-order-btn';
     upBtn.textContent = '\u2191';
-    upBtn.title = '\u4e0a\u306b\u79fb\u52d5';
+    upBtn.title = '上に移動';
     upBtn.disabled = clientIndex <= 0;
     upBtn.addEventListener('click', () => moveClient(client, fiscalPeriod, -1));
 
@@ -414,7 +414,7 @@ export function mountRevenueSettingsPanel({
     downBtn.type = 'button';
     downBtn.className = 'revenue-client-order-btn';
     downBtn.textContent = '\u2193';
-    downBtn.title = '\u4e0b\u306b\u79fb\u52d5';
+    downBtn.title = '下に移動';
     downBtn.disabled = clientIndex >= clientCount - 1;
     downBtn.addEventListener('click', () => moveClient(client, fiscalPeriod, 1));
 
@@ -438,24 +438,24 @@ export function mountRevenueSettingsPanel({
         const deleteBtn = document.createElement('button');
         deleteBtn.type = 'button';
         deleteBtn.className = 'settings-delete-btn';
-        deleteBtn.textContent = '\u524a\u9664';
+        deleteBtn.textContent = '削除';
         deleteBtn.addEventListener('click', () => {
           actionsWrap.replaceChildren();
           actionsWrap.classList.add('employee-actions-confirm');
 
           const prompt = document.createElement('span');
           prompt.className = 'employee-delete-prompt';
-          prompt.textContent = '\u524a\u9664\u3057\u307e\u3059\u304b\uff1f';
+          prompt.textContent = '削除しますか？';
 
           const confirmBtn = document.createElement('button');
           confirmBtn.type = 'button';
           confirmBtn.className = 'settings-delete-btn';
-          confirmBtn.textContent = '\u524a\u9664\u3059\u308b';
+          confirmBtn.textContent = '削除する';
 
           const cancelBtn = document.createElement('button');
           cancelBtn.type = 'button';
           cancelBtn.className = 'settings-delete-cancel-btn';
-          cancelBtn.textContent = '\u30ad\u30e3\u30f3\u30bb\u30eb';
+          cancelBtn.textContent = 'キャンセル';
 
           confirmBtn.addEventListener('click', () => deleteClient(client, fiscalPeriod));
           cancelBtn.addEventListener('click', buildDefaultActions);
@@ -492,7 +492,7 @@ export function mountRevenueSettingsPanel({
       if (save) {
         const nextName = input.value.trim();
         if (!nextName) {
-          showStatus('\u53d7\u6ce8\u5148\u540d\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044\u3002', true);
+          showStatus('受注先名を入力してください。', true);
           renderPlanSection();
           return;
         }
@@ -509,16 +509,16 @@ export function mountRevenueSettingsPanel({
         );
         if (!result.ok) {
           if (result.reason === 'duplicate') {
-            showStatus('\u540c\u3058\u53d7\u6ce8\u5148\u540d\u304c\u65e2\u306b\u767b\u9332\u3055\u308c\u3066\u3044\u307e\u3059\u3002', true);
+            showStatus('同じ受注先名が既に登録されています。', true);
           } else {
-            showStatus('\u53d7\u6ce8\u5148\u540d\u306e\u5909\u66f4\u306b\u5931\u6557\u3057\u307e\u3057\u305f\u3002', true);
+            showStatus('受注先名の変更に失敗しました。', true);
           }
           renderPlanSection();
           return;
         }
         revenuePlans = result.plans;
         setRevenuePlans(revenuePlans);
-        showStatus(`\u53d7\u6ce8\u5148\u540d\u3092\u300c${nextName}\u300d\u306b\u5909\u66f4\u3057\u307e\u3057\u305f\u3002`);
+        showStatus(`受注先名を「${nextName}」に変更しました。`);
         refreshPlanTableIfNeeded();
       }
       renderPlanSection();
@@ -557,7 +557,7 @@ export function mountRevenueSettingsPanel({
     nameLabel.textContent = client.subLabel;
     if (client.manual) {
       nameLabel.classList.add('revenue-client-name-editable', 'salary-plan-cell-editable');
-      nameLabel.title = '\u30c0\u30d6\u30eb\u30af\u30ea\u30c3\u30af\u3067\u540d\u524d\u3092\u7de8\u96c6';
+      nameLabel.title = 'ダブルクリックで名前を編集';
       nameLabel.addEventListener('dblclick', () => {
         startClientNameEdit(nameLabel, client, fiscalPeriod);
       });
@@ -605,7 +605,7 @@ export function mountRevenueSettingsPanel({
             editable,
             rawValue: client.manMonths[month],
             tabScopeId: `revenue-settings-${fiscalPeriod}`,
-            title: '\u30c0\u30d6\u30eb\u30af\u30ea\u30c3\u30af\u3067\u7de8\u96c6\uFF08Shift+Enter \u3067\u5f8c\u7d9a\u6708\u3078\u540c\u5024\u3092\u53cd\u6620\u30000 \u3082\u53ef\uFF09',
+            title: 'ダブルクリックで編集（Shift+Enter で後続月へ同値を反映　0 も可）',
             formatValue: formatManMonths,
             parseValue: parseManMonthInput,
             allowShiftFillForward: true,
@@ -636,7 +636,7 @@ export function mountRevenueSettingsPanel({
             editable,
             rawValue: client.monthlyUnitPrice[month],
             tabScopeId: `revenue-settings-${fiscalPeriod}`,
-            title: '\u30c0\u30d6\u30eb\u30af\u30ea\u30c3\u30af\u3067\u7de8\u96c6\uFF08\u4eba\u6708\u5358\u4fa1\uFF09',
+            title: 'ダブルクリックで編集（人月単価）',
             formatValue: formatSalaryPlanYen,
             parseValue: parseSalaryPlanAmountInput,
             onSave: (parsed) => {
@@ -684,10 +684,10 @@ export function mountRevenueSettingsPanel({
     table.className = 'expand-settings-table salary-plan-table revenue-plan-table';
 
     const headerLabels = [
-      '\u53d7\u6ce8\u5148',
-      '\u9805\u76ee',
+      '受注先',
+      '項目',
       ...fiscalMonths,
-      '\u5408\u8a08',
+      '合計',
       '',
     ];
 
@@ -696,9 +696,9 @@ export function mountRevenueSettingsPanel({
     for (const label of headerLabels) {
       const th = document.createElement('th');
       th.textContent = label;
-      if (label === '\u53d7\u6ce8\u5148') th.className = 'salary-plan-col-name revenue-plan-col-client';
-      else if (label === '\u9805\u76ee') th.className = 'salary-plan-col-sub revenue-plan-col-kind';
-      else if (label === '\u5408\u8a08') th.className = 'salary-plan-col-total';
+      if (label === '受注先') th.className = 'salary-plan-col-name revenue-plan-col-client';
+      else if (label === '項目') th.className = 'salary-plan-col-sub revenue-plan-col-kind';
+      else if (label === '合計') th.className = 'salary-plan-col-total';
       else if (label === '') th.className = 'col-out-actions';
       else th.className = 'salary-plan-col-month';
       headerRow.appendChild(th);
@@ -713,7 +713,7 @@ export function mountRevenueSettingsPanel({
       const emptyTd = document.createElement('td');
       emptyTd.colSpan = headerLabels.length;
       emptyTd.className = 'expand-settings-empty';
-      emptyTd.textContent = '\u53d7\u6ce8\u5148\u304c\u767b\u9332\u3055\u308c\u3066\u3044\u307e\u305b\u3093\u3002\u4eca\u671f\u306e\u4ed5\u8a33\u306b\u88dc\u52a9\u79d1\u76ee\u304c\u3042\u308b\u5834\u5408\u306f\u81ea\u52d5\u8ffd\u52a0\u3055\u308c\u307e\u3059\u3002\u624b\u52d5\u8ffd\u52a0\u3082\u53ef\u80fd\u3067\u3059\u3002';
+      emptyTd.textContent = '受注先が登録されていません。今期の仕訳に補助科目がある場合は自動追加されます。手動追加も可能です。';
       emptyRow.appendChild(emptyTd);
       tbody.appendChild(emptyRow);
       table.appendChild(tbody);
@@ -743,7 +743,7 @@ export function mountRevenueSettingsPanel({
     const manMonthTotalLabel = document.createElement('td');
     manMonthTotalLabel.colSpan = 2;
     manMonthTotalLabel.className = 'salary-plan-total-label';
-    manMonthTotalLabel.textContent = '\u5408\u8a08\uFF08\u4eba\u6708\uFF09';
+    manMonthTotalLabel.textContent = '合計（人月）';
     trManMonthTotal.appendChild(manMonthTotalLabel);
 
     let manMonthGrand = 0;
@@ -774,7 +774,7 @@ export function mountRevenueSettingsPanel({
     const totalLabel = document.createElement('td');
     totalLabel.colSpan = 2;
     totalLabel.className = 'salary-plan-total-label';
-    totalLabel.textContent = '\u5408\u8a08\uFF08\u58f2\u4e0a\uFF09';
+    totalLabel.textContent = '合計（売上）';
     trTotal.appendChild(totalLabel);
 
     let grand = 0;
@@ -813,7 +813,7 @@ export function mountRevenueSettingsPanel({
 
     const label = document.createElement('span');
     label.className = 'outsourcing-add-label';
-    label.textContent = '\u53d7\u6ce8\u5148\u540d';
+    label.textContent = '受注先名';
 
     const nameInput = document.createElement('input');
     nameInput.type = 'text';
@@ -824,12 +824,12 @@ export function mountRevenueSettingsPanel({
     const submitBtn = document.createElement('button');
     submitBtn.type = 'button';
     submitBtn.className = 'plan-csv-btn';
-    submitBtn.textContent = '\u8ffd\u52a0';
+    submitBtn.textContent = '追加';
 
     const cancelBtn = document.createElement('button');
     cancelBtn.type = 'button';
     cancelBtn.className = 'expand-reset-btn';
-    cancelBtn.textContent = '\u30ad\u30e3\u30f3\u30bb\u30eb';
+    cancelBtn.textContent = 'キャンセル';
 
     cancelBtn.addEventListener('click', () => {
       nameInput.value = '';
@@ -839,7 +839,7 @@ export function mountRevenueSettingsPanel({
     submitBtn.addEventListener('click', () => {
       const subLabel = nameInput.value.trim();
       if (!subLabel) {
-        showStatus('\u53d7\u6ce8\u5148\u540d\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044\u3002', true);
+        showStatus('受注先名を入力してください。', true);
         nameInput.focus();
         return;
       }
@@ -848,14 +848,14 @@ export function mountRevenueSettingsPanel({
         subLabel,
       });
       if (!client) {
-        showStatus('\u53d7\u6ce8\u5148\u306e\u8ffd\u52a0\u306b\u5931\u6557\u3057\u307e\u3057\u305f\u3002', true);
+        showStatus('受注先の追加に失敗しました。', true);
         return;
       }
       const existing = getClientsForPeriod(fiscalPeriod).some(
         (v) => v.accountLabel === client.accountLabel && v.subLabel === client.subLabel,
       );
       if (existing) {
-        showStatus('\u540c\u3058\u88dc\u52a9\u79d1\u76ee\u304c\u65e2\u306b\u767b\u9332\u3055\u308c\u3066\u3044\u307e\u3059\u3002', true);
+        showStatus('同じ補助科目が既に登録されています。', true);
         nameInput.focus();
         return;
       }
@@ -864,7 +864,7 @@ export function mountRevenueSettingsPanel({
       nameInput.value = '';
       const periodEntry = planPeriodEntries().find((e) => e.period === fiscalPeriod);
       const periodLabel = periodEntry?.label ?? formatFiscalPeriodLabel(fiscalPeriod);
-      showStatus(`${periodLabel}\u306b ${subLabel} \u3092\u8ffd\u52a0\u3057\u307e\u3057\u305f\u3002`);
+      showStatus(`${periodLabel}に ${subLabel} を追加しました。`);
       renderPlanSection();
       refreshPlanTableIfNeeded();
     });
@@ -885,9 +885,9 @@ export function mountRevenueSettingsPanel({
       const planHeader = document.createElement('div');
       planHeader.className = 'salary-plan-header';
       planHeader.innerHTML = `
-        <h3 class="salary-plan-title">\u58f2\u4e0a\u9ad8\u53d7\u6ce8\u8a08\u753b\u8868</h3>
+        <h3 class="salary-plan-title">売上高受注計画表</h3>
         <p class="salary-plan-desc">
-          \u6c7a\u7b97\u6708 ${appSettings.fiscalEndMonth}\u6708 \u3092\u57fa\u6e96\u3068\u3057\u305f12\u304b\u6708\u5206\u3067\u3059\u3002\u5404\u53d7\u6ce8\u5148\u306f\u4eba\u6708\u30fb\u4eba\u6708\u5358\u4fa1\u30fb\u58f2\u4e0a\uFF08\u81ea\u52d5\u8a08\u7b97\uFF09\u306e3\u884c\u3067\u8868\u793a\u3057\u307e\u3059\u3002
+          決算月 ${appSettings.fiscalEndMonth}月 を基準とした12か月分です。各受注先は人月・人月単価・売上（自動計算）の3行で表示します。
         </p>
       `;
       section.appendChild(planHeader);
@@ -947,7 +947,7 @@ export function mountRevenueSettingsPanel({
       if (editable) {
         td.classList.add('salary-plan-cell-editable');
         tagPlanEditableCell(td, { month });
-        td.title = '\u30c0\u30d6\u30eb\u30af\u30ea\u30c3\u30af\u3067\u7de8\u96c6\uff08Shift+Enter \u3067\u5f8c\u7d9a\u6708\u3078\u540c\u984d\u3092\u53cd\u6620\uff09';
+        td.title = 'ダブルクリックで編集（Shift+Enter で後続月へ同額を反映）';
         td.textContent = formatSalaryPlanYen(value);
         td.addEventListener('dblclick', () => {
           if (td.querySelector('input')) return;
@@ -1017,9 +1017,9 @@ export function mountRevenueSettingsPanel({
       table.className = 'expand-settings-table salary-plan-table misc-income-plan-table';
 
       const headerLabels = [
-        '\u9805\u76ee',
+        '項目',
         ...fiscalMonths,
-        '\u5408\u8a08',
+        '合計',
       ];
 
       const thead = document.createElement('thead');
@@ -1027,8 +1027,8 @@ export function mountRevenueSettingsPanel({
       for (const label of headerLabels) {
         const th = document.createElement('th');
         th.textContent = label;
-        if (label === '\u9805\u76ee') th.className = 'salary-plan-col-name';
-        else if (label === '\u5408\u8a08') th.className = 'salary-plan-col-total';
+        if (label === '項目') th.className = 'salary-plan-col-name';
+        else if (label === '合計') th.className = 'salary-plan-col-total';
         else th.className = 'salary-plan-col-month';
         headerRow.appendChild(th);
       }
@@ -1083,9 +1083,9 @@ export function mountRevenueSettingsPanel({
     const planHeader = document.createElement('div');
     planHeader.className = 'salary-plan-header salary-plan-header-spaced';
     planHeader.innerHTML = `
-      <h3 class="salary-plan-title">\u96d1\u6536\u5165\u8a08\u753b</h3>
+      <h3 class="salary-plan-title">雑収入計画</h3>
       <p class="salary-plan-desc">
-        \u55b6\u696d\u5916\u6536\u76ca\u306e\u300c\u96d1\u6536\u5165\u300d\u306e\u6708\u6b21\u8a08\u753b\u3092\u5165\u529b\u3057\u307e\u3059\u3002\u4eca\u671f\u30fb\u6765\u671f\u306e\u307f\u8a2d\u5b9a\u3067\u304d\u307e\u3059\u3002\u4eca\u671f\u306e\u5b9f\u7e3e\u8868\u793a\u6708\u306f\u7de8\u96c6\u3067\u304d\u307e\u305b\u3093\u3002\u8a2d\u5b9a\u306f\u4e88\u5b9f\u8868\u306e\u300c\u55b6\u696d\u5916\u6536\u76ca\u300d\u306b\u53cd\u6620\u3055\u308c\u307e\u3059\u3002
+        営業外収益の「雑収入」の月次計画を入力します。今期・来期のみ設定できます。今期の実績表示月は編集できません。設定は予実表の「営業外収益」に反映されます。
       </p>
     `;
     section.appendChild(planHeader);

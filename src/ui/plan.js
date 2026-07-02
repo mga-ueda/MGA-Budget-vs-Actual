@@ -2084,7 +2084,7 @@ function updatePlanTableRevenueAmountRowCells(tr, section, row, amountCtx) {
       continue;
     }
     td.innerHTML = formatAmount(val, amountType);
-    const drilldownHint = hasDrilldown ? '\u30c0\u30d6\u30eb\u30af\u30ea\u30c3\u30af\u3067\u4ed5\u8a33\u3092\u8868\u793a' : '';
+    const drilldownHint = hasDrilldown ? 'ダブルクリックで仕訳を表示' : '';
     applyAggregateCellTooltip(td, row, section, m, drilldownHint);
   }
 
@@ -2123,7 +2123,7 @@ function updatePlanTableProfitRowCells(tr, section, row, amountCtx) {
         row,
         section,
         m,
-        td.classList.contains('col-amount-drilldown') ? '\u30c0\u30d6\u30eb\u30af\u30ea\u30c3\u30af\u3067\u4ed5\u8a33\u3092\u8868\u793a' : '',
+        td.classList.contains('col-amount-drilldown') ? 'ダブルクリックで仕訳を表示' : '',
       );
     }
   }
@@ -3944,7 +3944,7 @@ function updatePlanTableRowMonthCells(tr, section, row, {
         td.classList.toggle('plan-man-month-editable', editable);
         td.classList.toggle('salary-plan-cell-editable', editable);
         td.title = editable
-          ? '\u30c0\u30d6\u30eb\u30af\u30ea\u30c3\u30af\u3067\u7de8\u96c6\uFF08Shift+Enter \u3067\u5f8c\u7d9a\u6708\u3078\u540c\u5024\u3092\u53cd\u6620\u30000 \u3082\u53ef\uFF09'
+          ? 'ダブルクリックで編集（Shift+Enter で後続月へ同値を反映　0 も可）'
           : '';
         td.ondblclick = editable
           ? () => startRevenueManMonthCellEdit(td, {
@@ -4025,7 +4025,7 @@ function updatePlanTableRowMonthCells(tr, section, row, {
       td.removeAttribute('title');
     } else {
       td.innerHTML = formatAmount(val, amountType);
-      const drilldownHint = hasDrilldown ? '\u30c0\u30d6\u30eb\u30af\u30ea\u30c3\u30af\u3067\u4ed5\u8a33\u3092\u8868\u793a' : '';
+      const drilldownHint = hasDrilldown ? 'ダブルクリックで仕訳を表示' : '';
       applyAggregateCellTooltip(td, row, section, m, drilldownHint);
     }
   }
@@ -4343,7 +4343,7 @@ function renderTable({ measureColumnWidths = false } = {}) {
             if (isRevenueManMonthMonthEditable(m, displayMode, pastMonthSet)) {
               td.classList.add('plan-man-month-editable', 'salary-plan-cell-editable');
               tagPlanEditableCell(td, { rowKey: row.revenueClientId, month: m });
-              td.title = '\u30c0\u30d6\u30eb\u30af\u30ea\u30c3\u30af\u3067\u7de8\u96c6\uFF08Shift+Enter \u3067\u5f8c\u7d9a\u6708\u3078\u540c\u5024\u3092\u53cd\u6620\u30000 \u3082\u53ef\uFF09';
+              td.title = 'ダブルクリックで編集（Shift+Enter で後続月へ同値を反映　0 も可）';
               td.addEventListener('dblclick', () => {
                 startRevenueManMonthCellEdit(td, {
                   clientId: row.revenueClientId,

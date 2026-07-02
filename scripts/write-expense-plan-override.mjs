@@ -474,7 +474,7 @@ export function mountExpensePlanOverrideSection({
 
       const blockTitle = document.createElement('h4');
       blockTitle.className = 'salary-plan-period-title';
-      blockTitle.textContent = \`\${label}\uff08\${formatFiscalPeriodLabel(period)}\uff09\`;
+      blockTitle.textContent = \`\${label}（\${formatFiscalPeriodLabel(period)}）\`;
       block.appendChild(blockTitle);
 
       const tableWrap = document.createElement('div');

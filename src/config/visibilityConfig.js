@@ -30,7 +30,7 @@ const ROW_TYPE_LABELS = {
   item: '明細',
   plan: '計画',
   breakdown: '内訳',
-  'man-month': '\u4eba\u6708',
+  'man-month': '人月',
   profit: '利益',
   variance: '差異',
   warningSummary: '警告',

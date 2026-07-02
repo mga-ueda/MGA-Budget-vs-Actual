@@ -211,9 +211,9 @@ export function buildRevenuePlanPeriodEntries(currentPeriod, planYears) {
   for (let i = 0; i < years; i += 1) {
     const period = currentPeriod + i;
     let label;
-    if (i === 0) label = '\u4eca\u671f';
-    else if (i === 1) label = '\u6765\u671f';
-    else label = `\u7b2c${i + 1}\u671f`;
+    if (i === 0) label = '今期';
+    else if (i === 1) label = '来期';
+    else label = `第${i + 1}期`;
     entries.push({ period, label });
   }
   return entries;

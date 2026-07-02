@@ -146,9 +146,6 @@ export const DEFAULT_UI_COLORS_LIGHT = {
   negativeAmountColor: '#C00000',
 };
 
-/** @deprecated DEFAULT_UI_COLORS_DARK と同義 */
-export const DEFAULT_UI_COLORS = DEFAULT_UI_COLORS_DARK;
-
 export const UI_COLOR_KEYS = Object.keys(DEFAULT_UI_COLORS_DARK);
 
 const DEFAULTS_BY_MODE = {
@@ -252,11 +249,6 @@ export function switchUiColorMode(config, mode) {
     ...normalized,
     colorMode: mode === 'light' ? 'light' : 'dark',
   };
-}
-
-/** @deprecated switchUiColorMode({}, mode) と同義 */
-export function createUiColorConfigForMode(mode) {
-  return switchUiColorMode({}, mode);
 }
 
 export function setUiColorKey(config, key, value) {
