@@ -88,7 +88,7 @@ body {
   --plan-month-row-bg: #595959;
   --plan-month-row-text: #ffffff;
   --current-month-overlay: rgba(128, 0, 0, 0.28);
-  --current-month-ring: rgba(255, 0, 0, 0.45);
+  --current-month-ring: #ff0000;
   --current-month-overlay-head: rgba(128, 0, 0, 0.34);
   --current-month-overlay-hover: rgba(128, 0, 0, 0.22);
   --current-month-overlay-total: rgba(128, 0, 0, 0.32);
@@ -1672,11 +1672,11 @@ select.app-settings-input {
 
 /* tbody 列: 月行の下から */
 .plan-column-plate--current {
-  background-color: var(--current-month-overlay);
-  border-left: 1px solid var(--current-month-ring);
-  border-right: 1px solid var(--current-month-ring);
+  background-color: transparent;
+  border-left: 1.5px solid var(--current-month-ring);
+  border-right: 1.5px solid var(--current-month-ring);
+  border-bottom: 1.5px solid var(--current-month-ring);
   border-top: none;
-  border-bottom: none;
 }
 
 .plan-column-plate--settlement {
@@ -1685,8 +1685,8 @@ select.app-settings-input {
 
 /* thead 月行専用 */
 .plan-column-plate--current-header {
-  background-color: var(--current-month-overlay-head);
-  border: 1px solid var(--current-month-ring);
+  background-color: transparent;
+  border: 1.5px solid var(--current-month-ring);
   border-bottom: none;
 }
 

@@ -98,7 +98,7 @@ export const DEFAULT_UI_COLORS_LIGHT = {
   monthRowBg: '#D9D9D9',
   monthRowText: '#1A1A1A',
   currentMonthBg: '#CC6666',
-  currentMonthBorder: '#CC0000',
+  currentMonthBorder: '#ff0000',
   settlementMonthBg: '#B0B0B0',
   cellBg: '#FFFFFF',
   textColor: '#1A1A1A',
@@ -449,7 +449,7 @@ export function applyUiColors(config = {}) {
   root.style.setProperty('--plan-month-row-bg', monthRowBg);
   root.style.setProperty('--plan-month-row-text', monthRowText);
   root.style.setProperty('--current-month-overlay', hexToRgba(currentMonthBg, CURRENT_MONTH_OVERLAY_ALPHA));
-  root.style.setProperty('--current-month-ring', hexToRgba(currentMonthBorder, CURRENT_MONTH_RING_ALPHA));
+  root.style.setProperty('--current-month-ring', opaqueHex(currentMonthBorder));
   root.style.setProperty('--current-month-overlay-head', hexToRgba(currentMonthBg, CURRENT_MONTH_OVERLAY_HEAD_ALPHA));
   root.style.setProperty('--current-month-overlay-hover', hexToRgba(currentMonthBg, CURRENT_MONTH_OVERLAY_HOVER_ALPHA));
   root.style.setProperty('--current-month-overlay-total', hexToRgba(currentMonthBg, CURRENT_MONTH_OVERLAY_TOTAL_ALPHA));
