@@ -1,5 +1,4 @@
 import {
-  FISCAL_MONTHS,
   EXTRA_COLUMNS,
   enrichRowValues,
 } from '../parse/parseJournal.js';
@@ -14,33 +13,19 @@ import {
   clientHasManMonthPlan,
 } from '../config/revenuePlanConfig.js';
 import { visibilityRowKey, rowTypeLabel } from '../config/visibilityConfig.js';
+import {
+  emptyRawMonthValues,
+  addRawMonthValues,
+  isMissingCsvMonthValue,
+  rawValuesFromRow,
+  collectActualAmountsFromPlanData,
+  collectSubaccountsFromPlanData,
+} from './enrichUtils.js';
 
 const REV_NO_SUB_LABEL = '補助科目なし';
 const REVENUE_SECTION_LABEL = '売上高';
 const REVENUE_ACCOUNT_LABEL = '売上高';
 const REV_MAN_MONTH_SUB_LABEL = '人月';
-
-function revEmptyRawMonthValues() {
-  const values = {};
-  for (const m of FISCAL_MONTHS) values[m] = 0;
-  return values;
-}
-
-function revAddRawMonthValues(target, source) {
-  for (const m of FISCAL_MONTHS) {
-    target[m] += source[m] ?? 0;
-  }
-}
-
-function revIsMissingCsvMonthValue(value) {
-  return value === undefined || value === null || value === 0;
-}
-
-function revRawValuesFromRow(row) {
-  const values = revEmptyRawMonthValues();
-  revAddRawMonthValues(values, row.values);
-  return values;
-}
 
 function revIsRevenueDetailRow(row) {
   return row.type === 'item' || row.type === 'sub';
@@ -63,7 +48,7 @@ function revMergePlanIntoCsvRow(
   skipPlanFillMonths = null,
   forcePlanMonths = null,
 ) {
-  const months = revRawValuesFromRow(csvRow);
+  const months = rawValuesFromRow(csvRow);
   const planFillMonths = [];
   for (const m of fiscalMonths) {
     if (skipPlanFillMonths?.has(m)) continue;
@@ -72,7 +57,7 @@ function revMergePlanIntoCsvRow(
       planFillMonths.push(m);
       continue;
     }
-    if (revIsMissingCsvMonthValue(months[m]) && (planMonthValues[m] ?? 0) !== 0) {
+    if (isMissingCsvMonthValue(months[m]) && (planMonthValues[m] ?? 0) !== 0) {
       months[m] = planMonthValues[m];
       planFillMonths.push(m);
     }
@@ -94,7 +79,7 @@ function revBuildTaxOptions(businessStartYear, fiscalPeriod, fiscalEndMonth, con
 }
 
 function revBuildClientPlanValues(client, fiscalMonths, taxOptions = null) {
-  const values = revEmptyRawMonthValues();
+  const values = emptyRawMonthValues();
   const monthly = computeClientMonthlyRevenue(client, fiscalMonths, taxOptions);
   for (const m of fiscalMonths) {
     const amount = monthly[m] ?? 0;
@@ -123,7 +108,7 @@ function revRowMatchesClient(row, client) {
 }
 
 function revBuildManMonthRowValues(client, fiscalMonths) {
-  const values = revEmptyRawMonthValues();
+  const values = emptyRawMonthValues();
   for (const m of fiscalMonths) {
     const mm = client.manMonths[m];
     if (mm != null && mm !== 0) values[m] = mm;
@@ -175,7 +160,7 @@ function revApplyBudgetActualMonthDisplayToPlanRow(
   if (row.type !== 'plan' && row.type !== 'man-month') return row;
   if (!revHasBudgetActualMonthFilter(skipPlanFillMonths, forcePlanMonths)) return row;
 
-  const months = revRawValuesFromRow(row);
+  const months = rawValuesFromRow(row);
   const planFillMonths = [];
   for (const m of fiscalMonths) {
     if (skipPlanFillMonths?.has(m)) {
@@ -226,7 +211,7 @@ function revRebuildRevenueRows(
     const client = clients.find((v) => revRowMatchesClient(row, v));
     if (!client) return row;
     matchedClientIds.add(client.id);
-    const planMonths = revRawValuesFromRow({ values: revBuildClientPlanValues(client, fiscalMonths, taxOptions) });
+    const planMonths = rawValuesFromRow({ values: revBuildClientPlanValues(client, fiscalMonths, taxOptions) });
     return revMergePlanIntoCsvRow(row, planMonths, fiscalMonths, skipPlanFillMonths, forcePlanMonths);
   });
 
@@ -241,13 +226,13 @@ function revRebuildRevenueRows(
 }
 
 function revSumRevenueSectionRows(rows) {
-  const total = revEmptyRawMonthValues();
+  const total = emptyRawMonthValues();
   for (const row of rows) {
     if (row.type === 'total') continue;
     if (row.type === 'plan') {
-      revAddRawMonthValues(total, row.values);
+      addRawMonthValues(total, row.values);
     } else if (row.type === 'item' || row.type === 'group') {
-      revAddRawMonthValues(total, row.values);
+      addRawMonthValues(total, row.values);
     }
   }
   return enrichRowValues(total, 'flow');
@@ -374,42 +359,23 @@ export function enrichPlanDataWithRevenueRows(planData, {
 
 /** 予実データから売上実績の月別金額を受注先ごとに抽出。 */
 export function collectRevenueActualAmountsFromPlanData(planData, fiscalMonths) {
-  const section = planData?.sections?.find((s) => s.id === 'revenue');
-  if (!section) return new Map();
-  const result = new Map();
-  for (const row of section.rows) {
-    if (!revIsRevenueDetailRow(row)) continue;
-    const sub = String(row.subLabel ?? '').trim();
-    if (!sub || sub === REV_NO_SUB_LABEL) continue;
-    const account = String(row.label ?? '').trim();
-    if (!account || account !== REVENUE_ACCOUNT_LABEL) continue;
-    const key = `${account}\x00${sub}`;
-    const monthly = {};
-    for (const m of fiscalMonths) {
-      const val = row.values[m];
-      if (val != null && val !== 0) monthly[m] = val;
-    }
-    result.set(key, monthly);
-  }
-  return result;
+  return collectActualAmountsFromPlanData(
+    planData,
+    fiscalMonths,
+    'revenue',
+    revIsRevenueDetailRow,
+    REV_NO_SUB_LABEL,
+    REVENUE_ACCOUNT_LABEL,
+  );
 }
 
 /** 予実データから売上高の補助科目一覧を抽出。 */
 export function collectRevenueSubaccountsFromPlanData(planData) {
-  const section = planData?.sections?.find((s) => s.id === 'revenue');
-  if (!section) return [];
-  const result = [];
-  const seen = new Set();
-  for (const row of section.rows) {
-    if (!revIsRevenueDetailRow(row)) continue;
-    const sub = String(row.subLabel ?? '').trim();
-    if (!sub || sub === REV_NO_SUB_LABEL) continue;
-    const account = String(row.label ?? '').trim();
-    if (!account || account !== REVENUE_ACCOUNT_LABEL) continue;
-    const key = `${account}\x00${sub}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    result.push({ accountLabel: account, subLabel: sub });
-  }
-  return result;
+  return collectSubaccountsFromPlanData(
+    planData,
+    'revenue',
+    revIsRevenueDetailRow,
+    REV_NO_SUB_LABEL,
+    REVENUE_ACCOUNT_LABEL,
+  );
 }

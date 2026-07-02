@@ -1,18 +1,7 @@
 import { canonicalExpenseAccount, EXPENSE_SECTION_ACCOUNTS } from './expenseAccountConfig.js';
+import { normalizeAmount, emptyMonthly } from './planAmountUtils.js';
 
 const EXPENSE_PLAN_OVERRIDE_STORAGE_KEY = 'mga-expense-plan-overrides';
-
-function normalizeAmount(value) {
-  if (value === null || value === undefined || value === '') return null;
-  const num = Number(value);
-  return Number.isFinite(num) ? num : null;
-}
-
-function emptyMonthly(fiscalMonths) {
-  const monthly = {};
-  for (const month of fiscalMonths) monthly[month] = null;
-  return monthly;
-}
 
 export function normalizeExpenseOverrideMonthly(plan, fiscalMonths) {
   const monthly = emptyMonthly(fiscalMonths);

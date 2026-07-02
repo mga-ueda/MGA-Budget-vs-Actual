@@ -1,15 +1,20 @@
 import {
-  FISCAL_MONTHS,
   enrichRowValues,
 } from '../parse/parseJournal.js';
 import { buildBudgetActualMonthSets } from '../config/monthDisplayConfig.js';
 import { buildFiscalYearMonths } from '../config/salaryPlanConfig.js';
-import { planDataFromCache } from '../csv/csvLoader.js';
 import { canonicalExpenseAccount } from '../config/expenseAccountConfig.js';
 import {
   buildExpenseOverrideMapForPeriod,
   resolveExpenseOverrideTargetRow,
 } from '../config/expensePlanOverrideConfig.js';
+import {
+  emptyRawMonthValues,
+  addRawMonthValues,
+  isMissingCsvMonthValue,
+  rawValuesFromRow,
+  loadReferencePeriodPlanData,
+} from './enrichUtils.js';
 
 const INTEREST_ACCOUNT = '受取利息';
 const NON_OPERATING_SECTION_ID = 'nonOperating';
@@ -17,28 +22,6 @@ const EXPENSE_SECTION_ID = 'expense';
 const OTHER_SECTION_ID = 'other';
 const AVERAGE_COLUMN = '平均';
 const DEPRECIATION_ACCOUNT = '減価償却費';
-
-function emptyRawMonthValues() {
-  const values = {};
-  for (const m of FISCAL_MONTHS) values[m] = 0;
-  return values;
-}
-
-function addRawMonthValues(target, source) {
-  for (const m of FISCAL_MONTHS) {
-    target[m] += source[m] ?? 0;
-  }
-}
-
-function isMissingCsvMonthValue(value) {
-  return value === undefined || value === null || value === 0;
-}
-
-function rawValuesFromRow(row) {
-  const values = emptyRawMonthValues();
-  addRawMonthValues(values, row.values);
-  return values;
-}
 
 function sumNonPlanRows(rows, { includePlanRows = false } = {}) {
   const total = emptyRawMonthValues();
@@ -197,15 +180,6 @@ function enrichSectionRowsWithAverageFill(
   }
 
   return { ...section, rows };
-}
-
-function loadReferencePeriodPlanData(expandConfig, businessStartYear, fiscalPeriod) {
-  if (fiscalPeriod < 1) return null;
-  const cached = planDataFromCache(expandConfig, {
-    businessStartYear,
-    fiscalPeriod,
-  });
-  return cached?.data ?? null;
 }
 
 /**

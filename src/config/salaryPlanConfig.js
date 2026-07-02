@@ -1,5 +1,6 @@
 import { normalizeFiscalEndMonth } from './appSettings.js';
 import { computeMonthlySalary } from './employeeConfig.js';
+import { normalizeAmount, emptyMonthly } from './planAmountUtils.js';
 
 const SALARY_PLAN_STORAGE_KEY = 'mga-salary-plans';
 const SALARY_PLAN_SETTINGS_STORAGE_KEY = 'mga-salary-plan-settings';
@@ -174,12 +175,6 @@ export function prunePeriodSalaryPlanBonuses(plans, bonusMonthLabels, fiscalPeri
   return saveSalaryPlans({ ...plans, [periodKey]: nextPeriod });
 }
 
-function normalizeAmount(value) {
-  if (value === null || value === undefined || value === '') return null;
-  const num = Number(value);
-  return Number.isFinite(num) ? num : null;
-}
-
 export function parseSalaryPlanAmountInput(raw) {
   const trimmed = String(raw ?? '').trim();
   if (!trimmed) return null;
@@ -198,12 +193,6 @@ export function parseSalaryPlanAmountInputWithFillForward(raw, fillForward, exis
 export function formatSalaryPlanYen(value) {
   if (value === null || value === undefined || value === 0) return '';
   return `\u00a5${value.toLocaleString('ja-JP')}`;
-}
-
-function emptyMonthly(fiscalMonths) {
-  const monthly = {};
-  for (const month of fiscalMonths) monthly[month] = null;
-  return monthly;
 }
 
 export function normalizeEmployeeSalaryPlan(plan, fiscalMonths) {

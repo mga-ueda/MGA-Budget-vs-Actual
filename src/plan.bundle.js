@@ -46,6 +46,19 @@ async function readCsvFile(file) {
   return decodeCsvBuffer(buffer);
 }
 
+/* config/planAmountUtils.js */
+function normalizeAmount(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+}
+
+function emptyMonthly(fiscalMonths) {
+  const monthly = {};
+  for (const month of fiscalMonths) monthly[month] = null;
+  return monthly;
+}
+
 /* config/expandConfig.js */
 const EXPAND_STORAGE_KEY = 'mga-sub-expand-config';
 
@@ -1413,14 +1426,6 @@ function applyUiColors(config = {}) {
   root.style.setProperty('--plan-amount-color', opaqueHex(planAmountColor));
   root.style.setProperty('--plan-amount-variance-color', opaqueHex(amountVarianceColor));
   root.style.setProperty('--plan-warning-text', opaqueHex(warningTextColor));
-}
-
-function isUiColorCustom(config = {}) {
-  const normalized = normalizeUiColorConfig(config);
-  const mode = getUiColorMode(normalized);
-  const bucket = getUiColorModeBucket(normalized, mode);
-  const defaults = getDefaultUiColors(mode);
-  return UI_COLOR_KEYS.some((key) => bucket[key] != null && bucket[key] !== defaults[key]);
 }
 
 /* parse/parseJournal.js */
@@ -2961,22 +2966,6 @@ function compileCsvPattern(pattern) {
   }
 }
 
-function validateCsvNameConfig(config = loadCsvNameConfig()) {
-  const errors = [];
-  for (const kind of CSV_KINDS) {
-    const entry = config[kind.id];
-    const re = compileCsvPattern(entry?.pattern);
-    if (!re) {
-      errors.push(`${kind.label}: 正規表現が不正です`);
-      continue;
-    }
-    if (entry.example && !re.test(entry.example)) {
-      errors.push(`${kind.label}: 例のファイル名がパターンと一致しません`);
-    }
-  }
-  return { valid: errors.length === 0, errors };
-}
-
 function getCompiledCsvNamePatterns(config = loadCsvNameConfig()) {
   const patterns = {};
   for (const kind of CSV_KINDS) {
@@ -3090,17 +3079,6 @@ function calcTaxInclusiveFromTaxExclusiveAmount(
   return Math.round(base * (100 + ratePercent) / 100);
 }
 
-function isConsumptionTaxRatesDefault(rates) {
-  const current = normalizeConsumptionTaxRates(rates);
-  const defaults = normalizeConsumptionTaxRates(DEFAULT_CONSUMPTION_TAX_RATES);
-  if (current.length !== defaults.length) return false;
-  return current.every((row, i) => (
-    row.year === defaults[i].year
-    && row.month === defaults[i].month
-    && row.ratePercent === defaults[i].ratePercent
-  ));
-}
-
 /* config/withholdingTaxRateConfig.js */
 /** 1回の支払額に対する源泉徴収の段階税率（基本・超過分・個人事業主向け） */
 const DEFAULT_WITHHOLDING_THRESHOLD_YEN = 1000000;
@@ -3210,19 +3188,6 @@ function calcWithholdingTax(paymentYen, calendarYear, calendarMonth, rates) {
   const baseTax = Math.floor(thresholdYen * baseRatePercent / 100);
   const excessTax = Math.floor((amount - thresholdYen) * excessRatePercent / 100);
   return baseTax + excessTax;
-}
-
-function isWithholdingTaxRatesDefault(rates) {
-  const current = normalizeWithholdingTaxRates(rates);
-  const defaults = normalizeWithholdingTaxRates(DEFAULT_WITHHOLDING_TAX_RATES);
-  if (current.length !== defaults.length) return false;
-  return current.every((row, i) => (
-    row.year === defaults[i].year
-    && row.month === defaults[i].month
-    && row.thresholdYen === defaults[i].thresholdYen
-    && row.baseRatePercent === defaults[i].baseRatePercent
-    && row.excessRatePercent === defaults[i].excessRatePercent
-  ));
 }
 
 /* config/legalWelfareRateConfig.js */
@@ -3719,12 +3684,6 @@ function prunePeriodSalaryPlanBonuses(plans, bonusMonthLabels, fiscalPeriod, emp
   return saveSalaryPlans({ ...plans, [periodKey]: nextPeriod });
 }
 
-function normalizeAmount(value) {
-  if (value === null || value === undefined || value === '') return null;
-  const num = Number(value);
-  return Number.isFinite(num) ? num : null;
-}
-
 function parseSalaryPlanAmountInput(raw) {
   const trimmed = String(raw ?? '').trim();
   if (!trimmed) return null;
@@ -3743,12 +3702,6 @@ function parseSalaryPlanAmountInputWithFillForward(raw, fillForward, existingVal
 function formatSalaryPlanYen(value) {
   if (value === null || value === undefined || value === 0) return '';
   return `\u00a5${value.toLocaleString('ja-JP')}`;
-}
-
-function emptyMonthly(fiscalMonths) {
-  const monthly = {};
-  for (const month of fiscalMonths) monthly[month] = null;
-  return monthly;
 }
 
 function normalizeEmployeeSalaryPlan(plan, fiscalMonths) {
@@ -4046,18 +3999,6 @@ const PAYMENT_PLAN_OTHER_PAY_SIMPLE_ACCOUNTS = [
   '未払法人税等',
   '役員借入金',
 ];
-
-function normalizeAmount(value) {
-  if (value === null || value === undefined || value === '') return null;
-  const num = Number(value);
-  return Number.isFinite(num) ? num : null;
-}
-
-function emptyMonthly(fiscalMonths) {
-  const monthly = {};
-  for (const month of fiscalMonths) monthly[month] = null;
-  return monthly;
-}
 
 function isLegacyPeriodPlan(stored) {
   if (!stored || typeof stored !== 'object') return false;
@@ -4402,18 +4343,6 @@ function buildPaymentPlanPeriodEntries(currentPeriod, planYears) {
 /* config/expensePlanOverrideConfig.js */
 const EXPENSE_PLAN_OVERRIDE_STORAGE_KEY = 'mga-expense-plan-overrides';
 
-function normalizeAmount(value) {
-  if (value === null || value === undefined || value === '') return null;
-  const num = Number(value);
-  return Number.isFinite(num) ? num : null;
-}
-
-function emptyMonthly(fiscalMonths) {
-  const monthly = {};
-  for (const month of fiscalMonths) monthly[month] = null;
-  return monthly;
-}
-
 function normalizeExpenseOverrideMonthly(plan, fiscalMonths) {
   const monthly = emptyMonthly(fiscalMonths);
   if (plan && typeof plan === 'object') {
@@ -4536,18 +4465,6 @@ function resolveExpenseOverrideTargetRow(rows, account) {
 
 /* config/outsourcingPlanConfig.js */
 const OUTSOURCING_PLAN_STORAGE_KEY = 'mga-outsourcing-plans';
-
-function normalizeAmount(value) {
-  if (value === null || value === undefined || value === '') return null;
-  const num = Number(value);
-  return Number.isFinite(num) ? num : null;
-}
-
-function emptyMonthly(fiscalMonths) {
-  const monthly = {};
-  for (const month of fiscalMonths) monthly[month] = null;
-  return monthly;
-}
 
 function createVendorId(accountLabel, subLabel) {
   const base = `${accountLabel}|${subLabel}`;
@@ -4800,18 +4717,6 @@ const REVENUE_PLAN_SETTINGS_STORAGE_KEY = 'mga-revenue-plan-settings';
 const DEFAULT_REVENUE_PLAN_YEARS = 3;
 const MIN_REVENUE_PLAN_YEARS = 1;
 const MAX_REVENUE_PLAN_YEARS = 30;
-
-function normalizeAmount(value) {
-  if (value === null || value === undefined || value === '') return null;
-  const num = Number(value);
-  return Number.isFinite(num) ? num : null;
-}
-
-function emptyMonthly(fiscalMonths) {
-  const monthly = {};
-  for (const month of fiscalMonths) monthly[month] = null;
-  return monthly;
-}
 
 function parseManMonthInput(raw) {
   const trimmed = String(raw ?? '').trim();
@@ -5429,6 +5334,91 @@ function getPlanKpiTooltip(key, value = null) {
   return lines.join('\n');
 }
 
+/* enrich/enrichUtils.js */
+function emptyRawMonthValues() {
+  const values = {};
+  for (const m of FISCAL_MONTHS) values[m] = 0;
+  return values;
+}
+
+function addRawMonthValues(target, source) {
+  for (const m of FISCAL_MONTHS) {
+    target[m] += source[m] ?? 0;
+  }
+}
+
+function isMissingCsvMonthValue(value) {
+  return value === undefined || value === null || value === 0;
+}
+
+function rawValuesFromRow(row) {
+  const values = emptyRawMonthValues();
+  addRawMonthValues(values, row.values);
+  return values;
+}
+
+function loadReferencePeriodPlanData(expandConfig, businessStartYear, fiscalPeriod) {
+  if (fiscalPeriod < 1) return null;
+  const cached = planDataFromCache(expandConfig, {
+    businessStartYear,
+    fiscalPeriod,
+  });
+  return cached?.data ?? null;
+}
+
+function collectActualAmountsFromPlanData(
+  planData,
+  fiscalMonths,
+  sectionId,
+  isDetailRow,
+  noSubLabel,
+  requiredAccountLabel = null,
+) {
+  const section = planData?.sections?.find((s) => s.id === sectionId);
+  if (!section) return new Map();
+  const result = new Map();
+  for (const row of section.rows) {
+    if (!isDetailRow(row)) continue;
+    const sub = String(row.subLabel ?? '').trim();
+    if (!sub || sub === noSubLabel) continue;
+    const account = String(row.label ?? '').trim();
+    if (!account || (requiredAccountLabel && account !== requiredAccountLabel)) continue;
+    const key = `${account}\x00${sub}`;
+    const monthly = {};
+    for (const m of fiscalMonths) {
+      const val = row.values[m];
+      if (val != null && val !== 0) monthly[m] = val;
+    }
+    result.set(key, monthly);
+  }
+  return result;
+}
+
+function collectSubaccountsFromPlanData(
+  planData,
+  sectionId,
+  isDetailRow,
+  noSubLabel,
+  requiredAccountLabel = null,
+) {
+  const section = planData?.sections?.find((s) => s.id === sectionId);
+  if (!section) return [];
+  const result = [];
+  const seen = new Set();
+  for (const row of section.rows) {
+    if (!isDetailRow(row)) continue;
+    const sub = String(row.subLabel ?? '').trim();
+    if (!sub || sub === noSubLabel) continue;
+    const account = String(row.label ?? '').trim();
+    if (!account || (requiredAccountLabel && account !== requiredAccountLabel)) continue;
+    const key = `${account}\x00${sub}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push({ accountLabel: account, subLabel: sub });
+  }
+  return result;
+}
+
 /* enrich/planEmployeeSalaryRows.js */
 const DIRECTOR_ACCOUNT = '役員報酬';
 const SALARY_ACCOUNT = '給料手当';
@@ -5450,22 +5440,6 @@ function combineMonthlyAndBonusValues(plan, fiscalMonths) {
     values[m] = (plan.monthly[m] ?? 0) + (plan.bonusMonthly[m] ?? 0);
   }
   return enrichRowValues(values, 'flow');
-}
-
-function emptyRawMonthValues() {
-  const values = {};
-  for (const m of FISCAL_MONTHS) values[m] = 0;
-  return values;
-}
-
-function addRawMonthValues(target, source) {
-  for (const m of FISCAL_MONTHS) {
-    target[m] += source[m] ?? 0;
-  }
-}
-
-function isMissingCsvMonthValue(value) {
-  return value === undefined || value === null || value === 0;
 }
 
 function makePlanRow(id, label, subLabel, values) {
@@ -6003,22 +5977,6 @@ const TAX_PAY_OTHER_PAY_TOTAL_LABEL = 'その他支払合計';
 const TAX_PAY_TAX_SECTION_LABEL = '法人税';
 const NO_SUB_LABEL = '補助科目なし';
 
-function taxPayEmptyRawMonthValues() {
-  const values = {};
-  for (const m of FISCAL_MONTHS) values[m] = 0;
-  return values;
-}
-
-function taxPayAddRawMonthValues(target, source) {
-  for (const m of FISCAL_MONTHS) {
-    target[m] += source[m] ?? 0;
-  }
-}
-
-function taxPayIsMissingCsvMonthValue(value) {
-  return value === undefined || value === null || value === 0;
-}
-
 function taxPayIsAccountRow(row, account) {
   return (row.label ?? '') === account;
 }
@@ -6034,12 +5992,6 @@ function taxPayPartitionAccountRows(rows, accounts) {
   return { matched, otherRest };
 }
 
-function taxPayRawValuesFromRow(row) {
-  const values = taxPayEmptyRawMonthValues();
-  taxPayAddRawMonthValues(values, row.values);
-  return values;
-}
-
 function taxPayIsActualSourceRow(row) {
   return row.type === 'item' || row.type === 'sub';
 }
@@ -6052,11 +6004,11 @@ function taxPayMergePlanIntoCsvRow(
   pastMonths,
   forcePlanMonths = null,
 ) {
-  const months = taxPayRawValuesFromRow(csvRow);
+  const months = rawValuesFromRow(csvRow);
   const planFillMonths = [];
   for (const m of fiscalMonths) {
     if (pastMonths.has(m)) {
-      if (taxPayIsMissingCsvMonthValue(months[m])) {
+      if (isMissingCsvMonthValue(months[m])) {
         months[m] = actualMonthly[m] ?? 0;
       }
       continue;
@@ -6066,7 +6018,7 @@ function taxPayMergePlanIntoCsvRow(
       if ((planMonthValues[m] ?? 0) !== 0) planFillMonths.push(m);
       continue;
     }
-    if (taxPayIsMissingCsvMonthValue(months[m]) && (planMonthValues[m] ?? 0) !== 0) {
+    if (isMissingCsvMonthValue(months[m]) && (planMonthValues[m] ?? 0) !== 0) {
       months[m] = planMonthValues[m];
       planFillMonths.push(m);
     }
@@ -6115,18 +6067,18 @@ function taxPayMakePlanRow(id, label, subLabel, values) {
 }
 
 function taxPaySumNonPlanRows(rows) {
-  const total = taxPayEmptyRawMonthValues();
+  const total = emptyRawMonthValues();
   for (const row of rows) {
     if (row.type === 'total' || row.type === 'breakdown' || row.type === 'sub') continue;
     if (row.type === 'item' || row.type === 'group' || row.type === 'plan') {
-      taxPayAddRawMonthValues(total, row.values);
+      addRawMonthValues(total, row.values);
     }
   }
   return enrichRowValues(total, 'flow');
 }
 
 function taxPayBuildResidentTaxPlanTotal(monthlyPlan, fiscalMonths) {
-  const values = taxPayEmptyRawMonthValues();
+  const values = emptyRawMonthValues();
   let hasValue = false;
   for (const m of fiscalMonths) {
     const amount = monthlyPlan[m] ?? 0;
@@ -6140,7 +6092,7 @@ function taxPayBuildResidentTaxPlanTotal(monthlyPlan, fiscalMonths) {
 }
 
 function taxPayMergeResidentTaxPlanIntoCsvRow(csvRow, planMonthValues, fiscalMonths) {
-  const months = taxPayRawValuesFromRow(csvRow);
+  const months = rawValuesFromRow(csvRow);
   const planFillMonths = [];
   for (const m of fiscalMonths) {
     const planVal = planMonthValues[m];
@@ -6155,7 +6107,7 @@ function taxPayMergeResidentTaxPlanIntoCsvRow(csvRow, planMonthValues, fiscalMon
 }
 
 function taxPayBuildAccountPlanTotal(monthlyPlan, actualMonthly, fiscalMonths, pastMonths) {
-  const values = taxPayEmptyRawMonthValues();
+  const values = emptyRawMonthValues();
   let hasValue = false;
   for (const m of fiscalMonths) {
     const amount = pastMonths.has(m)
@@ -6937,28 +6889,6 @@ const BREAKDOWN_DEFS = [
   { key: 'netReceived', label: BREAKDOWN_LABELS.netReceived },
 ];
 
-function outEmptyRawMonthValues() {
-  const values = {};
-  for (const m of FISCAL_MONTHS) values[m] = 0;
-  return values;
-}
-
-function outAddRawMonthValues(target, source) {
-  for (const m of FISCAL_MONTHS) {
-    target[m] += source[m] ?? 0;
-  }
-}
-
-function outIsMissingCsvMonthValue(value) {
-  return value === undefined || value === null || value === 0;
-}
-
-function outRawValuesFromRow(row) {
-  const values = outEmptyRawMonthValues();
-  outAddRawMonthValues(values, row.values);
-  return values;
-}
-
 function outIsOutsourcingDetailRow(row) {
   return row.type === 'item' || row.type === 'sub';
 }
@@ -6981,7 +6911,7 @@ function outMergePlanIntoCsvRow(
   skipPlanFillMonths = null,
   forcePlanMonths = null,
 ) {
-  const months = outRawValuesFromRow(csvRow);
+  const months = rawValuesFromRow(csvRow);
   const planFillMonths = [];
   for (const m of fiscalMonths) {
     if (skipPlanFillMonths?.has(m)) continue;
@@ -6990,7 +6920,7 @@ function outMergePlanIntoCsvRow(
       planFillMonths.push(m);
       continue;
     }
-    if (outIsMissingCsvMonthValue(months[m]) && (planMonthValues[m] ?? 0) !== 0) {
+    if (isMissingCsvMonthValue(months[m]) && (planMonthValues[m] ?? 0) !== 0) {
       months[m] = planMonthValues[m];
       planFillMonths.push(m);
     }
@@ -7003,7 +6933,7 @@ function outMergePlanIntoCsvRow(
 }
 
 function outBuildVendorPlanValues(vendor, fiscalMonths) {
-  const values = outEmptyRawMonthValues();
+  const values = emptyRawMonthValues();
   for (const m of fiscalMonths) {
     const amount = vendor.monthly[m] ?? 0;
     if (amount !== 0) values[m] = amount;
@@ -7048,7 +6978,7 @@ function outRebuildOutsourcingRows(
     const vendor = vendors.find((v) => outRowMatchesVendor(row, v));
     if (!vendor) return row;
     matchedVendorIds.add(vendor.id);
-    const planMonths = outRawValuesFromRow({ values: outBuildVendorPlanValues(vendor, fiscalMonths) });
+    const planMonths = rawValuesFromRow({ values: outBuildVendorPlanValues(vendor, fiscalMonths) });
     return {
       ...outMergePlanIntoCsvRow(row, planMonths, fiscalMonths, skipPlanFillMonths, forcePlanMonths),
       outsourcingVendorId: vendor.id,
@@ -7066,11 +6996,11 @@ function outRebuildOutsourcingRows(
 }
 
 function outSumNonPlanRows(rows) {
-  const total = outEmptyRawMonthValues();
+  const total = emptyRawMonthValues();
   for (const row of rows) {
     if (row.type === 'total' || row.type === 'breakdown' || row.type === 'sub') continue;
     if (row.type === 'item' || row.type === 'group' || row.type === 'plan') {
-      outAddRawMonthValues(total, row.values);
+      addRawMonthValues(total, row.values);
     }
   }
   return enrichRowValues(total, 'flow');
@@ -7144,7 +7074,7 @@ function outBuildBreakdownMonthlyValues(
   withholdingTaxRates,
   field,
 ) {
-  const values = outEmptyRawMonthValues();
+  const values = emptyRawMonthValues();
   for (const m of fiscalMonths) {
     const total = parentRow.values[m] ?? 0;
     if (total === 0) continue;
@@ -7345,44 +7275,23 @@ function enrichPlanDataWithOutsourcingRows(planData, {
 
 /** 予実データから外注実績の月別金額を取引先ごとに抽出 */
 function collectOutsourcingActualAmountsFromPlanData(planData, fiscalMonths) {
-  const section = planData?.sections?.find((s) => s.id === 'outsourcing');
-  if (!section) return new Map();
-  const result = new Map();
-  for (const row of section.rows) {
-    if (!outIsOutsourcingDetailRow(row)) continue;
-    const sub = String(row.subLabel ?? '').trim();
-    if (!sub || sub === OUT_NO_SUB_LABEL) continue;
-    const account = String(row.label ?? '').trim();
-    if (!account) continue;
-    const key = `${account}\x00${sub}`;
-    const monthly = {};
-    for (const m of fiscalMonths) {
-      const val = row.values[m];
-      if (val != null && val !== 0) monthly[m] = val;
-    }
-    result.set(key, monthly);
-  }
-  return result;
+  return collectActualAmountsFromPlanData(
+    planData,
+    fiscalMonths,
+    'outsourcing',
+    outIsOutsourcingDetailRow,
+    OUT_NO_SUB_LABEL,
+  );
 }
 
 /** 予実データから外注の補助科目一覧を抽出 */
 function collectOutsourcingSubaccountsFromPlanData(planData) {
-  const section = planData?.sections?.find((s) => s.id === 'outsourcing');
-  if (!section) return [];
-  const result = [];
-  const seen = new Set();
-  for (const row of section.rows) {
-    if (!outIsOutsourcingDetailRow(row)) continue;
-    const sub = String(row.subLabel ?? '').trim();
-    if (!sub || sub === OUT_NO_SUB_LABEL) continue;
-    const account = String(row.label ?? '').trim();
-    if (!account) continue;
-    const key = `${account}\x00${sub}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    result.push({ accountLabel: account, subLabel: sub });
-  }
-  return result;
+  return collectSubaccountsFromPlanData(
+    planData,
+    'outsourcing',
+    outIsOutsourcingDetailRow,
+    OUT_NO_SUB_LABEL,
+  );
 }
 
 /* enrich/planRevenueRows.js */
@@ -7390,28 +7299,6 @@ const REV_NO_SUB_LABEL = '補助科目なし';
 const REVENUE_SECTION_LABEL = '売上高';
 const REVENUE_ACCOUNT_LABEL = '売上高';
 const REV_MAN_MONTH_SUB_LABEL = '人月';
-
-function revEmptyRawMonthValues() {
-  const values = {};
-  for (const m of FISCAL_MONTHS) values[m] = 0;
-  return values;
-}
-
-function revAddRawMonthValues(target, source) {
-  for (const m of FISCAL_MONTHS) {
-    target[m] += source[m] ?? 0;
-  }
-}
-
-function revIsMissingCsvMonthValue(value) {
-  return value === undefined || value === null || value === 0;
-}
-
-function revRawValuesFromRow(row) {
-  const values = revEmptyRawMonthValues();
-  revAddRawMonthValues(values, row.values);
-  return values;
-}
 
 function revIsRevenueDetailRow(row) {
   return row.type === 'item' || row.type === 'sub';
@@ -7434,7 +7321,7 @@ function revMergePlanIntoCsvRow(
   skipPlanFillMonths = null,
   forcePlanMonths = null,
 ) {
-  const months = revRawValuesFromRow(csvRow);
+  const months = rawValuesFromRow(csvRow);
   const planFillMonths = [];
   for (const m of fiscalMonths) {
     if (skipPlanFillMonths?.has(m)) continue;
@@ -7443,7 +7330,7 @@ function revMergePlanIntoCsvRow(
       planFillMonths.push(m);
       continue;
     }
-    if (revIsMissingCsvMonthValue(months[m]) && (planMonthValues[m] ?? 0) !== 0) {
+    if (isMissingCsvMonthValue(months[m]) && (planMonthValues[m] ?? 0) !== 0) {
       months[m] = planMonthValues[m];
       planFillMonths.push(m);
     }
@@ -7465,7 +7352,7 @@ function revBuildTaxOptions(businessStartYear, fiscalPeriod, fiscalEndMonth, con
 }
 
 function revBuildClientPlanValues(client, fiscalMonths, taxOptions = null) {
-  const values = revEmptyRawMonthValues();
+  const values = emptyRawMonthValues();
   const monthly = computeClientMonthlyRevenue(client, fiscalMonths, taxOptions);
   for (const m of fiscalMonths) {
     const amount = monthly[m] ?? 0;
@@ -7494,7 +7381,7 @@ function revRowMatchesClient(row, client) {
 }
 
 function revBuildManMonthRowValues(client, fiscalMonths) {
-  const values = revEmptyRawMonthValues();
+  const values = emptyRawMonthValues();
   for (const m of fiscalMonths) {
     const mm = client.manMonths[m];
     if (mm != null && mm !== 0) values[m] = mm;
@@ -7546,7 +7433,7 @@ function revApplyBudgetActualMonthDisplayToPlanRow(
   if (row.type !== 'plan' && row.type !== 'man-month') return row;
   if (!revHasBudgetActualMonthFilter(skipPlanFillMonths, forcePlanMonths)) return row;
 
-  const months = revRawValuesFromRow(row);
+  const months = rawValuesFromRow(row);
   const planFillMonths = [];
   for (const m of fiscalMonths) {
     if (skipPlanFillMonths?.has(m)) {
@@ -7597,7 +7484,7 @@ function revRebuildRevenueRows(
     const client = clients.find((v) => revRowMatchesClient(row, v));
     if (!client) return row;
     matchedClientIds.add(client.id);
-    const planMonths = revRawValuesFromRow({ values: revBuildClientPlanValues(client, fiscalMonths, taxOptions) });
+    const planMonths = rawValuesFromRow({ values: revBuildClientPlanValues(client, fiscalMonths, taxOptions) });
     return revMergePlanIntoCsvRow(row, planMonths, fiscalMonths, skipPlanFillMonths, forcePlanMonths);
   });
 
@@ -7612,13 +7499,13 @@ function revRebuildRevenueRows(
 }
 
 function revSumRevenueSectionRows(rows) {
-  const total = revEmptyRawMonthValues();
+  const total = emptyRawMonthValues();
   for (const row of rows) {
     if (row.type === 'total') continue;
     if (row.type === 'plan') {
-      revAddRawMonthValues(total, row.values);
+      addRawMonthValues(total, row.values);
     } else if (row.type === 'item' || row.type === 'group') {
-      revAddRawMonthValues(total, row.values);
+      addRawMonthValues(total, row.values);
     }
   }
   return enrichRowValues(total, 'flow');
@@ -7745,72 +7632,31 @@ function enrichPlanDataWithRevenueRows(planData, {
 
 /** 予実データから売上実績の月別金額を受注先ごとに抽出。 */
 function collectRevenueActualAmountsFromPlanData(planData, fiscalMonths) {
-  const section = planData?.sections?.find((s) => s.id === 'revenue');
-  if (!section) return new Map();
-  const result = new Map();
-  for (const row of section.rows) {
-    if (!revIsRevenueDetailRow(row)) continue;
-    const sub = String(row.subLabel ?? '').trim();
-    if (!sub || sub === REV_NO_SUB_LABEL) continue;
-    const account = String(row.label ?? '').trim();
-    if (!account || account !== REVENUE_ACCOUNT_LABEL) continue;
-    const key = `${account}\x00${sub}`;
-    const monthly = {};
-    for (const m of fiscalMonths) {
-      const val = row.values[m];
-      if (val != null && val !== 0) monthly[m] = val;
-    }
-    result.set(key, monthly);
-  }
-  return result;
+  return collectActualAmountsFromPlanData(
+    planData,
+    fiscalMonths,
+    'revenue',
+    revIsRevenueDetailRow,
+    REV_NO_SUB_LABEL,
+    REVENUE_ACCOUNT_LABEL,
+  );
 }
 
 /** 予実データから売上高の補助科目一覧を抽出。 */
 function collectRevenueSubaccountsFromPlanData(planData) {
-  const section = planData?.sections?.find((s) => s.id === 'revenue');
-  if (!section) return [];
-  const result = [];
-  const seen = new Set();
-  for (const row of section.rows) {
-    if (!revIsRevenueDetailRow(row)) continue;
-    const sub = String(row.subLabel ?? '').trim();
-    if (!sub || sub === REV_NO_SUB_LABEL) continue;
-    const account = String(row.label ?? '').trim();
-    if (!account || account !== REVENUE_ACCOUNT_LABEL) continue;
-    const key = `${account}\x00${sub}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    result.push({ accountLabel: account, subLabel: sub });
-  }
-  return result;
+  return collectSubaccountsFromPlanData(
+    planData,
+    'revenue',
+    revIsRevenueDetailRow,
+    REV_NO_SUB_LABEL,
+    REVENUE_ACCOUNT_LABEL,
+  );
 }
 
 /* enrich/planMiscIncomeRows.js */
 const MI_NON_OPERATING_SECTION_ID = 'nonOperating';
 const NON_OPERATING_SECTION_LABEL = '営業外収益';
 const NON_OPERATING_TOTAL_LABEL = '営業外収益合計';
-
-function miEmptyRawMonthValues() {
-  const values = {};
-  for (const m of FISCAL_MONTHS) values[m] = 0;
-  return values;
-}
-
-function miAddRawMonthValues(target, source) {
-  for (const m of FISCAL_MONTHS) {
-    target[m] += source[m] ?? 0;
-  }
-}
-
-function miIsMissingCsvMonthValue(value) {
-  return value === undefined || value === null || value === 0;
-}
-
-function miRawValuesFromRow(row) {
-  const values = miEmptyRawMonthValues();
-  miAddRawMonthValues(values, row.values);
-  return values;
-}
 
 function miMergePlanIntoCsvRow(
   csvRow,
@@ -7819,7 +7665,7 @@ function miMergePlanIntoCsvRow(
   skipPlanFillMonths = null,
   forcePlanMonths = null,
 ) {
-  const months = miRawValuesFromRow(csvRow);
+  const months = rawValuesFromRow(csvRow);
   const planFillMonths = [];
   for (const m of fiscalMonths) {
     if (skipPlanFillMonths?.has(m)) continue;
@@ -7828,7 +7674,7 @@ function miMergePlanIntoCsvRow(
       planFillMonths.push(m);
       continue;
     }
-    if (miIsMissingCsvMonthValue(months[m]) && (planMonthValues[m] ?? 0) !== 0) {
+    if (isMissingCsvMonthValue(months[m]) && (planMonthValues[m] ?? 0) !== 0) {
       months[m] = planMonthValues[m];
       planFillMonths.push(m);
     }
@@ -7870,7 +7716,7 @@ function miResolveMiscIncomeTargetRow(rows) {
 }
 
 function miBuildPlanRowValues(monthly, fiscalMonths) {
-  const values = miEmptyRawMonthValues();
+  const values = emptyRawMonthValues();
   for (const m of fiscalMonths) {
     const amount = monthly[m] ?? 0;
     if (amount !== 0) values[m] = amount;
@@ -7889,11 +7735,11 @@ function miMakeMiscIncomePlanRow(monthly, fiscalMonths) {
 }
 
 function miSumNonOperatingSectionRows(rows) {
-  const total = miEmptyRawMonthValues();
+  const total = emptyRawMonthValues();
   for (const row of rows) {
     if (row.type === 'total') continue;
     if (row.type === 'item' || row.type === 'group' || row.type === 'plan') {
-      miAddRawMonthValues(total, row.values);
+      addRawMonthValues(total, row.values);
     }
   }
   return enrichRowValues(total, 'flow');
@@ -8022,28 +7868,6 @@ const EXPENSE_SECTION_ID = 'expense';
 const OTHER_SECTION_ID = 'other';
 const AVERAGE_COLUMN = '平均';
 const DEPRECIATION_ACCOUNT = '減価償却費';
-
-function emptyRawMonthValues() {
-  const values = {};
-  for (const m of FISCAL_MONTHS) values[m] = 0;
-  return values;
-}
-
-function addRawMonthValues(target, source) {
-  for (const m of FISCAL_MONTHS) {
-    target[m] += source[m] ?? 0;
-  }
-}
-
-function isMissingCsvMonthValue(value) {
-  return value === undefined || value === null || value === 0;
-}
-
-function rawValuesFromRow(row) {
-  const values = emptyRawMonthValues();
-  addRawMonthValues(values, row.values);
-  return values;
-}
 
 function sumNonPlanRows(rows, { includePlanRows = false } = {}) {
   const total = emptyRawMonthValues();
@@ -8204,15 +8028,6 @@ function enrichSectionRowsWithAverageFill(
   return { ...section, rows };
 }
 
-function loadReferencePeriodPlanData(expandConfig, businessStartYear, fiscalPeriod) {
-  if (fiscalPeriod < 1) return null;
-  const cached = planDataFromCache(expandConfig, {
-    businessStartYear,
-    fiscalPeriod,
-  });
-  return cached?.data ?? null;
-}
-
 /**
  * 受取利息・諸経費・その他（減価償却費を除く）: 欠損月を参照期の「平均」列の金額で補完する。
  * 当期（予実）→ 前期、来期（計画）→ 当期。
@@ -8312,15 +8127,6 @@ const CF_CASH_BALANCE_SECTION_ID = 'cashBalance';
 const CASH_BALANCE_TOTAL_LABEL = "現金及び預金合計";
 const CF_IN_ROW_ID = 'cf-in';
 const CF_OUT_ROW_ID = 'cf-out';
-
-function loadReferencePeriodPlanData(expandConfig, businessStartYear, fiscalPeriod) {
-  if (fiscalPeriod < 1) return null;
-  const cached = planDataFromCache(expandConfig, {
-    businessStartYear,
-    fiscalPeriod,
-  });
-  return cached?.data ?? null;
-}
 
 function findCashBalanceTotalRow(section) {
   if (!section) return null;
@@ -8461,15 +8267,6 @@ const CFF_OUTFLOW_SECTION_IDS = [
   'otherPay',
 ];
 
-function cffLoadReferencePeriodPlanData(expandConfig, businessStartYear, fiscalPeriod) {
-  if (fiscalPeriod < 1) return null;
-  const cached = planDataFromCache(expandConfig, {
-    businessStartYear,
-    fiscalPeriod,
-  });
-  return cached?.data ?? null;
-}
-
 function cffFindCashBalanceTotalRow(section) {
   if (!section) return null;
   return section.rows.find((r) =>
@@ -8482,12 +8279,6 @@ function cffGetPriorPeriodEndCashBalance(refPlanData) {
   const section = refPlanData?.sections?.find((s) => s.id === CFF_CASH_BALANCE_SECTION_ID);
   const totalRow = cffFindCashBalanceTotalRow(section);
   return totalRow?.values?.["合計"] ?? 0;
-}
-
-function cffEmptyRawMonthValues() {
-  const values = {};
-  for (const m of FISCAL_MONTHS) values[m] = 0;
-  return values;
 }
 
 function cffResolvePlanMonths(displayMode, monthDisplayConfig, businessStartYear, fiscalPeriod, fiscalMonths) {
@@ -8579,14 +8370,14 @@ function enrichPlanDataWithCashFlowForecast(planData, {
   if (!inflowRow || !outflowRow || !cashTotalRow) return planData;
 
   const refPlanData = fiscalPeriod > 1
-    ? cffLoadReferencePeriodPlanData(expandConfig, businessStartYear, fiscalPeriod - 1)
+    ? loadReferencePeriodPlanData(expandConfig, businessStartYear, fiscalPeriod - 1)
     : null;
   const priorPeriodEnd = cffGetPriorPeriodEndCashBalance(refPlanData);
 
   const inflowMonths = { ...inflowRow.values };
   const outflowMonths = { ...outflowRow.values };
   const balanceMonths = { ...cashTotalRow.values };
-  const depositChangeMonths = cffEmptyRawMonthValues();
+  const depositChangeMonths = emptyRawMonthValues();
   const inflowPlanFillMonths = [];
   const outflowPlanFillMonths = [];
   const balancePlanFillMonths = [];
@@ -9034,10 +8825,6 @@ function getSettingsLockedMonths({
   return new Set();
 }
 
-function getMonthDisplayModeLabel(mode) {
-  return mode === 'plan' ? "計画" : "実績";
-}
-
 /** 月クリック時のツールチップ文字を返す。 */
 function getMonthDisplayClickHint(mode) {
   if (mode === 'plan') {
@@ -9229,10 +9016,6 @@ function normalizeFontScale(value) {
 
 function fontScaleUiToActual(uiScale) {
   return Math.round(normalizeFontScale(uiScale) * DESIGN_FONT_BASELINE * 100) / 100;
-}
-
-function formatFontScaleLabel(uiScale) {
-  return `${Math.round(normalizeFontScale(uiScale) * 100)}%`;
 }
 
 function formatFontScaleMultiplier(uiScale) {
@@ -9551,27 +9334,6 @@ function saveAppSettings(settings) {
     ...settings,
     fontScaleUi: true,
   }));
-}
-
-function resetAppSettings() {
-  localStorage.removeItem(APP_SETTINGS_STORAGE_KEY);
-  const businessStartYear = DEFAULT_BUSINESS_START_YEAR;
-  return {
-    businessStartYear,
-    fiscalEndMonth: DEFAULT_FISCAL_END_MONTH,
-    fiscalPeriod: getDefaultFiscalPeriod(businessStartYear),
-    fontScale: DEFAULT_FONT_SCALE,
-    rowPaddingScale: DEFAULT_ROW_PADDING_SCALE,
-    corpEntityMarkers: DEFAULT_CORP_ENTITY_MARKERS,
-    companyName: DEFAULT_COMPANY_NAME,
-    brandIconText: DEFAULT_BRAND_ICON_TEXT,
-    brandFillColor: DEFAULT_BRAND_FILL_COLOR,
-    brandTextColor: DEFAULT_BRAND_TEXT_COLOR,
-    brandLogoDataUrl: null,
-    consumptionTaxRates: DEFAULT_CONSUMPTION_TAX_RATES.map((r) => ({ ...r })),
-    withholdingTaxRates: DEFAULT_WITHHOLDING_TAX_RATES.map((r) => ({ ...r })),
-    legalWelfareRate: DEFAULT_LEGAL_WELFARE_RATE,
-  };
 }
 
 /** その他設定タブの項目のみデフォルトに戻す（フォント・行パディング等は維持） */
@@ -10196,39 +9958,14 @@ const ROW_MAN_MONTHS = '人月';
 const ROW_UNIT_PRICE = '人月単価';
 const ROW_REVENUE = '売上';
 
-function cloneMonthly(source, fiscalMonths) {
-  const next = {};
-  for (const month of fiscalMonths) next[month] = source?.[month] ?? null;
-  return next;
-}
-
-function applyManMonthsFromMonthForward(source, startMonth, amount, pastMonths, fiscalMonths) {
-  const next = cloneMonthly(source, fiscalMonths);
-  const startIndex = fiscalMonths.indexOf(startMonth);
-  if (startIndex < 0) return next;
-  next[startMonth] = amount;
-  for (let i = startIndex + 1; i < fiscalMonths.length; i += 1) {
-    const month = fiscalMonths[i];
-    if (pastMonths.has(month)) continue;
-    next[month] = amount;
-  }
-  return next;
-}
-
 function sumMonthlyMap(map, fiscalMonths) {
   let total = 0;
   for (const month of fiscalMonths) total += map[month] ?? 0;
   return total;
 }
 
-function sumManMonths(map, fiscalMonths) {
-  let total = 0;
-  for (const month of fiscalMonths) total += map[month] ?? 0;
-  return total;
-}
-
 function setMonthlyUnitPrice(client, month, price, fiscalMonths) {
-  const monthlyUnitPrice = cloneMonthly(client.monthlyUnitPrice, fiscalMonths);
+  const monthlyUnitPrice = cloneClientMonthly(client.monthlyUnitPrice, fiscalMonths);
   monthlyUnitPrice[month] = price;
   return monthlyUnitPrice;
 }
@@ -10769,7 +10506,7 @@ function mountRevenueSettingsPanel({
                   pastMonths,
                   fiscalMonths,
                 )
-                : { ...cloneMonthly(client.manMonths, fiscalMonths), [month]: parsed };
+                : { ...cloneClientMonthly(client.manMonths, fiscalMonths), [month]: parsed };
               persistClient({ ...client, manMonths: nextManMonths }, fiscalPeriod);
             },
           });
@@ -10812,7 +10549,7 @@ function mountRevenueSettingsPanel({
       const totalTd = document.createElement('td');
       totalTd.className = 'salary-plan-col-total';
       if (key === 'manMonths') {
-        totalTd.textContent = formatManMonths(sumManMonths(client.manMonths, fiscalMonths));
+        totalTd.textContent = formatManMonths(sumMonthlyMap(client.manMonths, fiscalMonths));
       } else if (key === 'unitPrice') {
         totalTd.textContent = '';
       } else if (key === 'revenue') {

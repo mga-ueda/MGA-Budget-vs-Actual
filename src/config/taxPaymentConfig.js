@@ -1,4 +1,5 @@
 import { collectEmployeeResidentTaxMunicipalityNames, getEmployeeResidentTaxMunicipality, employeeHasResidentTaxObligation } from './employeeConfig.js';
+import { normalizeAmount, emptyMonthly } from './planAmountUtils.js';
 
 const TAX_PAYMENT_STORAGE_KEY = 'mga-tax-payment-plans';
 const TAX_PAYMENT_SETTINGS_STORAGE_KEY = 'mga-tax-payment-settings';
@@ -67,18 +68,6 @@ export const PAYMENT_PLAN_OTHER_PAY_SIMPLE_ACCOUNTS = [
   '未払法人税等',
   '役員借入金',
 ];
-
-function normalizeAmount(value) {
-  if (value === null || value === undefined || value === '') return null;
-  const num = Number(value);
-  return Number.isFinite(num) ? num : null;
-}
-
-function emptyMonthly(fiscalMonths) {
-  const monthly = {};
-  for (const month of fiscalMonths) monthly[month] = null;
-  return monthly;
-}
 
 function isLegacyPeriodPlan(stored) {
   if (!stored || typeof stored !== 'object') return false;

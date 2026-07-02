@@ -466,11 +466,3 @@ export function applyUiColors(config = {}) {
   root.style.setProperty('--plan-amount-variance-color', opaqueHex(amountVarianceColor));
   root.style.setProperty('--plan-warning-text', opaqueHex(warningTextColor));
 }
-
-export function isUiColorCustom(config = {}) {
-  const normalized = normalizeUiColorConfig(config);
-  const mode = getUiColorMode(normalized);
-  const bucket = getUiColorModeBucket(normalized, mode);
-  const defaults = getDefaultUiColors(mode);
-  return UI_COLOR_KEYS.some((key) => bucket[key] != null && bucket[key] !== defaults[key]);
-}

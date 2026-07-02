@@ -226,10 +226,6 @@ export function getSettingsLockedMonths({
   return new Set();
 }
 
-export function getMonthDisplayModeLabel(mode) {
-  return mode === 'plan' ? ${JSON.stringify(jp(0x8a08, 0x753b))} : ${JSON.stringify(jp(0x5b9f, 0x7e3e))};
-}
-
 /** ${jp(0x6708, 0x30af, 0x30ea, 0x30c3, 0x30af, 0x6642, 0x306e, 0x30c4, 0x30fc, 0x30eb, 0x30c1, 0x30c3, 0x30d7, 0x6587, 0x5b57, 0x3092, 0x8fd4, 0x3059, 0x3002)} */
 export function getMonthDisplayClickHint(mode) {
   if (mode === 'plan') {

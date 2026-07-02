@@ -24,6 +24,8 @@ import {
   getEffectiveUnitPrice,
   parseManMonthInput,
   formatManMonths,
+  cloneClientMonthly,
+  applyManMonthsFromMonthForward,
   MISC_INCOME_ACCOUNT,
   getMiscIncomeMonthly,
   setMiscIncomeMonthly,
@@ -46,39 +48,14 @@ const ROW_MAN_MONTHS = '人月';
 const ROW_UNIT_PRICE = '人月単価';
 const ROW_REVENUE = '売上';
 
-function cloneMonthly(source, fiscalMonths) {
-  const next = {};
-  for (const month of fiscalMonths) next[month] = source?.[month] ?? null;
-  return next;
-}
-
-function applyManMonthsFromMonthForward(source, startMonth, amount, pastMonths, fiscalMonths) {
-  const next = cloneMonthly(source, fiscalMonths);
-  const startIndex = fiscalMonths.indexOf(startMonth);
-  if (startIndex < 0) return next;
-  next[startMonth] = amount;
-  for (let i = startIndex + 1; i < fiscalMonths.length; i += 1) {
-    const month = fiscalMonths[i];
-    if (pastMonths.has(month)) continue;
-    next[month] = amount;
-  }
-  return next;
-}
-
 function sumMonthlyMap(map, fiscalMonths) {
   let total = 0;
   for (const month of fiscalMonths) total += map[month] ?? 0;
   return total;
 }
 
-function sumManMonths(map, fiscalMonths) {
-  let total = 0;
-  for (const month of fiscalMonths) total += map[month] ?? 0;
-  return total;
-}
-
 function setMonthlyUnitPrice(client, month, price, fiscalMonths) {
-  const monthlyUnitPrice = cloneMonthly(client.monthlyUnitPrice, fiscalMonths);
+  const monthlyUnitPrice = cloneClientMonthly(client.monthlyUnitPrice, fiscalMonths);
   monthlyUnitPrice[month] = price;
   return monthlyUnitPrice;
 }
@@ -619,7 +596,7 @@ export function mountRevenueSettingsPanel({
                   pastMonths,
                   fiscalMonths,
                 )
-                : { ...cloneMonthly(client.manMonths, fiscalMonths), [month]: parsed };
+                : { ...cloneClientMonthly(client.manMonths, fiscalMonths), [month]: parsed };
               persistClient({ ...client, manMonths: nextManMonths }, fiscalPeriod);
             },
           });
@@ -662,7 +639,7 @@ export function mountRevenueSettingsPanel({
       const totalTd = document.createElement('td');
       totalTd.className = 'salary-plan-col-total';
       if (key === 'manMonths') {
-        totalTd.textContent = formatManMonths(sumManMonths(client.manMonths, fiscalMonths));
+        totalTd.textContent = formatManMonths(sumMonthlyMap(client.manMonths, fiscalMonths));
       } else if (key === 'unitPrice') {
         totalTd.textContent = '';
       } else if (key === 'revenue') {

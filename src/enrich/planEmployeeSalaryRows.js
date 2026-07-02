@@ -21,6 +21,11 @@ import {
 import {
   computeLegalWelfareAmount,
 } from '../config/legalWelfareRateConfig.js';
+import {
+  emptyRawMonthValues,
+  addRawMonthValues,
+  isMissingCsvMonthValue,
+} from './enrichUtils.js';
 
 const DIRECTOR_ACCOUNT = '役員報酬';
 const SALARY_ACCOUNT = '給料手当';
@@ -42,22 +47,6 @@ function combineMonthlyAndBonusValues(plan, fiscalMonths) {
     values[m] = (plan.monthly[m] ?? 0) + (plan.bonusMonthly[m] ?? 0);
   }
   return enrichRowValues(values, 'flow');
-}
-
-function emptyRawMonthValues() {
-  const values = {};
-  for (const m of FISCAL_MONTHS) values[m] = 0;
-  return values;
-}
-
-function addRawMonthValues(target, source) {
-  for (const m of FISCAL_MONTHS) {
-    target[m] += source[m] ?? 0;
-  }
-}
-
-function isMissingCsvMonthValue(value) {
-  return value === undefined || value === null || value === 0;
 }
 
 function makePlanRow(id, label, subLabel, values) {

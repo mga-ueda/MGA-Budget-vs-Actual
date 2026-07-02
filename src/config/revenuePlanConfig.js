@@ -1,4 +1,5 @@
 import { calcTaxInclusiveFromTaxExclusiveAmount } from './consumptionTaxRateConfig.js';
+import { normalizeAmount, emptyMonthly } from './planAmountUtils.js';
 
 const REVENUE_PLAN_STORAGE_KEY = 'mga-revenue-plans';
 const REVENUE_PLAN_SETTINGS_STORAGE_KEY = 'mga-revenue-plan-settings';
@@ -6,18 +7,6 @@ const REVENUE_PLAN_SETTINGS_STORAGE_KEY = 'mga-revenue-plan-settings';
 export const DEFAULT_REVENUE_PLAN_YEARS = 3;
 const MIN_REVENUE_PLAN_YEARS = 1;
 const MAX_REVENUE_PLAN_YEARS = 30;
-
-function normalizeAmount(value) {
-  if (value === null || value === undefined || value === '') return null;
-  const num = Number(value);
-  return Number.isFinite(num) ? num : null;
-}
-
-function emptyMonthly(fiscalMonths) {
-  const monthly = {};
-  for (const month of fiscalMonths) monthly[month] = null;
-  return monthly;
-}
 
 export function parseManMonthInput(raw) {
   const trimmed = String(raw ?? '').trim();

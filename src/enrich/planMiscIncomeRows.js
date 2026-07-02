@@ -1,5 +1,4 @@
 import {
-  FISCAL_MONTHS,
   enrichRowValues,
 } from '../parse/parseJournal.js';
 import { buildBudgetActualMonthSets } from '../config/monthDisplayConfig.js';
@@ -9,32 +8,16 @@ import {
   getMiscIncomeMonthly,
   miscIncomeHasPlanValues,
 } from '../config/revenuePlanConfig.js';
+import {
+  emptyRawMonthValues,
+  addRawMonthValues,
+  isMissingCsvMonthValue,
+  rawValuesFromRow,
+} from './enrichUtils.js';
 
 const MI_NON_OPERATING_SECTION_ID = 'nonOperating';
 const NON_OPERATING_SECTION_LABEL = '営業外収益';
 const NON_OPERATING_TOTAL_LABEL = '営業外収益合計';
-
-function miEmptyRawMonthValues() {
-  const values = {};
-  for (const m of FISCAL_MONTHS) values[m] = 0;
-  return values;
-}
-
-function miAddRawMonthValues(target, source) {
-  for (const m of FISCAL_MONTHS) {
-    target[m] += source[m] ?? 0;
-  }
-}
-
-function miIsMissingCsvMonthValue(value) {
-  return value === undefined || value === null || value === 0;
-}
-
-function miRawValuesFromRow(row) {
-  const values = miEmptyRawMonthValues();
-  miAddRawMonthValues(values, row.values);
-  return values;
-}
 
 function miMergePlanIntoCsvRow(
   csvRow,
@@ -43,7 +26,7 @@ function miMergePlanIntoCsvRow(
   skipPlanFillMonths = null,
   forcePlanMonths = null,
 ) {
-  const months = miRawValuesFromRow(csvRow);
+  const months = rawValuesFromRow(csvRow);
   const planFillMonths = [];
   for (const m of fiscalMonths) {
     if (skipPlanFillMonths?.has(m)) continue;
@@ -52,7 +35,7 @@ function miMergePlanIntoCsvRow(
       planFillMonths.push(m);
       continue;
     }
-    if (miIsMissingCsvMonthValue(months[m]) && (planMonthValues[m] ?? 0) !== 0) {
+    if (isMissingCsvMonthValue(months[m]) && (planMonthValues[m] ?? 0) !== 0) {
       months[m] = planMonthValues[m];
       planFillMonths.push(m);
     }
@@ -94,7 +77,7 @@ function miResolveMiscIncomeTargetRow(rows) {
 }
 
 function miBuildPlanRowValues(monthly, fiscalMonths) {
-  const values = miEmptyRawMonthValues();
+  const values = emptyRawMonthValues();
   for (const m of fiscalMonths) {
     const amount = monthly[m] ?? 0;
     if (amount !== 0) values[m] = amount;
@@ -113,11 +96,11 @@ function miMakeMiscIncomePlanRow(monthly, fiscalMonths) {
 }
 
 function miSumNonOperatingSectionRows(rows) {
-  const total = miEmptyRawMonthValues();
+  const total = emptyRawMonthValues();
   for (const row of rows) {
     if (row.type === 'total') continue;
     if (row.type === 'item' || row.type === 'group' || row.type === 'plan') {
-      miAddRawMonthValues(total, row.values);
+      addRawMonthValues(total, row.values);
     }
   }
   return enrichRowValues(total, 'flow');

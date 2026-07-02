@@ -8,6 +8,7 @@ const srcDir = resolve(__dirname, 'src');
 
 const FILES = [
   'parse/parser.js',
+  'config/planAmountUtils.js',
   'config/expandConfig.js',
   'config/visibilityConfig.js',
   'config/rowDisplayConfig.js',
@@ -31,6 +32,7 @@ const FILES = [
   'config/outsourcingPlanConfig.js',
   'config/revenuePlanConfig.js',
   'config/planKpiConfig.js',
+  'enrich/enrichUtils.js',
   'enrich/planEmployeeSalaryRows.js',
   'enrich/planTaxPaymentRows.js',
   'enrich/planOutsourcingRows.js',

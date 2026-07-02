@@ -142,10 +142,6 @@ export function fontScaleUiToActual(uiScale) {
   return Math.round(normalizeFontScale(uiScale) * DESIGN_FONT_BASELINE * 100) / 100;
 }
 
-export function formatFontScaleLabel(uiScale) {
-  return `${Math.round(normalizeFontScale(uiScale) * 100)}%`;
-}
-
 export function formatFontScaleMultiplier(uiScale) {
   return `×${normalizeFontScale(uiScale).toFixed(2).replace(/(\.\d)0$/, '$1')}`;
 }
@@ -462,27 +458,6 @@ export function saveAppSettings(settings) {
     ...settings,
     fontScaleUi: true,
   }));
-}
-
-export function resetAppSettings() {
-  localStorage.removeItem(APP_SETTINGS_STORAGE_KEY);
-  const businessStartYear = DEFAULT_BUSINESS_START_YEAR;
-  return {
-    businessStartYear,
-    fiscalEndMonth: DEFAULT_FISCAL_END_MONTH,
-    fiscalPeriod: getDefaultFiscalPeriod(businessStartYear),
-    fontScale: DEFAULT_FONT_SCALE,
-    rowPaddingScale: DEFAULT_ROW_PADDING_SCALE,
-    corpEntityMarkers: DEFAULT_CORP_ENTITY_MARKERS,
-    companyName: DEFAULT_COMPANY_NAME,
-    brandIconText: DEFAULT_BRAND_ICON_TEXT,
-    brandFillColor: DEFAULT_BRAND_FILL_COLOR,
-    brandTextColor: DEFAULT_BRAND_TEXT_COLOR,
-    brandLogoDataUrl: null,
-    consumptionTaxRates: DEFAULT_CONSUMPTION_TAX_RATES.map((r) => ({ ...r })),
-    withholdingTaxRates: DEFAULT_WITHHOLDING_TAX_RATES.map((r) => ({ ...r })),
-    legalWelfareRate: DEFAULT_LEGAL_WELFARE_RATE,
-  };
 }
 
 /** その他設定タブの項目のみデフォルトに戻す（フォント・行パディング等は維持） */

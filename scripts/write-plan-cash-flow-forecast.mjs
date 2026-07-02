@@ -23,7 +23,7 @@ import {
   isMonthDisplayToggleTarget,
 } from '../config/monthDisplayConfig.js';
 import { buildFiscalYearMonths } from '../config/salaryPlanConfig.js';
-import { planDataFromCache } from '../csv/csvLoader.js';
+import { emptyRawMonthValues, loadReferencePeriodPlanData } from './enrichUtils.js';
 
 const CFF_IN_SECTION_ID = 'cfIn';
 const CFF_OUT_SECTION_ID = 'cfOut';
@@ -44,15 +44,6 @@ const CFF_OUTFLOW_SECTION_IDS = [
   'otherPay',
 ];
 
-function cffLoadReferencePeriodPlanData(expandConfig, businessStartYear, fiscalPeriod) {
-  if (fiscalPeriod < 1) return null;
-  const cached = planDataFromCache(expandConfig, {
-    businessStartYear,
-    fiscalPeriod,
-  });
-  return cached?.data ?? null;
-}
-
 function cffFindCashBalanceTotalRow(section) {
   if (!section) return null;
   return section.rows.find((r) =>
@@ -65,12 +56,6 @@ function cffGetPriorPeriodEndCashBalance(refPlanData) {
   const section = refPlanData?.sections?.find((s) => s.id === CFF_CASH_BALANCE_SECTION_ID);
   const totalRow = cffFindCashBalanceTotalRow(section);
   return totalRow?.values?.[${JSON.stringify(COL_TOTAL)}] ?? 0;
-}
-
-function cffEmptyRawMonthValues() {
-  const values = {};
-  for (const m of FISCAL_MONTHS) values[m] = 0;
-  return values;
 }
 
 function cffResolvePlanMonths(displayMode, monthDisplayConfig, businessStartYear, fiscalPeriod, fiscalMonths) {
@@ -162,14 +147,14 @@ export function enrichPlanDataWithCashFlowForecast(planData, {
   if (!inflowRow || !outflowRow || !cashTotalRow) return planData;
 
   const refPlanData = fiscalPeriod > 1
-    ? cffLoadReferencePeriodPlanData(expandConfig, businessStartYear, fiscalPeriod - 1)
+    ? loadReferencePeriodPlanData(expandConfig, businessStartYear, fiscalPeriod - 1)
     : null;
   const priorPeriodEnd = cffGetPriorPeriodEndCashBalance(refPlanData);
 
   const inflowMonths = { ...inflowRow.values };
   const outflowMonths = { ...outflowRow.values };
   const balanceMonths = { ...cashTotalRow.values };
-  const depositChangeMonths = cffEmptyRawMonthValues();
+  const depositChangeMonths = emptyRawMonthValues();
   const inflowPlanFillMonths = [];
   const outflowPlanFillMonths = [];
   const balancePlanFillMonths = [];

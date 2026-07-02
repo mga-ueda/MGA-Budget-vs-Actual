@@ -1,5 +1,5 @@
 /**
- * dashboard.js generator ? node scripts/gen-dashboard.mjs
+ * dashboard.js generator ${String.fromCodePoint(0x2014)} node scripts/gen-dashboard.mjs
  */
 import { writeFileSync } from 'fs';
 import { resolve, dirname } from 'path';

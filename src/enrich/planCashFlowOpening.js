@@ -1,7 +1,7 @@
 import { FISCAL_MONTHS, enrichRowValues } from '../parse/parseJournal.js';
 import { buildBudgetActualMonthSets } from '../config/monthDisplayConfig.js';
 import { buildFiscalYearMonths } from '../config/salaryPlanConfig.js';
-import { planDataFromCache } from '../csv/csvLoader.js';
+import { loadReferencePeriodPlanData } from './enrichUtils.js';
 
 const CF_IN_SECTION_ID = 'cfIn';
 const CF_OUT_SECTION_ID = 'cfOut';
@@ -9,15 +9,6 @@ const CF_CASH_BALANCE_SECTION_ID = 'cashBalance';
 const CASH_BALANCE_TOTAL_LABEL = "現金及び預金合計";
 const CF_IN_ROW_ID = 'cf-in';
 const CF_OUT_ROW_ID = 'cf-out';
-
-function loadReferencePeriodPlanData(expandConfig, businessStartYear, fiscalPeriod) {
-  if (fiscalPeriod < 1) return null;
-  const cached = planDataFromCache(expandConfig, {
-    businessStartYear,
-    fiscalPeriod,
-  });
-  return cached?.data ?? null;
-}
 
 function findCashBalanceTotalRow(section) {
   if (!section) return null;

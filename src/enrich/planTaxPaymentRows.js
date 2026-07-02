@@ -23,6 +23,12 @@ import {
   CORPORATE_TAX_ACCOUNT,
 } from '../config/taxPaymentConfig.js';
 import { visibilityRowKey, rowTypeLabel } from '../config/visibilityConfig.js';
+import {
+  emptyRawMonthValues,
+  addRawMonthValues,
+  isMissingCsvMonthValue,
+  rawValuesFromRow,
+} from './enrichUtils.js';
 
 const TAX_PAY_OTHER_SECTION_LABEL = 'その他';
 const TAX_PAY_OTHER_TOTAL_LABEL = 'その他合計';
@@ -30,22 +36,6 @@ const TAX_PAY_OTHER_PAY_SECTION_LABEL = 'その他支払';
 const TAX_PAY_OTHER_PAY_TOTAL_LABEL = 'その他支払合計';
 const TAX_PAY_TAX_SECTION_LABEL = '法人税';
 const NO_SUB_LABEL = '補助科目なし';
-
-function taxPayEmptyRawMonthValues() {
-  const values = {};
-  for (const m of FISCAL_MONTHS) values[m] = 0;
-  return values;
-}
-
-function taxPayAddRawMonthValues(target, source) {
-  for (const m of FISCAL_MONTHS) {
-    target[m] += source[m] ?? 0;
-  }
-}
-
-function taxPayIsMissingCsvMonthValue(value) {
-  return value === undefined || value === null || value === 0;
-}
 
 function taxPayIsAccountRow(row, account) {
   return (row.label ?? '') === account;
@@ -62,12 +52,6 @@ function taxPayPartitionAccountRows(rows, accounts) {
   return { matched, otherRest };
 }
 
-function taxPayRawValuesFromRow(row) {
-  const values = taxPayEmptyRawMonthValues();
-  taxPayAddRawMonthValues(values, row.values);
-  return values;
-}
-
 function taxPayIsActualSourceRow(row) {
   return row.type === 'item' || row.type === 'sub';
 }
@@ -80,11 +64,11 @@ function taxPayMergePlanIntoCsvRow(
   pastMonths,
   forcePlanMonths = null,
 ) {
-  const months = taxPayRawValuesFromRow(csvRow);
+  const months = rawValuesFromRow(csvRow);
   const planFillMonths = [];
   for (const m of fiscalMonths) {
     if (pastMonths.has(m)) {
-      if (taxPayIsMissingCsvMonthValue(months[m])) {
+      if (isMissingCsvMonthValue(months[m])) {
         months[m] = actualMonthly[m] ?? 0;
       }
       continue;
@@ -94,7 +78,7 @@ function taxPayMergePlanIntoCsvRow(
       if ((planMonthValues[m] ?? 0) !== 0) planFillMonths.push(m);
       continue;
     }
-    if (taxPayIsMissingCsvMonthValue(months[m]) && (planMonthValues[m] ?? 0) !== 0) {
+    if (isMissingCsvMonthValue(months[m]) && (planMonthValues[m] ?? 0) !== 0) {
       months[m] = planMonthValues[m];
       planFillMonths.push(m);
     }
@@ -143,18 +127,18 @@ function taxPayMakePlanRow(id, label, subLabel, values) {
 }
 
 function taxPaySumNonPlanRows(rows) {
-  const total = taxPayEmptyRawMonthValues();
+  const total = emptyRawMonthValues();
   for (const row of rows) {
     if (row.type === 'total' || row.type === 'breakdown' || row.type === 'sub') continue;
     if (row.type === 'item' || row.type === 'group' || row.type === 'plan') {
-      taxPayAddRawMonthValues(total, row.values);
+      addRawMonthValues(total, row.values);
     }
   }
   return enrichRowValues(total, 'flow');
 }
 
 function taxPayBuildResidentTaxPlanTotal(monthlyPlan, fiscalMonths) {
-  const values = taxPayEmptyRawMonthValues();
+  const values = emptyRawMonthValues();
   let hasValue = false;
   for (const m of fiscalMonths) {
     const amount = monthlyPlan[m] ?? 0;
@@ -168,7 +152,7 @@ function taxPayBuildResidentTaxPlanTotal(monthlyPlan, fiscalMonths) {
 }
 
 function taxPayMergeResidentTaxPlanIntoCsvRow(csvRow, planMonthValues, fiscalMonths) {
-  const months = taxPayRawValuesFromRow(csvRow);
+  const months = rawValuesFromRow(csvRow);
   const planFillMonths = [];
   for (const m of fiscalMonths) {
     const planVal = planMonthValues[m];
@@ -183,7 +167,7 @@ function taxPayMergeResidentTaxPlanIntoCsvRow(csvRow, planMonthValues, fiscalMon
 }
 
 function taxPayBuildAccountPlanTotal(monthlyPlan, actualMonthly, fiscalMonths, pastMonths) {
-  const values = taxPayEmptyRawMonthValues();
+  const values = emptyRawMonthValues();
   let hasValue = false;
   for (const m of fiscalMonths) {
     const amount = pastMonths.has(m)

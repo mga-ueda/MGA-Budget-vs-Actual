@@ -65,22 +65,6 @@ export function compileCsvPattern(pattern) {
   }
 }
 
-export function validateCsvNameConfig(config = loadCsvNameConfig()) {
-  const errors = [];
-  for (const kind of CSV_KINDS) {
-    const entry = config[kind.id];
-    const re = compileCsvPattern(entry?.pattern);
-    if (!re) {
-      errors.push(`${kind.label}: 正規表現が不正です`);
-      continue;
-    }
-    if (entry.example && !re.test(entry.example)) {
-      errors.push(`${kind.label}: 例のファイル名がパターンと一致しません`);
-    }
-  }
-  return { valid: errors.length === 0, errors };
-}
-
 export function getCompiledCsvNamePatterns(config = loadCsvNameConfig()) {
   const patterns = {};
   for (const kind of CSV_KINDS) {

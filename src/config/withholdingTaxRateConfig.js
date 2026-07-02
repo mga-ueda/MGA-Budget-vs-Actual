@@ -107,16 +107,3 @@ export function calcWithholdingTax(paymentYen, calendarYear, calendarMonth, rate
   const excessTax = Math.floor((amount - thresholdYen) * excessRatePercent / 100);
   return baseTax + excessTax;
 }
-
-export function isWithholdingTaxRatesDefault(rates) {
-  const current = normalizeWithholdingTaxRates(rates);
-  const defaults = normalizeWithholdingTaxRates(DEFAULT_WITHHOLDING_TAX_RATES);
-  if (current.length !== defaults.length) return false;
-  return current.every((row, i) => (
-    row.year === defaults[i].year
-    && row.month === defaults[i].month
-    && row.thresholdYen === defaults[i].thresholdYen
-    && row.baseRatePercent === defaults[i].baseRatePercent
-    && row.excessRatePercent === defaults[i].excessRatePercent
-  ));
-}

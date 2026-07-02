@@ -215,10 +215,6 @@ export function getSettingsLockedMonths({
   return new Set();
 }
 
-export function getMonthDisplayModeLabel(mode) {
-  return mode === 'plan' ? "計画" : "実績";
-}
-
 /** 月クリック時のツールチップ文字を返す。 */
 export function getMonthDisplayClickHint(mode) {
   if (mode === 'plan') {

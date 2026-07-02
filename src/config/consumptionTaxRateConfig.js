@@ -66,14 +66,3 @@ export function calcTaxInclusiveFromTaxExclusiveAmount(
   if (ratePercent == null || ratePercent <= 0) return base;
   return Math.round(base * (100 + ratePercent) / 100);
 }
-
-export function isConsumptionTaxRatesDefault(rates) {
-  const current = normalizeConsumptionTaxRates(rates);
-  const defaults = normalizeConsumptionTaxRates(DEFAULT_CONSUMPTION_TAX_RATES);
-  if (current.length !== defaults.length) return false;
-  return current.every((row, i) => (
-    row.year === defaults[i].year
-    && row.month === defaults[i].month
-    && row.ratePercent === defaults[i].ratePercent
-  ));
-}

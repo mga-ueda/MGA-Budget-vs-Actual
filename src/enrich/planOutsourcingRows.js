@@ -1,5 +1,4 @@
 import {
-  FISCAL_MONTHS,
   EXTRA_COLUMNS,
   enrichRowValues,
 } from '../parse/parseJournal.js';
@@ -14,6 +13,14 @@ import { getPeriodVendorEntries } from '../config/outsourcingPlanConfig.js';
 import { getConsumptionTaxRatePercent } from '../config/consumptionTaxRateConfig.js';
 import { calcWithholdingTax } from '../config/withholdingTaxRateConfig.js';
 import { visibilityRowKey, rowTypeLabel } from '../config/visibilityConfig.js';
+import {
+  emptyRawMonthValues,
+  addRawMonthValues,
+  isMissingCsvMonthValue,
+  rawValuesFromRow,
+  collectActualAmountsFromPlanData,
+  collectSubaccountsFromPlanData,
+} from './enrichUtils.js';
 
 const OUT_NO_SUB_LABEL = '補助科目なし';
 const OUTSOURCING_SECTION_LABEL = '外注費';
@@ -29,28 +36,6 @@ const BREAKDOWN_DEFS = [
   { key: 'withholdingTax', label: BREAKDOWN_LABELS.withholdingTax },
   { key: 'netReceived', label: BREAKDOWN_LABELS.netReceived },
 ];
-
-function outEmptyRawMonthValues() {
-  const values = {};
-  for (const m of FISCAL_MONTHS) values[m] = 0;
-  return values;
-}
-
-function outAddRawMonthValues(target, source) {
-  for (const m of FISCAL_MONTHS) {
-    target[m] += source[m] ?? 0;
-  }
-}
-
-function outIsMissingCsvMonthValue(value) {
-  return value === undefined || value === null || value === 0;
-}
-
-function outRawValuesFromRow(row) {
-  const values = outEmptyRawMonthValues();
-  outAddRawMonthValues(values, row.values);
-  return values;
-}
 
 function outIsOutsourcingDetailRow(row) {
   return row.type === 'item' || row.type === 'sub';
@@ -74,7 +59,7 @@ function outMergePlanIntoCsvRow(
   skipPlanFillMonths = null,
   forcePlanMonths = null,
 ) {
-  const months = outRawValuesFromRow(csvRow);
+  const months = rawValuesFromRow(csvRow);
   const planFillMonths = [];
   for (const m of fiscalMonths) {
     if (skipPlanFillMonths?.has(m)) continue;
@@ -83,7 +68,7 @@ function outMergePlanIntoCsvRow(
       planFillMonths.push(m);
       continue;
     }
-    if (outIsMissingCsvMonthValue(months[m]) && (planMonthValues[m] ?? 0) !== 0) {
+    if (isMissingCsvMonthValue(months[m]) && (planMonthValues[m] ?? 0) !== 0) {
       months[m] = planMonthValues[m];
       planFillMonths.push(m);
     }
@@ -96,7 +81,7 @@ function outMergePlanIntoCsvRow(
 }
 
 function outBuildVendorPlanValues(vendor, fiscalMonths) {
-  const values = outEmptyRawMonthValues();
+  const values = emptyRawMonthValues();
   for (const m of fiscalMonths) {
     const amount = vendor.monthly[m] ?? 0;
     if (amount !== 0) values[m] = amount;
@@ -141,7 +126,7 @@ function outRebuildOutsourcingRows(
     const vendor = vendors.find((v) => outRowMatchesVendor(row, v));
     if (!vendor) return row;
     matchedVendorIds.add(vendor.id);
-    const planMonths = outRawValuesFromRow({ values: outBuildVendorPlanValues(vendor, fiscalMonths) });
+    const planMonths = rawValuesFromRow({ values: outBuildVendorPlanValues(vendor, fiscalMonths) });
     return {
       ...outMergePlanIntoCsvRow(row, planMonths, fiscalMonths, skipPlanFillMonths, forcePlanMonths),
       outsourcingVendorId: vendor.id,
@@ -159,11 +144,11 @@ function outRebuildOutsourcingRows(
 }
 
 function outSumNonPlanRows(rows) {
-  const total = outEmptyRawMonthValues();
+  const total = emptyRawMonthValues();
   for (const row of rows) {
     if (row.type === 'total' || row.type === 'breakdown' || row.type === 'sub') continue;
     if (row.type === 'item' || row.type === 'group' || row.type === 'plan') {
-      outAddRawMonthValues(total, row.values);
+      addRawMonthValues(total, row.values);
     }
   }
   return enrichRowValues(total, 'flow');
@@ -237,7 +222,7 @@ function outBuildBreakdownMonthlyValues(
   withholdingTaxRates,
   field,
 ) {
-  const values = outEmptyRawMonthValues();
+  const values = emptyRawMonthValues();
   for (const m of fiscalMonths) {
     const total = parentRow.values[m] ?? 0;
     if (total === 0) continue;
@@ -438,42 +423,21 @@ export function enrichPlanDataWithOutsourcingRows(planData, {
 
 /** 予実データから外注実績の月別金額を取引先ごとに抽出 */
 export function collectOutsourcingActualAmountsFromPlanData(planData, fiscalMonths) {
-  const section = planData?.sections?.find((s) => s.id === 'outsourcing');
-  if (!section) return new Map();
-  const result = new Map();
-  for (const row of section.rows) {
-    if (!outIsOutsourcingDetailRow(row)) continue;
-    const sub = String(row.subLabel ?? '').trim();
-    if (!sub || sub === OUT_NO_SUB_LABEL) continue;
-    const account = String(row.label ?? '').trim();
-    if (!account) continue;
-    const key = `${account}\x00${sub}`;
-    const monthly = {};
-    for (const m of fiscalMonths) {
-      const val = row.values[m];
-      if (val != null && val !== 0) monthly[m] = val;
-    }
-    result.set(key, monthly);
-  }
-  return result;
+  return collectActualAmountsFromPlanData(
+    planData,
+    fiscalMonths,
+    'outsourcing',
+    outIsOutsourcingDetailRow,
+    OUT_NO_SUB_LABEL,
+  );
 }
 
 /** 予実データから外注の補助科目一覧を抽出 */
 export function collectOutsourcingSubaccountsFromPlanData(planData) {
-  const section = planData?.sections?.find((s) => s.id === 'outsourcing');
-  if (!section) return [];
-  const result = [];
-  const seen = new Set();
-  for (const row of section.rows) {
-    if (!outIsOutsourcingDetailRow(row)) continue;
-    const sub = String(row.subLabel ?? '').trim();
-    if (!sub || sub === OUT_NO_SUB_LABEL) continue;
-    const account = String(row.label ?? '').trim();
-    if (!account) continue;
-    const key = `${account}\x00${sub}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    result.push({ accountLabel: account, subLabel: sub });
-  }
-  return result;
+  return collectSubaccountsFromPlanData(
+    planData,
+    'outsourcing',
+    outIsOutsourcingDetailRow,
+    OUT_NO_SUB_LABEL,
+  );
 }
