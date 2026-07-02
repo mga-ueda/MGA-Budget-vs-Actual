@@ -30,6 +30,8 @@ const K = {
   dashboard: jp(0x30c0, 0x30c3, 0x30b7, 0x30e5, 0x30fc, 0x30c9, 0x30dc, 0x30fc, 0x30c9),
   checkAll: jp(0x3059, 0x3079, 0x3066, 0x30c1, 0x30a7, 0x30c3, 0x30af),
   uncheckAll: jp(0x3059, 0x3079, 0x3066, 0x5916, 0x3059),
+  breakdownAccount: jp(0x52d8, 0x5b9a, 0x79d1, 0x76ee),
+  breakdownSub: jp(0x88dc, 0x52a9, 0x79d1, 0x76ee),
   income: jp(0x53ce, 0x5165),
   outflow: jp(0x652f, 0x51fa),
   inflowMinusOutflow: jp(0x53ce, 0x5165, 0x2212, 0x652f, 0x51fa),
@@ -62,6 +64,11 @@ const DASHBOARD_CHART_MODES = [
   { id: 'expense', label: '${K.expense}' },
 ];
 const DASHBOARD_CHECK_STORAGE_KEY = 'mga-dashboard-checks';
+const DASHBOARD_BREAKDOWN_MODE_KEY = 'mga-dashboard-breakdown-mode';
+const DASHBOARD_BREAKDOWN_MODES = [
+  { id: 'account', label: '${K.breakdownAccount}' },
+  { id: 'sub', label: '${K.breakdownSub}' },
+];
 const DASH_COLOR_INCOME = '#0000ff';
 const DASH_COLOR_EXPENSE = '#ff0000';
 const DASH_COLOR_BAR = '#ff8800';
@@ -98,27 +105,129 @@ function dashDisplayName(row) {
   return String(row.label ?? '').trim();
 }
 
-function dashCollectBreakdownItems(sections, sectionIds) {
+function dashAccountLabel(row) {
+  return String(row.label ?? '').trim();
+}
+
+function dashAccountGroupKey(sectionId, accountLabel) {
+  return \`\${sectionId}|account|\${accountLabel}\`;
+}
+
+function dashAddRowValues(target, source) {
+  for (const m of FISCAL_MONTHS) {
+    target[m] = (target[m] ?? 0) + (source[m] ?? 0);
+  }
+}
+
+function dashFinalizeRowValues(values) {
+  const total = FISCAL_MONTHS.reduce((s, m) => s + (values[m] ?? 0), 0);
+  values[DASHBOARD_GOUKEI] = total;
+  return total;
+}
+
+function dashPushBreakdownItem(items, sectionId, row) {
+  const total = row.values?.[DASHBOARD_GOUKEI] ?? 0;
+  if (total === 0) return;
+  items.push({
+    key: dashItemKey(sectionId, row),
+    sectionId,
+    accountLabel: dashAccountLabel(row),
+    row,
+    name: dashDisplayName(row),
+    total,
+    values: { ...(row.values ?? {}) },
+  });
+}
+
+function dashCollectBreakdownItemsBySub(sections, sectionIds) {
   const items = [];
   for (const sectionId of sectionIds) {
     const section = dashFindSection(sections, sectionId);
     if (!section?.rows) continue;
     for (const row of section.rows) {
-      if (row.type !== 'item' && row.type !== 'group') continue;
-      const total = row.values?.[DASHBOARD_GOUKEI] ?? 0;
-      if (total === 0) continue;
-      items.push({
-        key: dashItemKey(sectionId, row),
-        sectionId,
-        row,
-        name: dashDisplayName(row),
-        total,
-        values: row.values ?? {},
-      });
+      if (row.type !== 'item' && row.type !== 'sub') continue;
+      dashPushBreakdownItem(items, sectionId, row);
     }
   }
   items.sort((a, b) => b.total - a.total);
   return items;
+}
+
+function dashCollectBreakdownItemsByAccount(sections, sectionIds) {
+  const byKey = new Map();
+  for (const sectionId of sectionIds) {
+    const section = dashFindSection(sections, sectionId);
+    if (!section?.rows) continue;
+    for (const row of section.rows) {
+      if (row.type === 'sub') continue;
+      if (row.type !== 'item' && row.type !== 'group') continue;
+      const total = row.values?.[DASHBOARD_GOUKEI] ?? 0;
+      if (total === 0) continue;
+      const accountLabel = dashAccountLabel(row);
+      if (!accountLabel) continue;
+      const key = dashAccountGroupKey(sectionId, accountLabel);
+      let item = byKey.get(key);
+      if (!item) {
+        item = {
+          key,
+          sectionId,
+          accountLabel,
+          name: accountLabel,
+          total: 0,
+          values: {},
+        };
+        byKey.set(key, item);
+      }
+      dashAddRowValues(item.values, row.values ?? {});
+      item.total = dashFinalizeRowValues(item.values);
+    }
+  }
+  return [...byKey.values()].sort((a, b) => b.total - a.total);
+}
+
+function dashCollectBreakdownItems(sections, sectionIds, mode = 'account') {
+  return mode === 'sub'
+    ? dashCollectBreakdownItemsBySub(sections, sectionIds)
+    : dashCollectBreakdownItemsByAccount(sections, sectionIds);
+}
+
+function dashLoadBreakdownMode() {
+  try {
+    const mode = localStorage.getItem(DASHBOARD_BREAKDOWN_MODE_KEY);
+    return mode === 'sub' ? 'sub' : 'account';
+  } catch {
+    return 'account';
+  }
+}
+
+function dashSaveBreakdownMode(mode) {
+  try {
+    localStorage.setItem(DASHBOARD_BREAKDOWN_MODE_KEY, mode);
+  } catch {
+    /* ignore */
+  }
+}
+
+function dashRemapCheckedKeys(checkedKeys, prevItems, nextItems, prevMode, nextMode) {
+  if (prevMode === nextMode) return checkedKeys;
+  const nextKeys = new Set();
+  if (nextMode === 'account') {
+    for (const item of nextItems) {
+      const checked = prevItems.some((p) =>
+        p.sectionId === item.sectionId
+        && p.accountLabel === item.accountLabel
+        && checkedKeys.has(p.key),
+      );
+      if (checked) nextKeys.add(item.key);
+    }
+  } else {
+    for (const item of nextItems) {
+      const accountKey = dashAccountGroupKey(item.sectionId, item.accountLabel);
+      if (checkedKeys.has(accountKey)) nextKeys.add(item.key);
+    }
+  }
+  if (nextKeys.size === 0) return new Set(nextItems.map((i) => i.key));
+  return nextKeys;
 }
 
 function dashFormatMonthAxisLabel(month, monthYearMap) {
@@ -152,6 +261,10 @@ function dashSaveCheckedKeys(period, checkedKeys) {
   } catch {
     /* ignore */
   }
+}
+
+function dashIsSoloCheckedKeys(checkedKeys, itemKeys, key) {
+  return itemKeys.every((k) => checkedKeys.has(k) === (k === key));
 }
 
 function dashSumCheckedMonthly(items, checkedKeys, month) {
@@ -647,7 +760,7 @@ function dashBindLineChartHover(container, {
       const prevY = yScale(prevVal);
       snapDotPrev.setAttribute('cx', String(x));
       snapDotPrev.setAttribute('cy', String(prevY));
-      snapDotPrev.setAttribute('opacity', '1');
+      snapDotPrev.setAttribute('opacity', '0.35');
       rows.push({ label: DASHBOARD_PREV_PERIOD, value: prevVal });
     } else {
       snapDotPrev?.setAttribute('opacity', '0');
@@ -658,7 +771,7 @@ function dashBindLineChartHover(container, {
       const prevPrevY = yScale(prevPrevVal);
       snapDotPrevPrev.setAttribute('cx', String(x));
       snapDotPrevPrev.setAttribute('cy', String(prevPrevY));
-      snapDotPrevPrev.setAttribute('opacity', '1');
+      snapDotPrevPrev.setAttribute('opacity', '0.08');
       rows.push({ label: DASHBOARD_PREV_PREV_PERIOD, value: prevPrevVal });
     } else {
       snapDotPrevPrev?.setAttribute('opacity', '0');
@@ -1017,18 +1130,33 @@ function dashRenderSidebarList(container, items, checkedKeys, totalLabel, header
   highlightSidebarRoot = null,
   onCheckAll = null,
   onUncheckAll = null,
+  onSolo = null,
+  showBreakdownToggle = false,
+  breakdownMode = 'account',
+  onBreakdownModeChange = null,
 } = {}) {
   const total = items.reduce((sum, item) => sum + item.total, 0);
+
+  const breakdownTabsHtml = showBreakdownToggle
+    ? \`<div class="dashboard-sidebar-breakdown-tabs" role="tablist">
+      \${DASHBOARD_BREAKDOWN_MODES.map(
+    (mode) => \`<button type="button" class="dashboard-sidebar-breakdown-btn\${breakdownMode === mode.id ? ' is-active' : ''}" data-breakdown-mode="\${mode.id}" role="tab">\${mode.label}</button>\`,
+  ).join('')}
+    </div>\`
+    : '';
 
   const header = document.createElement('div');
   header.className = \`dashboard-sidebar-header \${headerClass}\`;
   header.innerHTML = \`
-    <span class="dashboard-sidebar-total-label">\${totalLabel}</span>
-    <span class="dashboard-sidebar-total-value">\${dashFormatSidebarYenHtml(total)}</span>
-    <span class="dashboard-sidebar-bulk-actions">
-      <button type="button" class="dashboard-sidebar-bulk-btn dashboard-sidebar-bulk-btn--check-all" data-action="check-all">${K.checkAll}</button>
-      <button type="button" class="dashboard-sidebar-bulk-btn dashboard-sidebar-bulk-btn--uncheck-all" data-action="uncheck-all">${K.uncheckAll}</button>
-    </span>\`;
+    <div class="dashboard-sidebar-header-top">
+      <span class="dashboard-sidebar-total-label">\${totalLabel}</span>
+      <span class="dashboard-sidebar-total-value">\${dashFormatSidebarYenHtml(total)}</span>
+      <span class="dashboard-sidebar-bulk-actions">
+        <button type="button" class="dashboard-sidebar-bulk-btn dashboard-sidebar-bulk-btn--check-all" data-action="check-all">${K.checkAll}</button>
+        <button type="button" class="dashboard-sidebar-bulk-btn dashboard-sidebar-bulk-btn--uncheck-all" data-action="uncheck-all">${K.uncheckAll}</button>
+      </span>
+    </div>
+    \${breakdownTabsHtml}\`;
   header.querySelector('[data-action="check-all"]')?.addEventListener('click', (ev) => {
     ev.preventDefault();
     onCheckAll?.();
@@ -1037,6 +1165,13 @@ function dashRenderSidebarList(container, items, checkedKeys, totalLabel, header
     ev.preventDefault();
     onUncheckAll?.();
   });
+  if (showBreakdownToggle) {
+    header.querySelectorAll('[data-breakdown-mode]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        onBreakdownModeChange?.(btn.dataset.breakdownMode);
+      });
+    });
+  }
 
   const list = document.createElement('div');
   list.className = 'dashboard-sidebar-list';
@@ -1048,7 +1183,7 @@ function dashRenderSidebarList(container, items, checkedKeys, totalLabel, header
   for (const item of items) {
     const pct = total > 0 ? (item.total / total) * 100 : 0;
     const barWidth = maxPct > 0 ? (pct / maxPct) * 100 : 0;
-    const row = document.createElement('label');
+    const row = document.createElement('div');
     row.className = 'dashboard-sidebar-row';
     row.dataset.seriesKey = item.key;
     row.innerHTML = \`
@@ -1059,7 +1194,15 @@ function dashRenderSidebarList(container, items, checkedKeys, totalLabel, header
         <span class="dashboard-sidebar-bar" style="width:\${barWidth.toFixed(2)}%"></span>
         <span class="dashboard-sidebar-pct">\${pct.toFixed(2)}%</span>
       </span>\`;
-    row.querySelector('input').addEventListener('change', (ev) => {
+    const input = row.querySelector('input');
+    input.addEventListener('click', (ev) => {
+      if (ev.ctrlKey || ev.metaKey) {
+        ev.preventDefault();
+        onSolo?.(item.key);
+      }
+    });
+    input.addEventListener('change', (ev) => {
+      if (ev.ctrlKey || ev.metaKey) return;
       onToggle(item.key, ev.target.checked);
     });
     if (highlightWrap && highlightSidebarRoot) {
@@ -1076,13 +1219,22 @@ function dashRenderDashboardContent(wrap, ctx) {
   dashGradientSeq = 0;
   const { data, prevData, prevPrevData, appSettings, state } = ctx;
   const sections = data?.sections ?? [];
-  const revenueItems = dashCollectBreakdownItems(sections, REVENUE_SECTION_IDS);
-  const expenseItems = dashCollectBreakdownItems(sections, EXPENSE_SECTION_IDS);
-  const allKeys = [...revenueItems, ...expenseItems].map((i) => i.key);
+  if (!state.breakdownMode) state.breakdownMode = dashLoadBreakdownMode();
+  const breakdownMode = state.breakdownMode;
+  const prevItems = state.lastBreakdownItems ?? null;
+  const prevMode = state.lastBreakdownMode ?? breakdownMode;
+  const revenueItems = dashCollectBreakdownItems(sections, REVENUE_SECTION_IDS, 'account');
+  const expenseItems = dashCollectBreakdownItems(sections, EXPENSE_SECTION_IDS, breakdownMode);
+  const allItems = [...revenueItems, ...expenseItems];
+  const allKeys = allItems.map((i) => i.key);
   if (!state.initialized) {
     state.checkedKeys = dashLoadCheckedKeys(appSettings.fiscalPeriod, allKeys);
     state.seenKeys = new Set(allKeys);
     state.initialized = true;
+  } else if (prevMode !== breakdownMode && prevItems) {
+    state.checkedKeys = dashRemapCheckedKeys(state.checkedKeys, prevItems, allItems, prevMode, breakdownMode);
+    state.seenKeys = new Set(allKeys);
+    dashSaveCheckedKeys(appSettings.fiscalPeriod, state.checkedKeys);
   } else {
     let keysAdded = false;
     for (const key of allKeys) {
@@ -1094,6 +1246,8 @@ function dashRenderDashboardContent(wrap, ctx) {
     }
     if (keysAdded) dashSaveCheckedKeys(appSettings.fiscalPeriod, state.checkedKeys);
   }
+  state.lastBreakdownItems = allItems;
+  state.lastBreakdownMode = breakdownMode;
 
   const monthly = dashBuildMonthlySeries(data, appSettings);
   const monthLabels = monthly.map((m) => m.label);
@@ -1136,6 +1290,13 @@ function dashRenderDashboardContent(wrap, ctx) {
     dashRenderDashboardContent(wrap, ctx);
   };
 
+  const onBreakdownModeChange = (mode) => {
+    if (state.breakdownMode === mode) return;
+    state.breakdownMode = mode;
+    dashSaveBreakdownMode(mode);
+    dashRenderDashboardContent(wrap, ctx);
+  };
+
   const makeBulkHandlers = (itemKeys) => ({
     onCheckAll: () => {
       for (const key of itemKeys) state.checkedKeys.add(key);
@@ -1144,6 +1305,16 @@ function dashRenderDashboardContent(wrap, ctx) {
     },
     onUncheckAll: () => {
       for (const key of itemKeys) state.checkedKeys.delete(key);
+      persistCheckedKeys();
+      dashRenderDashboardContent(wrap, ctx);
+    },
+    onSolo: (key) => {
+      if (dashIsSoloCheckedKeys(state.checkedKeys, itemKeys, key)) {
+        for (const k of itemKeys) state.checkedKeys.add(k);
+      } else {
+        for (const k of itemKeys) state.checkedKeys.delete(k);
+        state.checkedKeys.add(key);
+      }
       persistCheckedKeys();
       dashRenderDashboardContent(wrap, ctx);
     },
@@ -1163,6 +1334,9 @@ function dashRenderDashboardContent(wrap, ctx) {
   dashRenderSidebarList(expenseEl, expenseItems, state.checkedKeys, '${K.expenseTotal}', 'dashboard-sidebar-header--expense', onToggle, {
     highlightWrap: state.chartMode === 'expense' ? wrap : null,
     highlightSidebarRoot: state.chartMode === 'expense' ? expenseEl : null,
+    showBreakdownToggle: true,
+    breakdownMode,
+    onBreakdownModeChange,
     ...expenseBulk,
   });
 
@@ -1252,8 +1426,11 @@ export function mountDashboardPanel({
 
   const state = dashboardMountCtx?.state ?? {
     chartMode: 'balance',
+    breakdownMode: dashLoadBreakdownMode(),
     checkedKeys: new Set(),
     seenKeys: new Set(),
+    lastBreakdownItems: null,
+    lastBreakdownMode: null,
     initialized: false,
   };
   dashboardMountCtx = { state, appSettings, data, prevData, prevPrevData };

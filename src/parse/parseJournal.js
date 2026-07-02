@@ -43,8 +43,15 @@ const PERSONNEL_PATTERNS = [
 
 const OUTSOURCING_PATTERNS = [/^外注費/];
 const OTHER_PATTERNS = [/^租税公課/, /^減価償却費/];
+const NON_OPERATING_REVENUE_PATTERNS = [/^貸倒引当金戻入/];
 const NON_OPERATING_EXPENSE_PATTERNS = [/^支払利息/, /^雑損失/, /^貸倒引当金繰入/];
 const TAX_PATTERNS = [/^法人税等$/];
+
+function isRevenueAccountKey(key) {
+  const [account] = key.split('|');
+  return REVENUE_ACCOUNTS.has(account)
+    || NON_OPERATING_REVENUE_PATTERNS.some((p) => p.test(key));
+}
 
 const BS_SKIP = new Set([
   '諸口合計', '資産の部合計', '負債の部合計', '純資産の部合計', '負債・純資産の部合計',
@@ -343,7 +350,7 @@ function getTotalRow(section) {
 
 export function categorizeAccount(key) {
   const [account] = key.split('|');
-  if (REVENUE_ACCOUNTS.has(account)) {
+  if (isRevenueAccountKey(key)) {
     return account === '売上高' ? 'revenue' : 'nonOperating';
   }
   if (PERSONNEL_PATTERNS.some((p) => p.test(key))) return 'personnel';
@@ -353,7 +360,7 @@ export function categorizeAccount(key) {
   if (TAX_PATTERNS.some((p) => p.test(key))) return 'tax';
   const skip = new Set([
     '普通預金', '売掛金', '貸倒引当金', '未払金', '未払費用', '前払金', '前払費用',
-    '長期前払費用', '保険積立金', '資本金', '繰越利益剰余金', '長期未払金',
+    '長期前払費用', '保険積立金', '資本金', '繰越利益剰余金', '長期未払金', '長期借入金', '短期借入金',
     '工具器具備品', '車両運搬具', 'ソフトウェア', '貯蔵品', '少額資産', '仮払消費税',
     '未払消費税', '未払法人税等', '役員借入金', '預り金', '仮受消費税', '仮払金', '立替金', '未収還付法人税等',
   ]);
@@ -419,7 +426,7 @@ function aggregateJournal(text) {
       if (!cat) return;
       if (!aggregated.has(key)) aggregated.set(key, { category: cat, values: emptyMonthValues() });
       const entry = aggregated.get(key);
-      const isRevenue = REVENUE_ACCOUNTS.has(account);
+      const isRevenue = isRevenueAccountKey(key);
       const delta = isRevenue
         ? side === 'credit' ? amount : -amount
         : side === 'debit' ? amount : -amount;

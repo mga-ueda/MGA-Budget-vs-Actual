@@ -3710,6 +3710,9 @@ function switchMainTab(nextTab) {
     resetPlanBodyScroll();
     cachePlanTableColumnWidthsFromDom();
   }
+  if (prevTab === 'dashboard' && nextTab !== 'dashboard') {
+    resetDashboardState({ fiscalPeriod: appSettings.fiscalPeriod });
+  }
   activeTab = nextTab;
   if (nextTab === 'plan' && prevTab !== 'plan') {
     resetPlanBodyScroll();
@@ -3777,6 +3780,10 @@ function renderDashboardView() {
     appSettings,
     calcPlanKpiMetrics,
     buildPlanKpiOptions,
+    showJournalPopup,
+    hasJournalDrilldown: (section, row, month) =>
+      hasDrilldownEntries(getDrilldownIndex(), section, row, month)
+      || findRelatedJournalEntries(getCachedJournalEntries(), section, row, month).length > 0,
   });
 }
 
@@ -4092,7 +4099,11 @@ function togglePlanMonthDisplay(monthLabel) {
   saveMonthDisplayConfig(monthDisplayConfig);
   if (rawPlanData) {
     data = applyPlanColors(rawPlanData);
-    applyPlanMonthDisplayDom(root.querySelector('.plan-table'));
+    if (activeTab === 'dashboard') {
+      renderDashboardView();
+    } else {
+      applyPlanMonthDisplayDom(root.querySelector('.plan-table'));
+    }
   }
 }
 
@@ -8278,7 +8289,9 @@ function loadPlanOnlyPeriodData({ measureColumnWidths = false } = {}) {
   bsText = null;
   generalLedgerText = null;
   generalLedgerName = null;
-  resetDashboardState();
+  if (activeTab !== 'dashboard') {
+    resetDashboardState();
+  }
   const planData = rawPlanData
     ? zeroOutPlanData(rawPlanData)
     : buildFullPlan('', null, expandConfig);
@@ -8299,7 +8312,9 @@ function loadData(loaded, { measureColumnWidths = false } = {}) {
   journalEntriesCache = null;
   invalidateDrilldownIndex();
   closeJournalPopup();
-  resetDashboardState();
+  if (activeTab !== 'dashboard') {
+    resetDashboardState();
+  }
   rawPlanData = loaded.data;
   data = applyPlanColors(loaded.data);
   if (measureColumnWidths) {
