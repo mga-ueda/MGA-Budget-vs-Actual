@@ -1,4 +1,5 @@
 import { visibilityRowKey } from './visibilityConfig.js';
+import { canonicalExpenseAccount, isKnownExpenseSectionAccount } from './expenseAccountConfig.js';
 
 const ROW_DISPLAY_STORAGE_KEY = 'mga-row-display';
 
@@ -8,13 +9,15 @@ const DEFAULT_ROW_DISPLAY = {
   fillColor2: false,
 };
 
-/** 流動資産・固定資産: 中間合計行（大項目合計以外）をデフォルト注目 */
+/** 流動資産・固定資産・繰延資産: 中間合計行（大項目合計以外）をデフォルト注目 */
 const BS_CURRENT_ASSETS_SECTION_ID = 'currentAssets';
 const BS_FIXED_ASSETS_SECTION_ID = 'fixedAssets';
+const BS_DEFERRED_ASSETS_SECTION_ID = 'deferredAssets';
 
 function defaultBsAssetRowDisplay(sectionId, row) {
   if (sectionId !== BS_CURRENT_ASSETS_SECTION_ID
-    && sectionId !== BS_FIXED_ASSETS_SECTION_ID) {
+    && sectionId !== BS_FIXED_ASSETS_SECTION_ID
+    && sectionId !== BS_DEFERRED_ASSETS_SECTION_ID) {
     return null;
   }
   if (row?.type === 'total' && !row?.accentTotal) {
@@ -88,6 +91,19 @@ function defaultEquityRowDisplay(sectionId, row) {
   return null;
 }
 
+/** 諸経費: 常時表示一覧外（未知）の勘定科目行をデフォルト注意 */
+function isUnknownExpenseAccountRow(sectionId, row) {
+  if (sectionId !== 'expense') return false;
+  if (row?.type !== 'item' && row?.type !== 'group' && row?.type !== 'sub') return false;
+  const account = canonicalExpenseAccount(row?.label ?? '');
+  return !isKnownExpenseSectionAccount(account);
+}
+
+function defaultUnknownExpenseRowDisplay(sectionId, row) {
+  if (!isUnknownExpenseAccountRow(sectionId, row)) return null;
+  return { largeDisplay: false, fillColor1: false, fillColor2: true };
+}
+
 function defaultRowDisplayEntry(sectionId, row) {
   const bsAssetDefault = defaultBsAssetRowDisplay(sectionId, row);
   if (bsAssetDefault) return bsAssetDefault;
@@ -97,6 +113,8 @@ function defaultRowDisplayEntry(sectionId, row) {
   if (ordinaryDepositDefault) return ordinaryDepositDefault;
   const cashDepositChangeDefault = defaultCashDepositChangeDisplay(sectionId, row);
   if (cashDepositChangeDefault) return cashDepositChangeDefault;
+  const unknownExpenseDefault = defaultUnknownExpenseRowDisplay(sectionId, row);
+  if (unknownExpenseDefault) return unknownExpenseDefault;
   if (sectionId === PERSONNEL_SECTION_ID) {
     if (row?.type === 'total' || row?.type === 'plan') {
       return { ...DEFAULT_ROW_DISPLAY };

@@ -37,6 +37,11 @@ export function canonicalExpenseAccount(account) {
   return account;
 }
 
+/** 諸経費セクションの常時表示一覧に含まれる勘定か */
+export function isKnownExpenseSectionAccount(account) {
+  return EXPENSE_SECTION_ACCOUNT_SET.has(canonicalExpenseAccount(account));
+}
+
 function combineExpenseJournalItems(items) {
   if (items.length === 1) return items[0];
   const combined = { ...items[0], sub: items[0].sub ?? '', values: { ...items[0].values } };

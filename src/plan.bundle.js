@@ -259,13 +259,15 @@ const DEFAULT_ROW_DISPLAY = {
   fillColor2: false,
 };
 
-/** 流動資産・固定資産: 中間合計行（大項目合計以外）をデフォルト注目 */
+/** 流動資産・固定資産・繰延資産: 中間合計行（大項目合計以外）をデフォルト注目 */
 const BS_CURRENT_ASSETS_SECTION_ID = 'currentAssets';
 const BS_FIXED_ASSETS_SECTION_ID = 'fixedAssets';
+const BS_DEFERRED_ASSETS_SECTION_ID = 'deferredAssets';
 
 function defaultBsAssetRowDisplay(sectionId, row) {
   if (sectionId !== BS_CURRENT_ASSETS_SECTION_ID
-    && sectionId !== BS_FIXED_ASSETS_SECTION_ID) {
+    && sectionId !== BS_FIXED_ASSETS_SECTION_ID
+    && sectionId !== BS_DEFERRED_ASSETS_SECTION_ID) {
     return null;
   }
   if (row?.type === 'total' && !row?.accentTotal) {
@@ -339,6 +341,19 @@ function defaultEquityRowDisplay(sectionId, row) {
   return null;
 }
 
+/** 諸経費: 常時表示一覧外（未知）の勘定科目行をデフォルト注意 */
+function isUnknownExpenseAccountRow(sectionId, row) {
+  if (sectionId !== 'expense') return false;
+  if (row?.type !== 'item' && row?.type !== 'group' && row?.type !== 'sub') return false;
+  const account = canonicalExpenseAccount(row?.label ?? '');
+  return !isKnownExpenseSectionAccount(account);
+}
+
+function defaultUnknownExpenseRowDisplay(sectionId, row) {
+  if (!isUnknownExpenseAccountRow(sectionId, row)) return null;
+  return { largeDisplay: false, fillColor1: false, fillColor2: true };
+}
+
 function defaultRowDisplayEntry(sectionId, row) {
   const bsAssetDefault = defaultBsAssetRowDisplay(sectionId, row);
   if (bsAssetDefault) return bsAssetDefault;
@@ -348,6 +363,8 @@ function defaultRowDisplayEntry(sectionId, row) {
   if (ordinaryDepositDefault) return ordinaryDepositDefault;
   const cashDepositChangeDefault = defaultCashDepositChangeDisplay(sectionId, row);
   if (cashDepositChangeDefault) return cashDepositChangeDefault;
+  const unknownExpenseDefault = defaultUnknownExpenseRowDisplay(sectionId, row);
+  if (unknownExpenseDefault) return unknownExpenseDefault;
   if (sectionId === PERSONNEL_SECTION_ID) {
     if (row?.type === 'total' || row?.type === 'plan') {
       return { ...DEFAULT_ROW_DISPLAY };
@@ -449,6 +466,11 @@ function canonicalExpenseAccount(account) {
   return account;
 }
 
+/** 諸経費セクションの常時表示一覧に含まれる勘定か */
+function isKnownExpenseSectionAccount(account) {
+  return EXPENSE_SECTION_ACCOUNT_SET.has(canonicalExpenseAccount(account));
+}
+
 function combineExpenseJournalItems(items) {
   if (items.length === 1) return items[0];
   const combined = { ...items[0], sub: items[0].sub ?? '', values: { ...items[0].values } };
@@ -497,6 +519,21 @@ function mergeExpenseSectionItems(journalItems, emptyMonthValues) {
 
   return merged;
 }
+
+/* config/bsBalanceSheetAccountConfig.js */
+/**
+ * PL集計除外で貸借対照表に表示する勘定。
+ * CSVに行がない場合も常時表示する。
+ */
+const BS_PL_SKIP_ACCOUNTS = new Set(['商品券', '敷金', '創立費', '未収入金', '未収還付消費税等']);
+
+const BS_CURRENT_ASSET_ALWAYS_VISIBLE = ['商品券'];
+
+/** 固定資産、投資その他の資産 */
+const BS_INVESTMENT_OTHER_ALWAYS_VISIBLE = ['敷金'];
+
+/** 繰延資産 */
+const BS_DEFERRED_ASSET_ALWAYS_VISIBLE = ['創立費'];
 
 /* config/expenseSortConfig.js */
 const EXPENSE_SORT_STORAGE_KEY = 'mga-expense-sort-order';
@@ -654,6 +691,8 @@ const DEFAULT_SECTION_COLORS = {
   revenue: { color: '#203764', barColor: '#203764', textColor: DEFAULT_TEXT_COLOR },
   nonOperating: { color: '#1f4e78', barColor: '#1f4e78', textColor: DEFAULT_TEXT_COLOR },
   nonOperatingExpense: { color: '#4338ca', barColor: '#3730a3', textColor: DEFAULT_TEXT_COLOR },
+  specialLoss: { color: '#991b1b', barColor: '#7f1d1d', textColor: DEFAULT_TEXT_COLOR },
+  specialProfit: { color: '#166534', barColor: '#14532d', textColor: DEFAULT_TEXT_COLOR },
   personnel: { color: '#806000', barColor: '#806000', textColor: DEFAULT_TEXT_COLOR },
   expense: { color: '#375623', barColor: '#375623', textColor: DEFAULT_TEXT_COLOR },
   other: { color: '#375623', barColor: '#375623', textColor: DEFAULT_TEXT_COLOR },
@@ -663,6 +702,7 @@ const DEFAULT_SECTION_COLORS = {
   profit: { color: '#ffc000', barColor: '#ffc000', textColor: DEFAULT_DARK_TEXT_COLOR },
   currentAssets: { color: '#1f4e78', barColor: '#1f4e78', textColor: DEFAULT_TEXT_COLOR },
   fixedAssets: { color: '#1f4e78', barColor: '#1f4e78', textColor: DEFAULT_TEXT_COLOR },
+  deferredAssets: { color: '#1f4e78', barColor: '#1f4e78', textColor: DEFAULT_TEXT_COLOR },
   currentLiab: { color: '#595959', barColor: '#595959', textColor: DEFAULT_TEXT_COLOR },
   fixedLiab: { color: '#595959', barColor: '#595959', textColor: DEFAULT_TEXT_COLOR },
   equity: { color: '#bf8f00', barColor: '#bf8f00', textColor: DEFAULT_DARK_TEXT_COLOR },
@@ -686,10 +726,13 @@ const SECTION_COLOR_SECTION_DEFS = [
   { id: 'sgaTaxable', label: '消費税対象販管費合計' },
   { id: 'other', label: 'その他' },
   { id: 'sgaTotal', label: '販管費合計' },
+  { id: 'specialProfit', label: '特別利益' },
+  { id: 'specialLoss', label: '特別損失' },
   { id: 'tax', label: '法人税' },
   { id: 'profit', label: '利益' },
   { id: 'currentAssets', label: '流動資産' },
   { id: 'fixedAssets', label: '固定資産' },
+  { id: 'deferredAssets', label: '繰延資産' },
   { id: 'currentLiab', label: '流動負債' },
   { id: 'fixedLiab', label: '固定負債' },
   { id: 'equity', label: '純資産' },
@@ -1438,7 +1481,7 @@ const EXTRA_COLUMNS = ['合計', '平均'];
 
 /** 貸借対照表・現預金の大項目（合計・平均列は表示しない） */
 const BS_SECTION_IDS = new Set([
-  'currentAssets', 'fixedAssets', 'currentLiab', 'fixedLiab', 'equity', 'cashBalance',
+  'currentAssets', 'fixedAssets', 'deferredAssets', 'currentLiab', 'fixedLiab', 'equity', 'cashBalance',
 ]);
 
 const COLOR_FALLBACK = { color: '#44403c', barColor: '#292524' };
@@ -1460,10 +1503,26 @@ const PERSONNEL_PATTERNS = [
 ];
 
 const OUTSOURCING_PATTERNS = [/^外注費/];
-const OTHER_PATTERNS = [/^租税公課/, /^減価償却費/];
+const OTHER_PATTERNS = [
+  /^租税公課/,
+  /^減価償却費/,
+  /^少額減価償却費/,
+  /^繰延資産償却/,
+  /^貸倒引当金繰入/,
+];
 const NON_OPERATING_REVENUE_PATTERNS = [/^貸倒引当金戻入/];
-const NON_OPERATING_EXPENSE_PATTERNS = [/^支払利息/, /^雑損失/, /^貸倒引当金繰入/];
+const NON_OPERATING_EXPENSE_PATTERNS = [/^支払利息/, /^雑損失/];
+/** MF 決算書「特別利益」配下の勘定 */
+const SPECIAL_PROFIT_PATTERNS = [/^前期損益修正益/, /^固定資産売却益/];
+/** MF 決算書「特別損失」配下の勘定（販管費・法人税セクションとは別扱い） */
+const SPECIAL_LOSS_PATTERNS = [/^法人税、住民税/, /^固定資産除却損/];
 const TAX_PATTERNS = [/^法人税等$/];
+/** PL 集計除外: 未収還付○○（流動資産・BS 科目） */
+const BS_SKIP_ACCOUNT_PATTERNS = [/^未収還付/];
+
+function isPlIncomeAccountKey(key) {
+  return isRevenueAccountKey(key) || SPECIAL_PROFIT_PATTERNS.some((p) => p.test(key));
+}
 
 function isRevenueAccountKey(key) {
   const [account] = key.split('|');
@@ -1775,14 +1834,18 @@ function categorizeAccount(key) {
   if (OUTSOURCING_PATTERNS.some((p) => p.test(key))) return 'outsourcing';
   if (OTHER_PATTERNS.some((p) => p.test(key))) return 'other';
   if (NON_OPERATING_EXPENSE_PATTERNS.some((p) => p.test(key))) return 'nonOperatingExpense';
+  if (SPECIAL_PROFIT_PATTERNS.some((p) => p.test(key))) return 'specialProfit';
+  if (SPECIAL_LOSS_PATTERNS.some((p) => p.test(key))) return 'specialLoss';
   if (TAX_PATTERNS.some((p) => p.test(key))) return 'tax';
   const skip = new Set([
     '普通預金', '売掛金', '貸倒引当金', '未払金', '未払費用', '前払金', '前払費用',
     '長期前払費用', '保険積立金', '資本金', '繰越利益剰余金', '長期未払金', '長期借入金', '短期借入金',
     '工具器具備品', '車両運搬具', 'ソフトウェア', '貯蔵品', '少額資産', '仮払消費税',
     '未払消費税', '未払法人税等', '役員借入金', '預り金', '仮受消費税', '仮払金', '立替金', '未収還付法人税等',
+    ...BS_PL_SKIP_ACCOUNTS,
   ]);
   if (skip.has(account)) return null;
+  if (BS_SKIP_ACCOUNT_PATTERNS.some((p) => p.test(account))) return null;
   return 'expense';
 }
 
@@ -1844,7 +1907,7 @@ function aggregateJournal(text) {
       if (!cat) return;
       if (!aggregated.has(key)) aggregated.set(key, { category: cat, values: emptyMonthValues() });
       const entry = aggregated.get(key);
-      const isRevenue = isRevenueAccountKey(key);
+      const isRevenue = isPlIncomeAccountKey(key);
       const delta = isRevenue
         ? side === 'credit' ? amount : -amount
         : side === 'debit' ? amount : -amount;
@@ -1861,7 +1924,7 @@ function aggregateJournal(text) {
 function buildPlSections(aggregated, expandConfig, expandCandidates) {
   const bySection = {
     revenue: [], nonOperating: [], nonOperatingExpense: [], personnel: [], expense: [],
-    outsourcing: [], other: [], tax: [],
+    outsourcing: [], other: [], specialProfit: [], specialLoss: [], tax: [],
   };
 
   for (const [key, { category, values }] of aggregated) {
@@ -1880,6 +1943,8 @@ function buildPlSections(aggregated, expandConfig, expandCandidates) {
     { id: 'expense', label: '諸経費', filter: 'expense', key: 'expense', prefix: 'exp', totalLabel: '諸経費合計' },
     { id: 'outsourcing', label: '外注費', filter: 'outsourcing', key: 'outsourcing', prefix: 'out', totalLabel: '外注費合計' },
     { id: 'other', label: 'その他', filter: 'other', key: 'other', prefix: 'oth', totalLabel: 'その他合計' },
+    { id: 'specialProfit', label: '特別利益', filter: 'income', key: 'specialProfit', prefix: 'spp', totalLabel: '特別利益合計' },
+    { id: 'specialLoss', label: '特別損失', filter: 'expense', key: 'specialLoss', prefix: 'spl', totalLabel: '特別損失合計' },
     { id: 'tax', label: '法人税', filter: 'tax', key: 'tax', prefix: 'tax', totalLabel: '法人税合計' },
   ];
 
@@ -2098,6 +2163,8 @@ function buildProfitSection(sections) {
   const exp = getTotalRow(sections.find((s) => s.id === 'expense'));
   const out = getTotalRow(sections.find((s) => s.id === 'outsourcing'));
   const other = getTotalRow(sections.find((s) => s.id === 'other'));
+  const specialProfit = getTotalRow(sections.find((s) => s.id === 'specialProfit'));
+  const specialLoss = getTotalRow(sections.find((s) => s.id === 'specialLoss'));
   const tax = getTotalRow(sections.find((s) => s.id === 'tax'));
 
   const revV = rev?.values ?? enrichRowValues(emptyMonthValues());
@@ -2117,7 +2184,10 @@ function buildProfitSection(sections) {
 
   const operating = subtractValues(revV, costV);
   const ordinary = subtractValues(addValues(operating, nonOpV), nonOpExpV);
-  const preTaxNet = ordinary;
+  const preTaxNet = subtractValues(
+    addValues(ordinary, specialProfit?.values ?? enrichRowValues(emptyMonthValues())),
+    specialLoss?.values ?? enrichRowValues(emptyMonthValues()),
+  );
   const net = subtractValues(preTaxNet, tax?.values ?? enrichRowValues(emptyMonthValues()));
 
   return {
@@ -2285,6 +2355,7 @@ function readMonthValues(cells, months) {
 const BS_SECTION_ACCENT_TOTAL = {
   currentAssets: '流動資産合計',
   fixedAssets: ['固定資産合計', '有形固定資産合計'],
+  deferredAssets: '繰延資産合計',
   currentLiab: '流動負債合計',
   fixedLiab: '固定負債合計',
   equity: '純資産の部合計',
@@ -2313,6 +2384,29 @@ function filterBsDuplicateParents(rows) {
   });
 }
 
+/** 貸借対照表CSVに行がない場合も常時表示する勘定を補完する */
+function appendMissingBsAccountRows(rawRows, alwaysVisibleAccounts) {
+  if (!alwaysVisibleAccounts?.length) return rawRows;
+  const detailAccounts = new Set(
+    rawRows
+      .filter((r) => !r.isTotal && !isBsInformationalSub(r.sub))
+      .map((r) => r.account),
+  );
+  const sampleValues = rawRows.find((r) => r.values)?.values;
+  const monthKeys = sampleValues ? Object.keys(sampleValues) : [...FISCAL_MONTHS];
+  const additions = [];
+  for (const account of alwaysVisibleAccounts) {
+    if (detailAccounts.has(account)) continue;
+    const values = {};
+    for (const m of monthKeys) values[m] = 0;
+    additions.push({ account, sub: '', values, isTotal: false });
+  }
+  if (!additions.length) return rawRows;
+  const totals = rawRows.filter((r) => r.isTotal);
+  const details = rawRows.filter((r) => !r.isTotal);
+  return [...details, ...additions, ...totals];
+}
+
 function bsRowsToSection(id, label, filter, rawRows, expandConfig, expandCandidates) {
   const filtered = filterBsDuplicateParents(rawRows);
   const totals = filtered.filter((r) => r.isTotal);
@@ -2339,22 +2433,39 @@ function bsRowsToSection(id, label, filter, rawRows, expandConfig, expandCandida
 function buildBsSections(bsText, expandConfig, expandCandidates) {
   const sections = [];
 
-  const currentAssets = extractBsRows(bsText, ['流動資産'], '流動資産合計');
+  const currentAssets = appendMissingBsAccountRows(
+    extractBsRows(bsText, ['流動資産'], '流動資産合計'),
+    BS_CURRENT_ASSET_ALWAYS_VISIBLE,
+  );
   if (currentAssets.length) {
     sections.push(bsRowsToSection(
       'currentAssets', '流動資産', 'assets', currentAssets, expandConfig, expandCandidates,
     ));
   }
 
+  const investmentOtherAssets = appendMissingBsAccountRows(
+    extractBsRows(bsText, ['投資その他の資産'], '投資その他の資産合計'),
+    BS_INVESTMENT_OTHER_ALWAYS_VISIBLE,
+  );
   const fixedAssets = [
     ...extractBsRows(bsText, ['有形固定資産'], '有形固定資産合計'),
     ...extractBsRows(bsText, ['無形固定資産'], '無形固定資産合計', false),
-    ...extractBsRows(bsText, ['投資その他の資産'], '投資その他の資産合計'),
+    ...investmentOtherAssets,
     ...extractBsEndTotalRow(bsText, ['固定資産'], '固定資産合計'),
   ];
   if (fixedAssets.length) {
     sections.push(bsRowsToSection(
       'fixedAssets', '固定資産', 'assets', fixedAssets, expandConfig, expandCandidates,
+    ));
+  }
+
+  const deferredAssets = appendMissingBsAccountRows(
+    extractBsRows(bsText, ['繰延資産'], '繰延資産合計'),
+    BS_DEFERRED_ASSET_ALWAYS_VISIBLE,
+  );
+  if (deferredAssets.length) {
+    sections.push(bsRowsToSection(
+      'deferredAssets', '繰延資産', 'assets', deferredAssets, expandConfig, expandCandidates,
     ));
   }
 
@@ -2611,13 +2722,12 @@ const FORMULA_LABELS = {
   sectionSumOtherPay: '保険積立金・長期未払金・未払消費税・未払法人税等・住民税の合計',
   profitOperating: '売上高合計 − (人件費合計 + 諸経費合計 + 外注費合計 + その他合計)',
   profitOrdinary: '営業利益 + 営業外収益合計 − 営業外費用合計',
-  profitPreTax: '経常利益',
+  profitPreTax: '経常利益 + 特別利益合計 − 特別損失合計',
   profitNet: '税引前当期純利益 − 法人税合計',
   sgaTaxable: '人件費合計 + 諸経費合計 + 外注費合計',
   sgaTotal: '消費税対象販管費合計 + その他合計',
-  cashInflow: '仕訳の借方「普通預金」の合計（口座間移動を除く。期首月は現預金・前期末残高・出金実績から整合）',
-  cashOutflow: '仕訳の貸方「普通預金」の合計（口座間移動を除く）',
-  cashDepositChange: '当月末現預金 − 前月末現預金',
+  cashInflow: '仕訳の借方「普通預金」の合計',
+  cashOutflow: '仕訳の貸方「普通預金」の合計',
 };
 
 function isAggregateRow(row) {
@@ -2655,6 +2765,8 @@ const PL_SECTION_CATEGORY = {
   outsourcing: 'outsourcing',
   other: 'other',
   tax: 'tax',
+  specialLoss: 'specialLoss',
+  specialProfit: 'specialProfit',
 };
 
 function normalizeSub(sub) {
@@ -7891,7 +8003,11 @@ function isInterestRow(row) {
 
 function isDepreciationRow(row) {
   const label = row.label ?? '';
-  return label === DEPRECIATION_ACCOUNT || label.startsWith(DEPRECIATION_ACCOUNT);
+  return label === DEPRECIATION_ACCOUNT
+    || label.startsWith(DEPRECIATION_ACCOUNT)
+    || label === '少額減価償却費'
+    || label === '繰延資産償却'
+    || label.startsWith('繰延資産償却');
 }
 
 function isFillableOtherRow(row) {
@@ -8256,12 +8372,13 @@ const CFF_IN_ROW_ID = 'cf-in';
 const CFF_OUT_ROW_ID = 'cf-out';
 const CFF_DEPOSIT_CHANGE_ROW_ID = 'cash-deposit-change';
 
-const CFF_INFLOW_SECTION_IDS = ['revenue', 'nonOperating'];
+const CFF_INFLOW_SECTION_IDS = ['revenue', 'nonOperating', 'specialProfit'];
 const CFF_OUTFLOW_SECTION_IDS = [
   'personnel',
   'expense',
   'outsourcing',
   'other',
+  'specialLoss',
   'tax',
   'nonOperatingExpense',
   'otherPay',
@@ -11872,8 +11989,8 @@ const DASHBOARD_PREV_PERIOD = '前期';
 const DASHBOARD_PREV_PREV_PERIOD = '前々期';
 
 const DASHBOARD_DISPLAY_MONTHS = FISCAL_MONTHS.filter((m) => m !== DASHBOARD_KESSAN);
-const REVENUE_SECTION_IDS = ['revenue', 'nonOperating'];
-const EXPENSE_SECTION_IDS = ['personnel', 'expense', 'outsourcing', 'other', 'tax', 'nonOperatingExpense'];
+const REVENUE_SECTION_IDS = ['revenue', 'nonOperating', 'specialProfit'];
+const EXPENSE_SECTION_IDS = ['personnel', 'expense', 'outsourcing', 'other', 'specialLoss', 'tax', 'nonOperatingExpense'];
 const DASHBOARD_CHART_MODES = [
   { id: 'balance', label: '収支推移' },
   { id: 'revenue', label: '収益推移' },

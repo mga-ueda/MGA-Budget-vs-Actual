@@ -17,6 +17,8 @@ const PL_SECTION_CATEGORY = {
   outsourcing: 'outsourcing',
   other: 'other',
   tax: 'tax',
+  specialLoss: 'specialLoss',
+  specialProfit: 'specialProfit',
 };
 
 function normalizeSub(sub) {

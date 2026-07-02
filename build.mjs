@@ -13,6 +13,7 @@ const FILES = [
   'config/visibilityConfig.js',
   'config/rowDisplayConfig.js',
   'config/expenseAccountConfig.js',
+  'config/bsBalanceSheetAccountConfig.js',
   'config/expenseSortConfig.js',
   'config/sectionColorConfig.js',
   'config/sectionFilterConfig.js',

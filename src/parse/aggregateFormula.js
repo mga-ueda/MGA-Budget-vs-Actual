@@ -6,13 +6,12 @@ const FORMULA_LABELS = {
   sectionSumOtherPay: '保険積立金・長期未払金・未払消費税・未払法人税等・住民税の合計',
   profitOperating: '売上高合計 − (人件費合計 + 諸経費合計 + 外注費合計 + その他合計)',
   profitOrdinary: '営業利益 + 営業外収益合計 − 営業外費用合計',
-  profitPreTax: '経常利益',
+  profitPreTax: '経常利益 + 特別利益合計 − 特別損失合計',
   profitNet: '税引前当期純利益 − 法人税合計',
   sgaTaxable: '人件費合計 + 諸経費合計 + 外注費合計',
   sgaTotal: '消費税対象販管費合計 + その他合計',
-  cashInflow: '仕訳の借方「普通預金」の合計（口座間移動を除く。期首月は現預金・前期末残高・出金実績から整合）',
-  cashOutflow: '仕訳の貸方「普通預金」の合計（口座間移動を除く）',
-  cashDepositChange: '当月末現預金 − 前月末現預金',
+  cashInflow: '仕訳の借方「普通預金」の合計',
+  cashOutflow: '仕訳の貸方「普通預金」の合計',
 };
 
 export function isAggregateRow(row) {

@@ -45,7 +45,11 @@ function isInterestRow(row) {
 
 function isDepreciationRow(row) {
   const label = row.label ?? '';
-  return label === DEPRECIATION_ACCOUNT || label.startsWith(DEPRECIATION_ACCOUNT);
+  return label === DEPRECIATION_ACCOUNT
+    || label.startsWith(DEPRECIATION_ACCOUNT)
+    || label === '少額減価償却費'
+    || label === '繰延資産償却'
+    || label.startsWith('繰延資産償却');
 }
 
 function isFillableOtherRow(row) {

@@ -14,8 +14,8 @@ const DASHBOARD_PREV_PERIOD = '前期';
 const DASHBOARD_PREV_PREV_PERIOD = '前々期';
 
 const DASHBOARD_DISPLAY_MONTHS = FISCAL_MONTHS.filter((m) => m !== DASHBOARD_KESSAN);
-const REVENUE_SECTION_IDS = ['revenue', 'nonOperating'];
-const EXPENSE_SECTION_IDS = ['personnel', 'expense', 'outsourcing', 'other', 'tax', 'nonOperatingExpense'];
+const REVENUE_SECTION_IDS = ['revenue', 'nonOperating', 'specialProfit'];
+const EXPENSE_SECTION_IDS = ['personnel', 'expense', 'outsourcing', 'other', 'specialLoss', 'tax', 'nonOperatingExpense'];
 const DASHBOARD_CHART_MODES = [
   { id: 'balance', label: '収支推移' },
   { id: 'revenue', label: '収益推移' },

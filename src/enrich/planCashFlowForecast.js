@@ -16,12 +16,13 @@ const CFF_IN_ROW_ID = 'cf-in';
 const CFF_OUT_ROW_ID = 'cf-out';
 const CFF_DEPOSIT_CHANGE_ROW_ID = 'cash-deposit-change';
 
-const CFF_INFLOW_SECTION_IDS = ['revenue', 'nonOperating'];
+const CFF_INFLOW_SECTION_IDS = ['revenue', 'nonOperating', 'specialProfit'];
 const CFF_OUTFLOW_SECTION_IDS = [
   'personnel',
   'expense',
   'outsourcing',
   'other',
+  'specialLoss',
   'tax',
   'nonOperatingExpense',
   'otherPay',
