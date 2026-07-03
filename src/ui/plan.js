@@ -491,9 +491,18 @@ function bindPeriodControls() {
 function bindDashboardButton() {
   const btn = document.getElementById('plan-dashboard-btn');
   btn?.addEventListener('click', () => {
-    switchMainTab(activeTab === 'dashboard' ? 'plan' : 'dashboard');
+    if (activeTab === 'dashboard' || isSettingsMainTab(activeTab)) {
+      switchMainTab('plan');
+      return;
+    }
+    switchMainTab('dashboard');
   });
-  btn?.classList.toggle('is-active', activeTab === 'dashboard');
+}
+
+const MAIN_VIEW_TABS = new Set(['plan', 'dashboard']);
+
+function isSettingsMainTab(tab) {
+  return !MAIN_VIEW_TABS.has(tab);
 }
 
 let rawPlanData = null;
@@ -4195,8 +4204,23 @@ function executeMainMenuEntry(entry) {
 
 function renderMainTabs() {
   toolbar.hidden = activeTab !== 'plan';
+  const onDashboard = activeTab === 'dashboard';
+  const inSettings = isSettingsMainTab(activeTab);
+  const showPlanReturn = onDashboard || inSettings;
   const dashboardBtn = document.getElementById('plan-dashboard-btn');
-  dashboardBtn?.classList.toggle('is-active', activeTab === 'dashboard');
+  if (dashboardBtn) {
+    dashboardBtn.textContent = showPlanReturn ? '予実表を表示' : 'ダッシュボードを表示';
+    dashboardBtn.title = showPlanReturn ? '予実表を表示' : 'ダッシュボードを表示';
+    dashboardBtn.classList.toggle('is-active', onDashboard);
+    dashboardBtn.classList.toggle('is-settings-return', inSettings);
+  }
+
+  const menuTrigger = document.getElementById('plan-main-menu-trigger');
+  if (menuTrigger) {
+    menuTrigger.classList.remove('is-settings-active');
+    menuTrigger.innerHTML = 'メニュー <kbd>F10</kbd>';
+    menuTrigger.removeAttribute('title');
+  }
 }
 
 function getFilterButtonColors(filterId) {

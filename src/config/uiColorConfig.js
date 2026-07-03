@@ -22,6 +22,7 @@ const LOADING_OVERLAY_ALPHA = 0.38;
 const CSV_DROP_ACTIVE_BG_ALPHA = 0.08;
 const BONUS_MONTH_COLUMN_ALPHA = 0.08;
 const PLAN_EDITABLE_CELL_HOVER_ALPHA = 0.14;
+const HEADER_CONTROL_FOCUS_RING_ALPHA = 0.22;
 
 export const UI_COLOR_MODES = ['dark', 'light'];
 
@@ -51,6 +52,25 @@ export const DEFAULT_UI_COLORS_DARK = {
   textDimColor: '#929292',
   planAmountColor: '#00B0F0',
   planEditableCellHoverBg: '#C0C0C0',
+  headerControlBg: '#262626',
+  headerControlBorder: '#565656',
+  headerControlText: '#ffffff',
+  headerControlHoverBg: '#2E2E2E',
+  headerControlActiveBorder: '#929292',
+  dashboardNavBg: '#1e3a5f',
+  dashboardNavBorder: '#3b82f6',
+  dashboardNavText: '#bfdbfe',
+  dashboardNavHoverBg: '#1e40af',
+  dashboardNavActiveBg: '#2563eb',
+  dashboardNavActiveBorder: '#3b82f6',
+  dashboardNavActiveText: '#ffffff',
+  settingsNavActiveBg: '#7c3aed',
+  settingsNavActiveBorder: '#8b5cf6',
+  settingsNavActiveText: '#ffffff',
+  kbdBg: '#373737',
+  kbdTextColor: '#929292',
+  kbdBorderColor: '#505050',
+  kbdShadowColor: '#454545',
   fillColor1: '#404040',
   fillColor2: '#3F1B1B',
   warningTextColor: '#FFFF00',
@@ -109,6 +129,25 @@ export const DEFAULT_UI_COLORS_LIGHT = {
   textDimColor: '#757575',
   planAmountColor: '#0078D4',
   planEditableCellHoverBg: '#808080',
+  headerControlBg: '#FFFFFF',
+  headerControlBorder: '#B8B8B8',
+  headerControlText: '#1A1A1A',
+  headerControlHoverBg: '#EFEFEF',
+  headerControlActiveBorder: '#757575',
+  dashboardNavBg: '#eff6ff',
+  dashboardNavBorder: '#2563eb',
+  dashboardNavText: '#1d4ed8',
+  dashboardNavHoverBg: '#dbeafe',
+  dashboardNavActiveBg: '#2563eb',
+  dashboardNavActiveBorder: '#1d4ed8',
+  dashboardNavActiveText: '#ffffff',
+  settingsNavActiveBg: '#9333ea',
+  settingsNavActiveBorder: '#7e22ce',
+  settingsNavActiveText: '#ffffff',
+  kbdBg: '#EFEFEF',
+  kbdTextColor: '#757575',
+  kbdBorderColor: '#B8B8B8',
+  kbdShadowColor: '#C8C8C8',
   fillColor1: '#E8EEF4',
   fillColor2: '#F5E8E8',
   warningTextColor: '#8B6914',
@@ -361,6 +400,12 @@ export function applyUiColors(config = {}) {
     bonusMonthColumnBg,
     fillColor1, fillColor2,
     planAmountColor, planEditableCellHoverBg, amountVarianceColor,
+    headerControlBg, headerControlBorder, headerControlText,
+    headerControlHoverBg, headerControlActiveBorder,
+    dashboardNavBg, dashboardNavBorder, dashboardNavText, dashboardNavHoverBg,
+    dashboardNavActiveBg, dashboardNavActiveBorder, dashboardNavActiveText,
+    settingsNavActiveBg, settingsNavActiveBorder, settingsNavActiveText,
+    kbdBg, kbdTextColor, kbdBorderColor, kbdShadowColor,
     warningTextColor,
   } = colors;
 
@@ -443,6 +488,43 @@ export function applyUiColors(config = {}) {
   root.style.setProperty('--plan-primary-btn-end', opaqueHex(primaryButtonBgEnd));
   root.style.setProperty('--plan-primary-btn-text', opaqueHex(primaryButtonTextColor));
   root.style.setProperty('--plan-interactive-accent', opaqueHex(interactiveAccentColor));
+  root.style.setProperty('--plan-header-control-bg', opaqueHex(headerControlBg));
+  root.style.setProperty('--plan-header-control-border', opaqueHex(headerControlBorder));
+  root.style.setProperty('--plan-header-control-text', opaqueHex(headerControlText));
+  root.style.setProperty('--plan-header-control-bg-hover', opaqueHex(headerControlHoverBg));
+  root.style.setProperty('--plan-header-control-bg-active', opaqueHex(headerControlHoverBg));
+  root.style.setProperty('--plan-header-control-border-active', opaqueHex(headerControlActiveBorder));
+  root.style.setProperty('--plan-header-control-text-active', opaqueHex(headerControlText));
+  root.style.setProperty(
+    '--plan-header-control-focus-ring',
+    hexToRgba(headerControlActiveBorder, HEADER_CONTROL_FOCUS_RING_ALPHA),
+  );
+  root.style.setProperty('--plan-dashboard-nav-bg', opaqueHex(dashboardNavBg));
+  root.style.setProperty('--plan-dashboard-nav-border', opaqueHex(dashboardNavBorder));
+  root.style.setProperty('--plan-dashboard-nav-text', opaqueHex(dashboardNavText));
+  root.style.setProperty('--plan-dashboard-nav-hover-bg', opaqueHex(dashboardNavHoverBg));
+  root.style.setProperty(
+    '--plan-dashboard-nav-focus-ring',
+    hexToRgba(dashboardNavBorder, HEADER_CONTROL_FOCUS_RING_ALPHA),
+  );
+  root.style.setProperty('--plan-dashboard-nav-active-bg', opaqueHex(dashboardNavActiveBg));
+  root.style.setProperty('--plan-dashboard-nav-active-border', opaqueHex(dashboardNavActiveBorder));
+  root.style.setProperty('--plan-dashboard-nav-active-text', opaqueHex(dashboardNavActiveText));
+  root.style.setProperty(
+    '--plan-dashboard-nav-active-focus-ring',
+    hexToRgba(dashboardNavActiveBorder, HEADER_CONTROL_FOCUS_RING_ALPHA),
+  );
+  root.style.setProperty('--plan-settings-nav-active-bg', opaqueHex(settingsNavActiveBg));
+  root.style.setProperty('--plan-settings-nav-active-border', opaqueHex(settingsNavActiveBorder));
+  root.style.setProperty('--plan-settings-nav-active-text', opaqueHex(settingsNavActiveText));
+  root.style.setProperty(
+    '--plan-settings-nav-active-focus-ring',
+    hexToRgba(settingsNavActiveBorder, HEADER_CONTROL_FOCUS_RING_ALPHA),
+  );
+  root.style.setProperty('--plan-kbd-bg', opaqueHex(kbdBg));
+  root.style.setProperty('--plan-kbd-text', opaqueHex(kbdTextColor));
+  root.style.setProperty('--plan-kbd-border', opaqueHex(kbdBorderColor));
+  root.style.setProperty('--plan-kbd-shadow', opaqueHex(kbdShadowColor));
   root.style.setProperty(
     '--plan-csv-drop-active-bg',
     hexToRgba(interactiveAccentColor, CSV_DROP_ACTIVE_BG_ALPHA),

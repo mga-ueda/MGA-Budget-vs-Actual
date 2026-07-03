@@ -504,6 +504,16 @@ export function mountUiColorPanel(container, {
     previewBgKey: 'periodModeBudgetActualBg',
     refresh: false,
   });
+  registerBgTextRow('ダッシュボードボタン（通常）', 'dashboardNavBg', 'dashboardNavText', 'ダッシュボードを表示');
+  registerBorderRow('ダッシュボードボタン（枠線・通常）', 'dashboardNavBorder', 'dashboardNavBg');
+  registerBgRow('ダッシュボードボタン（ホバー・通常）', 'dashboardNavHoverBg', 'ダッシュボードを表示', '#ffffff');
+  registerBgTextRow('ダッシュボードボタン（表示中）', 'dashboardNavActiveBg', 'dashboardNavActiveText', '予実表を表示');
+  registerBorderRow('ダッシュボードボタン（枠線・表示中）', 'dashboardNavActiveBorder', 'dashboardNavActiveBg');
+  registerBgTextRow('設定画面ボタン（表示中）', 'settingsNavActiveBg', 'settingsNavActiveText', '予実表を表示');
+  registerBorderRow('設定画面ボタン（枠線・表示中）', 'settingsNavActiveBorder', 'settingsNavActiveBg');
+  registerBgTextRow('ショートカットキー（kbd）', 'kbdBg', 'kbdTextColor', 'F10');
+  registerBorderRow('ショートカットキー（kbd・枠線）', 'kbdBorderColor', 'kbdBg');
+  registerBgRow('ショートカットキー（kbd・影）', 'kbdShadowColor', 'F10', '#ffffff');
   registerJournalTintRow('読み込み中（オーバーレイ）', 'loadingOverlayBg', LOADING_OVERLAY_ALPHA, '読み込み', 'browserBg');
   registerTextRow('成功・OK表示', 'statusOkColor', 'OK', {
     previewBgKey: 'browserBg',

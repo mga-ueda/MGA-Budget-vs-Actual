@@ -82,6 +82,16 @@ body {
   --plan-primary-btn-end: #2563eb;
   --plan-primary-btn-text: #ffffff;
   --plan-interactive-accent: #2563eb;
+  /** ヘッダー操作（期切替・ダッシュボード・メニュー） */
+  --plan-header-control-bg: #262626;
+  --plan-header-control-border: #565656;
+  --plan-header-control-text: #ffffff;
+  --plan-header-control-bg-hover: #2e2e2e;
+  --plan-header-control-bg-active: #2e2e2e;
+  --plan-header-control-border-active: #929292;
+  --plan-header-control-text-active: #ffffff;
+  --plan-header-control-focus-ring: rgba(146, 146, 146, 0.22);
+  --plan-header-control-height: 1.625rem;
   --plan-csv-drop-active-bg: rgba(37, 99, 235, 0.08);
   --plan-bonus-month-column-bg: rgba(134, 239, 172, 0.08);
   --plan-year-row-bg: #c65911;
@@ -276,29 +286,106 @@ body {
   gap: 0.25rem;
 }
 
+:is(
+  .plan-period-btn,
+  .plan-period-select,
+  .plan-main-tab-select,
+  .plan-dashboard-btn
+) {
+  box-sizing: border-box;
+  height: var(--plan-header-control-height);
+  background-color: var(--plan-header-control-bg);
+  border: 1px solid var(--plan-header-control-border);
+  color: var(--plan-header-control-text);
+  transition:
+    background-color var(--plan-duration) var(--plan-ease),
+    border-color var(--plan-duration) var(--plan-ease),
+    box-shadow var(--plan-duration) var(--plan-ease),
+    color var(--plan-duration) var(--plan-ease);
+}
+
+:is(
+  .plan-period-btn:hover:not(:disabled),
+  .plan-period-select:hover,
+  .plan-main-tab-select:hover
+) {
+  background-color: var(--plan-header-control-bg-hover);
+}
+
+.plan-dashboard-btn:not(.is-active):not(.is-settings-return) {
+  background-color: var(--plan-dashboard-nav-bg);
+  border-color: var(--plan-dashboard-nav-border);
+  color: var(--plan-dashboard-nav-text);
+}
+
+.plan-dashboard-btn:not(.is-active):not(.is-settings-return):hover {
+  background-color: var(--plan-dashboard-nav-hover-bg);
+}
+
+.plan-dashboard-btn.is-active {
+  background-color: var(--plan-dashboard-nav-active-bg);
+  border-color: var(--plan-dashboard-nav-active-border);
+  color: var(--plan-dashboard-nav-active-text);
+  box-shadow: 0 0 0 2px var(--plan-dashboard-nav-active-focus-ring);
+}
+
+.plan-dashboard-btn.is-settings-return {
+  background-color: var(--plan-settings-nav-active-bg);
+  border-color: var(--plan-settings-nav-active-border);
+  color: var(--plan-settings-nav-active-text);
+  box-shadow: 0 0 0 2px var(--plan-settings-nav-active-focus-ring);
+}
+
+.plan-main-menu-trigger[aria-expanded='true'] {
+  background-color: var(--plan-header-control-bg-active);
+  border-color: var(--plan-header-control-border-active);
+  color: var(--plan-header-control-text-active);
+  box-shadow: 0 0 0 2px var(--plan-header-control-focus-ring);
+}
+
+:is(
+  .plan-period-btn:focus-visible,
+  .plan-period-select:focus-visible,
+  .plan-main-tab-select:focus-visible
+) {
+  outline: none;
+  border-color: var(--plan-header-control-border-active);
+  box-shadow: 0 0 0 2px var(--plan-header-control-focus-ring);
+}
+
+.plan-dashboard-btn:not(.is-active):not(.is-settings-return):focus-visible {
+  outline: none;
+  border-color: var(--plan-dashboard-nav-border);
+  box-shadow: 0 0 0 2px var(--plan-dashboard-nav-focus-ring);
+}
+
+.plan-dashboard-btn.is-active:focus-visible {
+  outline: none;
+  border-color: var(--plan-dashboard-nav-active-border);
+  box-shadow: 0 0 0 2px var(--plan-dashboard-nav-active-focus-ring);
+}
+
+.plan-dashboard-btn.is-settings-return:focus-visible {
+  outline: none;
+  border-color: var(--plan-settings-nav-active-border);
+  box-shadow: 0 0 0 2px var(--plan-settings-nav-active-focus-ring);
+}
+
 .plan-period-btn {
-  background: var(--plan-cell-bg);
-  border: 1px solid var(--plan-border);
-  color: var(--plan-text);
   border-radius: var(--plan-radius-sm);
-  width: 1.625rem;
-  height: 1.625rem;
+  width: var(--plan-header-control-height);
   padding: 0;
   font-size: 0.85rem;
   line-height: 1;
   cursor: pointer;
   flex-shrink: 0;
-  transition: background var(--plan-duration) var(--plan-ease), border-color var(--plan-duration) var(--plan-ease), box-shadow var(--plan-duration) var(--plan-ease);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .plan-period-btn:hover:not(:disabled) {
-  background: var(--plan-hover-surface);
   box-shadow: var(--plan-shadow-sm);
-}
-
-.plan-period-btn:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px var(--plan-editor-focus-ring);
 }
 
 .plan-period-btn:disabled {
@@ -307,24 +394,10 @@ body {
 }
 
 .plan-period-select {
-  background: var(--plan-cell-bg);
-  border: 1px solid var(--plan-border);
-  color: var(--plan-text);
   border-radius: var(--plan-radius-sm);
-  padding: 0.15rem 0.5rem;
+  padding: 0 0.5rem;
   font-size: 0.8rem;
-  line-height: 1.2;
-  transition: background var(--plan-duration) var(--plan-ease), border-color var(--plan-duration) var(--plan-ease), box-shadow var(--plan-duration) var(--plan-ease);
-}
-
-.plan-period-select:hover {
-  background: var(--plan-hover-surface);
-}
-
-.plan-period-select:focus-visible {
-  outline: none;
-  border-color: var(--plan-editor-border-focus);
-  box-shadow: 0 0 0 2px var(--plan-editor-focus-ring);
+  line-height: 1;
 }
 
 .plan-period-mode {
@@ -461,35 +534,22 @@ body {
   -webkit-appearance: none;
   min-width: 9rem;
   max-width: min(100%, 14rem);
-  padding: 0.32rem 1.75rem 0.32rem 0.65rem;
-  border: 1px solid color-mix(in srgb, var(--plan-border) 80%, var(--plan-text) 8%);
+  padding: 0 1.75rem;
   border-radius: var(--plan-radius-md);
   font-size: 0.75rem;
   font-weight: 600;
   font-family: inherit;
+  line-height: 1;
   cursor: pointer;
-  background-color: var(--plan-hover-surface);
-  color: var(--plan-text);
   box-shadow: var(--plan-shadow-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23a0a0a0' d='M2.5 4.5 6 8l3.5-3.5'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 0.55rem center;
   background-size: 0.75rem;
-  transition: background-color var(--plan-duration) var(--plan-ease), border-color var(--plan-duration) var(--plan-ease), box-shadow var(--plan-duration) var(--plan-ease);
-}
-
-.plan-main-tab-select:hover {
-  background-color: color-mix(in srgb, var(--plan-hover-surface) 85%, var(--plan-cell-bg));
-}
-
-.plan-main-tab-select:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px var(--plan-editor-focus-ring);
-}
-
-.plan-main-menu-trigger[aria-expanded='true'] {
-  border-color: var(--plan-editor-border-focus);
-  box-shadow: 0 0 0 2px var(--plan-editor-focus-ring);
 }
 
 .plan-main-menu-panel {
@@ -556,15 +616,15 @@ body {
   display: inline-block;
   padding: 0.06em 0.4em;
   margin-left: 0.35em;
-  border: 1px solid color-mix(in srgb, var(--plan-text) 22%, transparent);
+  border: 1px solid var(--plan-kbd-border);
   border-radius: 3px;
   font-family: inherit;
   font-size: 0.85em;
   font-weight: 700;
   line-height: 1.25;
-  color: var(--plan-text-dim);
-  background: color-mix(in srgb, var(--plan-text) 7%, var(--plan-browser-bg));
-  box-shadow: 0 1px 0 color-mix(in srgb, var(--plan-text) 12%, transparent);
+  color: var(--plan-kbd-text);
+  background: var(--plan-kbd-bg);
+  box-shadow: 0 1px 0 var(--plan-kbd-shadow);
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.04em;
 }
@@ -3365,23 +3425,16 @@ body.plan-journal-open {
 /* --- Dashboard --- */
 .plan-dashboard-btn {
   margin-left: 0.75rem;
-  padding: 0.35rem 0.85rem;
-  border: 1px solid color-mix(in srgb, var(--plan-text) 22%, transparent);
+  padding: 0 0.85rem;
   border-radius: 6px;
-  background: color-mix(in srgb, var(--plan-text) 8%, transparent);
-  color: var(--plan-text);
   font-size: 0.82rem;
   font-weight: 600;
+  line-height: 1;
   cursor: pointer;
   white-space: nowrap;
-  transition: background 0.15s, border-color 0.15s;
-}
-
-.plan-dashboard-btn:hover,
-.plan-dashboard-btn.is-active {
-  background: color-mix(in srgb, #d97706 35%, transparent);
-  border-color: #d97706;
-  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .dashboard-wrap {
