@@ -45,6 +45,7 @@ const FILES = [
   'parse/parseEmployee.js',
   'config/monthDisplayConfig.js',
   'config/planPeriodCleanup.js',
+  'config/viewportScale.js',
   'config/appSettings.js',
   'config/settingsExport.js',
   'csv/csvFolder.js',

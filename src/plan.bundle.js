@@ -9146,6 +9146,87 @@ function purgeClosedPeriodPlanStorage({
   };
 }
 
+/* config/viewportScale.js */
+/** Reference viewport width (scale = 1.0 at this width). */
+const DESIGN_VIEWPORT_WIDTH = 1600;
+
+const MIN_VIEWPORT_SCALE = 0.65;
+/** Wide screens may scale above 1.0 up to this cap. */
+const MAX_VIEWPORT_SCALE = 1.1;
+
+/** Plan table fit: shrink when overlapping, grow when space allows. */
+const MIN_CONTENT_FIT_SCALE = 0.72;
+const MAX_CONTENT_FIT_SCALE = 1.28;
+const MAX_CONTENT_FIT_SCALE_ABSOLUTE = 1.42;
+
+let currentViewportScale = 1;
+let currentContentFitScale = 1;
+
+function computeViewportScale(width = window.innerWidth) {
+  const raw = width / DESIGN_VIEWPORT_WIDTH;
+  const clamped = Math.min(MAX_VIEWPORT_SCALE, Math.max(MIN_VIEWPORT_SCALE, raw));
+  return Math.round(clamped * 100) / 100;
+}
+
+/** Upper content-fit cap rises on viewports wider than the design width. */
+function computeMaxContentFitScale(width = window.innerWidth) {
+  if (width <= DESIGN_VIEWPORT_WIDTH) return MAX_CONTENT_FIT_SCALE;
+  const extra = (width - DESIGN_VIEWPORT_WIDTH) / DESIGN_VIEWPORT_WIDTH;
+  const scaled = MAX_CONTENT_FIT_SCALE + extra * 0.4;
+  return Math.round(Math.min(MAX_CONTENT_FIT_SCALE_ABSOLUTE, scaled) * 100) / 100;
+}
+
+function getViewportScale() {
+  return currentViewportScale;
+}
+
+function getContentFitScale() {
+  return currentContentFitScale;
+}
+
+function setContentFitScale(scale) {
+  const max = computeMaxContentFitScale();
+  const clamped = Math.min(max, Math.max(MIN_CONTENT_FIT_SCALE, scale));
+  currentContentFitScale = Math.round(clamped * 100) / 100;
+}
+
+function resetContentFitScale() {
+  currentContentFitScale = 1;
+}
+
+function applyViewportScale(scale) {
+  currentViewportScale = scale;
+  document.documentElement.style.setProperty('--plan-viewport-scale', String(scale));
+}
+
+function bindViewportScale(onChange) {
+  let raf = null;
+  let lastScale = computeViewportScale();
+  applyViewportScale(lastScale);
+
+  const update = () => {
+    const next = computeViewportScale();
+    if (next === lastScale) return;
+    lastScale = next;
+    applyViewportScale(next);
+    onChange?.(next);
+  };
+
+  const schedule = () => {
+    if (raf != null) cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(() => {
+      raf = null;
+      update();
+    });
+  };
+
+  window.addEventListener('resize', schedule);
+  return () => {
+    window.removeEventListener('resize', schedule);
+    if (raf != null) cancelAnimationFrame(raf);
+  };
+}
+
 /* config/appSettings.js */
 const APP_SETTINGS_STORAGE_KEY = 'mga-app-settings';
 
@@ -9283,9 +9364,12 @@ function formatFontScaleMultiplier(uiScale) {
 }
 
 function applyFontScale(uiScale) {
+  const viewportScale = getViewportScale();
+  const contentFitScale = getContentFitScale();
+  const actual = Math.round(fontScaleUiToActual(uiScale) * viewportScale * contentFitScale * 100) / 100;
   document.documentElement.style.setProperty(
     '--plan-font-scale',
-    String(fontScaleUiToActual(uiScale)),
+    String(actual),
   );
 }
 
@@ -9301,9 +9385,12 @@ function formatRowPaddingScaleMultiplier(uiScale) {
 }
 
 function applyRowPaddingScale(uiScale) {
+  const viewportScale = getViewportScale();
+  const contentFitScale = getContentFitScale();
+  const actual = Math.round(normalizeRowPaddingScale(uiScale) * viewportScale * contentFitScale * 100) / 100;
   document.documentElement.style.setProperty(
     '--plan-row-padding-scale',
-    String(normalizeRowPaddingScale(uiScale)),
+    String(actual),
   );
 }
 
@@ -14768,10 +14855,10 @@ const PLAN_LOADING_MIN_DISPLAY_MS = 150;
 let planTableInitialLayoutDone = false;
 /** 設定タブ表示中に破棄した表の列幅（復帰時の再計測を省略） */
 let lastPlanTableColumnWidths = null;
+/** 列幅キャッシュと対になるコンテンツフィット倍率（復帰時にフォントと列幅の整合を保つ） */
+let lastPlanTableContentFitScale = 1;
 /** フォント・余白変更など列幅の再計測が必要なとき true */
 let planTableLayoutInvalidated = false;
-
-let planTableColumnWidthScheduleGeneration = 0;
 
 const root = document.getElementById('plan-root');
 const planBody = () => document.querySelector('.plan-body');
@@ -14871,6 +14958,7 @@ function cachePlanTableColumnWidthsFromDom() {
   const table = root.querySelector('.plan-table');
   if (!table) return;
   lastPlanTableColumnWidths = readPlanTableColumnWidths(table);
+  lastPlanTableContentFitScale = getContentFitScale();
 }
 
 function shouldShowPlanLoadingOnTabReturn() {
@@ -15193,7 +15281,28 @@ function measurePlanTableColumnWidths(table, { onSettled, beforeMeasure } = {}) 
   }
   const wrap = table.closest('.plan-table-wrap');
   if (wrap) bindPlanTableColumnWidthSync(wrap, table);
-  schedulePlanTableColumnWidths(table, { onSettled, beforeMeasure });
+  schedulePlanTableLayout(table, { onSettled, beforeMeasure });
+}
+
+/** フォント読み込みと描画確定を待ってから 1 回だけレイアウトする（ループなし） */
+async function schedulePlanTableLayout(table, { onSettled, beforeMeasure } = {}) {
+  if (document.fonts?.ready) {
+    try {
+      await document.fonts.ready;
+    } catch {
+      /* ignore */
+    }
+  }
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
+  if (!table.isConnected) {
+    onSettled?.();
+    return;
+  }
+
+  beforeMeasure?.();
+  layoutPlanTableSinglePass(table);
+  onSettled?.();
 }
 
 function getPlanTableWrapContentWidth(wrap) {
@@ -15222,6 +15331,65 @@ function planTableOverflowsWrapContent(table) {
   const padR = parseFloat(style.paddingRight) || 0;
   const contentRight = wrap.getBoundingClientRect().right - padR;
   return table.getBoundingClientRect().right > contentRight + 0.5;
+}
+
+function applyPlanDisplayScales() {
+  applyFontScale(appSettings.fontScale);
+  applyRowPaddingScale(appSettings.rowPaddingScale);
+}
+
+/**
+ * 1 回の計測で最適なフォント倍率と列幅を同時に確定する。
+ * 文字幅・padding（rem 基準）はフォント倍率にほぼ比例するため、
+ * 「自然幅 : 使える幅」の比率だけで最適倍率が一発で決まり、再計測ループが不要。
+ */
+function layoutPlanTableSinglePass(table) {
+  if (!table?.isConnected) return;
+
+  applyPlanDisplayScales();
+  const baseScale = getContentFitScale();
+  const measured = measureNaturalPlanTableColumnWidths(table);
+  const { monthCount, extraCount } = countPlanTableFlexibleColumns(table);
+  const naturalW = sumPlanTableColumnWidths(measured, monthCount, extraCount);
+  const availableW = getPlanTableAvailableWidth(table);
+
+  if (naturalW <= 0 || availableW <= 0) {
+    finalizePlanTableColumnWidths(table, measured);
+    return;
+  }
+
+  // 1% は丸め・サブピクセル誤差の安全マージン（重なり防止）
+  setContentFitScale(baseScale * (availableW / naturalW) * 0.99);
+  let nextScale = getContentFitScale();
+
+  // ヒステリシス：丸め 1 ステップ（0.01）以内の変化はフォントを変えず列幅の再配分のみ行う。
+  // フォント変更 → rem 余白の微変化 → 再レイアウトの自己フィードバックで
+  // 倍率が丸め境界を往復し続ける振動をここで断ち切る
+  if (Math.abs(nextScale - baseScale) <= 0.011) {
+    setContentFitScale(baseScale);
+    nextScale = baseScale;
+  }
+  applyPlanDisplayScales();
+
+  const k = nextScale / baseScale;
+  const pad = k > 1 ? 1 : 0;
+  finalizePlanTableColumnWidths(table, {
+    categoryW: Math.ceil(measured.categoryW * k) + pad,
+    labelW: Math.ceil(measured.labelW * k) + pad,
+    subW: Math.ceil(measured.subW * k) + pad,
+    monthW: measured.monthW * k,
+    extraW: measured.extraW * k,
+  });
+}
+
+/** 適用中の列幅合計が現在の表示幅から大きくずれているか（タブ復帰・リサイズ後の再レイアウト判定） */
+function planTableColumnWidthsStale(table) {
+  const availableW = getPlanTableAvailableWidth(table);
+  if (!availableW) return false;
+  const { monthCount, extraCount } = countPlanTableFlexibleColumns(table);
+  const totalW = sumPlanTableColumnWidths(readPlanTableColumnWidths(table), monthCount, extraCount);
+  if (totalW <= 0) return true;
+  return Math.abs(availableW - totalW) > 8;
 }
 
 function shrinkPlanTableFlexColumnsToFit(table, widths, availableW) {
@@ -15264,8 +15432,9 @@ function fitPlanTableColumnsToViewport(table, widths) {
   const contentFlexTotal = monthCount * widths.monthW + extraCount * widths.extraW;
   if (contentFlexTotal <= 0 || contentFlexTotal >= flexBudget) return widths;
 
-  // 端数切り上げで右側にはみ出さないよう、比例配分で flexBudget にぴったり合わせる
-  const scale = flexBudget / contentFlexTotal;
+  // 端数切り上げで右側にはみ出さないよう、比例配分で flexBudget にぴったり合わせる。
+  // フォントが上限に達して余白が大きい場合でも、数字の間隔が開きすぎないよう拡大は 1.25 倍まで
+  const scale = Math.min(flexBudget / contentFlexTotal, 1.25);
   return {
     categoryW,
     labelW,
@@ -17563,15 +17732,13 @@ function resetPlanTableColumnWidthVars(table) {
   }
 }
 
-/** 列内容を走査し、改行なしで収まる幅に固定する（表示中セル・現在のフォントサイズ基準） */
-function fixPlanTableColumnWidths(table) {
-  if (!table?.isConnected) return;
-
+/** 列内容を走査し、改行なしで収まる自然幅を計測する（適用はしない・強制リフローは 1 回） */
+function measureNaturalPlanTableColumnWidths(table) {
   resetPlanTableColumnWidthVars(table);
   table.classList.add('plan-table-measuring');
 
   const hasData = Boolean(data?.sections);
-  let categoryW = maxPlanCategoryCellScrollWidth(table);
+  const categoryW = maxPlanCategoryCellScrollWidth(table);
   let labelW;
   let subW;
   if (hasData) {
@@ -17590,21 +17757,33 @@ function fixPlanTableColumnWidths(table) {
     subW = maxPlanCellScrollWidth(table.querySelectorAll(':is(th, td).col-sub'));
   }
 
+  // 金額列は内容ぴったりだと窮屈なので、数字 1 桁分の余白を自然幅に含める
+  const digitW = planAmountDigitWidth(table);
   const monthScale = readPlanTableScale(table, '--plan-col-amount-month-scale');
   const monthW = Math.ceil(Math.max(
     maxAmountCellScrollWidth(table.querySelectorAll('tbody .col-amount-month')),
     maxAmountCellScrollWidth(table.querySelectorAll('thead .col-amount-month')),
-  ) * monthScale);
+  ) * monthScale) + digitW;
   const extraW = Math.max(
     maxAmountCellScrollWidth(table.querySelectorAll('tbody .col-amount-extra')),
     maxPlanCellScrollWidth(table.querySelectorAll('thead .col-amount-extra')),
-  );
+  ) + digitW;
 
   table.classList.remove('plan-table-measuring');
+  return { categoryW, labelW, subW, monthW, extraW };
+}
 
-  applyPlanTableColumnWidths(table, { categoryW, labelW, subW, monthW, extraW });
+/** 金額 1 桁分の目安幅。フォント倍率に比例するため 1 パス計算の線形性を崩さない */
+function planAmountDigitWidth(table) {
+  const fontPx = parseFloat(getComputedStyle(table).fontSize) || 12;
+  return Math.ceil(fontPx * 0.8);
+}
 
-  let fitted = fitPlanTableColumnsToViewport(table, { categoryW, labelW, subW, monthW, extraW });
+/** 計測済みの列幅を適用し、余白配分・見切れ補正・付随レイアウトを更新する（計算のみで再計測しない） */
+function finalizePlanTableColumnWidths(table, widths) {
+  applyPlanTableColumnWidths(table, widths);
+
+  let fitted = fitPlanTableColumnsToViewport(table, widths);
   const availableW = getPlanTableAvailableWidth(table);
   fitted = shrinkPlanTableFlexColumnsToFit(table, fitted, availableW);
   applyPlanTableColumnWidths(table, fitted);
@@ -17627,101 +17806,6 @@ function fixPlanTableColumnWidths(table) {
   if (wrap) syncPlanColumnPlates(wrap, table);
 }
 
-/** フォントサイズ（--plan-font-scale）反映後に列幅を計測・見切れ補正する */
-function schedulePlanTableColumnWidths(table, { onSettled, beforeMeasure } = {}) {
-  if (!table?.isConnected) {
-    onSettled?.();
-    return;
-  }
-
-  const generation = ++planTableColumnWidthScheduleGeneration;
-  const wrap = table.closest('.plan-table-wrap');
-  const body = planBody();
-  let pass = 0;
-  let lastAvailableW = -1;
-  let stablePasses = 0;
-  let finished = false;
-  let pendingTimer = null;
-  let resizeObserver = null;
-  let resizeRaf = null;
-
-  const finish = () => {
-    if (finished || generation !== planTableColumnWidthScheduleGeneration) return;
-    finished = true;
-    if (pendingTimer != null) clearTimeout(pendingTimer);
-    if (resizeRaf != null) cancelAnimationFrame(resizeRaf);
-    resizeObserver?.disconnect();
-    onSettled?.();
-  };
-
-  const runPass = () => {
-    if (finished || generation !== planTableColumnWidthScheduleGeneration) {
-      finish();
-      return;
-    }
-    if (!table.isConnected) {
-      finish();
-      return;
-    }
-
-    beforeMeasure?.();
-    fixPlanTableColumnWidths(table);
-
-    const availableW = getPlanTableAvailableWidth(table);
-    const { monthCount, extraCount } = countPlanTableFlexibleColumns(table);
-    const totalW = sumPlanTableColumnWidths(readPlanTableColumnWidths(table), monthCount, extraCount);
-    const layoutKey = `${availableW}:${Math.round(totalW)}:${planTableOverflowsWrapContent(table) ? 1 : 0}`;
-    if (availableW > 0 && layoutKey === lastAvailableW) {
-      stablePasses += 1;
-    } else {
-      stablePasses = 0;
-      lastAvailableW = layoutKey;
-    }
-
-    pass += 1;
-    if (stablePasses >= 2 || pass >= 16) {
-      finish();
-      return;
-    }
-
-    const delay = pass <= 2 ? 0 : pass <= 5 ? 50 : Math.min(250, 40 * (pass - 4));
-    if (delay === 0) {
-      requestAnimationFrame(runPass);
-    } else {
-      pendingTimer = setTimeout(runPass, delay);
-    }
-  };
-
-  const start = async () => {
-    if (document.fonts?.ready) {
-      try {
-        await document.fonts.ready;
-      } catch {
-        /* ignore */
-      }
-    }
-    if (generation !== planTableColumnWidthScheduleGeneration) return;
-    requestAnimationFrame(() => requestAnimationFrame(runPass));
-  };
-
-  if (typeof ResizeObserver !== 'undefined') {
-    resizeObserver = new ResizeObserver(() => {
-      if (finished || generation !== planTableColumnWidthScheduleGeneration) return;
-      stablePasses = 0;
-      if (resizeRaf != null) cancelAnimationFrame(resizeRaf);
-      resizeRaf = requestAnimationFrame(() => {
-        resizeRaf = null;
-        runPass();
-      });
-    });
-    resizeObserver.observe(table);
-    if (body) resizeObserver.observe(body);
-    if (wrap) resizeObserver.observe(wrap);
-  }
-
-  start();
-}
-
 function abortActivePlanTableColumnWidthSync() {
   activePlanTableColumnWidthAbort?.abort();
   activePlanTableColumnWidthAbort = null;
@@ -17738,17 +17822,19 @@ function bindPlanTableColumnWidthSync(wrap, table) {
   activePlanTableColumnWidthAbort = controller;
   planTableColumnWidthControllers.set(wrap, controller);
 
+  // 初期幅を控えておき、ResizeObserver の初回発火（observe 直後）で二重レイアウトしない。
+  // 1px 未満の変化はフォント変更に伴う rem 余白の揺れなので無視する（振動防止）
   let raf = null;
-  let lastSyncAvailableWidth = -1;
+  let lastSyncAvailableWidth = getPlanTableAvailableWidth(table);
   const schedule = () => {
     if (!table.isConnected) return;
     const availableW = getPlanTableAvailableWidth(table);
-    if (availableW > 0 && availableW === lastSyncAvailableWidth) return;
+    if (availableW > 0 && Math.abs(availableW - lastSyncAvailableWidth) < 1) return;
     lastSyncAvailableWidth = availableW;
     if (raf !== null) cancelAnimationFrame(raf);
     raf = requestAnimationFrame(() => {
       raf = null;
-      fixPlanTableColumnWidths(table);
+      layoutPlanTableSinglePass(table);
     });
   };
 
@@ -17768,7 +17854,7 @@ function bindPlanTableColumnWidthSync(wrap, table) {
   });
 }
 
-/** 保存済み列幅を維持し、ビューポート変化時は縮小のみ行う */
+/** 保存済み列幅を維持し、ビューポート変化時のみ 1 回レイアウトし直す */
 function bindPlanTableColumnWidthViewportFit(wrap, table) {
   abortActivePlanTableColumnWidthSync();
 
@@ -17780,17 +17866,19 @@ function bindPlanTableColumnWidthViewportFit(wrap, table) {
   activePlanTableColumnWidthAbort = controller;
   planTableColumnWidthControllers.set(wrap, controller);
 
+  // 初期幅を控えておき、ResizeObserver の初回発火（observe 直後）で二重レイアウトしない。
+  // 1px 未満の変化はフォント変更に伴う rem 余白の揺れなので無視する（振動防止）
   let raf = null;
-  let lastSyncAvailableWidth = -1;
+  let lastSyncAvailableWidth = getPlanTableAvailableWidth(table);
   const schedule = () => {
     if (!table.isConnected) return;
     const availableW = getPlanTableAvailableWidth(table);
-    if (availableW > 0 && availableW === lastSyncAvailableWidth) return;
+    if (availableW > 0 && Math.abs(availableW - lastSyncAvailableWidth) < 1) return;
     lastSyncAvailableWidth = availableW;
     if (raf !== null) cancelAnimationFrame(raf);
     raf = requestAnimationFrame(() => {
       raf = null;
-      applyPreservedPlanTableColumnWidths(table, readPlanTableColumnWidths(table));
+      layoutPlanTableSinglePass(table);
     });
   };
 
@@ -17861,10 +17949,29 @@ function refreshPlanFontScaleControl() {
   el.querySelector('[data-action="inc"]').disabled = scale >= MAX_FONT_SCALE;
 }
 
+function applyPlanViewportScaleChange() {
+  applyPlanDisplayScales();
+  invalidatePlanTableLayout();
+  if (fontScaleColumnWidthRaf !== null) {
+    cancelAnimationFrame(fontScaleColumnWidthRaf);
+  }
+  fontScaleColumnWidthRaf = requestAnimationFrame(() => {
+    fontScaleColumnWidthRaf = null;
+    const table = root.querySelector('.plan-table');
+    if (table && activeTab === 'plan' && data) {
+      measurePlanTableColumnWidths(table);
+    }
+  });
+  if (activeTab === 'dashboard') {
+    renderDashboardView();
+  }
+}
+
 function applyPlanFontScaleSetting(scale) {
   appSettings = { ...appSettings, fontScale: normalizeFontScale(scale) };
   saveAppSettings(appSettings);
-  applyFontScale(appSettings.fontScale);
+  resetContentFitScale();
+  applyPlanDisplayScales();
   refreshPlanFontScaleControl();
   invalidatePlanTableLayout();
   if (fontScaleColumnWidthRaf !== null) {
@@ -17920,7 +18027,8 @@ function refreshPlanRowPaddingScaleControl() {
 function applyPlanRowPaddingScaleSetting(scale) {
   appSettings = { ...appSettings, rowPaddingScale: normalizeRowPaddingScale(scale) };
   saveAppSettings(appSettings);
-  applyRowPaddingScale(appSettings.rowPaddingScale);
+  resetContentFitScale();
+  applyPlanDisplayScales();
   refreshPlanRowPaddingScaleControl();
   invalidatePlanTableLayout();
   if (rowPaddingColumnWidthRaf !== null) {
@@ -18546,6 +18654,8 @@ function switchMainTab(nextTab) {
   if (prevTab === 'plan' && nextTab !== 'plan') {
     resetPlanBodyScroll();
     cachePlanTableColumnWidthsFromDom();
+    resetContentFitScale();
+    applyPlanDisplayScales();
   }
   if (prevTab === 'dashboard' && nextTab !== 'dashboard') {
     resetDashboardState({ fiscalPeriod: appSettings.fiscalPeriod });
@@ -19573,6 +19683,7 @@ function renderTable({ measureColumnWidths = false } = {}) {
       onSettled: () => {
         planTableInitialLayoutDone = true;
         lastPlanTableColumnWidths = readPlanTableColumnWidths(table);
+        lastPlanTableContentFitScale = getContentFitScale();
         planTableLayoutInvalidated = false;
         if (planLoadingAwaitLayout) finishPlanLoadingAfterLayout();
       },
@@ -19584,13 +19695,21 @@ function renderTable({ measureColumnWidths = false } = {}) {
       },
     });
   } else {
+    // キャッシュ列幅と対のフォント倍率を復元して整合を保つ（再計測なし）
+    setContentFitScale(lastPlanTableContentFitScale);
+    applyPlanDisplayScales();
     applyPreservedPlanTableColumnWidths(table, preservedWidths);
     bindPlanTableColumnWidthViewportFit(wrap, table);
     if (scrollTarget) {
       scrollTarget.scrollTop = scrollTop;
       scrollTarget.scrollLeft = scrollLeft;
     }
+    // 設定タブ表示中にウィンドウ幅が変わっていた場合のみ 1 回だけレイアウトし直す
+    if (planTableColumnWidthsStale(table)) {
+      layoutPlanTableSinglePass(table);
+    }
     lastPlanTableColumnWidths = readPlanTableColumnWidths(table);
+    lastPlanTableContentFitScale = getContentFitScale();
     planTableLayoutInvalidated = false;
     if (planLoadingAwaitLayout) {
       finishPlanLoadingAfterLayout();
@@ -23427,6 +23546,8 @@ function loadData(loaded, { measureColumnWidths = false } = {}) {
 }
 
 async function init() {
+  applyViewportScale(computeViewportScale());
+  bindViewportScale(applyPlanViewportScaleChange);
   applyUiColors(uiColorConfig);
   applyBrandSettings(appSettings);
   applyFontScale(appSettings.fontScale);

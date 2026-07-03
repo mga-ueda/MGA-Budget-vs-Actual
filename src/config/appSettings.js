@@ -11,6 +11,8 @@ import {
   normalizeLegalWelfareRate,
 } from './legalWelfareRateConfig.js';
 
+import { getViewportScale, getContentFitScale } from './viewportScale.js';
+
 const APP_SETTINGS_STORAGE_KEY = 'mga-app-settings';
 
 export const DEFAULT_BUSINESS_START_YEAR = 2018;
@@ -147,9 +149,12 @@ export function formatFontScaleMultiplier(uiScale) {
 }
 
 export function applyFontScale(uiScale) {
+  const viewportScale = getViewportScale();
+  const contentFitScale = getContentFitScale();
+  const actual = Math.round(fontScaleUiToActual(uiScale) * viewportScale * contentFitScale * 100) / 100;
   document.documentElement.style.setProperty(
     '--plan-font-scale',
-    String(fontScaleUiToActual(uiScale)),
+    String(actual),
   );
 }
 
@@ -165,9 +170,12 @@ export function formatRowPaddingScaleMultiplier(uiScale) {
 }
 
 export function applyRowPaddingScale(uiScale) {
+  const viewportScale = getViewportScale();
+  const contentFitScale = getContentFitScale();
+  const actual = Math.round(normalizeRowPaddingScale(uiScale) * viewportScale * contentFitScale * 100) / 100;
   document.documentElement.style.setProperty(
     '--plan-row-padding-scale',
-    String(normalizeRowPaddingScale(uiScale)),
+    String(actual),
   );
 }
 
