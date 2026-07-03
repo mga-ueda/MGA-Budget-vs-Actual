@@ -1211,6 +1211,29 @@ function buildPlanRowTrClass(section, row) {
   ].filter(Boolean).join(' ');
 }
 
+/** 大項目列：セクションフィルターで隠している行を一時表示して計測する（ソロ表示リロード時の列幅維持） */
+function maxPlanCategoryCellScrollWidth(table) {
+  const sectionIds = getCurrentSectionFilterIds();
+  const filterActive = sectionIds.length > 0
+    && !isAllSectionFiltersEnabled(sectionFilterConfig, sectionIds);
+  if (!filterActive) {
+    return maxPlanCellScrollWidth(table.querySelectorAll('tbody .col-category'));
+  }
+
+  const hiddenRows = [];
+  for (const tr of table.querySelectorAll('tbody tr[data-section-id][hidden]')) {
+    hiddenRows.push(tr);
+    tr.hidden = false;
+  }
+  try {
+    return maxPlanCellScrollWidth(table.querySelectorAll('tbody .col-category'));
+  } finally {
+    for (const tr of hiddenRows) {
+      tr.hidden = true;
+    }
+  }
+}
+
 /** 展開前後に変わらない列幅用：表示対象の全行から勘定科目・補助科目の候補を集める */
 function collectPlanColumnWidthCandidates(planData) {
   const labelSpecs = [];
@@ -3347,7 +3370,7 @@ function fixPlanTableColumnWidths(table) {
   table.classList.add('plan-table-measuring');
 
   const hasData = Boolean(data?.sections);
-  let categoryW = maxPlanCellScrollWidth(table.querySelectorAll('tbody .col-category'));
+  let categoryW = maxPlanCategoryCellScrollWidth(table);
   let labelW;
   let subW;
   if (hasData) {
