@@ -29,7 +29,6 @@ import {
 
 const DIRECTOR_ACCOUNT = '役員報酬';
 const SALARY_ACCOUNT = '給料手当';
-const OVERTIME_SUB_PATTERN = /残業手当/;
 const TRAVEL_ACCOUNT = '旅費交通費';
 const TRAVEL_ROW_PATTERN = /旅費交通費|通勤手当/;
 const LEGAL_WELFARE_ACCOUNT = '法定福利費';
@@ -70,10 +69,19 @@ function sumNonPlanRows(rows) {
   return enrichRowValues(total, 'flow');
 }
 
-function isOvertimeSalaryRow(row) {
-  const sub = row.subLabel ?? '';
-  const label = row.label ?? '';
-  return OVERTIME_SUB_PATTERN.test(sub) || OVERTIME_SUB_PATTERN.test(label);
+/** 残業手当支払い計画の対象行（固定残業手当は従業員給与計画側） */
+function isVariableOvertimeSalaryRow(row) {
+  const sub = (row.subLabel ?? '').trim();
+  const label = (row.label ?? '').trim();
+  if ((sub.includes('固定') && sub.includes('残業'))
+    || (label.includes('固定') && label.includes('残業'))) {
+    return false;
+  }
+  return sub === '残業手当' || label === '残業手当';
+}
+
+export function isVariableOvertimePlanTableRow(row) {
+  return isVariableOvertimeSalaryRow(row);
 }
 
 function isTravelExpenseRow(row) {
@@ -130,6 +138,8 @@ function buildLegalWelfarePlanTotal(
   directorRows,
   salaryRows,
   salaryMainMerged,
+  salaryOvertimeMerged,
+  overtimePlanRow,
   fiscalMonths,
   legalWelfareRate,
 ) {
@@ -138,15 +148,20 @@ function buildLegalWelfarePlanTotal(
     directorRows,
     fiscalMonths,
   );
-  const salaryBase = combineCsvAndPlanClusterTotals(
+  const salaryMainBase = combineCsvAndPlanClusterTotals(
     salaryMainMerged,
     salaryRows,
+    fiscalMonths,
+  );
+  const overtimeBase = combineCsvAndPlanClusterTotals(
+    salaryOvertimeMerged,
+    overtimePlanRow ? [overtimePlanRow] : [],
     fiscalMonths,
   );
   const values = emptyRawMonthValues();
   for (const m of fiscalMonths) {
     const directorTotal = directorBase[m] ?? 0;
-    const salaryTotal = salaryBase[m] ?? 0;
+    const salaryTotal = (salaryMainBase[m] ?? 0) + (overtimeBase[m] ?? 0);
     if (directorTotal === 0 && salaryTotal === 0) continue;
     const amount = computeLegalWelfareAmount(
       directorTotal,
@@ -194,7 +209,7 @@ function partitionCsvPersonnelRows(rows) {
       continue;
     }
     if (belongsToAccountCluster(row, body, SALARY_ACCOUNT, salaryGroupIds)) {
-      if (isOvertimeSalaryRow(row)) salaryOvertime.push(row);
+      if (isVariableOvertimeSalaryRow(row)) salaryOvertime.push(row);
       else salaryMain.push(row);
       continue;
     }
@@ -216,6 +231,7 @@ function mergePlanIntoCsvRow(
   fiscalMonths,
   skipPlanFillMonths = null,
   forcePlanMonths = null,
+  planTargetTag = null,
 ) {
   const months = rawValuesFromRow(csvRow);
   const planFillMonths = [];
@@ -235,6 +251,7 @@ function mergePlanIntoCsvRow(
     ...csvRow,
     values: enrichRowValues(months, 'flow'),
     planFillMonths,
+    ...(planTargetTag ? { planTargetTag } : {}),
   };
 }
 
@@ -244,16 +261,27 @@ function mergePlanIntoPrimaryCsvRow(
   fiscalMonths,
   skipPlanFillMonths = null,
   forcePlanMonths = null,
+  planTargetTag = null,
 ) {
-  if (csvRows.length === 0 || !planTotal) return csvRows;
-  const planMonths = rawValuesFromRow({ values: planTotal });
+  if (csvRows.length === 0) return csvRows;
   const primaryIdx = csvRows.findIndex(
     (row) => !row.subLabel || row.subLabel === '補助科目なし',
   );
   const targetIdx = primaryIdx >= 0 ? primaryIdx : 0;
   return csvRows.map((row, index) => {
     if (index !== targetIdx) return row;
-    return mergePlanIntoCsvRow(row, planMonths, fiscalMonths, skipPlanFillMonths, forcePlanMonths);
+    if (!planTotal) {
+      return planTargetTag ? { ...row, planTargetTag } : row;
+    }
+    const planMonths = rawValuesFromRow({ values: planTotal });
+    return mergePlanIntoCsvRow(
+      row,
+      planMonths,
+      fiscalMonths,
+      skipPlanFillMonths,
+      forcePlanMonths,
+      planTargetTag,
+    );
   });
 }
 
@@ -293,7 +321,13 @@ function rebuildPersonnelRows(
     fiscalMonths,
     overtimeSkipPlanFillMonths,
     overtimeForcePlanMonths,
-  );
+    'overtime',
+  ).map((row) => (
+    isVariableOvertimeSalaryRow(row) ? { ...row, planTargetTag: 'overtime' } : row
+  ));
+  const overtimePlanRow = salaryOvertime.length === 0 && overtimePlanTotal
+    ? { ...makePlanRow('overtime-plan', SALARY_ACCOUNT, '残業手当', overtimePlanTotal), planTargetTag: 'overtime' }
+    : null;
   const travelCsvMerged = mergePlanIntoPrimaryCsvRow(
     travelCsv,
     travelPlanTotal,
@@ -304,6 +338,8 @@ function rebuildPersonnelRows(
     directorRows,
     salaryRows,
     salaryMainMerged,
+    salaryOvertimeMerged,
+    overtimePlanRow,
     fiscalMonths,
     legalWelfareRate,
   );
@@ -318,6 +354,7 @@ function rebuildPersonnelRows(
     ...directorRows,
     ...salaryRows,
     ...salaryMainMerged,
+    ...(overtimePlanRow ? [overtimePlanRow] : []),
     ...salaryOvertimeMerged,
     ...travelCsvMerged,
   ];
@@ -404,10 +441,13 @@ function buildTravelAllowancePlanTotal(
   const perPerson = getTravelAllowancePerPerson(salaryPlanSettings ?? {}, fiscalPeriod);
   if (perPerson <= 0) return null;
 
+  const staffEmployees = activeEmployees.filter((emp) => !isDirectorEmployee(emp));
+  if (staffEmployees.length === 0) return null;
+
   const values = emptyRawMonthValues();
   for (const m of fiscalMonths) {
     let headcount = 0;
-    for (const emp of activeEmployees) {
+    for (const emp of staffEmployees) {
       const plan = getEmployeeSalaryPlan(
         salaryPlans,
         fiscalPeriod,

@@ -21,6 +21,7 @@ const CONTEXT_MENU_ITEM_HOVER_ALPHA = 0.08;
 const LOADING_OVERLAY_ALPHA = 0.38;
 const CSV_DROP_ACTIVE_BG_ALPHA = 0.08;
 const BONUS_MONTH_COLUMN_ALPHA = 0.08;
+const PLAN_EDITABLE_CELL_HOVER_ALPHA = 0.14;
 
 export const UI_COLOR_MODES = ['dark', 'light'];
 
@@ -49,6 +50,7 @@ export const DEFAULT_UI_COLORS_DARK = {
   hintTextColor: '#B3B3B3',
   textDimColor: '#929292',
   planAmountColor: '#00B0F0',
+  planEditableCellHoverBg: '#C0C0C0',
   fillColor1: '#404040',
   fillColor2: '#3F1B1B',
   warningTextColor: '#FFFF00',
@@ -106,6 +108,7 @@ export const DEFAULT_UI_COLORS_LIGHT = {
   hintTextColor: '#5C5C5C',
   textDimColor: '#757575',
   planAmountColor: '#0078D4',
+  planEditableCellHoverBg: '#808080',
   fillColor1: '#E8EEF4',
   fillColor2: '#F5E8E8',
   warningTextColor: '#8B6914',
@@ -201,6 +204,10 @@ function migrateUiColorBucket(bucket = {}) {
     next.settingsInputBg = next.appBg;
   }
   delete next.appBg;
+  if (next.planEditableCellHoverColor != null && next.planEditableCellHoverBg == null) {
+    next.planEditableCellHoverBg = next.planEditableCellHoverColor;
+  }
+  delete next.planEditableCellHoverColor;
   return next;
 }
 
@@ -353,7 +360,7 @@ export function applyUiColors(config = {}) {
     interactiveAccentColor,
     bonusMonthColumnBg,
     fillColor1, fillColor2,
-    planAmountColor, amountVarianceColor,
+    planAmountColor, planEditableCellHoverBg, amountVarianceColor,
     warningTextColor,
   } = colors;
 
@@ -463,6 +470,10 @@ export function applyUiColors(config = {}) {
   root.style.setProperty('--plan-fill-color-1', opaqueHex(fillColor1));
   root.style.setProperty('--plan-fill-color-2', opaqueHex(fillColor2));
   root.style.setProperty('--plan-amount-color', opaqueHex(planAmountColor));
+  root.style.setProperty(
+    '--plan-editable-cell-hover-bg',
+    hexToRgba(planEditableCellHoverBg, PLAN_EDITABLE_CELL_HOVER_ALPHA),
+  );
   root.style.setProperty('--plan-amount-variance-color', opaqueHex(amountVarianceColor));
   root.style.setProperty('--plan-warning-text', opaqueHex(warningTextColor));
 }

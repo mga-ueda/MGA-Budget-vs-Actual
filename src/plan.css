@@ -57,6 +57,7 @@ body {
   --plan-editor-border: #565656;
   --plan-editor-bg-hover: color-mix(in srgb, var(--plan-editor-bg) 85%, var(--plan-text) 15%);
   --plan-editor-border-hover: color-mix(in srgb, var(--plan-text) 28%, var(--plan-editor-bg));
+  --plan-editable-cell-hover-bg: rgba(192, 192, 192, 0.14);
   --plan-editor-bg-focus: color-mix(in srgb, var(--plan-editor-bg) 78%, var(--plan-text) 18%);
   --plan-editor-border-focus: color-mix(in srgb, var(--plan-text) 38%, var(--plan-editor-bg));
   --plan-editor-focus-ring: color-mix(in srgb, var(--plan-text) 22%, transparent);
@@ -1712,6 +1713,19 @@ select.app-settings-input {
   visibility: visible;
 }
 
+.plan-editable-cell-hover-plate {
+  position: absolute;
+  box-sizing: border-box;
+  pointer-events: none;
+  z-index: 12;
+  visibility: hidden;
+  background: var(--plan-editable-cell-hover-bg);
+}
+
+.plan-editable-cell-hover-plate.is-active {
+  visibility: visible;
+}
+
 .plan-row-selection-layer {
   position: absolute;
   inset: 0;
@@ -2218,6 +2232,10 @@ tr.row-man-month .col-sub {
 }
 
 .plan-table tbody tr.row-man-month td.col-amount.plan-man-month-editable {
+  cursor: pointer;
+}
+
+.plan-table tbody td.col-amount.salary-plan-cell-editable {
   cursor: pointer;
 }
 

@@ -69,6 +69,16 @@ export const PAYMENT_PLAN_OTHER_PAY_SIMPLE_ACCOUNTS = [
   '役員借入金',
 ];
 
+/** 予実表で直接編集できる支払い計画（補助科目なし行） */
+export const PLAN_TABLE_TAX_PAYMENT_NO_SUB_LABEL = '補助科目なし';
+
+export const PLAN_TABLE_TAX_PAYMENT_OTHER_ACCOUNT = '租税公課';
+
+export const PLAN_TABLE_TAX_PAYMENT_OTHER_PAY_EDITABLE_ACCOUNTS = [
+  '未払消費税',
+  '未払法人税等',
+];
+
 function isLegacyPeriodPlan(stored) {
   if (!stored || typeof stored !== 'object') return false;
   return Object.keys(stored).some((key) => /^\d+月$/.test(key) || key === '決算整理');

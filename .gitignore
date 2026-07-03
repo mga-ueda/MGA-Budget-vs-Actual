@@ -1,9 +1,5 @@
 .vscode/chrome-profile/
-
 .tmp-*/
 .tmp-tool2022r3.zip
-
 scripts/expense-scan-output.json
 scripts/expense-account-compare.json
-
-csv/
