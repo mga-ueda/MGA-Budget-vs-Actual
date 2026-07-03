@@ -1,5 +1,6 @@
 import { FISCAL_MONTHS, formatYen } from '../parse/parseJournal.js';
 import { buildMonthYearMap, formatFiscalPeriodLabel } from '../config/appSettings.js';
+import { getViewportScale } from '../config/viewportScale.js';
 
 const DASHBOARD_KESSAN = '決算整理';
 const DASHBOARD_GOUKEI = '合計';
@@ -719,7 +720,54 @@ function dashRenderYAxisGrid(scale, yScale, pad, width, { negativeTicksRed = fal
   return markup;
 }
 
-function dashChartLayout({ width, plotH, left = 112, right = 16, top = 28, hasLegend = false }) {
+/** メインチャート描画領域の初期推定高さ（px、viewport scale 適用前） */
+const DASH_MAIN_CHART_BAR_HEIGHT = 326;
+/** 下段（利益率・預金残高）チャートの初期推定高さ（px、viewport scale 適用前） */
+const DASH_BOTTOM_CHART_HEIGHT = 230;
+
+/** コンテナの内側幅（padding 除く）を px で測る。未接続時は fallback を返す */
+function dashMeasureChartInnerWidth(container, fallback) {
+  if (!container?.isConnected) return fallback;
+  const style = window.getComputedStyle(container);
+  const inner = container.clientWidth
+    - (parseFloat(style.paddingLeft) || 0)
+    - (parseFloat(style.paddingRight) || 0);
+  return inner > 120 ? Math.round(inner) : fallback;
+}
+
+/**
+ * チャートを 2 パスで描画する。まず推定高さで描き、CSS フレックスで確定した
+ * 描画枠（wrapSelector）の実測高さと差があれば、その高さで描き直す。
+ * これで枠いっぱいに SVG が広がり、余白も切れも出ない。
+ */
+function dashRenderWithMeasuredHeight(container, fallbackHeight, wrapSelector, renderFn) {
+  const cached = Number(container.dataset?.dashChartHeight);
+  const initial = Number.isFinite(cached) && cached > 40 ? cached : fallbackHeight;
+  renderFn(initial);
+  const wrap = container.querySelector(wrapSelector);
+  const measured = wrap?.clientHeight ?? 0;
+  if (measured > 40 && Math.abs(measured - initial) > 2) {
+    renderFn(measured);
+  }
+  const finalHeight = measured > 40 ? measured : initial;
+  if (container.dataset) container.dataset.dashChartHeight = String(finalHeight);
+}
+
+/** Y 軸目盛りラベルの最大長から左パディングを算出（余白の無駄と重なりを防ぐ） */
+function dashComputeAxisLeftPad(ticks, viewportScale) {
+  // plan.css の .dashboard-chart-axis-y の font-size（10px * scale）と揃える
+  const fontPx = 10 * viewportScale;
+  let maxUnits = 4;
+  for (const t of ticks) {
+    const text = dashFormatAxisYen(t);
+    let units = 0;
+    for (const ch of text) units += ch === DASHBOARD_YEN ? 1 : 0.62;
+    maxUnits = Math.max(maxUnits, units);
+  }
+  return Math.ceil(maxUnits * fontPx + 16);
+}
+
+function dashChartLayout({ width, plotH = null, height = null, left = 112, right = 16, top = 28, hasLegend = false }) {
   const axisGap = 12;
   const monthRow = 11;
   const yearRow = 11;
@@ -730,17 +778,19 @@ function dashChartLayout({ width, plotH, left = 112, right = 16, top = 28, hasLe
   const axisH = axisGap + monthRow + rowGap + yearRow;
   const legendH = hasLegend ? legendGap + legendRow : 0;
   const bottom = axisH + legendH + bottomPad;
-  const height = top + plotH + bottom;
-  const plotBottom = top + plotH;
+  // height 指定時はプロット高を逆算して枠にぴったり収める
+  const resolvedPlotH = plotH ?? Math.max(80, (height ?? 300) - top - bottom);
+  const finalHeight = top + resolvedPlotH + bottom;
+  const plotBottom = top + resolvedPlotH;
   const monthY = plotBottom + axisGap;
   const yearY = monthY + monthRow + rowGap;
   const legendY = yearY + yearRow + legendGap;
   return {
     width,
-    height,
+    height: finalHeight,
     pad: { top, right, bottom, left },
     plotW: width - left - right,
-    plotH,
+    plotH: resolvedPlotH,
     plotBottom,
     plotTop: top,
     monthY,
@@ -754,33 +804,30 @@ function dashRenderPlotClip(layout, clipId) {
   return `<clipPath id="${clipId}"><rect x="${pad.left}" y="${pad.top}" width="${plotW}" height="${plotH}"/></clipPath>`;
 }
 
-function dashRenderXAxisLabelsTwoRow(labels, xScale, layout) {
+function dashRenderXAxisLabelsTwoRow(labels, xScale, layout, { stepPx = null } = {}) {
   const { monthY, yearY } = layout;
+  // ラベル間隔が狭いときは間引いて重なりを防ぐ（"12月" ≒ 2.6em を目安にする）
+  const viewportScale = getViewportScale();
+  const minLabelW = 26 * viewportScale + 4;
+  const skip = stepPx != null && stepPx > 0 ? Math.max(1, Math.ceil(minLabelW / stepPx)) : 1;
+  // 年ラベル（例: 2025年）はおよそ 5 文字分の幅。前の年ラベルと重なる場合は右へずらす
+  const yearLabelW = 50 * viewportScale;
   let markup = '';
   let prevYear = null;
+  let prevYearRight = -Infinity;
   for (let i = 0; i < labels.length; i += 1) {
+    if (i % skip !== 0) continue;
     const x = xScale(i);
     const { year, month } = dashSplitMonthLabel(labels[i]);
     markup += `<text x="${x}" y="${monthY}" class="dashboard-chart-axis-x" text-anchor="middle" dominant-baseline="hanging">${month}</text>`;
     if (year && year !== prevYear) {
-      markup += `<text x="${x}" y="${yearY}" class="dashboard-chart-axis-year" text-anchor="middle" dominant-baseline="hanging">${year}</text>`;
+      const yearX = Math.max(x, prevYearRight + yearLabelW / 2 + 4);
+      markup += `<text x="${yearX}" y="${yearY}" class="dashboard-chart-axis-year" text-anchor="middle" dominant-baseline="hanging">${year}</text>`;
       prevYear = year;
+      prevYearRight = yearX + yearLabelW / 2;
     }
   }
   return markup;
-}
-
-function dashRenderCenteredLegend(legend, pad, plotW, legendY) {
-  const itemWidth = 88;
-  const totalW = legend.length * itemWidth;
-  let x = pad.left + (plotW - totalW) / 2;
-  return legend.map((item) => {
-    const cx = x + 6;
-    const tx = x + 18;
-    const sw = 8;
-    x += itemWidth;
-    return `<rect x="${cx - sw / 2}" y="${legendY - sw / 2}" width="${sw}" height="${sw}" fill="${item.color}" rx="1"/><text x="${tx}" y="${legendY + 4}" class="dashboard-chart-legend" text-anchor="start">${item.label}</text>`;
-  }).join('');
 }
 
 const DASH_CHART_DRAW_MS = 520;
@@ -1098,40 +1145,47 @@ function dashRenderSvgGroupedBarChart(container, series, labels, {
   drilldownCtx = null,
   animate = false,
 }) {
-  const width = 900;
-  const layout = dashChartLayout({ width, plotH: 250, right: 16, hasLegend: true });
-  const { pad, plotW, plotH, plotBottom, height } = layout;
-  const clipId = dashNextGradId('clip');
+  const viewportScale = getViewportScale();
+  const width = dashMeasureChartInnerWidth(container, 900);
+  const fallbackHeight = Math.round(DASH_MAIN_CHART_BAR_HEIGHT * viewportScale);
   const allValues = series.flatMap((s) => s.values.map((v) => Math.abs(v ?? 0)));
   const dataMax = Math.max(0, ...allValues, 0);
   const paddedMax = dataMax > 0 ? dataMax * 1.08 : 1;
   const yAxis = dashComputeYAxisScale(0, paddedMax, { clampMinZero: true, targetTicks });
-  const yScale = dashMakeYScale(yAxis, pad, plotH);
-  const groupCount = labels.length;
-  const barGroupW = plotW / Math.max(1, groupCount);
-  const barGap = 4;
-  const barW = Math.min(16, Math.max(6, (barGroupW - barGap) / series.length - 2));
-  const totalBarWidth = series.length * barW + (series.length - 1) * barGap;
+  const leftPad = dashComputeAxisLeftPad(yAxis.ticks, viewportScale);
+  const legendHtml = legend.map((item) =>
+    `<span class="dashboard-chart-legend-chip"><span class="dashboard-chart-legend-swatch" style="background:${item.color}"></span>${dashEscapeHtml(item.label)}</span>`,
+  ).join('');
 
-  const gridLines = dashRenderYAxisGrid(yAxis, yScale, pad, width);
+  dashRenderWithMeasuredHeight(container, fallbackHeight, '.dashboard-bar-chart-wrap', (chartHeight) => {
+    const layout = dashChartLayout({ width, height: chartHeight, left: leftPad, right: 16, hasLegend: false });
+    const { pad, plotW, plotH, plotBottom, height } = layout;
+    const clipId = dashNextGradId('clip');
+    const yScale = dashMakeYScale(yAxis, pad, plotH);
+    const groupCount = labels.length;
+    const barGroupW = plotW / Math.max(1, groupCount);
+    const barGap = 4 * viewportScale;
+    const barW = Math.min(22 * viewportScale, Math.max(6, (barGroupW - barGap) / series.length - 4));
+    const totalBarWidth = series.length * barW + (series.length - 1) * barGap;
 
-  let bars = '';
-  labels.forEach((label, gi) => {
-    const groupLeft = pad.left + barGroupW * gi;
-    const cx = groupLeft + barGroupW / 2;
-    series.forEach((s, si) => {
-      const val = Math.abs(s.values[gi] ?? 0);
-      const x = cx - totalBarWidth / 2 + si * (barW + barGap);
-      const y = yScale(val);
-      bars += `<rect class="dashboard-chart-bar" data-month-index="${gi}" data-series-index="${si}" x="${x}" y="${y}" width="${barW}" height="${Math.max(0, plotBottom - y)}" fill="${s.color}" rx="2"/>`;
+    const gridLines = dashRenderYAxisGrid(yAxis, yScale, pad, width);
+
+    let bars = '';
+    labels.forEach((label, gi) => {
+      const groupLeft = pad.left + barGroupW * gi;
+      const cx = groupLeft + barGroupW / 2;
+      series.forEach((s, si) => {
+        const val = Math.abs(s.values[gi] ?? 0);
+        const x = cx - totalBarWidth / 2 + si * (barW + barGap);
+        const y = yScale(val);
+        bars += `<rect class="dashboard-chart-bar" data-month-index="${gi}" data-series-index="${si}" x="${x}" y="${y}" width="${barW}" height="${Math.max(0, plotBottom - y)}" fill="${s.color}" rx="2"/>`;
+      });
     });
-  });
 
-  const xScale = (i) => pad.left + barGroupW * i + barGroupW / 2;
-  const xLabels = dashRenderXAxisLabelsTwoRow(labels, xScale, layout);
-  const legendItems = dashRenderCenteredLegend(legend, pad, plotW, layout.legendY);
+    const xScale = (i) => pad.left + barGroupW * i + barGroupW / 2;
+    const xLabels = dashRenderXAxisLabelsTwoRow(labels, xScale, layout, { stepPx: barGroupW });
 
-  container.innerHTML = `
+    container.innerHTML = `
     <div class="dashboard-chart-title ${headerClass ?? ''}">${title}</div>
     <div class="dashboard-bar-chart-wrap">
       <svg class="dashboard-chart-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet">
@@ -1140,11 +1194,12 @@ function dashRenderSvgGroupedBarChart(container, series, labels, {
         <g clip-path="url(#${clipId})">${bars}</g>
         ${dashRenderBarChartInteractionMarkup(pad, plotW, plotH)}
         ${xLabels}
-        ${legendItems}
       </svg>
       ${dashRenderBarChartTooltipMarkup()}
-    </div>`;
-  dashBindGroupedBarChartHover(container, { series, labels, layout, xScale, yScale, drilldownCtx });
+    </div>
+    <div class="dashboard-chart-legend-grid">${legendHtml}</div>`;
+    dashBindGroupedBarChartHover(container, { series, labels, layout, xScale, yScale, drilldownCtx });
+  });
   dashPlayChartDrawAnimation(container, { animate });
 }
 
@@ -1538,47 +1593,52 @@ function dashRenderSvgStackedBarChart(container, series, labels, {
   drilldownCtx = null,
   animate = false,
 }) {
-  const width = 900;
-  const layout = dashChartLayout({ width, plotH: 250, right: 16, hasLegend: false });
-  const { pad, plotW, plotH, plotBottom, plotTop, height } = layout;
-  const clipId = dashNextGradId('clip');
+  const viewportScale = getViewportScale();
+  const width = dashMeasureChartInnerWidth(container, 900);
+  const fallbackHeight = Math.round(DASH_MAIN_CHART_BAR_HEIGHT * viewportScale);
   const monthTotals = labels.map((_, gi) =>
     series.reduce((sum, s) => sum + Math.abs(s.values[gi] ?? 0), 0));
   const dataMax = Math.max(0, ...monthTotals, 0);
   const paddedMax = dataMax > 0 ? dataMax * 1.08 : 1;
   const yAxis = dashComputeYAxisScale(0, paddedMax, { clampMinZero: true, targetTicks });
-  const yScale = dashMakeYScale(yAxis, pad, plotH);
-  const groupCount = labels.length;
-  const barGroupW = plotW / Math.max(1, groupCount);
-  const barW = Math.min(28, Math.max(8, barGroupW * 0.55));
-
-  const gridLines = dashRenderYAxisGrid(yAxis, yScale, pad, width);
-
-  let bars = '';
-  labels.forEach((_, gi) => {
-    const groupLeft = pad.left + barGroupW * gi;
-    const cx = groupLeft + barGroupW / 2;
-    const x = cx - barW / 2;
-    let cumulative = 0;
-    let columnBars = '';
-    series.forEach((s) => {
-      const val = Math.abs(s.values[gi] ?? 0);
-      if (val === 0) return;
-      const yTop = yScale(cumulative + val);
-      const yBottom = yScale(cumulative);
-      cumulative += val;
-      columnBars += `<rect class="dashboard-chart-segment" data-series-key="${dashEscapeHtml(s.key)}" data-month-index="${gi}" x="${x}" y="${yTop}" width="${barW}" height="${Math.max(0, yBottom - yTop)}" fill="${s.color}" rx="1"/>`;
-    });
-    if (columnBars) {
-      bars += `<g class="dashboard-chart-column" data-month-index="${gi}">${columnBars}</g>`;
-    }
-  });
-
-  const xScale = (i) => pad.left + barGroupW * i + barGroupW / 2;
-  const xLabels = dashRenderXAxisLabelsTwoRow(labels, xScale, layout);
+  const leftPad = dashComputeAxisLeftPad(yAxis.ticks, viewportScale);
   const legendHtml = dashRenderStackedLegendHtml(series);
 
-  container.innerHTML = `
+  dashRenderWithMeasuredHeight(container, fallbackHeight, '.dashboard-bar-chart-wrap', (chartHeight) => {
+    const layout = dashChartLayout({ width, height: chartHeight, left: leftPad, right: 16, hasLegend: false });
+    const { pad, plotW, plotH, plotBottom, plotTop, height } = layout;
+    const clipId = dashNextGradId('clip');
+    const yScale = dashMakeYScale(yAxis, pad, plotH);
+    const groupCount = labels.length;
+    const barGroupW = plotW / Math.max(1, groupCount);
+    const barW = Math.min(38 * viewportScale, Math.max(8, barGroupW * 0.55));
+
+    const gridLines = dashRenderYAxisGrid(yAxis, yScale, pad, width);
+
+    let bars = '';
+    labels.forEach((_, gi) => {
+      const groupLeft = pad.left + barGroupW * gi;
+      const cx = groupLeft + barGroupW / 2;
+      const x = cx - barW / 2;
+      let cumulative = 0;
+      let columnBars = '';
+      series.forEach((s) => {
+        const val = Math.abs(s.values[gi] ?? 0);
+        if (val === 0) return;
+        const yTop = yScale(cumulative + val);
+        const yBottom = yScale(cumulative);
+        cumulative += val;
+        columnBars += `<rect class="dashboard-chart-segment" data-series-key="${dashEscapeHtml(s.key)}" data-month-index="${gi}" x="${x}" y="${yTop}" width="${barW}" height="${Math.max(0, yBottom - yTop)}" fill="${s.color}" rx="1"/>`;
+      });
+      if (columnBars) {
+        bars += `<g class="dashboard-chart-column" data-month-index="${gi}">${columnBars}</g>`;
+      }
+    });
+
+    const xScale = (i) => pad.left + barGroupW * i + barGroupW / 2;
+    const xLabels = dashRenderXAxisLabelsTwoRow(labels, xScale, layout, { stepPx: barGroupW });
+
+    container.innerHTML = `
     <div class="dashboard-chart-title ${headerClass ?? ''}">${title}</div>
     <div class="dashboard-bar-chart-wrap dashboard-bar-chart-wrap--stacked-series">
       <svg class="dashboard-chart-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet">
@@ -1592,18 +1652,19 @@ function dashRenderSvgStackedBarChart(container, series, labels, {
       ${dashRenderBarChartTooltipMarkup()}
     </div>
     <div class="dashboard-chart-legend-grid">${legendHtml}</div>`;
-  dashBindStackedBarChartHover(container, {
-    series,
-    labels,
-    layout,
-    xScale,
-    yScale,
-    highlightWrap,
-    highlightSidebarRoot,
-    breakdownItems: breakdownItems ?? [],
-    drilldownCtx,
+    dashBindStackedBarChartHover(container, {
+      series,
+      labels,
+      layout,
+      xScale,
+      yScale,
+      highlightWrap,
+      highlightSidebarRoot,
+      breakdownItems: breakdownItems ?? [],
+      drilldownCtx,
+    });
+    dashBindChartSeriesHover(container, highlightWrap, highlightSidebarRoot);
   });
-  dashBindChartSeriesHover(container, highlightWrap, highlightSidebarRoot);
   dashPlayChartDrawAnimation(container, { animate });
 }
 
@@ -1618,10 +1679,9 @@ function dashRenderSvgGradientLineChart(container, values, labels, {
   prevPrevValues = null,
   animate = false,
 }) {
-  const width = 440;
-  const layout = dashChartLayout({ width, plotH: 170, right: 12, hasLegend: false });
-  const { pad, plotW, plotH, plotBottom, plotTop, height } = layout;
-  const clipId = dashNextGradId('clip');
+  const viewportScale = getViewportScale();
+  const width = dashMeasureChartInnerWidth(container, 440);
+  const fallbackHeight = Math.round(DASH_BOTTOM_CHART_HEIGHT * viewportScale);
   const scaleValues = [
     ...values,
     ...(prevValues ?? []),
@@ -1634,34 +1694,40 @@ function dashRenderSvgGradientLineChart(container, values, labels, {
   const paddedMin = dataMin - range * padRatio;
   const paddedMax = dataMax + range * padRatio;
   const yAxis = dashComputeYAxisScale(paddedMin, paddedMax, { includeZero, targetTicks: 5 });
-  const yScale = dashMakeYScale(yAxis, pad, plotH);
-  const xScale = (i) => pad.left + (plotW * i) / Math.max(1, labels.length - 1);
-  const gradId = dashNextGradId('line');
+  const leftPad = dashComputeAxisLeftPad(yAxis.ticks, viewportScale);
 
-  let gridLines = dashRenderYAxisGrid(yAxis, yScale, pad, width, { negativeTicksRed });
+  dashRenderWithMeasuredHeight(container, fallbackHeight, '.dashboard-line-chart-wrap', (chartHeight) => {
+    const layout = dashChartLayout({ width, height: chartHeight, left: leftPad, right: 12, hasLegend: false });
+    const { pad, plotW, plotH, plotBottom, plotTop, height } = layout;
+    const clipId = dashNextGradId('clip');
+    const yScale = dashMakeYScale(yAxis, pad, plotH);
+    const xScale = (i) => pad.left + (plotW * i) / Math.max(1, labels.length - 1);
+    const gradId = dashNextGradId('line');
 
-  if (includeZero && yAxis.min < 0 && yAxis.max > 0) {
-    const zeroY = yScale(0);
-    gridLines += `<line x1="${pad.left}" y1="${zeroY}" x2="${width - pad.right}" y2="${zeroY}" class="dashboard-chart-zero"/>`;
-  }
+    let gridLines = dashRenderYAxisGrid(yAxis, yScale, pad, width, { negativeTicksRed });
 
-  const points = values.map((v, i) => ({ x: xScale(i), y: yScale(v) }));
-  const path = dashSmoothCurvePath(points);
-  let prevPrevPathMarkup = '';
-  if (prevPrevValues?.length) {
-    const prevPrevPoints = prevPrevValues.map((v, i) => ({ x: xScale(i), y: yScale(v ?? 0) }));
-    const prevPrevPath = dashSmoothCurvePath(prevPrevPoints);
-    prevPrevPathMarkup = `<g class="dashboard-line-chart-prev-prev"><path d="${prevPrevPath}" fill="none" stroke="url(#${gradId})" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/></g>`;
-  }
-  let prevPathMarkup = '';
-  if (prevValues?.length) {
-    const prevPoints = prevValues.map((v, i) => ({ x: xScale(i), y: yScale(v ?? 0) }));
-    const prevPath = dashSmoothCurvePath(prevPoints);
-    prevPathMarkup = `<g class="dashboard-line-chart-prev"><path d="${prevPath}" fill="none" stroke="url(#${gradId})" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/></g>`;
-  }
-  const xLabels = dashRenderXAxisLabelsTwoRow(labels, xScale, layout);
+    if (includeZero && yAxis.min < 0 && yAxis.max > 0) {
+      const zeroY = yScale(0);
+      gridLines += `<line x1="${pad.left}" y1="${zeroY}" x2="${width - pad.right}" y2="${zeroY}" class="dashboard-chart-zero"/>`;
+    }
 
-  container.innerHTML = `
+    const points = values.map((v, i) => ({ x: xScale(i), y: yScale(v) }));
+    const path = dashSmoothCurvePath(points);
+    let prevPrevPathMarkup = '';
+    if (prevPrevValues?.length) {
+      const prevPrevPoints = prevPrevValues.map((v, i) => ({ x: xScale(i), y: yScale(v ?? 0) }));
+      const prevPrevPath = dashSmoothCurvePath(prevPrevPoints);
+      prevPrevPathMarkup = `<g class="dashboard-line-chart-prev-prev"><path d="${prevPrevPath}" fill="none" stroke="url(#${gradId})" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/></g>`;
+    }
+    let prevPathMarkup = '';
+    if (prevValues?.length) {
+      const prevPoints = prevValues.map((v, i) => ({ x: xScale(i), y: yScale(v ?? 0) }));
+      const prevPath = dashSmoothCurvePath(prevPoints);
+      prevPathMarkup = `<g class="dashboard-line-chart-prev"><path d="${prevPath}" fill="none" stroke="url(#${gradId})" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/></g>`;
+    }
+    const xLabels = dashRenderXAxisLabelsTwoRow(labels, xScale, layout, { stepPx: plotW / Math.max(1, labels.length - 1) });
+
+    container.innerHTML = `
     <div class="dashboard-chart-title ${headerClass ?? ''}">${title}</div>
     <div class="dashboard-line-chart-wrap">
       <svg class="dashboard-chart-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet">
@@ -1694,7 +1760,8 @@ function dashRenderSvgGradientLineChart(container, values, labels, {
         <div class="dashboard-line-chart-tooltip-rows"></div>
       </div>
     </div>`;
-  dashBindLineChartHover(container, { values, labels, layout, xScale, yScale, prevValues, prevPrevValues });
+    dashBindLineChartHover(container, { values, labels, layout, xScale, yScale, prevValues, prevPrevValues });
+  });
   dashPlayChartDrawAnimation(container, { animate });
 }
 
@@ -2359,6 +2426,41 @@ export function mountDashboardPanel({
     showJournalPopup,
     hasJournalDrilldown,
   }, { animate: shouldAnimate });
+
+  // 主エリアの寸法が変わったらチャートを実測サイズで再描画（余白の無駄・引き伸ばしを防ぐ）
+  const mainEl = grid.querySelector('.dashboard-main');
+  let lastMainWidth = mainEl.clientWidth;
+  let lastMainHeight = mainEl.clientHeight;
+  let resizeRaf = null;
+  const resizeObserver = new ResizeObserver(() => {
+    if (!wrap.isConnected) {
+      resizeObserver.disconnect();
+      return;
+    }
+    if (Math.abs(mainEl.clientWidth - lastMainWidth) < 2
+      && Math.abs(mainEl.clientHeight - lastMainHeight) < 2) {
+      return;
+    }
+    lastMainWidth = mainEl.clientWidth;
+    lastMainHeight = mainEl.clientHeight;
+    if (resizeRaf != null) cancelAnimationFrame(resizeRaf);
+    resizeRaf = requestAnimationFrame(() => {
+      resizeRaf = null;
+      if (!wrap.isConnected) return;
+      lastMainWidth = mainEl.clientWidth;
+      lastMainHeight = mainEl.clientHeight;
+      dashRenderDashboardContent(wrap, {
+        data,
+        prevData,
+        prevPrevData,
+        appSettings,
+        state,
+        showJournalPopup,
+        hasJournalDrilldown,
+      });
+    });
+  });
+  resizeObserver.observe(mainEl);
 }
 
 export function resetDashboardState({ fiscalPeriod = null } = {}) {

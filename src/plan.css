@@ -1679,12 +1679,15 @@ select.app-settings-input {
 }
 
 .plan-body:has(> #plan-root > .dashboard-wrap) {
-  display: block;
+  /* ダッシュボードは残りの高さいっぱいに広げる（足りないときだけ plan-body がスクロール） */
+  display: flex;
+  flex-direction: column;
 }
 
 #plan-root:has(> .dashboard-wrap) {
-  display: block;
-  flex: none;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
   min-height: 0;
   min-width: 0;
   width: 100%;
@@ -3442,21 +3445,16 @@ body.plan-journal-open {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  flex: none;
+  flex: 1 1 auto;
   min-height: 0;
   min-width: 0;
   width: 100%;
   --dashboard-frame-padding: 0.5rem;
   --dashboard-chart-title-row-height: 1.65rem;
-  --dashboard-main-chart-bar-height: calc(326px * var(--plan-viewport-scale, 1));
+  /* 高さが足りないときの下限（これ以下には潰さず plan-body スクロールに切替） */
+  --dashboard-main-chart-min-height: calc(280px * var(--plan-viewport-scale, 1) + 3.4rem);
+  --dashboard-bottom-charts-min-height: calc(200px * var(--plan-viewport-scale, 1) + 2.4rem);
   --dashboard-main-legend-slot-height: 4.5rem;
-  --dashboard-chart-main-height: calc(
-    var(--dashboard-frame-padding) * 2 +
-    var(--dashboard-chart-title-row-height) +
-    var(--dashboard-main-chart-bar-height) +
-    var(--dashboard-main-legend-slot-height) +
-    0.1rem * 2
-  );
   padding: var(--dashboard-frame-padding);
   box-sizing: border-box;
   padding-bottom: 0.75rem;
@@ -3512,12 +3510,13 @@ body.plan-journal-open {
 .dashboard-grid {
   display: grid;
   grid-template-columns: minmax(12rem, max-content) minmax(0, 1fr) minmax(12rem, max-content);
+  grid-template-rows: minmax(0, 1fr);
   gap: 0.5rem;
-  flex: none;
+  flex: 1 1 auto;
   min-height: 0;
   min-width: 0;
   width: 100%;
-  align-items: start;
+  align-items: stretch;
 }
 
 .dashboard-sidebar {
@@ -3818,6 +3817,8 @@ body.plan-journal-open {
   width: 100%;
   height: auto;
   aspect-ratio: 1;
+  /* 画面が低いときは円グラフを縮めてリスト側に高さを譲る */
+  max-height: min(22rem, 36vh);
 }
 
 .dashboard-sidebar-pie-slices {
@@ -3895,7 +3896,7 @@ body.plan-journal-open {
   min-width: 0;
   min-height: 0;
   width: 100%;
-  height: auto;
+  height: 100%;
 }
 
 .dashboard-chart-main,
@@ -3911,16 +3912,15 @@ body.plan-journal-open {
 }
 
 .dashboard-chart-main {
-  flex: 0 0 auto;
-  min-height: 0;
-  height: var(--dashboard-chart-main-height);
+  /* 余った高さはメイン 6 : 下段 4 で配分する */
+  flex: 6 1 0;
+  min-height: var(--dashboard-main-chart-min-height);
   display: grid;
   grid-template-rows:
     var(--dashboard-chart-title-row-height)
-    var(--dashboard-main-chart-bar-height)
-    var(--dashboard-main-legend-slot-height);
+    minmax(0, 1fr)
+    auto;
   gap: 0.1rem;
-  align-content: start;
 }
 
 .dashboard-chart-main > .dashboard-chart-title {
@@ -3932,7 +3932,7 @@ body.plan-journal-open {
 .dashboard-chart-main > .dashboard-bar-chart-wrap {
   position: relative;
   width: 100%;
-  height: var(--dashboard-main-chart-bar-height);
+  height: 100%;
   min-height: 0;
   overflow: hidden;
 }
@@ -3944,10 +3944,12 @@ body.plan-journal-open {
 }
 
 .dashboard-chart-main > .dashboard-chart-legend-grid {
-  height: var(--dashboard-main-legend-slot-height);
-  min-height: 0;
+  /* 凡例は内容に応じて伸縮し、多すぎる場合だけスクロール（無駄な余白を作らない） */
+  min-height: 1.4rem;
+  max-height: var(--dashboard-main-legend-slot-height);
   align-self: stretch;
   overflow-y: auto;
+  padding-top: 0.15rem;
 }
 
 .dashboard-chart-legend-grid {
@@ -3988,15 +3990,11 @@ body.plan-journal-open {
 .dashboard-charts-bottom {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   gap: 0.5rem;
-  flex: 0 0 auto;
-  min-height: calc(220px * var(--plan-viewport-scale, 1));
+  flex: 4 1 0;
+  min-height: var(--dashboard-bottom-charts-min-height);
   width: 100%;
-}
-
-.dashboard-main:has(.dashboard-chart-main .dashboard-bar-chart-wrap) .dashboard-charts-bottom {
-  flex: 0 0 auto;
-  min-height: calc(220px * var(--plan-viewport-scale, 1));
 }
 
 .dashboard-chart-profit,
@@ -4004,6 +4002,8 @@ body.plan-journal-open {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
+  height: 100%;
 }
 
 .dashboard-chart-title {
@@ -4123,12 +4123,12 @@ body.plan-journal-open {
   flex: 1 1 auto;
   min-height: 0;
   width: 100%;
+  overflow: hidden;
 }
 
 .dashboard-line-chart-wrap .dashboard-chart-svg {
   width: 100%;
-  height: auto;
-  max-height: 100%;
+  height: 100%;
 }
 
 .dashboard-line-chart-hover,
@@ -4293,7 +4293,7 @@ body.plan-journal-open {
 .dashboard-chart-axis-x,
 .dashboard-chart-legend {
   fill: var(--plan-muted, var(--plan-text-dim));
-  font-size: calc(8px * var(--plan-viewport-scale, 1));
+  font-size: calc(10px * var(--plan-viewport-scale, 1));
 }
 
 .dashboard-chart-axis-y {
@@ -4309,7 +4309,7 @@ body.plan-journal-open {
 
 .dashboard-chart-axis-year {
   fill: var(--plan-muted, var(--plan-text-dim));
-  font-size: calc(8px * var(--plan-viewport-scale, 1));
+  font-size: calc(10px * var(--plan-viewport-scale, 1));
   font-weight: 600;
 }
 
