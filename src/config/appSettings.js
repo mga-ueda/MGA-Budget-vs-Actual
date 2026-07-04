@@ -30,8 +30,8 @@ export const MAX_FONT_SCALE = 1.5;
 
 /** 予実表 tbody 上下 padding の UI 倍率（1 = デフォルト） */
 export const DEFAULT_ROW_PADDING_SCALE = 1;
-export const MIN_ROW_PADDING_SCALE = 0.5;
-export const MAX_ROW_PADDING_SCALE = 1.5;
+export const MIN_ROW_PADDING_SCALE = 1;
+export const MAX_ROW_PADDING_SCALE = 5;
 
 /** 補助科目の法人等判定に使う文字列マーカー（カンマ区切り） */
 export const DEFAULT_CORP_ENTITY_MARKERS = '㈱,㈲,(同)';
@@ -162,11 +162,12 @@ export function normalizeRowPaddingScale(value) {
   const n = Number(value);
   if (!Number.isFinite(n)) return DEFAULT_ROW_PADDING_SCALE;
   const clamped = Math.min(MAX_ROW_PADDING_SCALE, Math.max(MIN_ROW_PADDING_SCALE, n));
-  return Math.round(clamped * 100) / 100;
+  return Math.round(clamped * 10) / 10;
 }
 
 export function formatRowPaddingScaleMultiplier(uiScale) {
-  return `行間 ${formatFontScaleMultiplier(normalizeRowPaddingScale(uiScale))}`;
+  const n = normalizeRowPaddingScale(uiScale);
+  return `行間 ×${n.toFixed(1)}`;
 }
 
 export function applyRowPaddingScale(uiScale) {

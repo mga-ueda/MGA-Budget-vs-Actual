@@ -9307,8 +9307,8 @@ const MAX_FONT_SCALE = 1.5;
 
 /** 予実表 tbody 上下 padding の UI 倍率（1 = デフォルト） */
 const DEFAULT_ROW_PADDING_SCALE = 1;
-const MIN_ROW_PADDING_SCALE = 0.5;
-const MAX_ROW_PADDING_SCALE = 1.5;
+const MIN_ROW_PADDING_SCALE = 1;
+const MAX_ROW_PADDING_SCALE = 5;
 
 /** 補助科目の法人等判定に使う文字列マーカー（カンマ区切り） */
 const DEFAULT_CORP_ENTITY_MARKERS = '㈱,㈲,(同)';
@@ -9439,11 +9439,12 @@ function normalizeRowPaddingScale(value) {
   const n = Number(value);
   if (!Number.isFinite(n)) return DEFAULT_ROW_PADDING_SCALE;
   const clamped = Math.min(MAX_ROW_PADDING_SCALE, Math.max(MIN_ROW_PADDING_SCALE, n));
-  return Math.round(clamped * 100) / 100;
+  return Math.round(clamped * 10) / 10;
 }
 
 function formatRowPaddingScaleMultiplier(uiScale) {
-  return `行間 ${formatFontScaleMultiplier(normalizeRowPaddingScale(uiScale))}`;
+  const n = normalizeRowPaddingScale(uiScale);
+  return `行間 ×${n.toFixed(1)}`;
 }
 
 function applyRowPaddingScale(uiScale) {
@@ -18512,14 +18513,13 @@ function bindPlanTableColumnWidthViewportFit(wrap, table) {
   });
 }
 
-const ROW_PADDING_SCALE_STEP = 0.05;
+const ROW_PADDING_SCALE_STEP = 0.1;
 const PLAN_ROW_PADDING_BTN_ICON = {
   up: '<svg class="plan-scale-btn-icon" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 8 6 2 10 8z" fill="currentColor"/></svg>',
   down: '<svg class="plan-scale-btn-icon" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 4 6 10 10 4z" fill="currentColor"/></svg>',
 };
 let planRowPaddingScaleEl = null;
 let planViewportColumnWidthRaf = null;
-let rowPaddingColumnWidthRaf = null;
 
 function applyPlanViewportScaleChange() {
   applyPlanDisplayScales();
@@ -18584,20 +18584,9 @@ function refreshPlanRowPaddingScaleControl() {
 function applyPlanRowPaddingScaleSetting(scale) {
   appSettings = { ...appSettings, rowPaddingScale: normalizeRowPaddingScale(scale) };
   saveAppSettings(appSettings);
-  resetContentFitScale();
-  applyPlanDisplayScales();
+  // 行間は tbody の上下 padding のみ。列幅・content fit には影響しないので CSS 変数だけ更新する
+  applyRowPaddingScale(appSettings.rowPaddingScale);
   refreshPlanRowPaddingScaleControl();
-  invalidatePlanTableLayout();
-  if (rowPaddingColumnWidthRaf !== null) {
-    cancelAnimationFrame(rowPaddingColumnWidthRaf);
-  }
-  rowPaddingColumnWidthRaf = requestAnimationFrame(() => {
-    rowPaddingColumnWidthRaf = null;
-    const table = root.querySelector('.plan-table');
-    if (table && activeTab === 'plan' && data) {
-      measurePlanTableColumnWidths(table);
-    }
-  });
 }
 
 function getCurrentSectionFilterIds() {

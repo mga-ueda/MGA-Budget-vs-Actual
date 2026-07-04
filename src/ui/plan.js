@@ -3742,14 +3742,13 @@ function bindPlanTableColumnWidthViewportFit(wrap, table) {
   });
 }
 
-const ROW_PADDING_SCALE_STEP = 0.05;
+const ROW_PADDING_SCALE_STEP = 0.1;
 const PLAN_ROW_PADDING_BTN_ICON = {
   up: '<svg class="plan-scale-btn-icon" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 8 6 2 10 8z" fill="currentColor"/></svg>',
   down: '<svg class="plan-scale-btn-icon" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 4 6 10 10 4z" fill="currentColor"/></svg>',
 };
 let planRowPaddingScaleEl = null;
 let planViewportColumnWidthRaf = null;
-let rowPaddingColumnWidthRaf = null;
 
 function applyPlanViewportScaleChange() {
   applyPlanDisplayScales();
@@ -3814,20 +3813,9 @@ function refreshPlanRowPaddingScaleControl() {
 function applyPlanRowPaddingScaleSetting(scale) {
   appSettings = { ...appSettings, rowPaddingScale: normalizeRowPaddingScale(scale) };
   saveAppSettings(appSettings);
-  resetContentFitScale();
-  applyPlanDisplayScales();
+  // 行間は tbody の上下 padding のみ。列幅・content fit には影響しないので CSS 変数だけ更新する
+  applyRowPaddingScale(appSettings.rowPaddingScale);
   refreshPlanRowPaddingScaleControl();
-  invalidatePlanTableLayout();
-  if (rowPaddingColumnWidthRaf !== null) {
-    cancelAnimationFrame(rowPaddingColumnWidthRaf);
-  }
-  rowPaddingColumnWidthRaf = requestAnimationFrame(() => {
-    rowPaddingColumnWidthRaf = null;
-    const table = root.querySelector('.plan-table');
-    if (table && activeTab === 'plan' && data) {
-      measurePlanTableColumnWidths(table);
-    }
-  });
 }
 
 function getCurrentSectionFilterIds() {
