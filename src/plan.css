@@ -9,7 +9,6 @@
   --plan-journal-row-hover: rgba(255, 255, 255, 0.03);
   --plan-journal-close-hover: rgba(255, 255, 255, 0.08);
   --plan-journal-text: #ffffff;
-  --plan-journal-hint-text: #b3b3b3;
   --plan-journal-table-header-bg: #262626;
   --plan-border: color-mix(in srgb, #ffffff 14%, #262626);
   --plan-text: #ffffff;
@@ -34,9 +33,9 @@ body {
 }
 
 .plan-app {
-  --plan-radius-sm: 6px;
-  --plan-radius-md: 10px;
-  --plan-radius-lg: 12px;
+  --plan-radius-sm: 3px;
+  --plan-radius-md: 4px;
+  --plan-radius-lg: 6px;
   --plan-ease: cubic-bezier(0.4, 0, 0.2, 1);
   --plan-duration: 0.18s;
   --plan-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.28);
@@ -49,8 +48,6 @@ body {
   --plan-border: color-mix(in srgb, var(--plan-text) 14%, var(--plan-browser-bg));
   --plan-text: #ffffff;
   --plan-muted: #ffffff;
-  --plan-note-text: #c9c9c9;
-  --plan-hint-text: #b3b3b3;
   --plan-text-dim: #929292;
   --plan-accent: #ff0000;
   /** 設定画面の入力欄・セレクト */
@@ -67,43 +64,36 @@ body {
   --plan-settings-row-hover: #2e2e2e;
   --plan-hover-surface: color-mix(in srgb, var(--plan-settings-button-bg) 88%, var(--plan-text) 12%);
   --plan-negative-amount: #ff0000;
+  --plan-hover-boost: 10%;
   --plan-delete-btn-bg: #dc2626;
-  --plan-delete-btn-bg-hover: #b91c1c;
-  --plan-delete-btn-border: #b91c1c;
   --plan-delete-btn-text: #ffffff;
   --plan-table-header-bg: #1e1e28;
   --plan-period-mode-budget-actual-bg: #0891b2;
   --plan-period-mode-actual-bg: #16a34a;
   --plan-period-mode-plan-bg: #ea580c;
-  --plan-period-mode-text: #ffffff;
+  --plan-period-mode-budget-actual-text: #ffffff;
+  --plan-period-mode-actual-text: #ffffff;
+  --plan-period-mode-plan-text: #ffffff;
   --plan-status-ok: #86efac;
   --plan-status-error: #fca5a5;
   --plan-status-invalid: #ef4444;
-  --plan-primary-btn-start: #3b82f6;
-  --plan-primary-btn-end: #2563eb;
+  --plan-primary-btn-bg: #3b82f6;
   --plan-primary-btn-text: #ffffff;
   --plan-interactive-accent: #2563eb;
   /** ヘッダー操作（期切替・ダッシュボード・メニュー） */
   --plan-header-control-bg: #262626;
   --plan-header-control-border: #565656;
-  --plan-header-control-text: #ffffff;
-  --plan-header-control-bg-hover: #2e2e2e;
   --plan-header-control-bg-active: #2e2e2e;
   --plan-header-control-border-active: #929292;
-  --plan-header-control-text-active: #ffffff;
   --plan-header-control-focus-ring: rgba(146, 146, 146, 0.22);
   --plan-header-control-height: calc(1.625rem * var(--plan-viewport-scale, 1));
+  --plan-header-control-line-height: 1;
   --plan-csv-drop-active-bg: rgba(37, 99, 235, 0.08);
-  --plan-bonus-month-column-bg: rgba(134, 239, 172, 0.08);
   --plan-year-row-bg: #c65911;
   --plan-year-row-text: #ffffff;
   --plan-month-row-bg: #595959;
   --plan-month-row-text: #ffffff;
-  --current-month-overlay: rgba(128, 0, 0, 0.28);
   --current-month-ring: #ff0000;
-  --current-month-overlay-head: rgba(128, 0, 0, 0.34);
-  --current-month-overlay-hover: rgba(128, 0, 0, 0.22);
-  --current-month-overlay-total: rgba(128, 0, 0, 0.32);
   --settlement-month-overlay: rgba(0, 0, 0, 0.28);
   --settlement-month-ring: rgba(0, 0, 0, 0.55);
   --settlement-month-overlay-head: rgba(0, 0, 0, 0.34);
@@ -189,8 +179,8 @@ body {
   min-width: var(--plan-logo-height);
   width: auto;
   padding: 0 0.5rem;
-  border-radius: var(--plan-radius-md);
-  background: linear-gradient(145deg, var(--plan-primary-btn-start), var(--plan-primary-btn-end));
+  border-radius: var(--plan-radius-sm);
+  background: var(--plan-primary-btn-bg);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
   display: inline-flex;
   align-items: center;
@@ -269,7 +259,7 @@ body {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  height: 14px;
+  min-height: var(--plan-header-control-height);
 }
 
 .plan-title-row h1 {
@@ -278,13 +268,23 @@ body {
   font-size: 1.125rem;
   font-weight: 700;
   letter-spacing: -0.02em;
-  line-height: 1;
+  line-height: var(--plan-header-control-line-height);
+}
+
+.plan-title-row .plan-period-select {
+  font-size: 1.125rem;
+  line-height: var(--plan-header-control-line-height);
 }
 
 .plan-period-nav {
   display: flex;
   align-items: center;
   gap: 0.25rem;
+  min-height: var(--plan-header-control-height);
+}
+
+.plan-period-menu {
+  position: relative;
 }
 
 :is(
@@ -295,9 +295,15 @@ body {
 ) {
   box-sizing: border-box;
   height: var(--plan-header-control-height);
+  min-height: var(--plan-header-control-height);
+  max-height: var(--plan-header-control-height);
+  padding-top: 0;
+  padding-bottom: 0;
+  line-height: var(--plan-header-control-line-height);
   background-color: var(--plan-header-control-bg);
   border: 1px solid var(--plan-header-control-border);
-  color: var(--plan-header-control-text);
+  border-radius: var(--plan-radius-sm);
+  color: var(--plan-text);
   transition:
     background-color var(--plan-duration) var(--plan-ease),
     border-color var(--plan-duration) var(--plan-ease),
@@ -310,37 +316,35 @@ body {
   .plan-period-select:hover,
   .plan-main-tab-select:hover
 ) {
-  background-color: var(--plan-header-control-bg-hover);
+  background-color: color-mix(in srgb, var(--plan-header-control-bg) calc(100% - var(--plan-hover-boost)), white var(--plan-hover-boost));
 }
 
 .plan-dashboard-btn:not(.is-active):not(.is-settings-return) {
   background-color: var(--plan-dashboard-nav-bg);
-  border-color: var(--plan-dashboard-nav-border);
+  border-color: var(--plan-dashboard-nav-text);
   color: var(--plan-dashboard-nav-text);
 }
 
 .plan-dashboard-btn:not(.is-active):not(.is-settings-return):hover {
-  background-color: var(--plan-dashboard-nav-hover-bg);
+  background-color: color-mix(in srgb, var(--plan-dashboard-nav-bg) calc(100% - var(--plan-hover-boost)), white var(--plan-hover-boost));
 }
 
-.plan-dashboard-btn.is-active {
+.plan-dashboard-btn:is(.is-active, .is-settings-return) {
   background-color: var(--plan-dashboard-nav-active-bg);
-  border-color: var(--plan-dashboard-nav-active-border);
+  border-color: var(--plan-dashboard-nav-active-text);
   color: var(--plan-dashboard-nav-active-text);
   box-shadow: 0 0 0 2px var(--plan-dashboard-nav-active-focus-ring);
 }
 
-.plan-dashboard-btn.is-settings-return {
-  background-color: var(--plan-settings-nav-active-bg);
-  border-color: var(--plan-settings-nav-active-border);
-  color: var(--plan-settings-nav-active-text);
-  box-shadow: 0 0 0 2px var(--plan-settings-nav-active-focus-ring);
+.plan-dashboard-btn:is(.is-active, .is-settings-return):hover {
+  background-color: color-mix(in srgb, var(--plan-dashboard-nav-active-bg) calc(100% - var(--plan-hover-boost)), white var(--plan-hover-boost));
 }
 
-.plan-main-menu-trigger[aria-expanded='true'] {
-  background-color: var(--plan-header-control-bg-active);
+.plan-main-menu-trigger[aria-expanded='true'],
+.plan-period-select[aria-expanded='true'] {
+  background-color: color-mix(in srgb, var(--plan-header-control-bg) calc(100% - var(--plan-hover-boost)), white var(--plan-hover-boost));
   border-color: var(--plan-header-control-border-active);
-  color: var(--plan-header-control-text-active);
+  color: var(--plan-text);
   box-shadow: 0 0 0 2px var(--plan-header-control-focus-ring);
 }
 
@@ -356,37 +360,27 @@ body {
 
 .plan-dashboard-btn:not(.is-active):not(.is-settings-return):focus-visible {
   outline: none;
-  border-color: var(--plan-dashboard-nav-border);
+  border-color: var(--plan-dashboard-nav-text);
   box-shadow: 0 0 0 2px var(--plan-dashboard-nav-focus-ring);
 }
 
-.plan-dashboard-btn.is-active:focus-visible {
+.plan-dashboard-btn:is(.is-active, .is-settings-return):focus-visible {
   outline: none;
-  border-color: var(--plan-dashboard-nav-active-border);
+  border-color: var(--plan-dashboard-nav-active-text);
   box-shadow: 0 0 0 2px var(--plan-dashboard-nav-active-focus-ring);
 }
 
-.plan-dashboard-btn.is-settings-return:focus-visible {
-  outline: none;
-  border-color: var(--plan-settings-nav-active-border);
-  box-shadow: 0 0 0 2px var(--plan-settings-nav-active-focus-ring);
-}
-
 .plan-period-btn {
-  border-radius: var(--plan-radius-sm);
   width: var(--plan-header-control-height);
+  min-width: var(--plan-header-control-height);
+  max-width: var(--plan-header-control-height);
   padding: 0;
   font-size: 0.85rem;
-  line-height: 1;
   cursor: pointer;
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-}
-
-.plan-period-btn:hover:not(:disabled) {
-  box-shadow: var(--plan-shadow-sm);
 }
 
 .plan-period-btn:disabled {
@@ -395,10 +389,20 @@ body {
 }
 
 .plan-period-select {
-  border-radius: var(--plan-radius-sm);
-  padding: 0 0.5rem;
-  font-size: 0.8rem;
-  line-height: 1;
+  min-width: 4.75rem;
+  max-width: 6.5rem;
+  padding-left: 0.55rem;
+}
+
+.plan-period-select-panel {
+  left: 0;
+  right: auto;
+  min-width: 100%;
+}
+
+.plan-period-select-item[aria-selected='true'] {
+  background: var(--plan-hover-surface);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .plan-period-mode {
@@ -413,7 +417,6 @@ body {
   font-weight: 700;
   line-height: 1.2;
   white-space: nowrap;
-  color: var(--plan-period-mode-text);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), var(--plan-shadow-sm);
   display: inline-flex;
   align-items: center;
@@ -425,14 +428,17 @@ body {
 
 .plan-period-mode--budget-actual {
   background: var(--plan-period-mode-budget-actual-bg);
+  color: var(--plan-period-mode-budget-actual-text);
 }
 
 .plan-period-mode--actual {
   background: var(--plan-period-mode-actual-bg);
+  color: var(--plan-period-mode-actual-text);
 }
 
 .plan-period-mode--plan {
   background: var(--plan-period-mode-plan-bg);
+  color: var(--plan-period-mode-plan-text);
 }
 
 .plan-meta {
@@ -535,12 +541,10 @@ body {
   -webkit-appearance: none;
   min-width: 9rem;
   max-width: min(100%, 14rem);
-  padding: 0 1.75rem;
-  border-radius: var(--plan-radius-md);
+  padding-inline: 1.75rem;
   font-size: 0.75rem;
   font-weight: 600;
   font-family: inherit;
-  line-height: 1;
   cursor: pointer;
   box-shadow: var(--plan-shadow-sm);
   display: inline-flex;
@@ -618,7 +622,7 @@ body {
   padding: 0.06em 0.4em;
   margin-left: 0.35em;
   border: 1px solid var(--plan-kbd-border);
-  border-radius: 3px;
+  border-radius: var(--plan-radius-sm);
   font-family: inherit;
   font-size: 0.85em;
   font-weight: 700;
@@ -675,7 +679,7 @@ body {
 .expand-settings-desc {
   margin: 0;
   font-size: 0.75rem;
-  color: var(--plan-note-text);
+  color: var(--plan-text-dim);
   max-width: 42rem;
   line-height: 1.5;
 }
@@ -719,7 +723,7 @@ body {
   margin: 0;
   flex: 0 1 auto;
   font-size: 0.7rem;
-  color: var(--plan-hint-text);
+  color: var(--plan-text-dim);
   line-height: 1.4;
   white-space: nowrap;
 }
@@ -800,12 +804,11 @@ body {
   cursor: pointer;
   background: var(--plan-settings-button-bg);
   color: var(--plan-text);
-  transition: background var(--plan-duration) var(--plan-ease), box-shadow var(--plan-duration) var(--plan-ease);
+  transition: background var(--plan-duration) var(--plan-ease);
 }
 
 .expand-reset-btn:hover {
   background: var(--plan-hover-surface);
-  box-shadow: var(--plan-shadow-sm);
 }
 
 .app-settings-form,
@@ -932,7 +935,7 @@ select.app-settings-input {
 .app-settings-hint {
   margin: 0;
   font-size: 0.72rem;
-  color: var(--plan-hint-text);
+  color: var(--plan-text-dim);
   line-height: 1.5;
 }
 
@@ -940,26 +943,19 @@ select.app-settings-input {
   white-space: nowrap;
 }
 
-.plan-font-scale,
 .plan-row-padding-scale {
   display: flex;
   align-items: center;
   gap: 0.15rem;
   flex-shrink: 0;
-}
-
-.plan-font-scale {
   margin-left: 0.35rem;
+  margin-right: 0.35rem;
 }
 
-.plan-row-padding-scale {
-  margin-left: 0.2rem;
-}
-
-.plan-font-scale-btn,
 .plan-row-padding-scale-btn {
-  background: var(--plan-cell-bg);
-  border: 1px solid var(--plan-border);
+  box-sizing: border-box;
+  background-color: var(--plan-header-control-bg);
+  border: 1px solid var(--plan-header-control-border);
   color: var(--plan-text);
   border-radius: var(--plan-radius-sm);
   padding: 0;
@@ -971,7 +967,10 @@ select.app-settings-input {
   justify-content: center;
   width: 1.3rem;
   height: 1.3rem;
-  transition: background var(--plan-duration) var(--plan-ease), box-shadow var(--plan-duration) var(--plan-ease);
+  transition:
+    background-color var(--plan-duration) var(--plan-ease),
+    border-color var(--plan-duration) var(--plan-ease),
+    color var(--plan-duration) var(--plan-ease);
 }
 
 .plan-scale-btn-icon {
@@ -980,19 +979,21 @@ select.app-settings-input {
   display: block;
 }
 
-.plan-font-scale-btn:hover:not(:disabled),
 .plan-row-padding-scale-btn:hover:not(:disabled) {
-  background: var(--plan-hover-surface);
-  box-shadow: var(--plan-shadow-sm);
+  background-color: color-mix(in srgb, var(--plan-header-control-bg) calc(100% - var(--plan-hover-boost)), white var(--plan-hover-boost));
 }
 
-.plan-font-scale-btn:disabled,
+.plan-row-padding-scale-btn:focus-visible {
+  outline: none;
+  border-color: var(--plan-header-control-border-active);
+  box-shadow: 0 0 0 2px var(--plan-header-control-focus-ring);
+}
+
 .plan-row-padding-scale-btn:disabled {
   opacity: 0.35;
   cursor: default;
 }
 
-.plan-font-scale-value,
 .plan-row-padding-scale-value {
   text-align: center;
   font-size: 0.72rem;
@@ -1000,14 +1001,8 @@ select.app-settings-input {
   font-variant-numeric: tabular-nums;
   color: var(--plan-text);
   user-select: none;
-}
-
-.plan-font-scale-value {
-  min-width: 2.4rem;
-}
-
-.plan-row-padding-scale-value {
-  min-width: 2.4rem;
+  white-space: nowrap;
+  min-width: 3.75rem;
 }
 
 .app-settings-section {
@@ -1319,7 +1314,7 @@ select.app-settings-input {
   top: 0;
   background: var(--plan-surface);
   font-weight: 600;
-  color: var(--plan-note-text);
+  color: var(--plan-text-dim);
   text-align: center;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.18);
 }
@@ -1341,7 +1336,8 @@ select.app-settings-input {
 
 .section-color-table .col-color-input,
 .ui-color-table .col-color-input {
-  width: 1%;
+  width: auto;
+  white-space: nowrap;
   padding-left: 0.35rem;
   padding-right: 0.35rem;
 }
@@ -1403,6 +1399,33 @@ select.app-settings-input {
 
 .ui-color-mode-select {
   min-width: 9rem;
+}
+
+.ui-color-hover-boost-label {
+  margin-left: 0.5rem;
+}
+
+.ui-color-hover-boost-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+.ui-color-hover-boost-input {
+  width: 4.25rem;
+  min-width: 0;
+}
+
+.ui-color-hover-boost-suffix {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--plan-text-dim);
+}
+
+.ui-color-hover-boost-reset {
+  min-height: 1.75rem;
+  padding: 0.15rem 0.45rem;
+  font-size: 0.68rem;
 }
 
 .color-settings-columns {
@@ -1470,6 +1493,19 @@ select.app-settings-input {
   filter: none;
 }
 
+.ui-color-preview-nav-btn {
+  box-sizing: border-box;
+  justify-content: center;
+  padding: 0 0.85rem;
+  border-radius: var(--plan-radius-sm);
+  font-size: 0.82rem;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  min-height: var(--plan-header-control-height);
+  border: 1px solid transparent;
+}
+
 .ui-color-preview-hover {
   box-sizing: border-box;
 }
@@ -1482,12 +1518,11 @@ select.app-settings-input {
   cursor: pointer;
   background: var(--plan-settings-button-bg);
   color: var(--plan-text);
-  transition: background var(--plan-duration) var(--plan-ease), box-shadow var(--plan-duration) var(--plan-ease);
+  transition: background var(--plan-duration) var(--plan-ease);
 }
 
 .section-color-reset-btn:hover:not(:disabled) {
   background: var(--plan-hover-surface);
-  box-shadow: var(--plan-shadow-sm);
 }
 
 .section-color-reset-btn:disabled {
@@ -1546,7 +1581,7 @@ select.app-settings-input {
 
 .expand-settings-table .col-row-type {
   width: 1%;
-  color: var(--plan-hint-text);
+  color: var(--plan-text-dim);
   font-size: 0.68rem;
 }
 
@@ -1556,7 +1591,7 @@ select.app-settings-input {
 }
 
 .expand-settings-table .col-subs {
-  color: var(--plan-hint-text);
+  color: var(--plan-text-dim);
   font-size: 0.68rem;
 }
 
@@ -1613,12 +1648,13 @@ select.app-settings-input {
   cursor: pointer;
   white-space: nowrap;
   flex-shrink: 0;
-  transition: opacity var(--plan-duration) var(--plan-ease), filter var(--plan-duration) var(--plan-ease);
+  transition: opacity var(--plan-duration) var(--plan-ease), filter var(--plan-duration) var(--plan-ease), background-color var(--plan-duration) var(--plan-ease);
   box-shadow: none;
+  background: var(--filter-btn-bg, transparent);
 }
 
 .plan-filter-btn:hover {
-  opacity: 0.9;
+  background-color: color-mix(in srgb, var(--filter-btn-bg) calc(100% - var(--plan-hover-boost)), white var(--plan-hover-boost));
 }
 
 .plan-filter-btn.is-on {
@@ -1632,8 +1668,8 @@ select.app-settings-input {
 }
 
 .plan-filter-btn-all.is-default:hover {
-  opacity: 0.52;
-  filter: saturate(0.6);
+  opacity: 1;
+  filter: none;
 }
 
 .plan-filter-btn.is-off {
@@ -1642,8 +1678,8 @@ select.app-settings-input {
 }
 
 .plan-filter-btn.is-off:hover {
-  opacity: 0.52;
-  filter: saturate(0.6);
+  opacity: 1;
+  filter: none;
 }
 
 .plan-body {
@@ -1814,7 +1850,7 @@ select.app-settings-input {
   padding: 0.35rem 0;
   background: var(--plan-context-menu-bg);
   border: 1px solid var(--plan-border);
-  border-radius: 8px;
+  border-radius: var(--plan-radius-md);
   box-shadow: 0 8px 24px var(--plan-context-menu-shadow);
 }
 
@@ -2611,13 +2647,13 @@ tr.row-sub-variance .col-amount.has-variance {
   padding: 0.5rem 1.25rem;
   border: none;
   border-radius: var(--plan-radius-md);
-  background: linear-gradient(135deg, var(--plan-primary-btn-start), var(--plan-primary-btn-end));
+  background: var(--plan-primary-btn-bg);
   color: var(--plan-primary-btn-text);
   font-size: 0.85rem;
   font-weight: 600;
   cursor: pointer;
   box-shadow: var(--plan-shadow-sm);
-  transition: background var(--plan-duration) var(--plan-ease), transform var(--plan-duration) var(--plan-ease);
+  transition: background var(--plan-duration) var(--plan-ease);
 }
 
 .plan-csv-btn:disabled {
@@ -2637,10 +2673,6 @@ tr.row-sub-variance .col-amount.has-variance {
 
 .plan-csv-link-btn:hover {
   color: var(--plan-text);
-}
-
-.plan-csv-btn:hover {
-  transform: translateY(-1px);
 }
 
 .employee-settings-actions {
@@ -2815,7 +2847,7 @@ tr.row-sub-variance .col-amount.has-variance {
   font-size: 0.68rem;
   line-height: 1.2;
   border: 1px solid var(--plan-border, #c8c8c8);
-  border-radius: 3px;
+  border-radius: var(--plan-radius-sm);
   background: var(--plan-editor-bg);
   color: var(--plan-text);
   cursor: pointer;
@@ -2966,7 +2998,7 @@ tr.row-sub-variance .col-amount.has-variance {
 }
 
 .settings-delete-btn {
-  border: 1px solid var(--plan-delete-btn-border);
+  border: none;
   border-radius: var(--plan-radius-sm);
   padding: 0.2rem 0.5rem;
   font-size: 0.68rem;
@@ -2979,7 +3011,7 @@ tr.row-sub-variance .col-amount.has-variance {
 }
 
 .settings-delete-btn:hover:not(:disabled) {
-  background: var(--plan-delete-btn-bg-hover);
+  background: color-mix(in srgb, var(--plan-delete-btn-bg) calc(100% - var(--plan-hover-boost)), white var(--plan-hover-boost));
 }
 
 .settings-delete-btn:disabled {
@@ -3117,10 +3149,6 @@ tr.row-sub-variance .col-amount.has-variance {
 .salary-plan-travel-allowance-suffix {
   font-size: 0.72rem;
   color: var(--plan-text-dim);
-}
-
-.salary-plan-col-bonus-month {
-  background: var(--plan-bonus-month-column-bg);
 }
 
 .salary-plan-period-block {
@@ -3373,7 +3401,7 @@ body.plan-journal-open {
   line-height: 1;
   cursor: pointer;
   padding: 0.1rem 0.35rem;
-  border-radius: 4px;
+  border-radius: var(--plan-radius-sm);
 }
 
 .plan-journal-close:hover {
@@ -3389,7 +3417,7 @@ body.plan-journal-open {
 .plan-journal-count {
   margin: 0 0 0.5rem;
   font-size: 0.75rem;
-  color: var(--plan-journal-hint-text);
+  color: var(--plan-text-dim);
 }
 
 .plan-journal-table {
@@ -3426,14 +3454,107 @@ body.plan-journal-open {
   background: var(--plan-journal-row-hover);
 }
 
+.color-settings-window {
+  position: fixed;
+  z-index: 9500;
+  display: flex;
+  flex-direction: column;
+  max-height: min(78vh, 820px);
+  border: 1px solid var(--plan-border);
+  border-radius: 8px;
+  background: var(--plan-journal-modal-bg, #1e1e28);
+  color: var(--plan-journal-text, #ffffff);
+  box-shadow: 0 16px 48px var(--plan-journal-modal-shadow);
+  overflow: hidden;
+}
+
+.color-settings-window[hidden] {
+  display: none !important;
+}
+
+.color-settings-window-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 0.65rem 0.55rem 0.85rem;
+  border-bottom: 1px solid var(--plan-border);
+  background: var(--plan-journal-table-header-bg, #262626);
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
+.color-settings-window-header:active {
+  cursor: grabbing;
+}
+
+.color-settings-window-title {
+  margin: 0;
+  flex: 1 1 auto;
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--plan-journal-text, #ffffff);
+}
+
+.color-settings-window-close {
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  color: var(--plan-journal-text, #ffffff);
+  font-size: 1.25rem;
+  line-height: 1;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: var(--plan-radius-sm);
+  cursor: pointer;
+}
+
+.color-settings-window-close:hover {
+  background: var(--plan-journal-close-hover);
+}
+
+.color-settings-window-body {
+  overflow: auto;
+  padding: 0.65rem 0.75rem 0.85rem;
+  background: var(--plan-journal-modal-bg, #1e1e28);
+}
+
+.color-settings-window .color-settings-content-header {
+  margin-bottom: 0.65rem;
+}
+
+.color-settings-window .color-settings-window-reset-actions {
+  margin: 0;
+}
+
+.color-settings-window .color-settings-columns {
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.color-settings-window .color-settings-column-ui,
+.color-settings-window .color-settings-column-sections {
+  width: 100%;
+}
+
+.color-settings-window .ui-color-panel,
+.color-settings-window .section-color-panel {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.color-settings-window .expand-settings-table {
+  font-size: 0.72rem;
+}
+
 /* --- Dashboard --- */
 .plan-dashboard-btn {
   margin-left: 0.75rem;
-  padding: 0 0.85rem;
-  border-radius: 6px;
+  padding-inline: 0.85rem;
   font-size: 0.82rem;
   font-weight: 600;
-  line-height: 1;
   cursor: pointer;
   white-space: nowrap;
   display: inline-flex;
@@ -3494,7 +3615,7 @@ body.plan-journal-open {
 .dashboard-mode-btn {
   padding: 0.3rem 0.75rem;
   border: 1px solid color-mix(in srgb, var(--plan-text) 18%, transparent);
-  border-radius: 999px;
+  border-radius: var(--plan-radius-sm);
   background: transparent;
   color: var(--plan-muted, var(--plan-text-dim));
   font-size: 0.78rem;
@@ -3572,7 +3693,7 @@ body.plan-journal-open {
   flex: 1;
   padding: 0.12rem 0.25rem;
   border: 1px solid color-mix(in srgb, #fff 28%, transparent);
-  border-radius: 3px;
+  border-radius: var(--plan-radius-sm);
   font-size: 0.58rem;
   font-weight: 600;
   line-height: 1.2;
@@ -3603,7 +3724,7 @@ body.plan-journal-open {
 .dashboard-sidebar-bulk-btn {
   padding: 0.12rem 0.4rem;
   border: none;
-  border-radius: 3px;
+  border-radius: var(--plan-radius-sm);
   font-size: 0.58rem;
   font-weight: 600;
   line-height: 1.2;
@@ -3974,7 +4095,7 @@ body.plan-journal-open {
   color: var(--plan-text);
   white-space: nowrap;
   cursor: pointer;
-  border-radius: 2px;
+  border-radius: var(--plan-radius-sm);
   padding: 0.05rem 0.15rem;
 }
 

@@ -42,7 +42,6 @@ import {
   saveAppSettings,
   resetOtherAppSettings,
   buildMonthYearMap,
-  parseFiscalPeriod,
   formatFiscalPeriodLabel,
   getMaxSelectablePeriod,
   getFiscalPeriodForDate,
@@ -53,11 +52,7 @@ import {
   isPlanOnlyPeriod,
   normalizeFiscalPeriod,
   normalizeFiscalEndMonth,
-  normalizeFontScale,
-  formatFontScaleMultiplier,
   applyFontScale,
-  MIN_FONT_SCALE,
-  MAX_FONT_SCALE,
   normalizeRowPaddingScale,
   formatRowPaddingScaleMultiplier,
   applyRowPaddingScale,
@@ -300,6 +295,8 @@ import {
   applyManMonthsFromMonthForward,
 } from '../config/revenuePlanConfig.js';
 import { mountRevenueSettingsPanel } from './revenueSettings.js';
+import { mountUiColorPanel } from './uiColorPanel.js';
+import { createColorSettingsWindow } from './colorSettingsWindow.js';
 import { parseEmployeeCsv } from '../parse/parseEmployee.js';
 import { readCsvFile } from '../parse/parser.js';
 
@@ -358,33 +355,135 @@ function syncPlanTableHeaderMonthHighlights(table, highlightFiscalMonth) {
   }
 }
 
+function getPeriodSelectElements() {
+  return {
+    menu: document.getElementById('plan-period-menu'),
+    trigger: document.getElementById('plan-period-select-trigger'),
+    panel: document.getElementById('plan-period-select-panel'),
+  };
+}
+
+function getPeriodSelectItems() {
+  const { panel } = getPeriodSelectElements();
+  if (!panel) return [];
+  return [...panel.querySelectorAll('.plan-period-select-item')];
+}
+
+function isPeriodSelectOpen() {
+  const { panel } = getPeriodSelectElements();
+  return panel != null && !panel.hidden;
+}
+
+function closePeriodSelect({ returnFocus = false } = {}) {
+  const { trigger, panel } = getPeriodSelectElements();
+  if (!trigger || !panel) return;
+  panel.hidden = true;
+  trigger.setAttribute('aria-expanded', 'false');
+  if (returnFocus) trigger.focus();
+}
+
+function openPeriodSelect({ focusCurrent = false } = {}) {
+  closeMainMenu();
+  const { trigger, panel } = getPeriodSelectElements();
+  if (!trigger || !panel) return;
+  panel.hidden = false;
+  trigger.setAttribute('aria-expanded', 'true');
+  if (focusCurrent) {
+    const current = panel.querySelector('[aria-selected="true"]');
+    (current ?? panel.querySelector('.plan-period-select-item'))?.focus();
+  }
+}
+
+function buildPeriodSelectPanel() {
+  const { panel } = getPeriodSelectElements();
+  if (!panel) return;
+
+  const maxPeriod = getMaxSelectablePeriod(appSettings.businessStartYear);
+  panel.replaceChildren();
+
+  for (let p = 1; p <= maxPeriod; p += 1) {
+    const label = formatFiscalPeriodLabel(p);
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'plan-main-menu-item plan-period-select-item';
+    btn.role = 'option';
+    btn.setAttribute('aria-selected', p === appSettings.fiscalPeriod ? 'true' : 'false');
+
+    const labelSpan = document.createElement('span');
+    labelSpan.className = 'plan-main-menu-item-label';
+    labelSpan.textContent = label;
+    btn.appendChild(labelSpan);
+
+    btn.addEventListener('click', () => {
+      setFiscalPeriod(p);
+      closePeriodSelect({ returnFocus: true });
+    });
+
+    panel.appendChild(btn);
+  }
+}
+
+function focusPeriodSelectItemByOffset(items, currentIndex, offset) {
+  if (!items.length) return;
+  const base = currentIndex < 0 ? (offset > 0 ? -1 : 0) : currentIndex;
+  const next = (base + offset + items.length) % items.length;
+  items[next].focus();
+}
+
+function handlePeriodSelectPanelKeydown(e) {
+  const { panel } = getPeriodSelectElements();
+  if (!panel || panel.hidden) return;
+
+  const items = getPeriodSelectItems();
+  if (!items.length) return;
+
+  const currentIndex = items.indexOf(document.activeElement);
+
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    focusPeriodSelectItemByOffset(items, currentIndex, 1);
+    return;
+  }
+  if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    focusPeriodSelectItemByOffset(items, currentIndex, -1);
+    return;
+  }
+  if (e.key === 'Home') {
+    e.preventDefault();
+    items[0].focus();
+    return;
+  }
+  if (e.key === 'End') {
+    e.preventDefault();
+    items[items.length - 1].focus();
+    return;
+  }
+  if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault();
+    if (currentIndex >= 0) items[currentIndex].click();
+    return;
+  }
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    e.stopPropagation();
+    closePeriodSelect({ returnFocus: true });
+  }
+}
+
 function syncPeriodControls() {
-  const select = document.getElementById('plan-period-select');
+  const { trigger } = getPeriodSelectElements();
   const prevBtn = document.getElementById('plan-period-prev');
   const nextBtn = document.getElementById('plan-period-next');
   const modeEl = document.getElementById('plan-period-mode');
-  if (!select) return;
+  if (!trigger) return;
 
   const maxPeriod = getMaxSelectablePeriod(appSettings.businessStartYear);
   const currentValue = formatFiscalPeriodLabel(appSettings.fiscalPeriod);
 
-  if (select.options.length !== maxPeriod) {
-    select.innerHTML = '';
-    for (let p = 1; p <= maxPeriod; p += 1) {
-      const opt = document.createElement('option');
-      opt.value = formatFiscalPeriodLabel(p);
-      opt.textContent = formatFiscalPeriodLabel(p);
-      select.appendChild(opt);
-    }
-  } else {
-    for (let i = 0; i < select.options.length; i += 1) {
-      const p = i + 1;
-      select.options[i].value = formatFiscalPeriodLabel(p);
-      select.options[i].textContent = formatFiscalPeriodLabel(p);
-    }
-  }
+  trigger.textContent = currentValue;
+  buildPeriodSelectPanel();
 
-  select.value = currentValue;
   if (prevBtn) prevBtn.disabled = appSettings.fiscalPeriod <= 1;
   if (nextBtn) nextBtn.disabled = appSettings.fiscalPeriod >= maxPeriod;
 
@@ -479,15 +578,27 @@ async function setFiscalPeriod(nextPeriod) {
 }
 
 function bindPeriodControls() {
-  const select = document.getElementById('plan-period-select');
+  const { menu, trigger, panel } = getPeriodSelectElements();
   const prevBtn = document.getElementById('plan-period-prev');
   const nextBtn = document.getElementById('plan-period-next');
 
   syncPeriodControls();
 
-  select?.addEventListener('change', () => {
-    setFiscalPeriod(parseFiscalPeriod(select.value));
+  trigger?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (isPeriodSelectOpen()) {
+      closePeriodSelect();
+      return;
+    }
+    openPeriodSelect({ focusCurrent: true });
   });
+
+  panel?.addEventListener('keydown', handlePeriodSelectPanelKeydown);
+
+  document.addEventListener('click', (e) => {
+    if (menu && !menu.contains(e.target)) closePeriodSelect();
+  });
+
   prevBtn?.addEventListener('click', () => {
     setFiscalPeriod(appSettings.fiscalPeriod - 1);
   });
@@ -507,6 +618,18 @@ function bindDashboardButton() {
   });
 }
 
+function initColorSettingsWindow() {
+  colorSettingsWindow = createColorSettingsWindow({
+    mountContent: (container) => {
+      container.appendChild(buildColorSettingsContent());
+    },
+  });
+}
+
+function openColorSettingsWindow() {
+  colorSettingsWindow?.open();
+}
+
 const MAIN_VIEW_TABS = new Set(['plan', 'dashboard']);
 
 function isSettingsMainTab(tab) {
@@ -521,6 +644,7 @@ let generalLedgerText = null;
 let generalLedgerName = null;
 let sectionFilterConfig = {};
 let activeTab = 'plan';
+let colorSettingsWindow = null;
 let expandConfig = loadExpandConfig();
 let visibilityConfig = loadVisibilityConfig();
 let rowDisplayConfig = loadRowDisplayConfig();
@@ -3618,65 +3742,23 @@ function bindPlanTableColumnWidthViewportFit(wrap, table) {
   });
 }
 
-const FONT_SCALE_STEP = 0.05;
 const ROW_PADDING_SCALE_STEP = 0.05;
-const PLAN_SCALE_BTN_ICON = {
-  left: '<svg class="plan-scale-btn-icon" viewBox="0 0 12 12" aria-hidden="true"><path d="M8 2 2 6 8 10z" fill="currentColor"/></svg>',
-  right: '<svg class="plan-scale-btn-icon" viewBox="0 0 12 12" aria-hidden="true"><path d="M4 2 10 6 4 10z" fill="currentColor"/></svg>',
+const PLAN_ROW_PADDING_BTN_ICON = {
   up: '<svg class="plan-scale-btn-icon" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 8 6 2 10 8z" fill="currentColor"/></svg>',
   down: '<svg class="plan-scale-btn-icon" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 4 6 10 10 4z" fill="currentColor"/></svg>',
 };
-let planFontScaleEl = null;
 let planRowPaddingScaleEl = null;
-let fontScaleColumnWidthRaf = null;
+let planViewportColumnWidthRaf = null;
 let rowPaddingColumnWidthRaf = null;
-
-function ensurePlanFontScaleControl() {
-  if (planFontScaleEl) return planFontScaleEl;
-
-  planFontScaleEl = document.createElement('div');
-  planFontScaleEl.className = 'plan-font-scale';
-  planFontScaleEl.setAttribute('role', 'group');
-  planFontScaleEl.setAttribute('aria-label', 'フォントサイズ');
-  planFontScaleEl.innerHTML = `
-    <button type="button" class="plan-font-scale-btn" data-action="dec" aria-label="フォントを小さく">${PLAN_SCALE_BTN_ICON.left}</button>
-    <span class="plan-font-scale-value" aria-live="polite"></span>
-    <button type="button" class="plan-font-scale-btn" data-action="inc" aria-label="フォントを大きく">${PLAN_SCALE_BTN_ICON.right}</button>
-  `;
-  planFontScaleEl.addEventListener('click', (e) => {
-    const btn = e.target.closest('[data-action]');
-    if (!btn || btn.disabled) return;
-    const delta = btn.dataset.action === 'inc' ? FONT_SCALE_STEP : -FONT_SCALE_STEP;
-    applyPlanFontScaleSetting(appSettings.fontScale + delta);
-  });
-  return planFontScaleEl;
-}
-
-function mountPlanFontScaleControl() {
-  const el = ensurePlanFontScaleControl();
-  const settingsTab = mainTabs.querySelector('[data-tab="settings"]');
-  if (settingsTab?.nextElementSibling !== el) {
-    settingsTab?.insertAdjacentElement('afterend', el);
-  }
-  refreshPlanFontScaleControl();
-}
-
-function refreshPlanFontScaleControl() {
-  const el = ensurePlanFontScaleControl();
-  const scale = normalizeFontScale(appSettings.fontScale);
-  el.querySelector('.plan-font-scale-value').textContent = formatFontScaleMultiplier(scale);
-  el.querySelector('[data-action="dec"]').disabled = scale <= MIN_FONT_SCALE;
-  el.querySelector('[data-action="inc"]').disabled = scale >= MAX_FONT_SCALE;
-}
 
 function applyPlanViewportScaleChange() {
   applyPlanDisplayScales();
   invalidatePlanTableLayout();
-  if (fontScaleColumnWidthRaf !== null) {
-    cancelAnimationFrame(fontScaleColumnWidthRaf);
+  if (planViewportColumnWidthRaf !== null) {
+    cancelAnimationFrame(planViewportColumnWidthRaf);
   }
-  fontScaleColumnWidthRaf = requestAnimationFrame(() => {
-    fontScaleColumnWidthRaf = null;
+  planViewportColumnWidthRaf = requestAnimationFrame(() => {
+    planViewportColumnWidthRaf = null;
     const table = root.querySelector('.plan-table');
     if (table && activeTab === 'plan' && data) {
       measurePlanTableColumnWidths(table);
@@ -3687,25 +3769,6 @@ function applyPlanViewportScaleChange() {
   }
 }
 
-function applyPlanFontScaleSetting(scale) {
-  appSettings = { ...appSettings, fontScale: normalizeFontScale(scale) };
-  saveAppSettings(appSettings);
-  resetContentFitScale();
-  applyPlanDisplayScales();
-  refreshPlanFontScaleControl();
-  invalidatePlanTableLayout();
-  if (fontScaleColumnWidthRaf !== null) {
-    cancelAnimationFrame(fontScaleColumnWidthRaf);
-  }
-  fontScaleColumnWidthRaf = requestAnimationFrame(() => {
-    fontScaleColumnWidthRaf = null;
-    const table = root.querySelector('.plan-table');
-    if (table && activeTab === 'plan' && data) {
-      measurePlanTableColumnWidths(table);
-    }
-  });
-}
-
 function ensurePlanRowPaddingScaleControl() {
   if (planRowPaddingScaleEl) return planRowPaddingScaleEl;
 
@@ -3714,9 +3777,9 @@ function ensurePlanRowPaddingScaleControl() {
   planRowPaddingScaleEl.setAttribute('role', 'group');
   planRowPaddingScaleEl.setAttribute('aria-label', '行の余白');
   planRowPaddingScaleEl.innerHTML = `
-    <button type="button" class="plan-row-padding-scale-btn" data-action="inc" aria-label="余白を広く">${PLAN_SCALE_BTN_ICON.up}</button>
+    <button type="button" class="plan-row-padding-scale-btn" data-action="inc" aria-label="余白を広く">${PLAN_ROW_PADDING_BTN_ICON.up}</button>
     <span class="plan-row-padding-scale-value" aria-live="polite"></span>
-    <button type="button" class="plan-row-padding-scale-btn" data-action="dec" aria-label="余白を狭く">${PLAN_SCALE_BTN_ICON.down}</button>
+    <button type="button" class="plan-row-padding-scale-btn" data-action="dec" aria-label="余白を狭く">${PLAN_ROW_PADDING_BTN_ICON.down}</button>
   `;
   planRowPaddingScaleEl.addEventListener('click', (e) => {
     const btn = e.target.closest('[data-action]');
@@ -3729,9 +3792,13 @@ function ensurePlanRowPaddingScaleControl() {
 
 function mountPlanRowPaddingScaleControl() {
   const el = ensurePlanRowPaddingScaleControl();
-  const fontEl = ensurePlanFontScaleControl();
-  if (fontEl.nextElementSibling !== el) {
-    fontEl.insertAdjacentElement('afterend', el);
+  const menu = document.getElementById('plan-main-menu');
+  if (!menu?.parentElement) {
+    refreshPlanRowPaddingScaleControl();
+    return;
+  }
+  if (menu.previousElementSibling !== el) {
+    menu.insertAdjacentElement('beforebegin', el);
   }
   refreshPlanRowPaddingScaleControl();
 }
@@ -3981,6 +4048,20 @@ function refreshSectionColors() {
   if (rawPlanData) data = applyPlanColors(rawPlanData);
 }
 
+function refreshColorDependentViews({ rebuildData = true } = {}) {
+  if (rebuildData) refreshSectionColors();
+  if (activeTab === 'plan') refreshPlanTable();
+  else if (activeTab === 'dashboard') renderDashboardView();
+}
+
+function refreshToolbarFilterStyles() {
+  toolbar?.querySelectorAll('.plan-filter-btn').forEach(applyFilterButtonStyle);
+}
+
+function refreshColorSettingsPanels() {
+  colorSettingsWindow?.refresh();
+}
+
 function rebuildPlanData() {
   if (!journalText) return;
   rawPlanData = buildFullPlan(journalText, bsText, expandConfig);
@@ -4135,6 +4216,7 @@ function closeMainMenu({ returnFocus = false } = {}) {
 }
 
 function openMainMenu({ focusFirst = false } = {}) {
+  closePeriodSelect();
   const trigger = document.getElementById('plan-main-menu-trigger');
   const panel = document.getElementById('plan-main-menu-panel');
   if (!trigger || !panel) return;
@@ -4199,6 +4281,10 @@ function handleMainMenuPanelKeydown(e) {
 }
 
 function handleEscapeKey() {
+  if (isPeriodSelectOpen()) {
+    closePeriodSelect({ returnFocus: true });
+    return;
+  }
   if (isMainMenuOpen()) {
     closeMainMenu({ returnFocus: true });
     return;
@@ -4293,7 +4379,7 @@ function getFilterButtonColors(filterId) {
 function applyFilterButtonStyle(btn) {
   const filterId = btn.dataset.filter;
   const { background, color } = getFilterButtonColors(filterId);
-  btn.style.background = background;
+  btn.style.setProperty('--filter-btn-bg', background);
   btn.style.color = color;
 
   const sectionIds = getCurrentSectionFilterIds();
@@ -4422,7 +4508,6 @@ function renderView({ measureColumnWidths = false } = {}) {
       finishPlanLoadingAfterLayout();
     }
   } else if (activeTab === 'visibility') renderVisibilitySettings();
-  else if (activeTab === 'colors') renderSectionColorSettings();
   else if (activeTab === 'taxrates') renderTaxRateSettings();
   else if (activeTab === 'orders') renderRevenueSettings();
   else if (activeTab === 'taxpayments') renderTaxPaymentSettings();
@@ -5761,14 +5846,226 @@ function renderUiColorPanel(container) {
     setConfig: (next) => { uiColorConfig = next; },
     data,
     sectionColorConfig,
-    onRefreshPlanView: () => {
-      refreshSectionColors();
-      if (activeTab === 'plan') refreshPlanTable();
-    },
-    onReRender: () => {
-      if (activeTab === 'colors') renderSectionColorSettings();
-    },
+    onRefreshToolbar: refreshToolbarFilterStyles,
+    onReRender: refreshColorSettingsPanels,
   });
+}
+
+function mountSectionColorPanel(sectionPanel) {
+  sectionPanel.replaceChildren();
+
+  const sectionTitle = document.createElement('h2');
+  sectionTitle.className = 'ui-color-panel-title';
+  sectionTitle.textContent = '大項目';
+  sectionPanel.appendChild(sectionTitle);
+
+  const defs = collectSectionColorDefs(
+    data?.sections ?? rawPlanData?.sections ?? [],
+    sectionColorConfig,
+    getPlanColorMode(),
+  );
+  if (defs.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'expand-settings-empty';
+    empty.textContent = '大項目がありません。';
+    sectionPanel.appendChild(empty);
+    return;
+  }
+
+  const table = document.createElement('table');
+  table.className = 'expand-settings-table section-color-table';
+  table.innerHTML = `
+    <thead>
+      <tr>
+        <th>大項目</th>
+        <th class="col-color-input">塗り色</th>
+        <th class="col-color-input">文字色</th>
+        <th class="col-color-preview">プレビュー</th>
+        <th class="col-color-action">操作</th>
+      </tr>
+    </thead>
+  `;
+
+  const tbody = document.createElement('tbody');
+
+  let sectionColorSaveTimer = null;
+  let sectionColorRefreshTimer = null;
+
+  const flushSectionColorSave = () => {
+    if (sectionColorSaveTimer != null) {
+      clearTimeout(sectionColorSaveTimer);
+      sectionColorSaveTimer = null;
+    }
+    saveSectionColorConfig(sectionColorConfig);
+  };
+
+  const scheduleSectionColorSave = () => {
+    if (sectionColorSaveTimer != null) clearTimeout(sectionColorSaveTimer);
+    sectionColorSaveTimer = setTimeout(flushSectionColorSave, 300);
+  };
+
+  const scheduleSectionColorRefresh = () => {
+    if (sectionColorRefreshTimer != null) clearTimeout(sectionColorRefreshTimer);
+    sectionColorRefreshTimer = setTimeout(() => {
+      refreshColorDependentViews();
+      sectionColorRefreshTimer = null;
+    }, 200);
+  };
+
+  for (const def of defs) {
+    const tr = document.createElement('tr');
+
+    const labelTd = document.createElement('td');
+    labelTd.textContent = def.label;
+    styleSectionLabelCell(labelTd, def.sectionId);
+
+    const bgInputTd = document.createElement('td');
+    bgInputTd.className = 'col-color-input';
+    const bgInput = document.createElement('input');
+    bgInput.type = 'color';
+    bgInput.className = 'section-color-input';
+    bgInput.value = def.barColor;
+    bgInput.title = def.barColor;
+    bgInputTd.appendChild(bgInput);
+
+    const textInputTd = document.createElement('td');
+    textInputTd.className = 'col-color-input';
+    const textInput = document.createElement('input');
+    textInput.type = 'color';
+    textInput.className = 'section-color-input';
+    textInput.value = def.textColor;
+    textInput.title = def.textColor;
+    textInputTd.appendChild(textInput);
+
+    const previewTd = document.createElement('td');
+    previewTd.className = 'col-color-preview';
+    const preview = document.createElement('span');
+    preview.className = 'section-color-preview';
+    preview.style.background = def.barColor;
+    preview.style.color = def.textColor;
+    preview.textContent = def.label;
+    previewTd.appendChild(preview);
+
+    const actionTd = document.createElement('td');
+    actionTd.className = 'col-color-action';
+    const resetBtn = document.createElement('button');
+    resetBtn.type = 'button';
+    resetBtn.className = 'section-color-reset-btn';
+    resetBtn.textContent = 'デフォルト';
+    resetBtn.disabled = !def.isCustom;
+    actionTd.appendChild(resetBtn);
+
+    tr.append(labelTd, bgInputTd, textInputTd, previewTd, actionTd);
+    tbody.appendChild(tr);
+
+    const applySectionColorOverride = (barColor, textColor, { flush = false } = {}) => {
+      sectionColorConfig = setSectionColorOverride(
+        sectionColorConfig,
+        getPlanColorMode(),
+        def.sectionId,
+        { barColor, textColor },
+      );
+      if (flush) flushSectionColorSave();
+      else scheduleSectionColorSave();
+      scheduleSectionColorRefresh();
+      bgInput.value = barColor;
+      bgInput.title = barColor;
+      textInput.value = textColor;
+      textInput.title = textColor;
+      preview.style.background = barColor;
+      preview.style.color = textColor;
+      styleSectionLabelCell(labelTd, def.sectionId);
+      resetBtn.disabled = false;
+    };
+
+    const emitSectionColorOverride = (flush) => {
+      applySectionColorOverride(bgInput.value, textInput.value, { flush });
+    };
+
+    bgInput.addEventListener('input', () => emitSectionColorOverride(false));
+    bgInput.addEventListener('change', () => emitSectionColorOverride(true));
+    textInput.addEventListener('input', () => emitSectionColorOverride(false));
+    textInput.addEventListener('change', () => emitSectionColorOverride(true));
+
+    resetBtn.addEventListener('click', () => {
+      sectionColorConfig = resetSectionColorOverride(
+        sectionColorConfig,
+        getPlanColorMode(),
+        def.sectionId,
+      );
+      flushSectionColorSave();
+      refreshColorDependentViews();
+      const colors = getSectionColors(def.sectionId, sectionColorConfig, getPlanColorMode());
+      bgInput.value = colors.barColor;
+      bgInput.title = colors.barColor;
+      textInput.value = colors.textColor;
+      textInput.title = colors.textColor;
+      preview.style.background = colors.barColor;
+      preview.style.color = colors.textColor;
+      styleSectionLabelCell(labelTd, def.sectionId);
+      resetBtn.disabled = true;
+    });
+  }
+
+  table.appendChild(tbody);
+  sectionPanel.appendChild(table);
+}
+
+function buildColorSettingsColumns() {
+  const columns = document.createElement('div');
+  columns.className = 'color-settings-columns';
+
+  const uiColumn = document.createElement('div');
+  uiColumn.className = 'color-settings-column color-settings-column-ui';
+  renderUiColorPanel(uiColumn);
+  columns.appendChild(uiColumn);
+
+  const sectionColumn = document.createElement('div');
+  sectionColumn.className = 'color-settings-column color-settings-column-sections';
+
+  const sectionPanel = document.createElement('div');
+  sectionPanel.className = 'section-color-panel';
+  mountSectionColorPanel(sectionPanel);
+  sectionColumn.appendChild(sectionPanel);
+  columns.appendChild(sectionColumn);
+
+  return columns;
+}
+
+function bindColorSettingsResetActions(container) {
+  container.querySelector('#ui-color-reset-btn')?.addEventListener('click', () => {
+    uiColorConfig = resetUiColorModeOverrides(uiColorConfig, getPlanColorMode());
+    saveUiColorConfig(uiColorConfig);
+    applyUiColors(uiColorConfig);
+    refreshColorSettingsPanels();
+    refreshColorDependentViews();
+  });
+
+  container.querySelector('#section-color-reset-btn')?.addEventListener('click', () => {
+    sectionColorConfig = resetSectionColorModeOverrides(sectionColorConfig, getPlanColorMode());
+    saveSectionColorConfig(sectionColorConfig);
+    refreshSectionColors();
+    refreshColorSettingsPanels();
+    refreshColorDependentViews();
+  });
+}
+
+function buildColorSettingsContent() {
+  const wrap = document.createElement('div');
+  wrap.className = 'color-settings-content';
+
+  const header = document.createElement('div');
+  header.className = 'expand-settings-header color-settings-content-header';
+  header.innerHTML = `
+    <div class="expand-settings-header-actions color-settings-window-reset-actions">
+      <button type="button" class="expand-reset-btn" id="ui-color-reset-btn">全体をデフォルトに戻す</button>
+      <button type="button" class="expand-reset-btn" id="section-color-reset-btn">大項目をすべてデフォルトに戻す</button>
+    </div>
+  `;
+  wrap.appendChild(header);
+  wrap.appendChild(buildColorSettingsColumns());
+  bindColorSettingsResetActions(wrap);
+  return wrap;
 }
 
 function appendCsvNameSettingsPanel(wrap) {
@@ -7488,9 +7785,6 @@ function renderEmployeeSettings() {
       else if (label === '昇給率') th.className = 'salary-plan-col-increase';
       else {
         th.className = 'salary-plan-col-month';
-        if (bonusMonthLabels.includes(label)) {
-          th.classList.add('salary-plan-col-bonus-month');
-        }
       }
       headerRow.appendChild(th);
     }
@@ -8696,194 +8990,6 @@ function renderOtherSettings() {
   replaceRootPanel(wrap);
 }
 
-function renderSectionColorSettings() {
-  setPlanKpi(null);
-
-  const wrap = document.createElement('div');
-  wrap.className = 'expand-settings-wrap color-settings-wrap';
-
-  const header = document.createElement('div');
-  header.className = 'expand-settings-header';
-  header.innerHTML = `
-    <p class="expand-settings-desc">
-      予実表の全体背景色、セル背景色・文字色（明細行）、マイナス値の金額色、年行・月行ヘッダー色、行のマウスオーバー色、および大項目ごとの背景色・文字色を設定します。
-      大項目の文字色は、その大項目の合計行にも適用されます。設定はブラウザに保存されます。
-    </p>
-    <div class="expand-settings-header-actions">
-      <button type="button" class="expand-reset-btn" id="ui-color-reset-btn">全体をデフォルトに戻す</button>
-      <button type="button" class="expand-reset-btn" id="section-color-reset-btn">大項目をすべてデフォルトに戻す</button>
-    </div>
-  `;
-  wrap.appendChild(header);
-
-  const columns = document.createElement('div');
-  columns.className = 'color-settings-columns';
-
-  const uiColumn = document.createElement('div');
-  uiColumn.className = 'color-settings-column color-settings-column-ui';
-  renderUiColorPanel(uiColumn);
-  columns.appendChild(uiColumn);
-
-  const sectionColumn = document.createElement('div');
-  sectionColumn.className = 'color-settings-column color-settings-column-sections';
-
-  const sectionPanel = document.createElement('div');
-  sectionPanel.className = 'section-color-panel';
-
-  const sectionTitle = document.createElement('h2');
-  sectionTitle.className = 'ui-color-panel-title';
-  sectionTitle.textContent = '大項目';
-  sectionPanel.appendChild(sectionTitle);
-
-  const defs = collectSectionColorDefs(
-    data?.sections ?? rawPlanData?.sections ?? [],
-    sectionColorConfig,
-    getPlanColorMode(),
-  );
-  if (defs.length === 0) {
-    const empty = document.createElement('p');
-    empty.className = 'expand-settings-empty';
-    empty.textContent = '大項目がありません。';
-    sectionPanel.appendChild(empty);
-  } else {
-  const table = document.createElement('table');
-  table.className = 'expand-settings-table section-color-table';
-  table.innerHTML = `
-    <thead>
-      <tr>
-        <th>大項目</th>
-        <th class="col-color-input">背景色</th>
-        <th class="col-color-input">文字色</th>
-        <th class="col-color-preview">プレビュー</th>
-        <th class="col-color-action">操作</th>
-      </tr>
-    </thead>
-  `;
-
-  const tbody = document.createElement('tbody');
-
-  for (const def of defs) {
-    const tr = document.createElement('tr');
-
-    const labelTd = document.createElement('td');
-    labelTd.textContent = def.label;
-    styleSectionLabelCell(labelTd, def.sectionId);
-
-    const bgInputTd = document.createElement('td');
-    bgInputTd.className = 'col-color-input';
-    const bgInput = document.createElement('input');
-    bgInput.type = 'color';
-    bgInput.className = 'section-color-input';
-    bgInput.value = def.barColor;
-    bgInput.title = def.barColor;
-    bgInputTd.appendChild(bgInput);
-
-    const textInputTd = document.createElement('td');
-    textInputTd.className = 'col-color-input';
-    const textInput = document.createElement('input');
-    textInput.type = 'color';
-    textInput.className = 'section-color-input';
-    textInput.value = def.textColor;
-    textInput.title = def.textColor;
-    textInputTd.appendChild(textInput);
-
-    const previewTd = document.createElement('td');
-    previewTd.className = 'col-color-preview';
-    const preview = document.createElement('span');
-    preview.className = 'section-color-preview';
-    preview.style.background = def.barColor;
-    preview.style.color = def.textColor;
-    preview.textContent = def.label;
-    previewTd.appendChild(preview);
-
-    const actionTd = document.createElement('td');
-    actionTd.className = 'col-color-action';
-    const resetBtn = document.createElement('button');
-    resetBtn.type = 'button';
-    resetBtn.className = 'section-color-reset-btn';
-    resetBtn.textContent = 'デフォルト';
-    resetBtn.disabled = !def.isCustom;
-    actionTd.appendChild(resetBtn);
-
-    tr.append(labelTd, bgInputTd, textInputTd, previewTd, actionTd);
-    tbody.appendChild(tr);
-
-    const applySectionColorOverride = (barColor, textColor) => {
-      sectionColorConfig = setSectionColorOverride(
-        sectionColorConfig,
-        getPlanColorMode(),
-        def.sectionId,
-        { barColor, textColor },
-      );
-      saveSectionColorConfig(sectionColorConfig);
-      refreshSectionColors();
-      bgInput.value = barColor;
-      bgInput.title = barColor;
-      textInput.value = textColor;
-      textInput.title = textColor;
-      preview.style.background = barColor;
-      preview.style.color = textColor;
-      styleSectionLabelCell(labelTd, def.sectionId);
-      resetBtn.disabled = false;
-      if (activeTab === 'plan') refreshPlanTable();
-    };
-
-    bgInput.addEventListener('input', () => {
-      applySectionColorOverride(bgInput.value, textInput.value);
-    });
-
-    textInput.addEventListener('input', () => {
-      applySectionColorOverride(bgInput.value, textInput.value);
-    });
-
-    resetBtn.addEventListener('click', () => {
-      sectionColorConfig = resetSectionColorOverride(
-        sectionColorConfig,
-        getPlanColorMode(),
-        def.sectionId,
-      );
-      saveSectionColorConfig(sectionColorConfig);
-      refreshSectionColors();
-      const colors = getSectionColors(def.sectionId, sectionColorConfig, getPlanColorMode());
-      bgInput.value = colors.barColor;
-      bgInput.title = colors.barColor;
-      textInput.value = colors.textColor;
-      textInput.title = colors.textColor;
-      preview.style.background = colors.barColor;
-      preview.style.color = colors.textColor;
-      styleSectionLabelCell(labelTd, def.sectionId);
-      resetBtn.disabled = true;
-      if (activeTab === 'plan') refreshPlanTable();
-    });
-  }
-
-  table.appendChild(tbody);
-  sectionPanel.appendChild(table);
-  }
-
-  sectionColumn.appendChild(sectionPanel);
-  columns.appendChild(sectionColumn);
-  wrap.appendChild(columns);
-
-  wrap.querySelector('#ui-color-reset-btn').addEventListener('click', () => {
-    uiColorConfig = resetUiColorModeOverrides(uiColorConfig, getPlanColorMode());
-    saveUiColorConfig(uiColorConfig);
-    applyUiColors(uiColorConfig);
-    renderSectionColorSettings();
-    if (activeTab === 'plan') refreshPlanTable();
-  });
-
-  wrap.querySelector('#section-color-reset-btn').addEventListener('click', () => {
-    sectionColorConfig = resetSectionColorModeOverrides(sectionColorConfig, getPlanColorMode());
-    saveSectionColorConfig(sectionColorConfig);
-    refreshSectionColors();
-    renderSectionColorSettings();
-    if (activeTab === 'plan') refreshPlanTable();
-  });
-
-  replaceRootPanel(wrap);
-}
-
 function replaceRootPanel(el) {
   const selectors = '.plan-table-wrap, .expand-settings-wrap, .plan-csv-load, .dashboard-wrap';
   const existing = root.querySelector(selectors);
@@ -9069,6 +9175,9 @@ function handleMainMenuAction(value) {
     case 'action:change-folder':
       handlePickCsvFolder();
       break;
+    case 'colors':
+      openColorSettingsWindow();
+      break;
     default:
       switchMainTab(value);
   }
@@ -9173,7 +9282,6 @@ function reloadAllSettingsFromStorage() {
   applyBrandSettings(appSettings);
   applyFontScale(appSettings.fontScale);
   applyRowPaddingScale(appSettings.rowPaddingScale);
-  refreshPlanFontScaleControl();
   refreshPlanRowPaddingScaleControl();
   syncPeriodControls();
 
@@ -9283,10 +9391,10 @@ async function init() {
   applyRowPaddingScale(appSettings.rowPaddingScale);
   renderToolbar();
   renderMainTabs();
-  mountPlanFontScaleControl();
   mountPlanRowPaddingScaleControl();
   bindPeriodControls();
   bindDashboardButton();
+  initColorSettingsWindow();
   bindMainMenu();
   bindSettingsImportExport();
 

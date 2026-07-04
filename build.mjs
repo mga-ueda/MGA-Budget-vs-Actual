@@ -53,6 +53,7 @@ const FILES = [
   'ui/revenueSettings.js',
   'ui/expensePlanOverrideSettings.js',
   'ui/uiColorPanel.js',
+  'ui/colorSettingsWindow.js',
   'ui/dashboard.js',
   'ui/plan.js',
 ];

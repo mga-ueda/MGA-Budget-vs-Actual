@@ -1,15 +1,46 @@
 const UI_COLOR_STORAGE_KEY = 'mga-ui-colors';
 
-const CURRENT_MONTH_OVERLAY_ALPHA = 0.28;
-const CURRENT_MONTH_RING_ALPHA = 0.45;
-const CURRENT_MONTH_OVERLAY_HEAD_ALPHA = 0.34;
-const CURRENT_MONTH_OVERLAY_HOVER_ALPHA = 0.22;
-const CURRENT_MONTH_OVERLAY_TOTAL_ALPHA = 0.32;
+export const DEFAULT_HOVER_BOOST_PERCENT = 10;
 
-const SETTLEMENT_MONTH_OVERLAY_ALPHA = CURRENT_MONTH_OVERLAY_ALPHA;
-const SETTLEMENT_MONTH_RING_ALPHA = CURRENT_MONTH_RING_ALPHA;
-const SETTLEMENT_MONTH_OVERLAY_HEAD_ALPHA = CURRENT_MONTH_OVERLAY_HEAD_ALPHA;
-const SETTLEMENT_MONTH_OVERLAY_TOTAL_ALPHA = CURRENT_MONTH_OVERLAY_TOTAL_ALPHA;
+const REMOVED_HOVER_COLOR_KEYS = [
+  'dashboardNavHoverBg',
+  'dashboardNavActiveHoverBg',
+  'settingsNavActiveHoverBg',
+  'deleteBtnBgHover',
+  'headerControlHoverBg',
+];
+
+const REMOVED_COLOR_KEYS = [
+  'deleteBtnBorder',
+];
+
+const MERGED_SETTINGS_ACTIVE_KEYS = {
+  settingsNavActiveBg: 'dashboardNavActiveBg',
+  settingsNavActiveText: 'dashboardNavActiveText',
+};
+
+const BORDER_TO_TEXT_KEYS = {
+  dashboardNavBorder: 'dashboardNavText',
+  dashboardNavActiveBorder: 'dashboardNavActiveText',
+  settingsNavActiveBorder: 'dashboardNavActiveText',
+  headerControlText: 'textColor',
+};
+
+const MERGED_DIM_TEXT_SOURCE_KEYS = [
+  'noteTextColor',
+  'hintTextColor',
+  'journalHintTextColor',
+];
+
+const MERGED_PRIMARY_BUTTON_BG_KEYS = [
+  'primaryButtonBgStart',
+  'primaryButtonBgEnd',
+];
+
+const SETTLEMENT_MONTH_OVERLAY_ALPHA = 0.28;
+const SETTLEMENT_MONTH_RING_ALPHA = 0.45;
+const SETTLEMENT_MONTH_OVERLAY_HEAD_ALPHA = 0.34;
+const SETTLEMENT_MONTH_OVERLAY_TOTAL_ALPHA = 0.32;
 
 const JOURNAL_OVERLAY_ALPHA = 0.65;
 const JOURNAL_MODAL_SHADOW_ALPHA = 0.45;
@@ -20,7 +51,6 @@ const CONTEXT_MENU_SHADOW_ALPHA = 0.45;
 const CONTEXT_MENU_ITEM_HOVER_ALPHA = 0.08;
 const LOADING_OVERLAY_ALPHA = 0.38;
 const CSV_DROP_ACTIVE_BG_ALPHA = 0.08;
-const BONUS_MONTH_COLUMN_ALPHA = 0.08;
 const PLAN_EDITABLE_CELL_HOVER_ALPHA = 0.14;
 const HEADER_CONTROL_FOCUS_RING_ALPHA = 0.22;
 
@@ -42,31 +72,20 @@ export const DEFAULT_UI_COLORS_DARK = {
   settingsRowHoverBg: '#2E2E2E',
   monthRowBg: '#595959',
   monthRowText: '#ffffff',
-  currentMonthBg: '#800000',
   currentMonthBorder: '#ff0000',
   settlementMonthBg: '#000000',
   cellBg: '#262626',
   textColor: '#ffffff',
-  noteTextColor: '#C9C9C9',
-  hintTextColor: '#B3B3B3',
   textDimColor: '#929292',
   planAmountColor: '#00B0F0',
   planEditableCellHoverBg: '#C0C0C0',
   headerControlBg: '#262626',
   headerControlBorder: '#565656',
-  headerControlText: '#ffffff',
-  headerControlHoverBg: '#2E2E2E',
   headerControlActiveBorder: '#929292',
   dashboardNavBg: '#1e3a5f',
-  dashboardNavBorder: '#3b82f6',
   dashboardNavText: '#bfdbfe',
-  dashboardNavHoverBg: '#1e40af',
   dashboardNavActiveBg: '#2563eb',
-  dashboardNavActiveBorder: '#3b82f6',
   dashboardNavActiveText: '#ffffff',
-  settingsNavActiveBg: '#7c3aed',
-  settingsNavActiveBorder: '#8b5cf6',
-  settingsNavActiveText: '#ffffff',
   kbdBg: '#373737',
   kbdTextColor: '#929292',
   kbdBorderColor: '#505050',
@@ -82,31 +101,26 @@ export const DEFAULT_UI_COLORS_DARK = {
   journalModalShadowBg: '#000000',
   journalRowHoverBg: '#ffffff',
   journalCloseHoverBg: '#ffffff',
-  journalTextColor: '#ffffff',
-  journalHintTextColor: '#B3B3B3',
   journalTableHeaderBg: '#262626',
   accentColor: '#ff0000',
   deleteBtnBg: '#dc2626',
-  deleteBtnBgHover: '#b91c1c',
-  deleteBtnBorder: '#b91c1c',
   deleteBtnText: '#ffffff',
-  tableHeaderBg: '#1e1e28',
   contextMenuBg: '#1e1e28',
   contextMenuShadowBg: '#000000',
   contextMenuItemHoverBg: '#ffffff',
   periodModeBudgetActualBg: '#0891b2',
   periodModeActualBg: '#16a34a',
   periodModePlanBg: '#ea580c',
-  periodModeTextColor: '#ffffff',
+  periodModeBudgetActualText: '#ffffff',
+  periodModeActualText: '#ffffff',
+  periodModePlanText: '#ffffff',
   loadingOverlayBg: '#08080e',
   statusOkColor: '#86efac',
   statusErrorColor: '#fca5a5',
   statusInvalidColor: '#ef4444',
-  primaryButtonBgStart: '#3b82f6',
-  primaryButtonBgEnd: '#2563eb',
+  primaryButtonBg: '#3b82f6',
   primaryButtonTextColor: '#ffffff',
   interactiveAccentColor: '#2563eb',
-  bonusMonthColumnBg: '#86efac',
   ...SHARED_UI_COLORS,
 };
 
@@ -119,31 +133,20 @@ export const DEFAULT_UI_COLORS_LIGHT = {
   settingsRowHoverBg: '#EFEFEF',
   monthRowBg: '#D9D9D9',
   monthRowText: '#1A1A1A',
-  currentMonthBg: '#CC6666',
   currentMonthBorder: '#ff0000',
   settlementMonthBg: '#B0B0B0',
   cellBg: '#FFFFFF',
   textColor: '#1A1A1A',
-  noteTextColor: '#4A4A4A',
-  hintTextColor: '#5C5C5C',
   textDimColor: '#757575',
   planAmountColor: '#0078D4',
   planEditableCellHoverBg: '#808080',
   headerControlBg: '#FFFFFF',
   headerControlBorder: '#B8B8B8',
-  headerControlText: '#1A1A1A',
-  headerControlHoverBg: '#EFEFEF',
   headerControlActiveBorder: '#757575',
   dashboardNavBg: '#eff6ff',
-  dashboardNavBorder: '#2563eb',
   dashboardNavText: '#1d4ed8',
-  dashboardNavHoverBg: '#dbeafe',
   dashboardNavActiveBg: '#2563eb',
-  dashboardNavActiveBorder: '#1d4ed8',
   dashboardNavActiveText: '#ffffff',
-  settingsNavActiveBg: '#9333ea',
-  settingsNavActiveBorder: '#7e22ce',
-  settingsNavActiveText: '#ffffff',
   kbdBg: '#EFEFEF',
   kbdTextColor: '#757575',
   kbdBorderColor: '#B8B8B8',
@@ -159,31 +162,26 @@ export const DEFAULT_UI_COLORS_LIGHT = {
   journalModalShadowBg: '#000000',
   journalRowHoverBg: '#000000',
   journalCloseHoverBg: '#000000',
-  journalTextColor: '#1A1A1A',
-  journalHintTextColor: '#5C5C5C',
   journalTableHeaderBg: '#FFFFFF',
   accentColor: '#0078D4',
   deleteBtnBg: '#dc2626',
-  deleteBtnBgHover: '#b91c1c',
-  deleteBtnBorder: '#b91c1c',
   deleteBtnText: '#ffffff',
-  tableHeaderBg: '#E8E8E8',
   contextMenuBg: '#FFFFFF',
   contextMenuShadowBg: '#000000',
   contextMenuItemHoverBg: '#000000',
   periodModeBudgetActualBg: '#0891b2',
   periodModeActualBg: '#16a34a',
   periodModePlanBg: '#ea580c',
-  periodModeTextColor: '#ffffff',
+  periodModeBudgetActualText: '#ffffff',
+  periodModeActualText: '#ffffff',
+  periodModePlanText: '#ffffff',
   loadingOverlayBg: '#000000',
   statusOkColor: '#15803d',
   statusErrorColor: '#dc2626',
   statusInvalidColor: '#ef4444',
-  primaryButtonBgStart: '#3b82f6',
-  primaryButtonBgEnd: '#2563eb',
+  primaryButtonBg: '#3b82f6',
   primaryButtonTextColor: '#ffffff',
   interactiveAccentColor: '#2563eb',
-  bonusMonthColumnBg: '#86efac',
   ...SHARED_UI_COLORS,
   negativeAmountColor: '#C00000',
 };
@@ -231,7 +229,7 @@ export function getDefaultUiColors(mode = 'dark') {
   return { ...DEFAULTS_BY_MODE[key] };
 }
 
-const UI_COLOR_LEGACY_KEYS = [...UI_COLOR_KEYS, 'textFaintColor', 'appBg'];
+const UI_COLOR_LEGACY_KEYS = [...UI_COLOR_KEYS, 'textFaintColor', 'appBg', 'bonusMonthColumnBg', 'journalTextColor'];
 
 function migrateUiColorBucket(bucket = {}) {
   const next = { ...bucket };
@@ -247,6 +245,63 @@ function migrateUiColorBucket(bucket = {}) {
     next.planEditableCellHoverBg = next.planEditableCellHoverColor;
   }
   delete next.planEditableCellHoverColor;
+  if (next.periodModeTextColor != null) {
+    if (next.periodModeBudgetActualText == null) {
+      next.periodModeBudgetActualText = next.periodModeTextColor;
+    }
+    if (next.periodModeActualText == null) {
+      next.periodModeActualText = next.periodModeTextColor;
+    }
+    if (next.periodModePlanText == null) {
+      next.periodModePlanText = next.periodModeTextColor;
+    }
+  }
+  delete next.periodModeTextColor;
+  delete next.currentMonthBg;
+  delete next.bonusMonthColumnBg;
+  if (next.journalTextColor != null && next.textColor == null) {
+    next.textColor = next.journalTextColor;
+  }
+  delete next.journalTextColor;
+  for (const [fromKey, toKey] of Object.entries(MERGED_SETTINGS_ACTIVE_KEYS)) {
+    if (next[fromKey] != null && next[toKey] == null) {
+      next[toKey] = next[fromKey];
+    }
+    delete next[fromKey];
+  }
+  for (const [fromKey, toKey] of Object.entries(BORDER_TO_TEXT_KEYS)) {
+    if (next[fromKey] != null && next[toKey] == null) {
+      next[toKey] = next[fromKey];
+    }
+    delete next[fromKey];
+  }
+  if (next.textDimColor == null) {
+    for (const key of MERGED_DIM_TEXT_SOURCE_KEYS) {
+      if (next[key] != null) {
+        next.textDimColor = next[key];
+        break;
+      }
+    }
+  }
+  for (const key of MERGED_DIM_TEXT_SOURCE_KEYS) {
+    delete next[key];
+  }
+  if (next.primaryButtonBg == null) {
+    if (next.primaryButtonBgStart != null) {
+      next.primaryButtonBg = next.primaryButtonBgStart;
+    } else if (next.primaryButtonBgEnd != null) {
+      next.primaryButtonBg = next.primaryButtonBgEnd;
+    }
+  }
+  for (const key of MERGED_PRIMARY_BUTTON_BG_KEYS) {
+    delete next[key];
+  }
+  for (const key of REMOVED_HOVER_COLOR_KEYS) {
+    delete next[key];
+  }
+  for (const key of REMOVED_COLOR_KEYS) {
+    delete next[key];
+  }
   return next;
 }
 
@@ -280,7 +335,14 @@ export function normalizeUiColorConfig(config = {}) {
     }
   }
 
-  return { colorMode, dark, light };
+  const normalized = { colorMode, dark, light };
+  if (typeof config.hoverBoostPercent === 'number' && Number.isFinite(config.hoverBoostPercent)) {
+    const value = Math.max(0, Math.min(100, Math.round(config.hoverBoostPercent)));
+    if (value !== DEFAULT_HOVER_BOOST_PERCENT) {
+      normalized.hoverBoostPercent = value;
+    }
+  }
+  return normalized;
 }
 
 function getUiColorModeBucket(config, mode = getUiColorMode(config)) {
@@ -331,6 +393,33 @@ export function resetUiColorModeOverrides(config, mode = getUiColorMode(config))
   return { ...normalized, [modeKey]: {} };
 }
 
+export function getHoverBoostPercent(config = {}) {
+  const normalized = normalizeUiColorConfig(config);
+  const value = normalized.hoverBoostPercent;
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return Math.max(0, Math.min(100, Math.round(value)));
+  }
+  return DEFAULT_HOVER_BOOST_PERCENT;
+}
+
+export function setHoverBoostPercent(config, percent) {
+  const normalized = normalizeUiColorConfig(config);
+  const value = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
+  if (value === DEFAULT_HOVER_BOOST_PERCENT) {
+    const { hoverBoostPercent, ...rest } = normalized;
+    return rest;
+  }
+  return { ...normalized, hoverBoostPercent: value };
+}
+
+export function resetHoverBoostPercent(config) {
+  return setHoverBoostPercent(config, DEFAULT_HOVER_BOOST_PERCENT);
+}
+
+export function isHoverBoostPercentCustom(config = {}) {
+  return normalizeUiColorConfig(config).hoverBoostPercent != null;
+}
+
 /** 補助科目行など、セル背景より一段暗い色 */
 export function darkenHex(hex, ratio = 0.12) {
   const rgb = parseHex(hex);
@@ -378,36 +467,35 @@ export function applyUiColors(config = {}) {
     browserBg,
     settingsSurfaceBg, settingsInputBg, settingsInputBorder,
     settingsButtonBg, settingsRowHoverBg,
-    cellBg, textColor,
-    noteTextColor, hintTextColor, textDimColor,
+    cellBg, textColor, textDimColor,
     negativeAmountColor,
     yearRowBg, yearRowText, monthRowBg, monthRowText,
-    currentMonthBg, currentMonthBorder, settlementMonthBg,
+    currentMonthBorder, settlementMonthBg,
     rowHoverBorder, rowSelectionRing,
     expandableHighlight,
     journalOverlayBg, journalModalBg, journalModalShadowBg,
     journalRowHoverBg, journalCloseHoverBg,
-    journalTextColor, journalHintTextColor, journalTableHeaderBg,
+    journalTableHeaderBg,
     accentColor,
-    deleteBtnBg, deleteBtnBgHover, deleteBtnBorder, deleteBtnText,
-    tableHeaderBg,
+    deleteBtnBg, deleteBtnText,
     contextMenuBg, contextMenuShadowBg, contextMenuItemHoverBg,
-    periodModeBudgetActualBg, periodModeActualBg, periodModePlanBg, periodModeTextColor,
+    periodModeBudgetActualBg, periodModeActualBg, periodModePlanBg,
+    periodModeBudgetActualText, periodModeActualText, periodModePlanText,
     loadingOverlayBg,
     statusOkColor, statusErrorColor, statusInvalidColor,
-    primaryButtonBgStart, primaryButtonBgEnd, primaryButtonTextColor,
+    primaryButtonBg, primaryButtonTextColor,
     interactiveAccentColor,
-    bonusMonthColumnBg,
     fillColor1, fillColor2,
     planAmountColor, planEditableCellHoverBg, amountVarianceColor,
-    headerControlBg, headerControlBorder, headerControlText,
-    headerControlHoverBg, headerControlActiveBorder,
-    dashboardNavBg, dashboardNavBorder, dashboardNavText, dashboardNavHoverBg,
-    dashboardNavActiveBg, dashboardNavActiveBorder, dashboardNavActiveText,
-    settingsNavActiveBg, settingsNavActiveBorder, settingsNavActiveText,
+    headerControlBg, headerControlBorder,
+    headerControlActiveBorder,
+    dashboardNavBg, dashboardNavText,
+    dashboardNavActiveBg, dashboardNavActiveText,
     kbdBg, kbdTextColor, kbdBorderColor, kbdShadowColor,
     warningTextColor,
   } = colors;
+
+  const hoverBoost = `${getHoverBoostPercent(config)}%`;
 
   const doc = document.documentElement;
   const borderMix = `color-mix(in srgb, ${opaqueHex(textColor)} 14%, ${opaqueHex(browserBg)})`;
@@ -435,8 +523,7 @@ export function applyUiColors(config = {}) {
     '--plan-journal-close-hover',
     hexToRgba(journalCloseHoverBg, JOURNAL_CLOSE_HOVER_ALPHA),
   );
-  doc.style.setProperty('--plan-journal-text', opaqueHex(journalTextColor));
-  doc.style.setProperty('--plan-journal-hint-text', opaqueHex(journalHintTextColor));
+  doc.style.setProperty('--plan-journal-text', opaqueHex(textColor));
   doc.style.setProperty('--plan-journal-table-header-bg', opaqueHex(journalTableHeaderBg));
   doc.style.setProperty('--plan-context-menu-bg', opaqueHex(contextMenuBg));
   doc.style.setProperty(
@@ -467,59 +554,42 @@ export function applyUiColors(config = {}) {
   root.style.setProperty('--plan-cell-bg', cellBg);
   root.style.setProperty('--plan-text', textColor);
   root.style.setProperty('--plan-muted', textColor);
-  root.style.setProperty('--plan-note-text', opaqueHex(noteTextColor));
-  root.style.setProperty('--plan-hint-text', opaqueHex(hintTextColor));
   root.style.setProperty('--plan-text-dim', opaqueHex(textDimColor));
   root.style.setProperty('--plan-negative-amount', negativeAmountColor);
   root.style.setProperty('--plan-accent', opaqueHex(accentColor));
+  root.style.setProperty('--plan-hover-boost', hoverBoost);
   root.style.setProperty('--plan-delete-btn-bg', opaqueHex(deleteBtnBg));
-  root.style.setProperty('--plan-delete-btn-bg-hover', opaqueHex(deleteBtnBgHover));
-  root.style.setProperty('--plan-delete-btn-border', opaqueHex(deleteBtnBorder));
   root.style.setProperty('--plan-delete-btn-text', opaqueHex(deleteBtnText));
-  root.style.setProperty('--plan-table-header-bg', opaqueHex(tableHeaderBg));
   root.style.setProperty('--plan-period-mode-budget-actual-bg', opaqueHex(periodModeBudgetActualBg));
   root.style.setProperty('--plan-period-mode-actual-bg', opaqueHex(periodModeActualBg));
   root.style.setProperty('--plan-period-mode-plan-bg', opaqueHex(periodModePlanBg));
-  root.style.setProperty('--plan-period-mode-text', opaqueHex(periodModeTextColor));
+  root.style.setProperty('--plan-period-mode-budget-actual-text', opaqueHex(periodModeBudgetActualText));
+  root.style.setProperty('--plan-period-mode-actual-text', opaqueHex(periodModeActualText));
+  root.style.setProperty('--plan-period-mode-plan-text', opaqueHex(periodModePlanText));
   root.style.setProperty('--plan-status-ok', opaqueHex(statusOkColor));
   root.style.setProperty('--plan-status-error', opaqueHex(statusErrorColor));
   root.style.setProperty('--plan-status-invalid', opaqueHex(statusInvalidColor));
-  root.style.setProperty('--plan-primary-btn-start', opaqueHex(primaryButtonBgStart));
-  root.style.setProperty('--plan-primary-btn-end', opaqueHex(primaryButtonBgEnd));
+  root.style.setProperty('--plan-primary-btn-bg', opaqueHex(primaryButtonBg));
   root.style.setProperty('--plan-primary-btn-text', opaqueHex(primaryButtonTextColor));
   root.style.setProperty('--plan-interactive-accent', opaqueHex(interactiveAccentColor));
   root.style.setProperty('--plan-header-control-bg', opaqueHex(headerControlBg));
   root.style.setProperty('--plan-header-control-border', opaqueHex(headerControlBorder));
-  root.style.setProperty('--plan-header-control-text', opaqueHex(headerControlText));
-  root.style.setProperty('--plan-header-control-bg-hover', opaqueHex(headerControlHoverBg));
-  root.style.setProperty('--plan-header-control-bg-active', opaqueHex(headerControlHoverBg));
   root.style.setProperty('--plan-header-control-border-active', opaqueHex(headerControlActiveBorder));
-  root.style.setProperty('--plan-header-control-text-active', opaqueHex(headerControlText));
   root.style.setProperty(
     '--plan-header-control-focus-ring',
     hexToRgba(headerControlActiveBorder, HEADER_CONTROL_FOCUS_RING_ALPHA),
   );
   root.style.setProperty('--plan-dashboard-nav-bg', opaqueHex(dashboardNavBg));
-  root.style.setProperty('--plan-dashboard-nav-border', opaqueHex(dashboardNavBorder));
   root.style.setProperty('--plan-dashboard-nav-text', opaqueHex(dashboardNavText));
-  root.style.setProperty('--plan-dashboard-nav-hover-bg', opaqueHex(dashboardNavHoverBg));
   root.style.setProperty(
     '--plan-dashboard-nav-focus-ring',
-    hexToRgba(dashboardNavBorder, HEADER_CONTROL_FOCUS_RING_ALPHA),
+    hexToRgba(dashboardNavText, HEADER_CONTROL_FOCUS_RING_ALPHA),
   );
   root.style.setProperty('--plan-dashboard-nav-active-bg', opaqueHex(dashboardNavActiveBg));
-  root.style.setProperty('--plan-dashboard-nav-active-border', opaqueHex(dashboardNavActiveBorder));
   root.style.setProperty('--plan-dashboard-nav-active-text', opaqueHex(dashboardNavActiveText));
   root.style.setProperty(
     '--plan-dashboard-nav-active-focus-ring',
-    hexToRgba(dashboardNavActiveBorder, HEADER_CONTROL_FOCUS_RING_ALPHA),
-  );
-  root.style.setProperty('--plan-settings-nav-active-bg', opaqueHex(settingsNavActiveBg));
-  root.style.setProperty('--plan-settings-nav-active-border', opaqueHex(settingsNavActiveBorder));
-  root.style.setProperty('--plan-settings-nav-active-text', opaqueHex(settingsNavActiveText));
-  root.style.setProperty(
-    '--plan-settings-nav-active-focus-ring',
-    hexToRgba(settingsNavActiveBorder, HEADER_CONTROL_FOCUS_RING_ALPHA),
+    hexToRgba(dashboardNavActiveText, HEADER_CONTROL_FOCUS_RING_ALPHA),
   );
   root.style.setProperty('--plan-kbd-bg', opaqueHex(kbdBg));
   root.style.setProperty('--plan-kbd-text', opaqueHex(kbdTextColor));
@@ -529,19 +599,11 @@ export function applyUiColors(config = {}) {
     '--plan-csv-drop-active-bg',
     hexToRgba(interactiveAccentColor, CSV_DROP_ACTIVE_BG_ALPHA),
   );
-  root.style.setProperty(
-    '--plan-bonus-month-column-bg',
-    hexToRgba(bonusMonthColumnBg, BONUS_MONTH_COLUMN_ALPHA),
-  );
   root.style.setProperty('--plan-year-row-bg', yearRowBg);
   root.style.setProperty('--plan-year-row-text', yearRowText);
   root.style.setProperty('--plan-month-row-bg', monthRowBg);
   root.style.setProperty('--plan-month-row-text', monthRowText);
-  root.style.setProperty('--current-month-overlay', hexToRgba(currentMonthBg, CURRENT_MONTH_OVERLAY_ALPHA));
   root.style.setProperty('--current-month-ring', opaqueHex(currentMonthBorder));
-  root.style.setProperty('--current-month-overlay-head', hexToRgba(currentMonthBg, CURRENT_MONTH_OVERLAY_HEAD_ALPHA));
-  root.style.setProperty('--current-month-overlay-hover', hexToRgba(currentMonthBg, CURRENT_MONTH_OVERLAY_HOVER_ALPHA));
-  root.style.setProperty('--current-month-overlay-total', hexToRgba(currentMonthBg, CURRENT_MONTH_OVERLAY_TOTAL_ALPHA));
   root.style.setProperty('--settlement-month-overlay', hexToRgba(settlementMonthBg, SETTLEMENT_MONTH_OVERLAY_ALPHA));
   root.style.setProperty('--settlement-month-ring', hexToRgba(settlementMonthBg, SETTLEMENT_MONTH_RING_ALPHA));
   root.style.setProperty('--settlement-month-overlay-head', hexToRgba(settlementMonthBg, SETTLEMENT_MONTH_OVERLAY_HEAD_ALPHA));

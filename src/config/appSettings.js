@@ -166,7 +166,7 @@ export function normalizeRowPaddingScale(value) {
 }
 
 export function formatRowPaddingScaleMultiplier(uiScale) {
-  return formatFontScaleMultiplier(normalizeRowPaddingScale(uiScale));
+  return `行間 ${formatFontScaleMultiplier(normalizeRowPaddingScale(uiScale))}`;
 }
 
 export function applyRowPaddingScale(uiScale) {
@@ -340,12 +340,21 @@ export function normalizeFiscalPeriod(businessStartYear, fiscalPeriod, date = ne
   return Math.min(max, Math.max(1, n));
 }
 
+function toFullWidthAsciiDigits(value) {
+  return String(value).replace(/\d/g, (digit) => String.fromCodePoint(0xFF10 + Number(digit)));
+}
+
+function normalizeFullWidthAsciiDigits(text) {
+  return String(text).replace(/[０-９]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xFF10 + 0x30));
+}
+
 export function formatFiscalPeriodLabel(fiscalPeriod) {
-  return `第${fiscalPeriod}期`;
+  return `第${toFullWidthAsciiDigits(fiscalPeriod)}期`;
 }
 
 export function parseFiscalPeriod(label) {
-  const m = String(label ?? '').match(/第(\d+)期/);
+  const normalized = normalizeFullWidthAsciiDigits(label);
+  const m = normalized.match(/第(\d+)期/);
   return m ? parseInt(m[1], 10) : 8;
 }
 

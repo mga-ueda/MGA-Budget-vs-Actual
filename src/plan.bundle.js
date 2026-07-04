@@ -1004,16 +1004,47 @@ function sectionMatchesFilter(section, config, sectionIds = []) {
 /* config/uiColorConfig.js */
 const UI_COLOR_STORAGE_KEY = 'mga-ui-colors';
 
-const CURRENT_MONTH_OVERLAY_ALPHA = 0.28;
-const CURRENT_MONTH_RING_ALPHA = 0.45;
-const CURRENT_MONTH_OVERLAY_HEAD_ALPHA = 0.34;
-const CURRENT_MONTH_OVERLAY_HOVER_ALPHA = 0.22;
-const CURRENT_MONTH_OVERLAY_TOTAL_ALPHA = 0.32;
+const DEFAULT_HOVER_BOOST_PERCENT = 10;
 
-const SETTLEMENT_MONTH_OVERLAY_ALPHA = CURRENT_MONTH_OVERLAY_ALPHA;
-const SETTLEMENT_MONTH_RING_ALPHA = CURRENT_MONTH_RING_ALPHA;
-const SETTLEMENT_MONTH_OVERLAY_HEAD_ALPHA = CURRENT_MONTH_OVERLAY_HEAD_ALPHA;
-const SETTLEMENT_MONTH_OVERLAY_TOTAL_ALPHA = CURRENT_MONTH_OVERLAY_TOTAL_ALPHA;
+const REMOVED_HOVER_COLOR_KEYS = [
+  'dashboardNavHoverBg',
+  'dashboardNavActiveHoverBg',
+  'settingsNavActiveHoverBg',
+  'deleteBtnBgHover',
+  'headerControlHoverBg',
+];
+
+const REMOVED_COLOR_KEYS = [
+  'deleteBtnBorder',
+];
+
+const MERGED_SETTINGS_ACTIVE_KEYS = {
+  settingsNavActiveBg: 'dashboardNavActiveBg',
+  settingsNavActiveText: 'dashboardNavActiveText',
+};
+
+const BORDER_TO_TEXT_KEYS = {
+  dashboardNavBorder: 'dashboardNavText',
+  dashboardNavActiveBorder: 'dashboardNavActiveText',
+  settingsNavActiveBorder: 'dashboardNavActiveText',
+  headerControlText: 'textColor',
+};
+
+const MERGED_DIM_TEXT_SOURCE_KEYS = [
+  'noteTextColor',
+  'hintTextColor',
+  'journalHintTextColor',
+];
+
+const MERGED_PRIMARY_BUTTON_BG_KEYS = [
+  'primaryButtonBgStart',
+  'primaryButtonBgEnd',
+];
+
+const SETTLEMENT_MONTH_OVERLAY_ALPHA = 0.28;
+const SETTLEMENT_MONTH_RING_ALPHA = 0.45;
+const SETTLEMENT_MONTH_OVERLAY_HEAD_ALPHA = 0.34;
+const SETTLEMENT_MONTH_OVERLAY_TOTAL_ALPHA = 0.32;
 
 const JOURNAL_OVERLAY_ALPHA = 0.65;
 const JOURNAL_MODAL_SHADOW_ALPHA = 0.45;
@@ -1024,7 +1055,6 @@ const CONTEXT_MENU_SHADOW_ALPHA = 0.45;
 const CONTEXT_MENU_ITEM_HOVER_ALPHA = 0.08;
 const LOADING_OVERLAY_ALPHA = 0.38;
 const CSV_DROP_ACTIVE_BG_ALPHA = 0.08;
-const BONUS_MONTH_COLUMN_ALPHA = 0.08;
 const PLAN_EDITABLE_CELL_HOVER_ALPHA = 0.14;
 const HEADER_CONTROL_FOCUS_RING_ALPHA = 0.22;
 
@@ -1046,31 +1076,20 @@ const DEFAULT_UI_COLORS_DARK = {
   settingsRowHoverBg: '#2E2E2E',
   monthRowBg: '#595959',
   monthRowText: '#ffffff',
-  currentMonthBg: '#800000',
   currentMonthBorder: '#ff0000',
   settlementMonthBg: '#000000',
   cellBg: '#262626',
   textColor: '#ffffff',
-  noteTextColor: '#C9C9C9',
-  hintTextColor: '#B3B3B3',
   textDimColor: '#929292',
   planAmountColor: '#00B0F0',
   planEditableCellHoverBg: '#C0C0C0',
   headerControlBg: '#262626',
   headerControlBorder: '#565656',
-  headerControlText: '#ffffff',
-  headerControlHoverBg: '#2E2E2E',
   headerControlActiveBorder: '#929292',
   dashboardNavBg: '#1e3a5f',
-  dashboardNavBorder: '#3b82f6',
   dashboardNavText: '#bfdbfe',
-  dashboardNavHoverBg: '#1e40af',
   dashboardNavActiveBg: '#2563eb',
-  dashboardNavActiveBorder: '#3b82f6',
   dashboardNavActiveText: '#ffffff',
-  settingsNavActiveBg: '#7c3aed',
-  settingsNavActiveBorder: '#8b5cf6',
-  settingsNavActiveText: '#ffffff',
   kbdBg: '#373737',
   kbdTextColor: '#929292',
   kbdBorderColor: '#505050',
@@ -1086,31 +1105,26 @@ const DEFAULT_UI_COLORS_DARK = {
   journalModalShadowBg: '#000000',
   journalRowHoverBg: '#ffffff',
   journalCloseHoverBg: '#ffffff',
-  journalTextColor: '#ffffff',
-  journalHintTextColor: '#B3B3B3',
   journalTableHeaderBg: '#262626',
   accentColor: '#ff0000',
   deleteBtnBg: '#dc2626',
-  deleteBtnBgHover: '#b91c1c',
-  deleteBtnBorder: '#b91c1c',
   deleteBtnText: '#ffffff',
-  tableHeaderBg: '#1e1e28',
   contextMenuBg: '#1e1e28',
   contextMenuShadowBg: '#000000',
   contextMenuItemHoverBg: '#ffffff',
   periodModeBudgetActualBg: '#0891b2',
   periodModeActualBg: '#16a34a',
   periodModePlanBg: '#ea580c',
-  periodModeTextColor: '#ffffff',
+  periodModeBudgetActualText: '#ffffff',
+  periodModeActualText: '#ffffff',
+  periodModePlanText: '#ffffff',
   loadingOverlayBg: '#08080e',
   statusOkColor: '#86efac',
   statusErrorColor: '#fca5a5',
   statusInvalidColor: '#ef4444',
-  primaryButtonBgStart: '#3b82f6',
-  primaryButtonBgEnd: '#2563eb',
+  primaryButtonBg: '#3b82f6',
   primaryButtonTextColor: '#ffffff',
   interactiveAccentColor: '#2563eb',
-  bonusMonthColumnBg: '#86efac',
   ...SHARED_UI_COLORS,
 };
 
@@ -1123,31 +1137,20 @@ const DEFAULT_UI_COLORS_LIGHT = {
   settingsRowHoverBg: '#EFEFEF',
   monthRowBg: '#D9D9D9',
   monthRowText: '#1A1A1A',
-  currentMonthBg: '#CC6666',
   currentMonthBorder: '#ff0000',
   settlementMonthBg: '#B0B0B0',
   cellBg: '#FFFFFF',
   textColor: '#1A1A1A',
-  noteTextColor: '#4A4A4A',
-  hintTextColor: '#5C5C5C',
   textDimColor: '#757575',
   planAmountColor: '#0078D4',
   planEditableCellHoverBg: '#808080',
   headerControlBg: '#FFFFFF',
   headerControlBorder: '#B8B8B8',
-  headerControlText: '#1A1A1A',
-  headerControlHoverBg: '#EFEFEF',
   headerControlActiveBorder: '#757575',
   dashboardNavBg: '#eff6ff',
-  dashboardNavBorder: '#2563eb',
   dashboardNavText: '#1d4ed8',
-  dashboardNavHoverBg: '#dbeafe',
   dashboardNavActiveBg: '#2563eb',
-  dashboardNavActiveBorder: '#1d4ed8',
   dashboardNavActiveText: '#ffffff',
-  settingsNavActiveBg: '#9333ea',
-  settingsNavActiveBorder: '#7e22ce',
-  settingsNavActiveText: '#ffffff',
   kbdBg: '#EFEFEF',
   kbdTextColor: '#757575',
   kbdBorderColor: '#B8B8B8',
@@ -1163,31 +1166,26 @@ const DEFAULT_UI_COLORS_LIGHT = {
   journalModalShadowBg: '#000000',
   journalRowHoverBg: '#000000',
   journalCloseHoverBg: '#000000',
-  journalTextColor: '#1A1A1A',
-  journalHintTextColor: '#5C5C5C',
   journalTableHeaderBg: '#FFFFFF',
   accentColor: '#0078D4',
   deleteBtnBg: '#dc2626',
-  deleteBtnBgHover: '#b91c1c',
-  deleteBtnBorder: '#b91c1c',
   deleteBtnText: '#ffffff',
-  tableHeaderBg: '#E8E8E8',
   contextMenuBg: '#FFFFFF',
   contextMenuShadowBg: '#000000',
   contextMenuItemHoverBg: '#000000',
   periodModeBudgetActualBg: '#0891b2',
   periodModeActualBg: '#16a34a',
   periodModePlanBg: '#ea580c',
-  periodModeTextColor: '#ffffff',
+  periodModeBudgetActualText: '#ffffff',
+  periodModeActualText: '#ffffff',
+  periodModePlanText: '#ffffff',
   loadingOverlayBg: '#000000',
   statusOkColor: '#15803d',
   statusErrorColor: '#dc2626',
   statusInvalidColor: '#ef4444',
-  primaryButtonBgStart: '#3b82f6',
-  primaryButtonBgEnd: '#2563eb',
+  primaryButtonBg: '#3b82f6',
   primaryButtonTextColor: '#ffffff',
   interactiveAccentColor: '#2563eb',
-  bonusMonthColumnBg: '#86efac',
   ...SHARED_UI_COLORS,
   negativeAmountColor: '#C00000',
 };
@@ -1235,7 +1233,7 @@ function getDefaultUiColors(mode = 'dark') {
   return { ...DEFAULTS_BY_MODE[key] };
 }
 
-const UI_COLOR_LEGACY_KEYS = [...UI_COLOR_KEYS, 'textFaintColor', 'appBg'];
+const UI_COLOR_LEGACY_KEYS = [...UI_COLOR_KEYS, 'textFaintColor', 'appBg', 'bonusMonthColumnBg', 'journalTextColor'];
 
 function migrateUiColorBucket(bucket = {}) {
   const next = { ...bucket };
@@ -1251,6 +1249,63 @@ function migrateUiColorBucket(bucket = {}) {
     next.planEditableCellHoverBg = next.planEditableCellHoverColor;
   }
   delete next.planEditableCellHoverColor;
+  if (next.periodModeTextColor != null) {
+    if (next.periodModeBudgetActualText == null) {
+      next.periodModeBudgetActualText = next.periodModeTextColor;
+    }
+    if (next.periodModeActualText == null) {
+      next.periodModeActualText = next.periodModeTextColor;
+    }
+    if (next.periodModePlanText == null) {
+      next.periodModePlanText = next.periodModeTextColor;
+    }
+  }
+  delete next.periodModeTextColor;
+  delete next.currentMonthBg;
+  delete next.bonusMonthColumnBg;
+  if (next.journalTextColor != null && next.textColor == null) {
+    next.textColor = next.journalTextColor;
+  }
+  delete next.journalTextColor;
+  for (const [fromKey, toKey] of Object.entries(MERGED_SETTINGS_ACTIVE_KEYS)) {
+    if (next[fromKey] != null && next[toKey] == null) {
+      next[toKey] = next[fromKey];
+    }
+    delete next[fromKey];
+  }
+  for (const [fromKey, toKey] of Object.entries(BORDER_TO_TEXT_KEYS)) {
+    if (next[fromKey] != null && next[toKey] == null) {
+      next[toKey] = next[fromKey];
+    }
+    delete next[fromKey];
+  }
+  if (next.textDimColor == null) {
+    for (const key of MERGED_DIM_TEXT_SOURCE_KEYS) {
+      if (next[key] != null) {
+        next.textDimColor = next[key];
+        break;
+      }
+    }
+  }
+  for (const key of MERGED_DIM_TEXT_SOURCE_KEYS) {
+    delete next[key];
+  }
+  if (next.primaryButtonBg == null) {
+    if (next.primaryButtonBgStart != null) {
+      next.primaryButtonBg = next.primaryButtonBgStart;
+    } else if (next.primaryButtonBgEnd != null) {
+      next.primaryButtonBg = next.primaryButtonBgEnd;
+    }
+  }
+  for (const key of MERGED_PRIMARY_BUTTON_BG_KEYS) {
+    delete next[key];
+  }
+  for (const key of REMOVED_HOVER_COLOR_KEYS) {
+    delete next[key];
+  }
+  for (const key of REMOVED_COLOR_KEYS) {
+    delete next[key];
+  }
   return next;
 }
 
@@ -1284,7 +1339,14 @@ function normalizeUiColorConfig(config = {}) {
     }
   }
 
-  return { colorMode, dark, light };
+  const normalized = { colorMode, dark, light };
+  if (typeof config.hoverBoostPercent === 'number' && Number.isFinite(config.hoverBoostPercent)) {
+    const value = Math.max(0, Math.min(100, Math.round(config.hoverBoostPercent)));
+    if (value !== DEFAULT_HOVER_BOOST_PERCENT) {
+      normalized.hoverBoostPercent = value;
+    }
+  }
+  return normalized;
 }
 
 function getUiColorModeBucket(config, mode = getUiColorMode(config)) {
@@ -1335,6 +1397,33 @@ function resetUiColorModeOverrides(config, mode = getUiColorMode(config)) {
   return { ...normalized, [modeKey]: {} };
 }
 
+function getHoverBoostPercent(config = {}) {
+  const normalized = normalizeUiColorConfig(config);
+  const value = normalized.hoverBoostPercent;
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return Math.max(0, Math.min(100, Math.round(value)));
+  }
+  return DEFAULT_HOVER_BOOST_PERCENT;
+}
+
+function setHoverBoostPercent(config, percent) {
+  const normalized = normalizeUiColorConfig(config);
+  const value = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
+  if (value === DEFAULT_HOVER_BOOST_PERCENT) {
+    const { hoverBoostPercent, ...rest } = normalized;
+    return rest;
+  }
+  return { ...normalized, hoverBoostPercent: value };
+}
+
+function resetHoverBoostPercent(config) {
+  return setHoverBoostPercent(config, DEFAULT_HOVER_BOOST_PERCENT);
+}
+
+function isHoverBoostPercentCustom(config = {}) {
+  return normalizeUiColorConfig(config).hoverBoostPercent != null;
+}
+
 /** 補助科目行など、セル背景より一段暗い色 */
 function darkenHex(hex, ratio = 0.12) {
   const rgb = parseHex(hex);
@@ -1382,36 +1471,35 @@ function applyUiColors(config = {}) {
     browserBg,
     settingsSurfaceBg, settingsInputBg, settingsInputBorder,
     settingsButtonBg, settingsRowHoverBg,
-    cellBg, textColor,
-    noteTextColor, hintTextColor, textDimColor,
+    cellBg, textColor, textDimColor,
     negativeAmountColor,
     yearRowBg, yearRowText, monthRowBg, monthRowText,
-    currentMonthBg, currentMonthBorder, settlementMonthBg,
+    currentMonthBorder, settlementMonthBg,
     rowHoverBorder, rowSelectionRing,
     expandableHighlight,
     journalOverlayBg, journalModalBg, journalModalShadowBg,
     journalRowHoverBg, journalCloseHoverBg,
-    journalTextColor, journalHintTextColor, journalTableHeaderBg,
+    journalTableHeaderBg,
     accentColor,
-    deleteBtnBg, deleteBtnBgHover, deleteBtnBorder, deleteBtnText,
-    tableHeaderBg,
+    deleteBtnBg, deleteBtnText,
     contextMenuBg, contextMenuShadowBg, contextMenuItemHoverBg,
-    periodModeBudgetActualBg, periodModeActualBg, periodModePlanBg, periodModeTextColor,
+    periodModeBudgetActualBg, periodModeActualBg, periodModePlanBg,
+    periodModeBudgetActualText, periodModeActualText, periodModePlanText,
     loadingOverlayBg,
     statusOkColor, statusErrorColor, statusInvalidColor,
-    primaryButtonBgStart, primaryButtonBgEnd, primaryButtonTextColor,
+    primaryButtonBg, primaryButtonTextColor,
     interactiveAccentColor,
-    bonusMonthColumnBg,
     fillColor1, fillColor2,
     planAmountColor, planEditableCellHoverBg, amountVarianceColor,
-    headerControlBg, headerControlBorder, headerControlText,
-    headerControlHoverBg, headerControlActiveBorder,
-    dashboardNavBg, dashboardNavBorder, dashboardNavText, dashboardNavHoverBg,
-    dashboardNavActiveBg, dashboardNavActiveBorder, dashboardNavActiveText,
-    settingsNavActiveBg, settingsNavActiveBorder, settingsNavActiveText,
+    headerControlBg, headerControlBorder,
+    headerControlActiveBorder,
+    dashboardNavBg, dashboardNavText,
+    dashboardNavActiveBg, dashboardNavActiveText,
     kbdBg, kbdTextColor, kbdBorderColor, kbdShadowColor,
     warningTextColor,
   } = colors;
+
+  const hoverBoost = `${getHoverBoostPercent(config)}%`;
 
   const doc = document.documentElement;
   const borderMix = `color-mix(in srgb, ${opaqueHex(textColor)} 14%, ${opaqueHex(browserBg)})`;
@@ -1439,8 +1527,7 @@ function applyUiColors(config = {}) {
     '--plan-journal-close-hover',
     hexToRgba(journalCloseHoverBg, JOURNAL_CLOSE_HOVER_ALPHA),
   );
-  doc.style.setProperty('--plan-journal-text', opaqueHex(journalTextColor));
-  doc.style.setProperty('--plan-journal-hint-text', opaqueHex(journalHintTextColor));
+  doc.style.setProperty('--plan-journal-text', opaqueHex(textColor));
   doc.style.setProperty('--plan-journal-table-header-bg', opaqueHex(journalTableHeaderBg));
   doc.style.setProperty('--plan-context-menu-bg', opaqueHex(contextMenuBg));
   doc.style.setProperty(
@@ -1471,59 +1558,42 @@ function applyUiColors(config = {}) {
   root.style.setProperty('--plan-cell-bg', cellBg);
   root.style.setProperty('--plan-text', textColor);
   root.style.setProperty('--plan-muted', textColor);
-  root.style.setProperty('--plan-note-text', opaqueHex(noteTextColor));
-  root.style.setProperty('--plan-hint-text', opaqueHex(hintTextColor));
   root.style.setProperty('--plan-text-dim', opaqueHex(textDimColor));
   root.style.setProperty('--plan-negative-amount', negativeAmountColor);
   root.style.setProperty('--plan-accent', opaqueHex(accentColor));
+  root.style.setProperty('--plan-hover-boost', hoverBoost);
   root.style.setProperty('--plan-delete-btn-bg', opaqueHex(deleteBtnBg));
-  root.style.setProperty('--plan-delete-btn-bg-hover', opaqueHex(deleteBtnBgHover));
-  root.style.setProperty('--plan-delete-btn-border', opaqueHex(deleteBtnBorder));
   root.style.setProperty('--plan-delete-btn-text', opaqueHex(deleteBtnText));
-  root.style.setProperty('--plan-table-header-bg', opaqueHex(tableHeaderBg));
   root.style.setProperty('--plan-period-mode-budget-actual-bg', opaqueHex(periodModeBudgetActualBg));
   root.style.setProperty('--plan-period-mode-actual-bg', opaqueHex(periodModeActualBg));
   root.style.setProperty('--plan-period-mode-plan-bg', opaqueHex(periodModePlanBg));
-  root.style.setProperty('--plan-period-mode-text', opaqueHex(periodModeTextColor));
+  root.style.setProperty('--plan-period-mode-budget-actual-text', opaqueHex(periodModeBudgetActualText));
+  root.style.setProperty('--plan-period-mode-actual-text', opaqueHex(periodModeActualText));
+  root.style.setProperty('--plan-period-mode-plan-text', opaqueHex(periodModePlanText));
   root.style.setProperty('--plan-status-ok', opaqueHex(statusOkColor));
   root.style.setProperty('--plan-status-error', opaqueHex(statusErrorColor));
   root.style.setProperty('--plan-status-invalid', opaqueHex(statusInvalidColor));
-  root.style.setProperty('--plan-primary-btn-start', opaqueHex(primaryButtonBgStart));
-  root.style.setProperty('--plan-primary-btn-end', opaqueHex(primaryButtonBgEnd));
+  root.style.setProperty('--plan-primary-btn-bg', opaqueHex(primaryButtonBg));
   root.style.setProperty('--plan-primary-btn-text', opaqueHex(primaryButtonTextColor));
   root.style.setProperty('--plan-interactive-accent', opaqueHex(interactiveAccentColor));
   root.style.setProperty('--plan-header-control-bg', opaqueHex(headerControlBg));
   root.style.setProperty('--plan-header-control-border', opaqueHex(headerControlBorder));
-  root.style.setProperty('--plan-header-control-text', opaqueHex(headerControlText));
-  root.style.setProperty('--plan-header-control-bg-hover', opaqueHex(headerControlHoverBg));
-  root.style.setProperty('--plan-header-control-bg-active', opaqueHex(headerControlHoverBg));
   root.style.setProperty('--plan-header-control-border-active', opaqueHex(headerControlActiveBorder));
-  root.style.setProperty('--plan-header-control-text-active', opaqueHex(headerControlText));
   root.style.setProperty(
     '--plan-header-control-focus-ring',
     hexToRgba(headerControlActiveBorder, HEADER_CONTROL_FOCUS_RING_ALPHA),
   );
   root.style.setProperty('--plan-dashboard-nav-bg', opaqueHex(dashboardNavBg));
-  root.style.setProperty('--plan-dashboard-nav-border', opaqueHex(dashboardNavBorder));
   root.style.setProperty('--plan-dashboard-nav-text', opaqueHex(dashboardNavText));
-  root.style.setProperty('--plan-dashboard-nav-hover-bg', opaqueHex(dashboardNavHoverBg));
   root.style.setProperty(
     '--plan-dashboard-nav-focus-ring',
-    hexToRgba(dashboardNavBorder, HEADER_CONTROL_FOCUS_RING_ALPHA),
+    hexToRgba(dashboardNavText, HEADER_CONTROL_FOCUS_RING_ALPHA),
   );
   root.style.setProperty('--plan-dashboard-nav-active-bg', opaqueHex(dashboardNavActiveBg));
-  root.style.setProperty('--plan-dashboard-nav-active-border', opaqueHex(dashboardNavActiveBorder));
   root.style.setProperty('--plan-dashboard-nav-active-text', opaqueHex(dashboardNavActiveText));
   root.style.setProperty(
     '--plan-dashboard-nav-active-focus-ring',
-    hexToRgba(dashboardNavActiveBorder, HEADER_CONTROL_FOCUS_RING_ALPHA),
-  );
-  root.style.setProperty('--plan-settings-nav-active-bg', opaqueHex(settingsNavActiveBg));
-  root.style.setProperty('--plan-settings-nav-active-border', opaqueHex(settingsNavActiveBorder));
-  root.style.setProperty('--plan-settings-nav-active-text', opaqueHex(settingsNavActiveText));
-  root.style.setProperty(
-    '--plan-settings-nav-active-focus-ring',
-    hexToRgba(settingsNavActiveBorder, HEADER_CONTROL_FOCUS_RING_ALPHA),
+    hexToRgba(dashboardNavActiveText, HEADER_CONTROL_FOCUS_RING_ALPHA),
   );
   root.style.setProperty('--plan-kbd-bg', opaqueHex(kbdBg));
   root.style.setProperty('--plan-kbd-text', opaqueHex(kbdTextColor));
@@ -1533,19 +1603,11 @@ function applyUiColors(config = {}) {
     '--plan-csv-drop-active-bg',
     hexToRgba(interactiveAccentColor, CSV_DROP_ACTIVE_BG_ALPHA),
   );
-  root.style.setProperty(
-    '--plan-bonus-month-column-bg',
-    hexToRgba(bonusMonthColumnBg, BONUS_MONTH_COLUMN_ALPHA),
-  );
   root.style.setProperty('--plan-year-row-bg', yearRowBg);
   root.style.setProperty('--plan-year-row-text', yearRowText);
   root.style.setProperty('--plan-month-row-bg', monthRowBg);
   root.style.setProperty('--plan-month-row-text', monthRowText);
-  root.style.setProperty('--current-month-overlay', hexToRgba(currentMonthBg, CURRENT_MONTH_OVERLAY_ALPHA));
   root.style.setProperty('--current-month-ring', opaqueHex(currentMonthBorder));
-  root.style.setProperty('--current-month-overlay-head', hexToRgba(currentMonthBg, CURRENT_MONTH_OVERLAY_HEAD_ALPHA));
-  root.style.setProperty('--current-month-overlay-hover', hexToRgba(currentMonthBg, CURRENT_MONTH_OVERLAY_HOVER_ALPHA));
-  root.style.setProperty('--current-month-overlay-total', hexToRgba(currentMonthBg, CURRENT_MONTH_OVERLAY_TOTAL_ALPHA));
   root.style.setProperty('--settlement-month-overlay', hexToRgba(settlementMonthBg, SETTLEMENT_MONTH_OVERLAY_ALPHA));
   root.style.setProperty('--settlement-month-ring', hexToRgba(settlementMonthBg, SETTLEMENT_MONTH_RING_ALPHA));
   root.style.setProperty('--settlement-month-overlay-head', hexToRgba(settlementMonthBg, SETTLEMENT_MONTH_OVERLAY_HEAD_ALPHA));
@@ -9381,7 +9443,7 @@ function normalizeRowPaddingScale(value) {
 }
 
 function formatRowPaddingScaleMultiplier(uiScale) {
-  return formatFontScaleMultiplier(normalizeRowPaddingScale(uiScale));
+  return `行間 ${formatFontScaleMultiplier(normalizeRowPaddingScale(uiScale))}`;
 }
 
 function applyRowPaddingScale(uiScale) {
@@ -9555,12 +9617,21 @@ function normalizeFiscalPeriod(businessStartYear, fiscalPeriod, date = new Date(
   return Math.min(max, Math.max(1, n));
 }
 
+function toFullWidthAsciiDigits(value) {
+  return String(value).replace(/\d/g, (digit) => String.fromCodePoint(0xFF10 + Number(digit)));
+}
+
+function normalizeFullWidthAsciiDigits(text) {
+  return String(text).replace(/[０-９]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xFF10 + 0x30));
+}
+
 function formatFiscalPeriodLabel(fiscalPeriod) {
-  return `第${fiscalPeriod}期`;
+  return `第${toFullWidthAsciiDigits(fiscalPeriod)}期`;
 }
 
 function parseFiscalPeriod(label) {
-  const m = String(label ?? '').match(/第(\d+)期/);
+  const normalized = normalizeFullWidthAsciiDigits(label);
+  const m = normalized.match(/第(\d+)期/);
   return m ? parseInt(m[1], 10) : 8;
 }
 
@@ -11698,6 +11769,16 @@ function colorInputTd(value) {
   return { td, input };
 }
 
+function setColorInput(field, value) {
+  field.input.value = value;
+  field.input.title = value;
+}
+
+function bindColorInput(field, sync) {
+  field.input.addEventListener('input', () => sync(field.input.value, false));
+  field.input.addEventListener('change', () => sync(field.input.value, true));
+}
+
 function previewTd({ background, color, text, className = 'ui-color-preview-cell', html = null }) {
   const td = document.createElement('td');
   td.className = 'col-color-preview';
@@ -11707,6 +11788,27 @@ function previewTd({ background, color, text, className = 'ui-color-preview-cell
   if (color != null) span.style.color = color;
   if (html != null) span.innerHTML = html;
   else span.textContent = text;
+  td.appendChild(span);
+  return { td, span };
+}
+
+function applyNavBtnPreview(span, { background, borderColor, color }) {
+  if (background != null) span.style.backgroundColor = background;
+  if (color != null) span.style.color = color;
+  if (borderColor != null) {
+    span.style.borderColor = borderColor;
+    span.style.borderStyle = 'solid';
+    span.style.borderWidth = '1px';
+  }
+}
+
+function previewNavBtnTd({ background, borderColor, color, label }) {
+  const td = document.createElement('td');
+  td.className = 'col-color-preview';
+  const span = document.createElement('span');
+  span.className = 'ui-color-preview-cell ui-color-preview-nav-btn';
+  span.textContent = label;
+  applyNavBtnPreview(span, { background, borderColor, color });
   td.appendChild(span);
   return { td, span };
 }
@@ -11738,6 +11840,7 @@ function mountUiColorPanel(container, {
   data,
   sectionColorConfig,
   onRefreshPlanView,
+  onRefreshToolbar,
   onReRender,
 }) {
   const panel = document.createElement('div');
@@ -11748,14 +11851,49 @@ function mountUiColorPanel(container, {
   title.textContent = '予実表全体';
   panel.appendChild(title);
 
-  const persist = () => {
-    const config = getConfig();
-    saveUiColorConfig(config);
-    applyUiColors(config);
+  let saveTimer = null;
+  let refreshToolbarTimer = null;
+  let refreshViewTimer = null;
+
+  const applyLive = () => {
+    applyUiColors(getConfig());
   };
 
-  const refreshPlan = () => {
-    onRefreshPlanView?.();
+  const flushSave = () => {
+    if (saveTimer != null) {
+      clearTimeout(saveTimer);
+      saveTimer = null;
+    }
+    saveUiColorConfig(getConfig());
+  };
+
+  const scheduleSave = () => {
+    if (saveTimer != null) clearTimeout(saveTimer);
+    saveTimer = setTimeout(flushSave, 300);
+  };
+
+  const scheduleRefreshToolbar = () => {
+    if (refreshToolbarTimer != null) clearTimeout(refreshToolbarTimer);
+    refreshToolbarTimer = setTimeout(() => {
+      onRefreshToolbar?.();
+      refreshToolbarTimer = null;
+    }, 150);
+  };
+
+  const scheduleRefreshView = () => {
+    if (refreshViewTimer != null) clearTimeout(refreshViewTimer);
+    refreshViewTimer = setTimeout(() => {
+      onRefreshPlanView?.();
+      refreshViewTimer = null;
+    }, 200);
+  };
+
+  const persist = ({ flush = false, refreshToolbar = false, refreshView = false } = {}) => {
+    applyLive();
+    if (flush) flushSave();
+    else scheduleSave();
+    if (refreshToolbar) scheduleRefreshToolbar();
+    if (refreshView) scheduleRefreshView();
   };
 
   const modeRow = document.createElement('div');
@@ -11773,13 +11911,58 @@ function mountUiColorPanel(container, {
     modeSelect.appendChild(option);
   }
   modeSelect.value = getUiColorMode(getConfig());
-  modeRow.append(modeLabel, modeSelect);
+  const hoverBoostLabel = document.createElement('label');
+  hoverBoostLabel.className = 'ui-color-mode-label ui-color-hover-boost-label';
+  hoverBoostLabel.textContent = 'ホバー明るさ';
+  const hoverBoostWrap = document.createElement('span');
+  hoverBoostWrap.className = 'ui-color-hover-boost-wrap';
+  const hoverBoostInput = document.createElement('input');
+  hoverBoostInput.type = 'number';
+  hoverBoostInput.className = 'ui-color-hover-boost-input app-settings-input';
+  hoverBoostInput.min = '0';
+  hoverBoostInput.max = '100';
+  hoverBoostInput.step = '1';
+  hoverBoostInput.setAttribute('aria-label', 'ホバー明るさ');
+  hoverBoostInput.value = String(getHoverBoostPercent(getConfig()));
+  const hoverBoostSuffix = document.createElement('span');
+  hoverBoostSuffix.className = 'ui-color-hover-boost-suffix';
+  hoverBoostSuffix.textContent = '%';
+  const hoverBoostReset = document.createElement('button');
+  hoverBoostReset.type = 'button';
+  hoverBoostReset.className = 'section-color-reset-btn ui-color-hover-boost-reset';
+  hoverBoostReset.textContent = 'デフォルト';
+  hoverBoostReset.disabled = !isHoverBoostPercentCustom(getConfig());
+  hoverBoostWrap.append(hoverBoostInput, hoverBoostSuffix);
+  modeRow.append(modeLabel, modeSelect, hoverBoostLabel, hoverBoostWrap, hoverBoostReset);
   panel.appendChild(modeRow);
+
+  const syncHoverBoostReset = () => {
+    hoverBoostReset.disabled = !isHoverBoostPercentCustom(getConfig());
+  };
+
+  const applyHoverBoostValue = (rawValue, { flush = false } = {}) => {
+    setConfig(setHoverBoostPercent(getConfig(), rawValue));
+    hoverBoostInput.value = String(getHoverBoostPercent(getConfig()));
+    syncHoverBoostReset();
+    persist({ flush, refreshToolbar: true });
+  };
+
+  hoverBoostInput.addEventListener('input', () => {
+    applyHoverBoostValue(hoverBoostInput.value, { flush: false });
+  });
+  hoverBoostInput.addEventListener('change', () => {
+    applyHoverBoostValue(hoverBoostInput.value, { flush: true });
+  });
+  hoverBoostReset.addEventListener('click', () => {
+    setConfig(resetHoverBoostPercent(getConfig()));
+    hoverBoostInput.value = String(DEFAULT_HOVER_BOOST_PERCENT);
+    syncHoverBoostReset();
+    persist({ flush: true, refreshToolbar: true });
+  });
 
   modeSelect.addEventListener('change', () => {
     setConfig(switchUiColorMode(getConfig(), modeSelect.value));
-    persist();
-    refreshPlan();
+    persist({ flush: true, refreshToolbar: true });
     onReRender?.();
   });
 
@@ -11789,7 +11972,7 @@ function mountUiColorPanel(container, {
     <thead>
       <tr>
         <th>項目</th>
-        <th class="col-color-input">背景色</th>
+        <th class="col-color-input">塗り色</th>
         <th class="col-color-input">文字色</th>
         <th class="col-color-preview">プレビュー</th>
         <th class="col-color-action">操作</th>
@@ -11808,37 +11991,70 @@ function mountUiColorPanel(container, {
     tbody.appendChild(tr);
   };
 
-  const registerBgRow = (label, key, previewText, previewTextColor = '#ffffff') => {
+  const previewByKey = new Map();
+
+  const subscribePreview = (keys, fn) => {
+    for (const key of keys) {
+      if (!previewByKey.has(key)) previewByKey.set(key, new Set());
+      previewByKey.get(key).add(fn);
+    }
+    fn(getUiColors(getConfig()));
+  };
+
+  const refreshPreviewsForKeys = (...keys) => {
+    const merged = getUiColors(getConfig());
+    const seen = new Set();
+    for (const key of keys) {
+      for (const fn of previewByKey.get(key) ?? []) {
+        if (seen.has(fn)) continue;
+        seen.add(fn);
+        fn(merged);
+      }
+    }
+  };
+
+  const resolveBgRowPreviewColor = (merged, previewTextColor, previewTextKey) => {
+    if (previewTextKey) return merged[previewTextKey];
+    if (previewTextColor == null) return merged.textColor;
+    return previewTextColor;
+  };
+
+  const registerBgRow = (label, key, previewText, previewTextColor = '#ffffff', previewTextKey = null) => {
     const colors = getUiColors(getConfig());
     const bg = colorInputTd(colors[key]);
     const preview = previewTd({
       background: colors[key],
-      color: previewTextColor,
+      color: resolveBgRowPreviewColor(colors, previewTextColor, previewTextKey),
       text: previewText,
     });
     const reset = resetBtnTd(keysMatchDefaults(getConfig(), [key]));
     addRow(label, [bg.td, dashTd(), preview.td, reset.td]);
-    const sync = (value) => {
-      setConfig(setUiColorKey(getConfig(), key, value));
-      persist();
-      bg.input.value = value;
-      bg.input.title = value;
-      preview.span.style.background = value;
+    const previewKeys = previewTextKey
+      ? [key, previewTextKey]
+      : (previewTextColor == null ? [key, 'textColor'] : [key]);
+    const syncPreview = (merged) => {
+      preview.span.style.background = merged[key];
+      preview.span.style.color = resolveBgRowPreviewColor(merged, previewTextColor, previewTextKey);
       reset.btn.disabled = keysMatchDefaults(getConfig(), [key]);
     };
-    bg.input.addEventListener('input', () => sync(bg.input.value));
+    subscribePreview(previewKeys, syncPreview);
+    const sync = (value, flush = false) => {
+      setConfig(setUiColorKey(getConfig(), key, value));
+      persist({ flush });
+      setColorInput(bg, value);
+      refreshPreviewsForKeys(...previewKeys);
+    };
+    bindColorInput(bg, sync);
     reset.btn.addEventListener('click', () => {
       setConfig(resetUiColorKey(getConfig(), key));
-      persist();
+      persist({ flush: true });
       const value = getDefaultUiColors(getUiColorMode(getConfig()))[key];
-      bg.input.value = value;
-      bg.input.title = value;
-      preview.span.style.background = value;
-      reset.btn.disabled = true;
+      setColorInput(bg, value);
+      refreshPreviewsForKeys(...previewKeys);
     });
   };
 
-  const registerBgTextRow = (label, bgKey, textKey, previewText) => {
+  const registerBgTextRow = (label, bgKey, textKey, previewText, refreshToolbar = false) => {
     const colors = getUiColors(getConfig());
     const bg = colorInputTd(colors[bgKey]);
     const text = colorInputTd(colors[textKey]);
@@ -11849,34 +12065,32 @@ function mountUiColorPanel(container, {
     });
     const reset = resetBtnTd(keysMatchDefaults(getConfig(), [bgKey, textKey]));
     addRow(label, [bg.td, text.td, preview.td, reset.td]);
-    const sync = (bgVal, textVal) => {
-      setConfig(applyKeys(getConfig(), [bgKey, textKey], [bgVal, textVal]));
-      persist();
-      bg.input.value = bgVal;
-      bg.input.title = bgVal;
-      text.input.value = textVal;
-      text.input.title = textVal;
-      preview.span.style.background = bgVal;
-      preview.span.style.color = textVal;
+    const previewKeys = [bgKey, textKey];
+    const syncPreview = (merged) => {
+      preview.span.style.background = merged[bgKey];
+      preview.span.style.color = merged[textKey];
       reset.btn.disabled = keysMatchDefaults(getConfig(), [bgKey, textKey]);
-      refreshPlan();
     };
-    bg.input.addEventListener('input', () => sync(bg.input.value, text.input.value));
-    text.input.addEventListener('input', () => sync(bg.input.value, text.input.value));
+    subscribePreview(previewKeys, syncPreview);
+    const sync = (bgVal, textVal, flush = false) => {
+      setConfig(applyKeys(getConfig(), [bgKey, textKey], [bgVal, textVal]));
+      persist({ flush, refreshToolbar });
+      setColorInput(bg, bgVal);
+      setColorInput(text, textVal);
+      refreshPreviewsForKeys(...previewKeys);
+    };
+    const emitSync = (_value, flush) => sync(bg.input.value, text.input.value, flush);
+    bindColorInput(bg, emitSync);
+    bindColorInput(text, emitSync);
     reset.btn.addEventListener('click', () => {
       let next = resetUiColorKey(getConfig(), bgKey);
       next = resetUiColorKey(next, textKey);
       setConfig(next);
-      persist();
+      persist({ flush: true, refreshToolbar });
       const defaults = getDefaultUiColors(getUiColorMode(getConfig()));
-      bg.input.value = defaults[bgKey];
-      bg.input.title = defaults[bgKey];
-      text.input.value = defaults[textKey];
-      text.input.title = defaults[textKey];
-      preview.span.style.background = defaults[bgKey];
-      preview.span.style.color = defaults[textKey];
-      reset.btn.disabled = true;
-      refreshPlan();
+      setColorInput(bg, defaults[bgKey]);
+      setColorInput(text, defaults[textKey]);
+      refreshPreviewsForKeys(...previewKeys);
     });
   };
 
@@ -11885,7 +12099,6 @@ function mountUiColorPanel(container, {
     previewTextKey = null,
     html = null,
     opaque = true,
-    refresh = true,
   } = {}) => {
     const colors = getUiColors(getConfig());
     const text = colorInputTd(colors[key]);
@@ -11897,33 +12110,30 @@ function mountUiColorPanel(container, {
     });
     const reset = resetBtnTd(keysMatchDefaults(getConfig(), [key]));
     addRow(label, [dashTd(), text.td, preview.td, reset.td]);
-    const sync = (value) => {
-      const nextVal = opaque ? opaqueHex(value) : value;
-      setConfig(setUiColorKey(getConfig(), key, nextVal));
-      persist();
-      text.input.value = nextVal;
-      text.input.title = nextVal;
-      const merged = getUiColors(getConfig());
+    const previewKeys = previewTextKey ? [key, previewTextKey, previewBgKey] : [key, previewBgKey];
+    const syncPreview = (merged) => {
+      const nextVal = merged[key];
       if (previewTextKey) preview.span.style.color = merged[previewTextKey];
       else preview.span.style.color = nextVal;
       preview.span.style.background = merged[previewBgKey];
       reset.btn.disabled = keysMatchDefaults(getConfig(), [key]);
-      if (refresh) refreshPlan();
     };
-    text.input.addEventListener('input', () => sync(text.input.value));
+    subscribePreview(previewKeys, syncPreview);
+    const sync = (value, flush = false) => {
+      const nextVal = opaque ? opaqueHex(value) : value;
+      setConfig(setUiColorKey(getConfig(), key, nextVal));
+      persist({ flush });
+      setColorInput(text, nextVal);
+      refreshPreviewsForKeys(...previewKeys);
+    };
+    bindColorInput(text, sync);
     reset.btn.addEventListener('click', () => {
       setConfig(resetUiColorKey(getConfig(), key));
-      persist();
+      persist({ flush: true });
       const defaults = getDefaultUiColors(getUiColorMode(getConfig()));
       const nextVal = defaults[key];
-      text.input.value = nextVal;
-      text.input.title = nextVal;
-      const merged = getUiColors(getConfig());
-      if (previewTextKey) preview.span.style.color = merged[previewTextKey];
-      else preview.span.style.color = nextVal;
-      preview.span.style.background = merged[previewBgKey];
-      reset.btn.disabled = true;
-      if (refresh) refreshPlan();
+      setColorInput(text, nextVal);
+      refreshPreviewsForKeys(...previewKeys);
     });
   };
 
@@ -11940,68 +12150,109 @@ function mountUiColorPanel(container, {
     preview.span.style.border = `1px solid ${opaqueHex(colors[key])}`;
     const reset = resetBtnTd(keysMatchDefaults(getConfig(), [key]));
     addRow(label, [dashTd(), text.td, preview.td, reset.td]);
-    const sync = (value) => {
-      const color = opaqueHex(value);
-      setConfig(setUiColorKey(getConfig(), key, color));
-      persist();
-      text.input.value = color;
-      text.input.title = color;
-      const { cellBg } = getUiColors(getConfig());
-      preview.span.style.background = cellBg;
+    const previewKeys = [key, 'cellBg'];
+    const syncPreview = (merged) => {
+      const color = opaqueHex(merged[key]);
+      preview.span.style.background = merged.cellBg;
       preview.span.style.color = color;
       preview.span.style.border = `1px solid ${color}`;
       reset.btn.disabled = keysMatchDefaults(getConfig(), [key]);
-      refreshPlan();
     };
-    text.input.addEventListener('input', () => sync(text.input.value));
+    subscribePreview(previewKeys, syncPreview);
+    const sync = (value, flush = false) => {
+      const color = opaqueHex(value);
+      setConfig(setUiColorKey(getConfig(), key, color));
+      persist({ flush });
+      setColorInput(text, color);
+      refreshPreviewsForKeys(...previewKeys);
+    };
+    bindColorInput(text, sync);
     reset.btn.addEventListener('click', () => {
       setConfig(resetUiColorKey(getConfig(), key));
-      persist();
+      persist({ flush: true });
       const color = getDefaultUiColors(getUiColorMode(getConfig()))[key];
-      text.input.value = color;
-      text.input.title = color;
-      const { cellBg } = getUiColors(getConfig());
-      preview.span.style.background = cellBg;
-      preview.span.style.color = color;
-      preview.span.style.border = `1px solid ${color}`;
-      reset.btn.disabled = true;
-      refreshPlan();
+      setColorInput(text, color);
+      refreshPreviewsForKeys(...previewKeys);
     });
   };
 
-  const registerBorderRow = (label, key, previewBgKey) => {
+  const registerNavBtnBgTextRow = (label, bgKey, textKey, buttonLabel) => {
+    const colors = getUiColors(getConfig());
+    const bg = colorInputTd(colors[bgKey]);
+    const text = colorInputTd(colors[textKey]);
+    const preview = previewNavBtnTd({
+      background: colors[bgKey],
+      borderColor: colors[textKey],
+      color: colors[textKey],
+      label: buttonLabel,
+    });
+    const reset = resetBtnTd(keysMatchDefaults(getConfig(), [bgKey, textKey]));
+    addRow(label, [bg.td, text.td, preview.td, reset.td]);
+    const previewKeys = [bgKey, textKey];
+    const syncPreview = (merged) => {
+      applyNavBtnPreview(preview.span, {
+        background: merged[bgKey],
+        borderColor: merged[textKey],
+        color: merged[textKey],
+      });
+      reset.btn.disabled = keysMatchDefaults(getConfig(), [bgKey, textKey]);
+    };
+    subscribePreview(previewKeys, syncPreview);
+    const sync = (bgVal, textVal, flush = false) => {
+      setConfig(applyKeys(getConfig(), [bgKey, textKey], [bgVal, textVal]));
+      persist({ flush });
+      setColorInput(bg, bgVal);
+      setColorInput(text, textVal);
+      refreshPreviewsForKeys(...previewKeys);
+    };
+    const emitSync = (_value, flush) => sync(bg.input.value, text.input.value, flush);
+    bindColorInput(bg, emitSync);
+    bindColorInput(text, emitSync);
+    reset.btn.addEventListener('click', () => {
+      let next = resetUiColorKey(getConfig(), bgKey);
+      next = resetUiColorKey(next, textKey);
+      setConfig(next);
+      persist({ flush: true });
+      const defaults = getDefaultUiColors(getUiColorMode(getConfig()));
+      setColorInput(bg, defaults[bgKey]);
+      setColorInput(text, defaults[textKey]);
+      refreshPreviewsForKeys(...previewKeys);
+    });
+  };
+
+  const registerBorderRow = (label, key, previewBgKey, previewText = '枠線', previewTextKey = 'textColor') => {
     const colors = getUiColors(getConfig());
     const border = colorInputTd(colors[key]);
     const preview = previewTd({
       background: colors[previewBgKey],
-      color: colors.textColor,
-      text: '枠線',
+      color: colors[previewTextKey],
+      text: previewText,
       className: 'ui-color-preview-cell',
     });
     preview.span.style.border = `2px solid ${colors[key]}`;
     const reset = resetBtnTd(keysMatchDefaults(getConfig(), [key]));
     addRow(label, [border.td, dashTd(), preview.td, reset.td]);
-    const sync = (value) => {
-      setConfig(setUiColorKey(getConfig(), key, value));
-      persist();
-      border.input.value = value;
-      border.input.title = value;
-      const merged = getUiColors(getConfig());
+    const previewKeys = [key, previewBgKey, previewTextKey];
+    const syncPreview = (merged) => {
       preview.span.style.background = merged[previewBgKey];
-      preview.span.style.border = `2px solid ${value}`;
+      preview.span.style.color = merged[previewTextKey];
+      preview.span.style.border = `2px solid ${merged[key]}`;
       reset.btn.disabled = keysMatchDefaults(getConfig(), [key]);
     };
-    border.input.addEventListener('input', () => sync(border.input.value));
+    subscribePreview(previewKeys, syncPreview);
+    const sync = (value, flush = false) => {
+      setConfig(setUiColorKey(getConfig(), key, value));
+      persist({ flush });
+      setColorInput(border, value);
+      refreshPreviewsForKeys(...previewKeys);
+    };
+    bindColorInput(border, sync);
     reset.btn.addEventListener('click', () => {
       setConfig(resetUiColorKey(getConfig(), key));
-      persist();
+      persist({ flush: true });
       const merged = getUiColors(getConfig());
-      const value = merged[key];
-      border.input.value = value;
-      border.input.title = value;
-      preview.span.style.background = merged[previewBgKey];
-      preview.span.style.border = `2px solid ${value}`;
-      reset.btn.disabled = true;
+      setColorInput(border, merged[key]);
+      refreshPreviewsForKeys(...previewKeys);
     });
   };
 
@@ -12015,26 +12266,27 @@ function mountUiColorPanel(container, {
     });
     const reset = resetBtnTd(keysMatchDefaults(getConfig(), [key]));
     addRow(label, [bg.td, dashTd(), preview.td, reset.td]);
-    const sync = (value) => {
+    const previewKeys = [key, 'textColor'];
+    const syncPreview = (merged) => {
+      preview.span.style.background = merged[key];
+      preview.span.style.color = merged.textColor;
+      reset.btn.disabled = keysMatchDefaults(getConfig(), [key]);
+    };
+    subscribePreview(previewKeys, syncPreview);
+    const sync = (value, flush = false) => {
       const color = opaqueHex(value);
       setConfig(setUiColorKey(getConfig(), key, color));
-      persist();
-      bg.input.value = color;
-      bg.input.title = color;
-      preview.span.style.background = color;
-      reset.btn.disabled = keysMatchDefaults(getConfig(), [key]);
-      refreshPlan();
+      persist({ flush });
+      setColorInput(bg, color);
+      refreshPreviewsForKeys(...previewKeys);
     };
-    bg.input.addEventListener('input', () => sync(bg.input.value));
+    bindColorInput(bg, sync);
     reset.btn.addEventListener('click', () => {
       setConfig(resetUiColorKey(getConfig(), key));
-      persist();
+      persist({ flush: true });
       const color = getDefaultUiColors(getUiColorMode(getConfig()))[key];
-      bg.input.value = color;
-      bg.input.title = color;
-      preview.span.style.background = color;
-      reset.btn.disabled = true;
-      refreshPlan();
+      setColorInput(bg, color);
+      refreshPreviewsForKeys(...previewKeys);
     });
   };
 
@@ -12047,7 +12299,7 @@ function mountUiColorPanel(container, {
   const LOADING_OVERLAY_ALPHA = 0.38;
   const PLAN_EDITABLE_CELL_HOVER_ALPHA = 0.14;
 
-  const registerJournalTintRow = (label, key, alpha, previewText, previewBgKey = 'journalModalBg', refresh = false) => {
+  const registerJournalTintRow = (label, key, alpha, previewText, previewBgKey = 'journalModalBg') => {
     const colors = getUiColors(getConfig());
     const bg = colorInputTd(colors[key]);
     const preview = previewTd({
@@ -12058,67 +12310,47 @@ function mountUiColorPanel(container, {
     preview.span.style.boxShadow = `inset 0 0 0 1px ${hexToRgba(colors[previewBgKey] ?? colors.cellBg, 1)}`;
     const reset = resetBtnTd(keysMatchDefaults(getConfig(), [key]));
     addRow(label, [bg.td, dashTd(), preview.td, reset.td]);
+    const previewKeys = [key, previewBgKey, 'textColor'];
     const syncPreview = (merged) => {
-      bg.input.value = merged[key];
-      bg.input.title = merged[key];
+      setColorInput(bg, merged[key]);
       preview.span.style.background = hexToRgba(merged[key], alpha);
       preview.span.style.color = merged.textColor;
       preview.span.style.boxShadow = `inset 0 0 0 1px ${opaqueHex(merged[previewBgKey] ?? merged.cellBg)}`;
       reset.btn.disabled = keysMatchDefaults(getConfig(), [key]);
     };
-    const sync = (value) => {
+    subscribePreview(previewKeys, syncPreview);
+    const sync = (value, flush = false) => {
       const color = opaqueHex(value);
       setConfig(setUiColorKey(getConfig(), key, color));
-      persist();
-      syncPreview(getUiColors(getConfig()));
-      if (refresh) refreshPlan();
+      persist({ flush });
+      refreshPreviewsForKeys(...previewKeys);
     };
-    bg.input.addEventListener('input', () => sync(bg.input.value));
+    bindColorInput(bg, sync);
     reset.btn.addEventListener('click', () => {
       setConfig(resetUiColorKey(getConfig(), key));
-      persist();
-      syncPreview(getUiColors(getConfig()));
-      if (refresh) refreshPlan();
+      persist({ flush: true });
+      refreshPreviewsForKeys(...previewKeys);
     });
   };
 
   // 予実表レイアウト順
   registerBgRow('ブラウザ（背景）', 'browserBg', '背景');
-  registerBgRow('表示モード「予実」（背景）', 'periodModeBudgetActualBg', '予実');
-  registerBgRow('表示モード「実績」（背景）', 'periodModeActualBg', '予実');
-  registerBgRow('表示モード「計画」（背景）', 'periodModePlanBg', '予実');
-  registerTextRow('表示モードバッジ（文字）', 'periodModeTextColor', '予実', {
-    previewBgKey: 'periodModeBudgetActualBg',
-    refresh: false,
+  registerBgTextRow('通常文字色', 'cellBg', 'textColor', '¥1,234', true);
+  registerTextRow('薄い文字色', 'textDimColor', '薄い文字のサンプル', {
+    previewBgKey: 'browserBg',
   });
-  registerBgTextRow('ヘッダーコントロール（期選択等）', 'headerControlBg', 'headerControlText', '期');
-  registerBorderRow('ヘッダーコントロール（枠線）', 'headerControlBorder', 'headerControlBg');
-  registerBgRow('ヘッダーコントロール（ホバー）', 'headerControlHoverBg', '期');
-  registerBorderRow('ヘッダーコントロール（選択時・枠線）', 'headerControlActiveBorder', 'headerControlBg');
-  registerBgRow('予実表（固定ヘッダー背景）', 'tableHeaderBg', '見出し');
-  registerBgTextRow('ダッシュボードボタン（通常）', 'dashboardNavBg', 'dashboardNavText', 'ダッシュボードを表示');
-  registerBorderRow('ダッシュボードボタン（枠線・通常）', 'dashboardNavBorder', 'dashboardNavBg');
-  registerBgRow('ダッシュボードボタン（ホバー・通常）', 'dashboardNavHoverBg', 'ダッシュボードを表示', '#ffffff');
-  registerBgTextRow('ダッシュボードボタン（表示中）', 'dashboardNavActiveBg', 'dashboardNavActiveText', '予実表を表示');
-  registerBorderRow('ダッシュボードボタン（枠線・表示中）', 'dashboardNavActiveBorder', 'dashboardNavActiveBg');
+  registerBgTextRow('表示モード「予実」', 'periodModeBudgetActualBg', 'periodModeBudgetActualText', '予実表示', false);
+  registerBgTextRow('表示モード「実績」', 'periodModeActualBg', 'periodModeActualText', '実績表示', false);
+  registerBgTextRow('表示モード「計画」', 'periodModePlanBg', 'periodModePlanText', '計画表示', false);
+  registerBgRow('ヘッダーコントロール（期選択等）', 'headerControlBg', 'メニュー F10', null, 'textColor');
+  registerBorderRow('ヘッダーコントロール（枠線）', 'headerControlBorder', 'headerControlBg', 'メニュー F10', 'textColor');
+  registerBorderRow('ヘッダーコントロール（選択時・枠線）', 'headerControlActiveBorder', 'headerControlBg', 'メニュー F10', 'textColor');
+  registerNavBtnBgTextRow('ダッシュボードボタン（通常）', 'dashboardNavBg', 'dashboardNavText', 'ダッシュボードを表示');
+  registerNavBtnBgTextRow('予実表表示ボタン（表示中）', 'dashboardNavActiveBg', 'dashboardNavActiveText', '予実表を表示');
   registerBgTextRow('年行（ヘッダー）', 'yearRowBg', 'yearRowText', '2025年');
   registerBgTextRow('月行（ヘッダー）', 'monthRowBg', 'monthRowText', '6月');
-  registerBgTextRow('当月列（オーバーレイ）', 'currentMonthBg', 'currentMonthBorder', '6月');
+  registerBorderRow('当月列（オーバーレイ）', 'currentMonthBorder', 'monthRowBg', '6月', 'monthRowText');
   registerBgRow('決算整理列（オーバーレイ）', 'settlementMonthBg', '3月');
-  registerJournalTintRow('賞与月列（ハイライト）', 'bonusMonthColumnBg', 0.08, '賞与月', 'cellBg', true);
-  registerBgTextRow('セル（明細行）', 'cellBg', 'textColor', '¥1,234');
-  registerTextRow('注釈文・説明文', 'noteTextColor', '説明文のサンプル', {
-    previewBgKey: 'browserBg',
-    refresh: false,
-  });
-  registerTextRow('ヒント文', 'hintTextColor', '補足テキスト', {
-    previewBgKey: 'browserBg',
-    refresh: false,
-  });
-  registerTextRow('薄い・淡い文字', 'textDimColor', 'フッター・ヒント等', {
-    previewBgKey: 'browserBg',
-    refresh: false,
-  });
   registerTextRow('マイナス値（金額）', 'negativeAmountColor', null, {
     html: '<span class="amount-yen amount-negative amount-has-prefix"><span class="amount-prefix">-¥</span>1,234</span>',
   });
@@ -12138,44 +12370,32 @@ function mountUiColorPanel(container, {
   const warningBgTd = dashTd();
   warningBgTd.title = '背景色は大項目色（売上高差異）を参照';
   addRow('警告文字色', [warningBgTd, warningText.td, warningPreview.td, warningReset.td]);
-  warningText.input.addEventListener('input', () => {
-    const text = opaqueHex(warningText.input.value);
+  bindColorInput(warningText, (value, flush) => {
+    const text = opaqueHex(value);
     setConfig(setUiColorKey(getConfig(), 'warningTextColor', text));
-    persist();
-    warningText.input.value = text;
-    warningText.input.title = text;
+    persist({ flush });
+    setColorInput(warningText,text);
     warningPreview.span.style.color = text;
     warningReset.btn.disabled = keysMatchDefaults(getConfig(), ['warningTextColor']);
-    refreshPlan();
   });
   warningReset.btn.addEventListener('click', () => {
     setConfig(resetUiColorKey(getConfig(), 'warningTextColor'));
-    persist();
+    persist({ flush: true });
     const text = getDefaultUiColors(getUiColorMode(getConfig())).warningTextColor;
-    warningText.input.value = text;
-    warningText.input.title = text;
+    setColorInput(warningText,text);
     warningPreview.span.style.color = text;
     warningReset.btn.disabled = true;
-    refreshPlan();
   });
 
   registerAccentRow('展開可能項目・仕訳セル（ハイライト）', 'expandableHighlight', '▶ 勘定科目');
   registerAccentRow('マウスオーバー（行）', 'rowHoverBorder', 'ホバー');
   registerAccentRow('行選択（枠線）', 'rowSelectionRing', '選択中');
-  registerJournalTintRow('編集可能セル（ホバー）', 'planEditableCellHoverBg', PLAN_EDITABLE_CELL_HOVER_ALPHA, '編集中', 'cellBg', true);
+  registerJournalTintRow('編集可能セル（ホバー）', 'planEditableCellHoverBg', PLAN_EDITABLE_CELL_HOVER_ALPHA, '編集中', 'cellBg');
   registerBgRow('右クリックメニュー（背景）', 'contextMenuBg', 'メニュー');
   registerJournalTintRow('右クリックメニュー（影）', 'contextMenuShadowBg', CONTEXT_MENU_SHADOW_ALPHA, '影', 'contextMenuBg');
   registerJournalTintRow('右クリックメニュー（行ホバー）', 'contextMenuItemHoverBg', CONTEXT_MENU_ITEM_HOVER_ALPHA, '行', 'contextMenuBg');
   registerJournalTintRow('仕訳詳細（背面オーバーレイ）', 'journalOverlayBg', JOURNAL_OVERLAY_ALPHA, '背面', 'browserBg');
   registerBgRow('仕訳詳細（モーダル背景）', 'journalModalBg', 'モーダル');
-  registerTextRow('仕訳詳細（文字色）', 'journalTextColor', '仕訳明細', {
-    previewBgKey: 'journalModalBg',
-    refresh: false,
-  });
-  registerTextRow('仕訳詳細（補足文）', 'journalHintTextColor', '件数・空欄メッセージ', {
-    previewBgKey: 'journalModalBg',
-    refresh: false,
-  });
   registerBgRow('仕訳詳細（表ヘッダー背景）', 'journalTableHeaderBg', '見出し');
   registerJournalTintRow('仕訳詳細（モーダル影）', 'journalModalShadowBg', JOURNAL_MODAL_SHADOW_ALPHA, '影');
   registerJournalTintRow('仕訳詳細（行ホバー）', 'journalRowHoverBg', JOURNAL_ROW_HOVER_ALPHA, '行');
@@ -12186,8 +12406,6 @@ function mountUiColorPanel(container, {
   registerBorderRow('入力欄（枠線）', 'settingsInputBorder', 'settingsSurfaceBg');
   registerBgRow('ボタン（背景）', 'settingsButtonBg', '背景');
   registerBgRow('設定表行（ホバー）', 'settingsRowHoverBg', '背景');
-  registerBgTextRow('設定画面ボタン（表示中）', 'settingsNavActiveBg', 'settingsNavActiveText', '予実表を表示');
-  registerBorderRow('設定画面ボタン（枠線・表示中）', 'settingsNavActiveBorder', 'settingsNavActiveBg');
   registerBgTextRow('ショートカットキー（kbd）', 'kbdBg', 'kbdTextColor', 'F10');
   registerBorderRow('ショートカットキー（kbd・枠線）', 'kbdBorderColor', 'kbdBg');
   registerBgRow('ショートカットキー（kbd・影）', 'kbdShadowColor', 'F10', '#ffffff');
@@ -12200,27 +12418,187 @@ function mountUiColorPanel(container, {
     refresh: false,
   });
   registerBorderRow('入力エラー（枠線）', 'statusInvalidColor', 'settingsSurfaceBg');
-  registerBgRow('主要ボタン（グラデ開始）', 'primaryButtonBgStart', '開く');
-  registerBgRow('主要ボタン（グラデ終了）', 'primaryButtonBgEnd', '開く');
-  registerTextRow('主要ボタン（文字）', 'primaryButtonTextColor', '開く', {
-    previewBgKey: 'primaryButtonBgStart',
-    previewTextKey: 'primaryButtonTextColor',
-    refresh: false,
-  });
+  registerBgTextRow('主要ボタン', 'primaryButtonBg', 'primaryButtonTextColor', '開く', false);
   registerAccentRow('操作強調（スライダー・D&D等）', 'interactiveAccentColor', '強調');
-  registerBgRow('削除ボタン（背景）', 'deleteBtnBg', '削除', '#ffffff');
-  registerBgRow('削除ボタン（ホバー）', 'deleteBtnBgHover', '削除', '#ffffff');
-  registerBorderRow('削除ボタン（枠線）', 'deleteBtnBorder', 'cellBg');
-  registerTextRow('削除ボタン（文字）', 'deleteBtnText', '削除', {
-    previewBgKey: 'deleteBtnBg',
-    previewTextKey: 'deleteBtnText',
-    refresh: false,
-  });
+  registerBgTextRow('削除ボタン', 'deleteBtnBg', 'deleteBtnText', '削除', false);
   registerAccentRow('アクセンント（選択マーク等）', 'accentColor', '✓ 選択');
 
   table.appendChild(tbody);
   panel.appendChild(table);
   container.appendChild(panel);
+}
+
+/* ui/colorSettingsWindow.js */
+const POS_STORAGE_KEY = 'mga-color-settings-window-pos';
+const DEFAULT_WIDTH = 440;
+const DEFAULT_TOP = 72;
+const DEFAULT_RIGHT = 16;
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function loadWindowPosition() {
+  try {
+    const raw = localStorage.getItem(POS_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!Number.isFinite(parsed.left) || !Number.isFinite(parsed.top)) return null;
+    return { left: parsed.left, top: parsed.top };
+  } catch {
+    return null;
+  }
+}
+
+function saveWindowPosition(left, top) {
+  localStorage.setItem(POS_STORAGE_KEY, JSON.stringify({ left, top }));
+}
+
+function applyDefaultPosition(el) {
+  const saved = loadWindowPosition();
+  if (saved) {
+    el.style.left = `${saved.left}px`;
+    el.style.top = `${saved.top}px`;
+    return;
+  }
+  el.style.top = `${DEFAULT_TOP}px`;
+  el.style.right = `${DEFAULT_RIGHT}px`;
+  el.style.left = 'auto';
+}
+
+function clampWindowPosition(el) {
+  const rect = el.getBoundingClientRect();
+  const left = clamp(rect.left, 8, window.innerWidth - rect.width - 8);
+  const top = clamp(rect.top, 8, window.innerHeight - rect.height - 8);
+  el.style.left = `${left}px`;
+  el.style.top = `${top}px`;
+  el.style.right = 'auto';
+  saveWindowPosition(left, top);
+}
+
+function bindWindowDrag(handle, el) {
+  handle.addEventListener('mousedown', (event) => {
+    if (event.button !== 0) return;
+    if (event.target.closest('button')) return;
+    event.preventDefault();
+    const rect = el.getBoundingClientRect();
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const startLeft = rect.left;
+    const startTop = rect.top;
+    el.style.right = 'auto';
+
+    const onMouseMove = (ev) => {
+      const left = clamp(
+        startLeft + ev.clientX - startX,
+        8,
+        window.innerWidth - el.offsetWidth - 8,
+      );
+      const top = clamp(
+        startTop + ev.clientY - startY,
+        8,
+        window.innerHeight - el.offsetHeight - 8,
+      );
+      el.style.left = `${left}px`;
+      el.style.top = `${top}px`;
+    };
+
+    const onMouseUp = () => {
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+      const nextRect = el.getBoundingClientRect();
+      saveWindowPosition(nextRect.left, nextRect.top);
+    };
+
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+  });
+}
+
+/**
+ * 色設定をドラグ可能な小ウィンドウで表示する。
+ */
+function createColorSettingsWindow({
+  mountContent,
+  onOpenChange = null,
+}) {
+  let open = false;
+  let mounted = false;
+
+  const shell = document.createElement('div');
+  shell.className = 'color-settings-window';
+  shell.hidden = true;
+  shell.style.width = `${DEFAULT_WIDTH}px`;
+  shell.setAttribute('role', 'dialog');
+  shell.setAttribute('aria-modal', 'false');
+  shell.setAttribute('aria-labelledby', 'color-settings-window-title');
+
+  const header = document.createElement('header');
+  header.className = 'color-settings-window-header';
+
+  const title = document.createElement('h2');
+  title.className = 'color-settings-window-title';
+  title.id = 'color-settings-window-title';
+  title.textContent = '色設定';
+
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.className = 'color-settings-window-close';
+  closeBtn.setAttribute('aria-label', '閉じる');
+  closeBtn.textContent = '×';
+
+  header.append(title, closeBtn);
+
+  const body = document.createElement('div');
+  body.className = 'color-settings-window-body';
+
+  shell.append(header, body);
+  const mountTarget = document.querySelector('.plan-app') ?? document.body;
+  mountTarget.appendChild(shell);
+
+  applyDefaultPosition(shell);
+  bindWindowDrag(header, shell);
+
+  const ensureMounted = () => {
+    if (mounted) return;
+    mountContent(body);
+    mounted = true;
+  };
+
+  const setOpen = (next) => {
+    if (open === next) return;
+    open = next;
+    shell.hidden = !open;
+    shell.classList.toggle('is-open', open);
+    if (open) {
+      ensureMounted();
+      requestAnimationFrame(() => clampWindowPosition(shell));
+    }
+    onOpenChange?.(open);
+  };
+
+  closeBtn.addEventListener('click', () => setOpen(false));
+
+  window.addEventListener('resize', () => {
+    if (!open) return;
+    clampWindowPosition(shell);
+  });
+
+  return {
+    open: () => setOpen(true),
+    close: () => setOpen(false),
+    toggle: () => setOpen(!open),
+    isOpen: () => open,
+    refresh: () => {
+      if (!mounted) return;
+      body.replaceChildren();
+      mounted = false;
+      ensureMounted();
+    },
+    destroy: () => {
+      shell.remove();
+    },
+  };
 }
 
 /* ui/dashboard.js */
@@ -14747,33 +15125,135 @@ function syncPlanTableHeaderMonthHighlights(table, highlightFiscalMonth) {
   }
 }
 
+function getPeriodSelectElements() {
+  return {
+    menu: document.getElementById('plan-period-menu'),
+    trigger: document.getElementById('plan-period-select-trigger'),
+    panel: document.getElementById('plan-period-select-panel'),
+  };
+}
+
+function getPeriodSelectItems() {
+  const { panel } = getPeriodSelectElements();
+  if (!panel) return [];
+  return [...panel.querySelectorAll('.plan-period-select-item')];
+}
+
+function isPeriodSelectOpen() {
+  const { panel } = getPeriodSelectElements();
+  return panel != null && !panel.hidden;
+}
+
+function closePeriodSelect({ returnFocus = false } = {}) {
+  const { trigger, panel } = getPeriodSelectElements();
+  if (!trigger || !panel) return;
+  panel.hidden = true;
+  trigger.setAttribute('aria-expanded', 'false');
+  if (returnFocus) trigger.focus();
+}
+
+function openPeriodSelect({ focusCurrent = false } = {}) {
+  closeMainMenu();
+  const { trigger, panel } = getPeriodSelectElements();
+  if (!trigger || !panel) return;
+  panel.hidden = false;
+  trigger.setAttribute('aria-expanded', 'true');
+  if (focusCurrent) {
+    const current = panel.querySelector('[aria-selected="true"]');
+    (current ?? panel.querySelector('.plan-period-select-item'))?.focus();
+  }
+}
+
+function buildPeriodSelectPanel() {
+  const { panel } = getPeriodSelectElements();
+  if (!panel) return;
+
+  const maxPeriod = getMaxSelectablePeriod(appSettings.businessStartYear);
+  panel.replaceChildren();
+
+  for (let p = 1; p <= maxPeriod; p += 1) {
+    const label = formatFiscalPeriodLabel(p);
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'plan-main-menu-item plan-period-select-item';
+    btn.role = 'option';
+    btn.setAttribute('aria-selected', p === appSettings.fiscalPeriod ? 'true' : 'false');
+
+    const labelSpan = document.createElement('span');
+    labelSpan.className = 'plan-main-menu-item-label';
+    labelSpan.textContent = label;
+    btn.appendChild(labelSpan);
+
+    btn.addEventListener('click', () => {
+      setFiscalPeriod(p);
+      closePeriodSelect({ returnFocus: true });
+    });
+
+    panel.appendChild(btn);
+  }
+}
+
+function focusPeriodSelectItemByOffset(items, currentIndex, offset) {
+  if (!items.length) return;
+  const base = currentIndex < 0 ? (offset > 0 ? -1 : 0) : currentIndex;
+  const next = (base + offset + items.length) % items.length;
+  items[next].focus();
+}
+
+function handlePeriodSelectPanelKeydown(e) {
+  const { panel } = getPeriodSelectElements();
+  if (!panel || panel.hidden) return;
+
+  const items = getPeriodSelectItems();
+  if (!items.length) return;
+
+  const currentIndex = items.indexOf(document.activeElement);
+
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    focusPeriodSelectItemByOffset(items, currentIndex, 1);
+    return;
+  }
+  if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    focusPeriodSelectItemByOffset(items, currentIndex, -1);
+    return;
+  }
+  if (e.key === 'Home') {
+    e.preventDefault();
+    items[0].focus();
+    return;
+  }
+  if (e.key === 'End') {
+    e.preventDefault();
+    items[items.length - 1].focus();
+    return;
+  }
+  if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault();
+    if (currentIndex >= 0) items[currentIndex].click();
+    return;
+  }
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    e.stopPropagation();
+    closePeriodSelect({ returnFocus: true });
+  }
+}
+
 function syncPeriodControls() {
-  const select = document.getElementById('plan-period-select');
+  const { trigger } = getPeriodSelectElements();
   const prevBtn = document.getElementById('plan-period-prev');
   const nextBtn = document.getElementById('plan-period-next');
   const modeEl = document.getElementById('plan-period-mode');
-  if (!select) return;
+  if (!trigger) return;
 
   const maxPeriod = getMaxSelectablePeriod(appSettings.businessStartYear);
   const currentValue = formatFiscalPeriodLabel(appSettings.fiscalPeriod);
 
-  if (select.options.length !== maxPeriod) {
-    select.innerHTML = '';
-    for (let p = 1; p <= maxPeriod; p += 1) {
-      const opt = document.createElement('option');
-      opt.value = formatFiscalPeriodLabel(p);
-      opt.textContent = formatFiscalPeriodLabel(p);
-      select.appendChild(opt);
-    }
-  } else {
-    for (let i = 0; i < select.options.length; i += 1) {
-      const p = i + 1;
-      select.options[i].value = formatFiscalPeriodLabel(p);
-      select.options[i].textContent = formatFiscalPeriodLabel(p);
-    }
-  }
+  trigger.textContent = currentValue;
+  buildPeriodSelectPanel();
 
-  select.value = currentValue;
   if (prevBtn) prevBtn.disabled = appSettings.fiscalPeriod <= 1;
   if (nextBtn) nextBtn.disabled = appSettings.fiscalPeriod >= maxPeriod;
 
@@ -14868,15 +15348,27 @@ async function setFiscalPeriod(nextPeriod) {
 }
 
 function bindPeriodControls() {
-  const select = document.getElementById('plan-period-select');
+  const { menu, trigger, panel } = getPeriodSelectElements();
   const prevBtn = document.getElementById('plan-period-prev');
   const nextBtn = document.getElementById('plan-period-next');
 
   syncPeriodControls();
 
-  select?.addEventListener('change', () => {
-    setFiscalPeriod(parseFiscalPeriod(select.value));
+  trigger?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (isPeriodSelectOpen()) {
+      closePeriodSelect();
+      return;
+    }
+    openPeriodSelect({ focusCurrent: true });
   });
+
+  panel?.addEventListener('keydown', handlePeriodSelectPanelKeydown);
+
+  document.addEventListener('click', (e) => {
+    if (menu && !menu.contains(e.target)) closePeriodSelect();
+  });
+
   prevBtn?.addEventListener('click', () => {
     setFiscalPeriod(appSettings.fiscalPeriod - 1);
   });
@@ -14896,6 +15388,18 @@ function bindDashboardButton() {
   });
 }
 
+function initColorSettingsWindow() {
+  colorSettingsWindow = createColorSettingsWindow({
+    mountContent: (container) => {
+      container.appendChild(buildColorSettingsContent());
+    },
+  });
+}
+
+function openColorSettingsWindow() {
+  colorSettingsWindow?.open();
+}
+
 const MAIN_VIEW_TABS = new Set(['plan', 'dashboard']);
 
 function isSettingsMainTab(tab) {
@@ -14910,6 +15414,7 @@ let generalLedgerText = null;
 let generalLedgerName = null;
 let sectionFilterConfig = {};
 let activeTab = 'plan';
+let colorSettingsWindow = null;
 let expandConfig = loadExpandConfig();
 let visibilityConfig = loadVisibilityConfig();
 let rowDisplayConfig = loadRowDisplayConfig();
@@ -18007,65 +18512,23 @@ function bindPlanTableColumnWidthViewportFit(wrap, table) {
   });
 }
 
-const FONT_SCALE_STEP = 0.05;
 const ROW_PADDING_SCALE_STEP = 0.05;
-const PLAN_SCALE_BTN_ICON = {
-  left: '<svg class="plan-scale-btn-icon" viewBox="0 0 12 12" aria-hidden="true"><path d="M8 2 2 6 8 10z" fill="currentColor"/></svg>',
-  right: '<svg class="plan-scale-btn-icon" viewBox="0 0 12 12" aria-hidden="true"><path d="M4 2 10 6 4 10z" fill="currentColor"/></svg>',
+const PLAN_ROW_PADDING_BTN_ICON = {
   up: '<svg class="plan-scale-btn-icon" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 8 6 2 10 8z" fill="currentColor"/></svg>',
   down: '<svg class="plan-scale-btn-icon" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 4 6 10 10 4z" fill="currentColor"/></svg>',
 };
-let planFontScaleEl = null;
 let planRowPaddingScaleEl = null;
-let fontScaleColumnWidthRaf = null;
+let planViewportColumnWidthRaf = null;
 let rowPaddingColumnWidthRaf = null;
-
-function ensurePlanFontScaleControl() {
-  if (planFontScaleEl) return planFontScaleEl;
-
-  planFontScaleEl = document.createElement('div');
-  planFontScaleEl.className = 'plan-font-scale';
-  planFontScaleEl.setAttribute('role', 'group');
-  planFontScaleEl.setAttribute('aria-label', 'フォントサイズ');
-  planFontScaleEl.innerHTML = `
-    <button type="button" class="plan-font-scale-btn" data-action="dec" aria-label="フォントを小さく">${PLAN_SCALE_BTN_ICON.left}</button>
-    <span class="plan-font-scale-value" aria-live="polite"></span>
-    <button type="button" class="plan-font-scale-btn" data-action="inc" aria-label="フォントを大きく">${PLAN_SCALE_BTN_ICON.right}</button>
-  `;
-  planFontScaleEl.addEventListener('click', (e) => {
-    const btn = e.target.closest('[data-action]');
-    if (!btn || btn.disabled) return;
-    const delta = btn.dataset.action === 'inc' ? FONT_SCALE_STEP : -FONT_SCALE_STEP;
-    applyPlanFontScaleSetting(appSettings.fontScale + delta);
-  });
-  return planFontScaleEl;
-}
-
-function mountPlanFontScaleControl() {
-  const el = ensurePlanFontScaleControl();
-  const settingsTab = mainTabs.querySelector('[data-tab="settings"]');
-  if (settingsTab?.nextElementSibling !== el) {
-    settingsTab?.insertAdjacentElement('afterend', el);
-  }
-  refreshPlanFontScaleControl();
-}
-
-function refreshPlanFontScaleControl() {
-  const el = ensurePlanFontScaleControl();
-  const scale = normalizeFontScale(appSettings.fontScale);
-  el.querySelector('.plan-font-scale-value').textContent = formatFontScaleMultiplier(scale);
-  el.querySelector('[data-action="dec"]').disabled = scale <= MIN_FONT_SCALE;
-  el.querySelector('[data-action="inc"]').disabled = scale >= MAX_FONT_SCALE;
-}
 
 function applyPlanViewportScaleChange() {
   applyPlanDisplayScales();
   invalidatePlanTableLayout();
-  if (fontScaleColumnWidthRaf !== null) {
-    cancelAnimationFrame(fontScaleColumnWidthRaf);
+  if (planViewportColumnWidthRaf !== null) {
+    cancelAnimationFrame(planViewportColumnWidthRaf);
   }
-  fontScaleColumnWidthRaf = requestAnimationFrame(() => {
-    fontScaleColumnWidthRaf = null;
+  planViewportColumnWidthRaf = requestAnimationFrame(() => {
+    planViewportColumnWidthRaf = null;
     const table = root.querySelector('.plan-table');
     if (table && activeTab === 'plan' && data) {
       measurePlanTableColumnWidths(table);
@@ -18076,25 +18539,6 @@ function applyPlanViewportScaleChange() {
   }
 }
 
-function applyPlanFontScaleSetting(scale) {
-  appSettings = { ...appSettings, fontScale: normalizeFontScale(scale) };
-  saveAppSettings(appSettings);
-  resetContentFitScale();
-  applyPlanDisplayScales();
-  refreshPlanFontScaleControl();
-  invalidatePlanTableLayout();
-  if (fontScaleColumnWidthRaf !== null) {
-    cancelAnimationFrame(fontScaleColumnWidthRaf);
-  }
-  fontScaleColumnWidthRaf = requestAnimationFrame(() => {
-    fontScaleColumnWidthRaf = null;
-    const table = root.querySelector('.plan-table');
-    if (table && activeTab === 'plan' && data) {
-      measurePlanTableColumnWidths(table);
-    }
-  });
-}
-
 function ensurePlanRowPaddingScaleControl() {
   if (planRowPaddingScaleEl) return planRowPaddingScaleEl;
 
@@ -18103,9 +18547,9 @@ function ensurePlanRowPaddingScaleControl() {
   planRowPaddingScaleEl.setAttribute('role', 'group');
   planRowPaddingScaleEl.setAttribute('aria-label', '行の余白');
   planRowPaddingScaleEl.innerHTML = `
-    <button type="button" class="plan-row-padding-scale-btn" data-action="inc" aria-label="余白を広く">${PLAN_SCALE_BTN_ICON.up}</button>
+    <button type="button" class="plan-row-padding-scale-btn" data-action="inc" aria-label="余白を広く">${PLAN_ROW_PADDING_BTN_ICON.up}</button>
     <span class="plan-row-padding-scale-value" aria-live="polite"></span>
-    <button type="button" class="plan-row-padding-scale-btn" data-action="dec" aria-label="余白を狭く">${PLAN_SCALE_BTN_ICON.down}</button>
+    <button type="button" class="plan-row-padding-scale-btn" data-action="dec" aria-label="余白を狭く">${PLAN_ROW_PADDING_BTN_ICON.down}</button>
   `;
   planRowPaddingScaleEl.addEventListener('click', (e) => {
     const btn = e.target.closest('[data-action]');
@@ -18118,9 +18562,13 @@ function ensurePlanRowPaddingScaleControl() {
 
 function mountPlanRowPaddingScaleControl() {
   const el = ensurePlanRowPaddingScaleControl();
-  const fontEl = ensurePlanFontScaleControl();
-  if (fontEl.nextElementSibling !== el) {
-    fontEl.insertAdjacentElement('afterend', el);
+  const menu = document.getElementById('plan-main-menu');
+  if (!menu?.parentElement) {
+    refreshPlanRowPaddingScaleControl();
+    return;
+  }
+  if (menu.previousElementSibling !== el) {
+    menu.insertAdjacentElement('beforebegin', el);
   }
   refreshPlanRowPaddingScaleControl();
 }
@@ -18370,6 +18818,20 @@ function refreshSectionColors() {
   if (rawPlanData) data = applyPlanColors(rawPlanData);
 }
 
+function refreshColorDependentViews({ rebuildData = true } = {}) {
+  if (rebuildData) refreshSectionColors();
+  if (activeTab === 'plan') refreshPlanTable();
+  else if (activeTab === 'dashboard') renderDashboardView();
+}
+
+function refreshToolbarFilterStyles() {
+  toolbar?.querySelectorAll('.plan-filter-btn').forEach(applyFilterButtonStyle);
+}
+
+function refreshColorSettingsPanels() {
+  colorSettingsWindow?.refresh();
+}
+
 function rebuildPlanData() {
   if (!journalText) return;
   rawPlanData = buildFullPlan(journalText, bsText, expandConfig);
@@ -18524,6 +18986,7 @@ function closeMainMenu({ returnFocus = false } = {}) {
 }
 
 function openMainMenu({ focusFirst = false } = {}) {
+  closePeriodSelect();
   const trigger = document.getElementById('plan-main-menu-trigger');
   const panel = document.getElementById('plan-main-menu-panel');
   if (!trigger || !panel) return;
@@ -18588,6 +19051,10 @@ function handleMainMenuPanelKeydown(e) {
 }
 
 function handleEscapeKey() {
+  if (isPeriodSelectOpen()) {
+    closePeriodSelect({ returnFocus: true });
+    return;
+  }
   if (isMainMenuOpen()) {
     closeMainMenu({ returnFocus: true });
     return;
@@ -18682,7 +19149,7 @@ function getFilterButtonColors(filterId) {
 function applyFilterButtonStyle(btn) {
   const filterId = btn.dataset.filter;
   const { background, color } = getFilterButtonColors(filterId);
-  btn.style.background = background;
+  btn.style.setProperty('--filter-btn-bg', background);
   btn.style.color = color;
 
   const sectionIds = getCurrentSectionFilterIds();
@@ -18811,7 +19278,6 @@ function renderView({ measureColumnWidths = false } = {}) {
       finishPlanLoadingAfterLayout();
     }
   } else if (activeTab === 'visibility') renderVisibilitySettings();
-  else if (activeTab === 'colors') renderSectionColorSettings();
   else if (activeTab === 'taxrates') renderTaxRateSettings();
   else if (activeTab === 'orders') renderRevenueSettings();
   else if (activeTab === 'taxpayments') renderTaxPaymentSettings();
@@ -20150,14 +20616,226 @@ function renderUiColorPanel(container) {
     setConfig: (next) => { uiColorConfig = next; },
     data,
     sectionColorConfig,
-    onRefreshPlanView: () => {
-      refreshSectionColors();
-      if (activeTab === 'plan') refreshPlanTable();
-    },
-    onReRender: () => {
-      if (activeTab === 'colors') renderSectionColorSettings();
-    },
+    onRefreshToolbar: refreshToolbarFilterStyles,
+    onReRender: refreshColorSettingsPanels,
   });
+}
+
+function mountSectionColorPanel(sectionPanel) {
+  sectionPanel.replaceChildren();
+
+  const sectionTitle = document.createElement('h2');
+  sectionTitle.className = 'ui-color-panel-title';
+  sectionTitle.textContent = '大項目';
+  sectionPanel.appendChild(sectionTitle);
+
+  const defs = collectSectionColorDefs(
+    data?.sections ?? rawPlanData?.sections ?? [],
+    sectionColorConfig,
+    getPlanColorMode(),
+  );
+  if (defs.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'expand-settings-empty';
+    empty.textContent = '大項目がありません。';
+    sectionPanel.appendChild(empty);
+    return;
+  }
+
+  const table = document.createElement('table');
+  table.className = 'expand-settings-table section-color-table';
+  table.innerHTML = `
+    <thead>
+      <tr>
+        <th>大項目</th>
+        <th class="col-color-input">塗り色</th>
+        <th class="col-color-input">文字色</th>
+        <th class="col-color-preview">プレビュー</th>
+        <th class="col-color-action">操作</th>
+      </tr>
+    </thead>
+  `;
+
+  const tbody = document.createElement('tbody');
+
+  let sectionColorSaveTimer = null;
+  let sectionColorRefreshTimer = null;
+
+  const flushSectionColorSave = () => {
+    if (sectionColorSaveTimer != null) {
+      clearTimeout(sectionColorSaveTimer);
+      sectionColorSaveTimer = null;
+    }
+    saveSectionColorConfig(sectionColorConfig);
+  };
+
+  const scheduleSectionColorSave = () => {
+    if (sectionColorSaveTimer != null) clearTimeout(sectionColorSaveTimer);
+    sectionColorSaveTimer = setTimeout(flushSectionColorSave, 300);
+  };
+
+  const scheduleSectionColorRefresh = () => {
+    if (sectionColorRefreshTimer != null) clearTimeout(sectionColorRefreshTimer);
+    sectionColorRefreshTimer = setTimeout(() => {
+      refreshColorDependentViews();
+      sectionColorRefreshTimer = null;
+    }, 200);
+  };
+
+  for (const def of defs) {
+    const tr = document.createElement('tr');
+
+    const labelTd = document.createElement('td');
+    labelTd.textContent = def.label;
+    styleSectionLabelCell(labelTd, def.sectionId);
+
+    const bgInputTd = document.createElement('td');
+    bgInputTd.className = 'col-color-input';
+    const bgInput = document.createElement('input');
+    bgInput.type = 'color';
+    bgInput.className = 'section-color-input';
+    bgInput.value = def.barColor;
+    bgInput.title = def.barColor;
+    bgInputTd.appendChild(bgInput);
+
+    const textInputTd = document.createElement('td');
+    textInputTd.className = 'col-color-input';
+    const textInput = document.createElement('input');
+    textInput.type = 'color';
+    textInput.className = 'section-color-input';
+    textInput.value = def.textColor;
+    textInput.title = def.textColor;
+    textInputTd.appendChild(textInput);
+
+    const previewTd = document.createElement('td');
+    previewTd.className = 'col-color-preview';
+    const preview = document.createElement('span');
+    preview.className = 'section-color-preview';
+    preview.style.background = def.barColor;
+    preview.style.color = def.textColor;
+    preview.textContent = def.label;
+    previewTd.appendChild(preview);
+
+    const actionTd = document.createElement('td');
+    actionTd.className = 'col-color-action';
+    const resetBtn = document.createElement('button');
+    resetBtn.type = 'button';
+    resetBtn.className = 'section-color-reset-btn';
+    resetBtn.textContent = 'デフォルト';
+    resetBtn.disabled = !def.isCustom;
+    actionTd.appendChild(resetBtn);
+
+    tr.append(labelTd, bgInputTd, textInputTd, previewTd, actionTd);
+    tbody.appendChild(tr);
+
+    const applySectionColorOverride = (barColor, textColor, { flush = false } = {}) => {
+      sectionColorConfig = setSectionColorOverride(
+        sectionColorConfig,
+        getPlanColorMode(),
+        def.sectionId,
+        { barColor, textColor },
+      );
+      if (flush) flushSectionColorSave();
+      else scheduleSectionColorSave();
+      scheduleSectionColorRefresh();
+      bgInput.value = barColor;
+      bgInput.title = barColor;
+      textInput.value = textColor;
+      textInput.title = textColor;
+      preview.style.background = barColor;
+      preview.style.color = textColor;
+      styleSectionLabelCell(labelTd, def.sectionId);
+      resetBtn.disabled = false;
+    };
+
+    const emitSectionColorOverride = (flush) => {
+      applySectionColorOverride(bgInput.value, textInput.value, { flush });
+    };
+
+    bgInput.addEventListener('input', () => emitSectionColorOverride(false));
+    bgInput.addEventListener('change', () => emitSectionColorOverride(true));
+    textInput.addEventListener('input', () => emitSectionColorOverride(false));
+    textInput.addEventListener('change', () => emitSectionColorOverride(true));
+
+    resetBtn.addEventListener('click', () => {
+      sectionColorConfig = resetSectionColorOverride(
+        sectionColorConfig,
+        getPlanColorMode(),
+        def.sectionId,
+      );
+      flushSectionColorSave();
+      refreshColorDependentViews();
+      const colors = getSectionColors(def.sectionId, sectionColorConfig, getPlanColorMode());
+      bgInput.value = colors.barColor;
+      bgInput.title = colors.barColor;
+      textInput.value = colors.textColor;
+      textInput.title = colors.textColor;
+      preview.style.background = colors.barColor;
+      preview.style.color = colors.textColor;
+      styleSectionLabelCell(labelTd, def.sectionId);
+      resetBtn.disabled = true;
+    });
+  }
+
+  table.appendChild(tbody);
+  sectionPanel.appendChild(table);
+}
+
+function buildColorSettingsColumns() {
+  const columns = document.createElement('div');
+  columns.className = 'color-settings-columns';
+
+  const uiColumn = document.createElement('div');
+  uiColumn.className = 'color-settings-column color-settings-column-ui';
+  renderUiColorPanel(uiColumn);
+  columns.appendChild(uiColumn);
+
+  const sectionColumn = document.createElement('div');
+  sectionColumn.className = 'color-settings-column color-settings-column-sections';
+
+  const sectionPanel = document.createElement('div');
+  sectionPanel.className = 'section-color-panel';
+  mountSectionColorPanel(sectionPanel);
+  sectionColumn.appendChild(sectionPanel);
+  columns.appendChild(sectionColumn);
+
+  return columns;
+}
+
+function bindColorSettingsResetActions(container) {
+  container.querySelector('#ui-color-reset-btn')?.addEventListener('click', () => {
+    uiColorConfig = resetUiColorModeOverrides(uiColorConfig, getPlanColorMode());
+    saveUiColorConfig(uiColorConfig);
+    applyUiColors(uiColorConfig);
+    refreshColorSettingsPanels();
+    refreshColorDependentViews();
+  });
+
+  container.querySelector('#section-color-reset-btn')?.addEventListener('click', () => {
+    sectionColorConfig = resetSectionColorModeOverrides(sectionColorConfig, getPlanColorMode());
+    saveSectionColorConfig(sectionColorConfig);
+    refreshSectionColors();
+    refreshColorSettingsPanels();
+    refreshColorDependentViews();
+  });
+}
+
+function buildColorSettingsContent() {
+  const wrap = document.createElement('div');
+  wrap.className = 'color-settings-content';
+
+  const header = document.createElement('div');
+  header.className = 'expand-settings-header color-settings-content-header';
+  header.innerHTML = `
+    <div class="expand-settings-header-actions color-settings-window-reset-actions">
+      <button type="button" class="expand-reset-btn" id="ui-color-reset-btn">全体をデフォルトに戻す</button>
+      <button type="button" class="expand-reset-btn" id="section-color-reset-btn">大項目をすべてデフォルトに戻す</button>
+    </div>
+  `;
+  wrap.appendChild(header);
+  wrap.appendChild(buildColorSettingsColumns());
+  bindColorSettingsResetActions(wrap);
+  return wrap;
 }
 
 function appendCsvNameSettingsPanel(wrap) {
@@ -21877,9 +22555,6 @@ function renderEmployeeSettings() {
       else if (label === '昇給率') th.className = 'salary-plan-col-increase';
       else {
         th.className = 'salary-plan-col-month';
-        if (bonusMonthLabels.includes(label)) {
-          th.classList.add('salary-plan-col-bonus-month');
-        }
       }
       headerRow.appendChild(th);
     }
@@ -23085,194 +23760,6 @@ function renderOtherSettings() {
   replaceRootPanel(wrap);
 }
 
-function renderSectionColorSettings() {
-  setPlanKpi(null);
-
-  const wrap = document.createElement('div');
-  wrap.className = 'expand-settings-wrap color-settings-wrap';
-
-  const header = document.createElement('div');
-  header.className = 'expand-settings-header';
-  header.innerHTML = `
-    <p class="expand-settings-desc">
-      予実表の全体背景色、セル背景色・文字色（明細行）、マイナス値の金額色、年行・月行ヘッダー色、行のマウスオーバー色、および大項目ごとの背景色・文字色を設定します。
-      大項目の文字色は、その大項目の合計行にも適用されます。設定はブラウザに保存されます。
-    </p>
-    <div class="expand-settings-header-actions">
-      <button type="button" class="expand-reset-btn" id="ui-color-reset-btn">全体をデフォルトに戻す</button>
-      <button type="button" class="expand-reset-btn" id="section-color-reset-btn">大項目をすべてデフォルトに戻す</button>
-    </div>
-  `;
-  wrap.appendChild(header);
-
-  const columns = document.createElement('div');
-  columns.className = 'color-settings-columns';
-
-  const uiColumn = document.createElement('div');
-  uiColumn.className = 'color-settings-column color-settings-column-ui';
-  renderUiColorPanel(uiColumn);
-  columns.appendChild(uiColumn);
-
-  const sectionColumn = document.createElement('div');
-  sectionColumn.className = 'color-settings-column color-settings-column-sections';
-
-  const sectionPanel = document.createElement('div');
-  sectionPanel.className = 'section-color-panel';
-
-  const sectionTitle = document.createElement('h2');
-  sectionTitle.className = 'ui-color-panel-title';
-  sectionTitle.textContent = '大項目';
-  sectionPanel.appendChild(sectionTitle);
-
-  const defs = collectSectionColorDefs(
-    data?.sections ?? rawPlanData?.sections ?? [],
-    sectionColorConfig,
-    getPlanColorMode(),
-  );
-  if (defs.length === 0) {
-    const empty = document.createElement('p');
-    empty.className = 'expand-settings-empty';
-    empty.textContent = '大項目がありません。';
-    sectionPanel.appendChild(empty);
-  } else {
-  const table = document.createElement('table');
-  table.className = 'expand-settings-table section-color-table';
-  table.innerHTML = `
-    <thead>
-      <tr>
-        <th>大項目</th>
-        <th class="col-color-input">背景色</th>
-        <th class="col-color-input">文字色</th>
-        <th class="col-color-preview">プレビュー</th>
-        <th class="col-color-action">操作</th>
-      </tr>
-    </thead>
-  `;
-
-  const tbody = document.createElement('tbody');
-
-  for (const def of defs) {
-    const tr = document.createElement('tr');
-
-    const labelTd = document.createElement('td');
-    labelTd.textContent = def.label;
-    styleSectionLabelCell(labelTd, def.sectionId);
-
-    const bgInputTd = document.createElement('td');
-    bgInputTd.className = 'col-color-input';
-    const bgInput = document.createElement('input');
-    bgInput.type = 'color';
-    bgInput.className = 'section-color-input';
-    bgInput.value = def.barColor;
-    bgInput.title = def.barColor;
-    bgInputTd.appendChild(bgInput);
-
-    const textInputTd = document.createElement('td');
-    textInputTd.className = 'col-color-input';
-    const textInput = document.createElement('input');
-    textInput.type = 'color';
-    textInput.className = 'section-color-input';
-    textInput.value = def.textColor;
-    textInput.title = def.textColor;
-    textInputTd.appendChild(textInput);
-
-    const previewTd = document.createElement('td');
-    previewTd.className = 'col-color-preview';
-    const preview = document.createElement('span');
-    preview.className = 'section-color-preview';
-    preview.style.background = def.barColor;
-    preview.style.color = def.textColor;
-    preview.textContent = def.label;
-    previewTd.appendChild(preview);
-
-    const actionTd = document.createElement('td');
-    actionTd.className = 'col-color-action';
-    const resetBtn = document.createElement('button');
-    resetBtn.type = 'button';
-    resetBtn.className = 'section-color-reset-btn';
-    resetBtn.textContent = 'デフォルト';
-    resetBtn.disabled = !def.isCustom;
-    actionTd.appendChild(resetBtn);
-
-    tr.append(labelTd, bgInputTd, textInputTd, previewTd, actionTd);
-    tbody.appendChild(tr);
-
-    const applySectionColorOverride = (barColor, textColor) => {
-      sectionColorConfig = setSectionColorOverride(
-        sectionColorConfig,
-        getPlanColorMode(),
-        def.sectionId,
-        { barColor, textColor },
-      );
-      saveSectionColorConfig(sectionColorConfig);
-      refreshSectionColors();
-      bgInput.value = barColor;
-      bgInput.title = barColor;
-      textInput.value = textColor;
-      textInput.title = textColor;
-      preview.style.background = barColor;
-      preview.style.color = textColor;
-      styleSectionLabelCell(labelTd, def.sectionId);
-      resetBtn.disabled = false;
-      if (activeTab === 'plan') refreshPlanTable();
-    };
-
-    bgInput.addEventListener('input', () => {
-      applySectionColorOverride(bgInput.value, textInput.value);
-    });
-
-    textInput.addEventListener('input', () => {
-      applySectionColorOverride(bgInput.value, textInput.value);
-    });
-
-    resetBtn.addEventListener('click', () => {
-      sectionColorConfig = resetSectionColorOverride(
-        sectionColorConfig,
-        getPlanColorMode(),
-        def.sectionId,
-      );
-      saveSectionColorConfig(sectionColorConfig);
-      refreshSectionColors();
-      const colors = getSectionColors(def.sectionId, sectionColorConfig, getPlanColorMode());
-      bgInput.value = colors.barColor;
-      bgInput.title = colors.barColor;
-      textInput.value = colors.textColor;
-      textInput.title = colors.textColor;
-      preview.style.background = colors.barColor;
-      preview.style.color = colors.textColor;
-      styleSectionLabelCell(labelTd, def.sectionId);
-      resetBtn.disabled = true;
-      if (activeTab === 'plan') refreshPlanTable();
-    });
-  }
-
-  table.appendChild(tbody);
-  sectionPanel.appendChild(table);
-  }
-
-  sectionColumn.appendChild(sectionPanel);
-  columns.appendChild(sectionColumn);
-  wrap.appendChild(columns);
-
-  wrap.querySelector('#ui-color-reset-btn').addEventListener('click', () => {
-    uiColorConfig = resetUiColorModeOverrides(uiColorConfig, getPlanColorMode());
-    saveUiColorConfig(uiColorConfig);
-    applyUiColors(uiColorConfig);
-    renderSectionColorSettings();
-    if (activeTab === 'plan') refreshPlanTable();
-  });
-
-  wrap.querySelector('#section-color-reset-btn').addEventListener('click', () => {
-    sectionColorConfig = resetSectionColorModeOverrides(sectionColorConfig, getPlanColorMode());
-    saveSectionColorConfig(sectionColorConfig);
-    refreshSectionColors();
-    renderSectionColorSettings();
-    if (activeTab === 'plan') refreshPlanTable();
-  });
-
-  replaceRootPanel(wrap);
-}
-
 function replaceRootPanel(el) {
   const selectors = '.plan-table-wrap, .expand-settings-wrap, .plan-csv-load, .dashboard-wrap';
   const existing = root.querySelector(selectors);
@@ -23458,6 +23945,9 @@ function handleMainMenuAction(value) {
     case 'action:change-folder':
       handlePickCsvFolder();
       break;
+    case 'colors':
+      openColorSettingsWindow();
+      break;
     default:
       switchMainTab(value);
   }
@@ -23562,7 +24052,6 @@ function reloadAllSettingsFromStorage() {
   applyBrandSettings(appSettings);
   applyFontScale(appSettings.fontScale);
   applyRowPaddingScale(appSettings.rowPaddingScale);
-  refreshPlanFontScaleControl();
   refreshPlanRowPaddingScaleControl();
   syncPeriodControls();
 
@@ -23672,10 +24161,10 @@ async function init() {
   applyRowPaddingScale(appSettings.rowPaddingScale);
   renderToolbar();
   renderMainTabs();
-  mountPlanFontScaleControl();
   mountPlanRowPaddingScaleControl();
   bindPeriodControls();
   bindDashboardButton();
+  initColorSettingsWindow();
   bindMainMenu();
   bindSettingsImportExport();
 
