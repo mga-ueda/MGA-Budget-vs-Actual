@@ -18194,6 +18194,10 @@ function handleSectionFilterClick(filterId, ev) {
   }
   saveSectionFilterConfig(sectionFilterConfig, sectionIds);
   renderToolbar();
+  if (activeTab === 'dashboard') {
+    switchMainTab('plan');
+    return;
+  }
   const table = root.querySelector('.plan-table');
   applyPlanSectionFilterState(table);
   const wrap = table?.closest('.plan-table-wrap');
@@ -18636,7 +18640,7 @@ function executeMainMenuEntry(entry) {
 }
 
 function renderMainTabs() {
-  toolbar.hidden = activeTab !== 'plan';
+  toolbar.hidden = !MAIN_VIEW_TABS.has(activeTab);
   const onDashboard = activeTab === 'dashboard';
   const inSettings = isSettingsMainTab(activeTab);
   const showPlanReturn = onDashboard || inSettings;
