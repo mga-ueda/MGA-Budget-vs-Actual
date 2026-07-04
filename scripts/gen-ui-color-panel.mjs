@@ -126,6 +126,13 @@ const L = {
   modeLabel: jp(0x8868, 0x793a, 0x30e2, 0x30fc, 0x30c9),
   modeDark: jp(0x30c0, 0x30fc, 0x30af, 0x30e2, 0x30fc, 0x30c9),
   modeLight: jp(0x30e9, 0x30a4, 0x30c8, 0x30e2, 0x30fc, 0x30c9),
+  headerControl: jp(0x30d8, 0x30c3, 0x30c0, 0x30fc, 0x30b3, 0x30f3, 0x30c8, 0x30ed, 0x30fc, 0x30eb, 0xff08, 0x671f, 0x9078, 0x629e, 0x7b49, 0xff09),
+  headerControlBorder: jp(0x30d8, 0x30c3, 0x30c0, 0x30fc, 0x30b3, 0x30f3, 0x30c8, 0x30ed, 0x30fc, 0x30eb, 0xff08, 0x67a0, 0x7dda, 0xff09),
+  headerControlHover: jp(0x30d8, 0x30c3, 0x30c0, 0x30fc, 0x30b3, 0x30f3, 0x30c8, 0x30ed, 0x30fc, 0x30eb, 0xff08, 0x30db, 0x30d0, 0x30fc, 0xff09),
+  headerControlActiveBorder: jp(0x30d8, 0x30c3, 0x30c0, 0x30fc, 0x30b3, 0x30f3, 0x30c8, 0x30ed, 0x30fc, 0x30eb, 0xff08, 0x9078, 0x629e, 0x6642, 0x30fb, 0x67a0, 0x7dda, 0xff09),
+  headerControlPreview: jp(0x671f),
+  planEditableCellHover: jp(0x7de8, 0x96c6, 0x53ef, 0x80fd, 0x30bb, 0x30eb, 0xff08, 0x30db, 0x30d0, 0x30fc, 0xff09),
+  planEditableCellHoverPreview: jp(0x7de8, 0x96c6, 0x4e2d),
 };
 
 L.yearPreview = '2025' + jp(0x5e74);
@@ -512,8 +519,9 @@ export function mountUiColorPanel(container, {
   const CONTEXT_MENU_SHADOW_ALPHA = 0.45;
   const CONTEXT_MENU_ITEM_HOVER_ALPHA = 0.08;
   const LOADING_OVERLAY_ALPHA = 0.38;
+  const PLAN_EDITABLE_CELL_HOVER_ALPHA = 0.14;
 
-  const registerJournalTintRow = (label, key, alpha, previewText, previewBgKey = 'journalModalBg') => {
+  const registerJournalTintRow = (label, key, alpha, previewText, previewBgKey = 'journalModalBg', refresh = false) => {
     const colors = getUiColors(getConfig());
     const bg = colorInputTd(colors[key]);
     const preview = previewTd({
@@ -537,26 +545,41 @@ export function mountUiColorPanel(container, {
       setConfig(setUiColorKey(getConfig(), key, color));
       persist();
       syncPreview(getUiColors(getConfig()));
+      if (refresh) refreshPlan();
     };
     bg.input.addEventListener('input', () => sync(bg.input.value));
     reset.btn.addEventListener('click', () => {
       setConfig(resetUiColorKey(getConfig(), key));
       persist();
       syncPreview(getUiColors(getConfig()));
+      if (refresh) refreshPlan();
     });
   };
 
   // ${L.layoutComment}
   registerBgRow('${L.browserBg}', 'browserBg', '${L.bgPreview}');
-  registerBgRow('${L.settingsSurfaceBg}', 'settingsSurfaceBg', '${L.bgPreview}');
-  registerBgRow('${L.settingsInputBg}', 'settingsInputBg', '${L.bgPreview}');
-  registerBorderRow('${L.settingsInputBorder}', 'settingsInputBorder', 'settingsSurfaceBg');
-  registerBgRow('${L.settingsButtonBg}', 'settingsButtonBg', '${L.bgPreview}');
-  registerBgRow('${L.settingsRowHoverBg}', 'settingsRowHoverBg', '${L.bgPreview}');
+  registerBgRow('${L.periodModeBudgetActual}', 'periodModeBudgetActualBg', '${L.periodModePreview}');
+  registerBgRow('${L.periodModeActual}', 'periodModeActualBg', '${L.periodModePreview}');
+  registerBgRow('${L.periodModePlan}', 'periodModePlanBg', '${L.periodModePreview}');
+  registerTextRow('${L.periodModeText}', 'periodModeTextColor', '${L.periodModePreview}', {
+    previewBgKey: 'periodModeBudgetActualBg',
+    refresh: false,
+  });
+  registerBgTextRow('${L.headerControl}', 'headerControlBg', 'headerControlText', '${L.headerControlPreview}');
+  registerBorderRow('${L.headerControlBorder}', 'headerControlBorder', 'headerControlBg');
+  registerBgRow('${L.headerControlHover}', 'headerControlHoverBg', '${L.headerControlPreview}');
+  registerBorderRow('${L.headerControlActiveBorder}', 'headerControlActiveBorder', 'headerControlBg');
+  registerBgRow('${L.tableHeaderBg}', 'tableHeaderBg', '${L.tableHeaderPreview}');
+  registerBgTextRow('${L.dashboardNav}', 'dashboardNavBg', 'dashboardNavText', '${L.dashboardNavPreview}');
+  registerBorderRow('${L.dashboardNavBorder}', 'dashboardNavBorder', 'dashboardNavBg');
+  registerBgRow('${L.dashboardNavHover}', 'dashboardNavHoverBg', '${L.dashboardNavPreview}', '#ffffff');
+  registerBgTextRow('${L.dashboardNavActive}', 'dashboardNavActiveBg', 'dashboardNavActiveText', '${L.planTableNavPreview}');
+  registerBorderRow('${L.dashboardNavActiveBorder}', 'dashboardNavActiveBorder', 'dashboardNavActiveBg');
   registerBgTextRow('${L.yearRow}', 'yearRowBg', 'yearRowText', '${L.yearPreview}');
   registerBgTextRow('${L.monthRow}', 'monthRowBg', 'monthRowText', '${L.monthPreview}');
   registerBgTextRow('${L.currentMonth}', 'currentMonthBg', 'currentMonthBorder', '${L.monthPreview}');
   registerBgRow('${L.settlementMonth}', 'settlementMonthBg', '${L.settlementPreview}');
+  registerJournalTintRow('${L.bonusMonthColumn}', 'bonusMonthColumnBg', 0.08, '${L.bonusPreview}', 'cellBg', true);
   registerBgTextRow('${L.cellRow}', 'cellBg', 'textColor', '${L.cellPreview}');
   registerTextRow('${L.noteText}', 'noteTextColor', '${L.notePreview}', {
     previewBgKey: 'browserBg',
@@ -611,6 +634,12 @@ export function mountUiColorPanel(container, {
   });
 
   registerAccentRow('${L.expandable}', 'expandableHighlight', '${L.expandablePreview}');
+  registerAccentRow('${L.hover}', 'rowHoverBorder', '${L.hoverPreview}');
+  registerAccentRow('${L.selection}', 'rowSelectionRing', '${L.selectionPreview}');
+  registerJournalTintRow('${L.planEditableCellHover}', 'planEditableCellHoverBg', PLAN_EDITABLE_CELL_HOVER_ALPHA, '${L.planEditableCellHoverPreview}', 'cellBg', true);
+  registerBgRow('${L.contextMenuBg}', 'contextMenuBg', '${L.contextMenuPreview}');
+  registerJournalTintRow('${L.contextMenuShadow}', 'contextMenuShadowBg', CONTEXT_MENU_SHADOW_ALPHA, '${L.journalShadowPreview}', 'contextMenuBg');
+  registerJournalTintRow('${L.contextMenuHover}', 'contextMenuItemHoverBg', CONTEXT_MENU_ITEM_HOVER_ALPHA, '${L.journalRowPreview}', 'contextMenuBg');
   registerJournalTintRow('${L.journalOverlay}', 'journalOverlayBg', JOURNAL_OVERLAY_ALPHA, '${L.journalBackPreview}', 'browserBg');
   registerBgRow('${L.journalModal}', 'journalModalBg', '${L.journalModalPreview}');
   registerTextRow('${L.journalText}', 'journalTextColor', '${L.journalTextPreview}', {
@@ -625,28 +654,17 @@ export function mountUiColorPanel(container, {
   registerJournalTintRow('${L.journalShadow}', 'journalModalShadowBg', JOURNAL_MODAL_SHADOW_ALPHA, '${L.journalShadowPreview}');
   registerJournalTintRow('${L.journalRowHover}', 'journalRowHoverBg', JOURNAL_ROW_HOVER_ALPHA, '${L.journalRowPreview}');
   registerJournalTintRow('${L.journalCloseHover}', 'journalCloseHoverBg', JOURNAL_CLOSE_HOVER_ALPHA, '${L.journalClosePreview}');
-  registerBgRow('${L.tableHeaderBg}', 'tableHeaderBg', '${L.tableHeaderPreview}');
-  registerBgRow('${L.contextMenuBg}', 'contextMenuBg', '${L.contextMenuPreview}');
-  registerJournalTintRow('${L.contextMenuShadow}', 'contextMenuShadowBg', CONTEXT_MENU_SHADOW_ALPHA, '${L.journalShadowPreview}', 'contextMenuBg');
-  registerJournalTintRow('${L.contextMenuHover}', 'contextMenuItemHoverBg', CONTEXT_MENU_ITEM_HOVER_ALPHA, '${L.journalRowPreview}', 'contextMenuBg');
-  registerBgRow('${L.periodModeBudgetActual}', 'periodModeBudgetActualBg', '${L.periodModePreview}');
-  registerBgRow('${L.periodModeActual}', 'periodModeActualBg', '${L.periodModePreview}');
-  registerBgRow('${L.periodModePlan}', 'periodModePlanBg', '${L.periodModePreview}');
-  registerTextRow('${L.periodModeText}', 'periodModeTextColor', '${L.periodModePreview}', {
-    previewBgKey: 'periodModeBudgetActualBg',
-    refresh: false,
-  });
-  registerBgTextRow('${L.dashboardNav}', 'dashboardNavBg', 'dashboardNavText', '${L.dashboardNavPreview}');
-  registerBorderRow('${L.dashboardNavBorder}', 'dashboardNavBorder', 'dashboardNavBg');
-  registerBgRow('${L.dashboardNavHover}', 'dashboardNavHoverBg', '${L.dashboardNavPreview}', '#ffffff');
-  registerBgTextRow('${L.dashboardNavActive}', 'dashboardNavActiveBg', 'dashboardNavActiveText', '${L.planTableNavPreview}');
-  registerBorderRow('${L.dashboardNavActiveBorder}', 'dashboardNavActiveBorder', 'dashboardNavActiveBg');
+  registerJournalTintRow('${L.loadingOverlay}', 'loadingOverlayBg', LOADING_OVERLAY_ALPHA, '${L.loadingPreview}', 'browserBg');
+  registerBgRow('${L.settingsSurfaceBg}', 'settingsSurfaceBg', '${L.bgPreview}');
+  registerBgRow('${L.settingsInputBg}', 'settingsInputBg', '${L.bgPreview}');
+  registerBorderRow('${L.settingsInputBorder}', 'settingsInputBorder', 'settingsSurfaceBg');
+  registerBgRow('${L.settingsButtonBg}', 'settingsButtonBg', '${L.bgPreview}');
+  registerBgRow('${L.settingsRowHoverBg}', 'settingsRowHoverBg', '${L.bgPreview}');
   registerBgTextRow('${L.settingsNavActive}', 'settingsNavActiveBg', 'settingsNavActiveText', '${L.planTableNavPreview}');
   registerBorderRow('${L.settingsNavActiveBorder}', 'settingsNavActiveBorder', 'settingsNavActiveBg');
   registerBgTextRow('${L.shortcutKbd}', 'kbdBg', 'kbdTextColor', '${L.kbdPreview}');
   registerBorderRow('${L.shortcutKbdBorder}', 'kbdBorderColor', 'kbdBg');
   registerBgRow('${L.shortcutKbdShadow}', 'kbdShadowColor', '${L.kbdPreview}', '#ffffff');
-  registerJournalTintRow('${L.loadingOverlay}', 'loadingOverlayBg', LOADING_OVERLAY_ALPHA, '${L.loadingPreview}', 'browserBg');
   registerTextRow('${L.statusOk}', 'statusOkColor', '${L.statusOkPreview}', {
     previewBgKey: 'browserBg',
     refresh: false,
@@ -664,7 +682,6 @@ export function mountUiColorPanel(container, {
     refresh: false,
   });
   registerAccentRow('${L.interactiveAccent}', 'interactiveAccentColor', '${L.interactivePreview}');
-  registerJournalTintRow('${L.bonusMonthColumn}', 'bonusMonthColumnBg', 0.08, '${L.bonusPreview}', 'cellBg');
   registerBgRow('${L.deleteBtnBg}', 'deleteBtnBg', '${L.deletePreview}', '#ffffff');
   registerBgRow('${L.deleteBtnHover}', 'deleteBtnBgHover', '${L.deletePreview}', '#ffffff');
   registerBorderRow('${L.deleteBtnBorder}', 'deleteBtnBorder', 'cellBg');
@@ -674,8 +691,6 @@ export function mountUiColorPanel(container, {
     refresh: false,
   });
   registerAccentRow('${L.accentColor}', 'accentColor', '${L.accentPreview}');
-  registerAccentRow('${L.hover}', 'rowHoverBorder', '${L.hoverPreview}');
-  registerAccentRow('${L.selection}', 'rowSelectionRing', '${L.selectionPreview}');
 
   table.appendChild(tbody);
   panel.appendChild(table);

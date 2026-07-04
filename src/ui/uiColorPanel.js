@@ -380,8 +380,9 @@ export function mountUiColorPanel(container, {
   const CONTEXT_MENU_SHADOW_ALPHA = 0.45;
   const CONTEXT_MENU_ITEM_HOVER_ALPHA = 0.08;
   const LOADING_OVERLAY_ALPHA = 0.38;
+  const PLAN_EDITABLE_CELL_HOVER_ALPHA = 0.14;
 
-  const registerJournalTintRow = (label, key, alpha, previewText, previewBgKey = 'journalModalBg') => {
+  const registerJournalTintRow = (label, key, alpha, previewText, previewBgKey = 'journalModalBg', refresh = false) => {
     const colors = getUiColors(getConfig());
     const bg = colorInputTd(colors[key]);
     const preview = previewTd({
@@ -405,26 +406,41 @@ export function mountUiColorPanel(container, {
       setConfig(setUiColorKey(getConfig(), key, color));
       persist();
       syncPreview(getUiColors(getConfig()));
+      if (refresh) refreshPlan();
     };
     bg.input.addEventListener('input', () => sync(bg.input.value));
     reset.btn.addEventListener('click', () => {
       setConfig(resetUiColorKey(getConfig(), key));
       persist();
       syncPreview(getUiColors(getConfig()));
+      if (refresh) refreshPlan();
     });
   };
 
   // 予実表レイアウト順
   registerBgRow('ブラウザ（背景）', 'browserBg', '背景');
-  registerBgRow('設定パネル（背景）', 'settingsSurfaceBg', '背景');
-  registerBgRow('入力欄（背景）', 'settingsInputBg', '背景');
-  registerBorderRow('入力欄（枠線）', 'settingsInputBorder', 'settingsSurfaceBg');
-  registerBgRow('ボタン（背景）', 'settingsButtonBg', '背景');
-  registerBgRow('設定表行（ホバー）', 'settingsRowHoverBg', '背景');
+  registerBgRow('表示モード「予実」（背景）', 'periodModeBudgetActualBg', '予実');
+  registerBgRow('表示モード「実績」（背景）', 'periodModeActualBg', '予実');
+  registerBgRow('表示モード「計画」（背景）', 'periodModePlanBg', '予実');
+  registerTextRow('表示モードバッジ（文字）', 'periodModeTextColor', '予実', {
+    previewBgKey: 'periodModeBudgetActualBg',
+    refresh: false,
+  });
+  registerBgTextRow('ヘッダーコントロール（期選択等）', 'headerControlBg', 'headerControlText', '期');
+  registerBorderRow('ヘッダーコントロール（枠線）', 'headerControlBorder', 'headerControlBg');
+  registerBgRow('ヘッダーコントロール（ホバー）', 'headerControlHoverBg', '期');
+  registerBorderRow('ヘッダーコントロール（選択時・枠線）', 'headerControlActiveBorder', 'headerControlBg');
+  registerBgRow('予実表（固定ヘッダー背景）', 'tableHeaderBg', '見出し');
+  registerBgTextRow('ダッシュボードボタン（通常）', 'dashboardNavBg', 'dashboardNavText', 'ダッシュボードを表示');
+  registerBorderRow('ダッシュボードボタン（枠線・通常）', 'dashboardNavBorder', 'dashboardNavBg');
+  registerBgRow('ダッシュボードボタン（ホバー・通常）', 'dashboardNavHoverBg', 'ダッシュボードを表示', '#ffffff');
+  registerBgTextRow('ダッシュボードボタン（表示中）', 'dashboardNavActiveBg', 'dashboardNavActiveText', '予実表を表示');
+  registerBorderRow('ダッシュボードボタン（枠線・表示中）', 'dashboardNavActiveBorder', 'dashboardNavActiveBg');
   registerBgTextRow('年行（ヘッダー）', 'yearRowBg', 'yearRowText', '2025年');
   registerBgTextRow('月行（ヘッダー）', 'monthRowBg', 'monthRowText', '6月');
   registerBgTextRow('当月列（オーバーレイ）', 'currentMonthBg', 'currentMonthBorder', '6月');
   registerBgRow('決算整理列（オーバーレイ）', 'settlementMonthBg', '3月');
+  registerJournalTintRow('賞与月列（ハイライト）', 'bonusMonthColumnBg', 0.08, '賞与月', 'cellBg', true);
   registerBgTextRow('セル（明細行）', 'cellBg', 'textColor', '¥1,234');
   registerTextRow('注釈文・説明文', 'noteTextColor', '説明文のサンプル', {
     previewBgKey: 'browserBg',
@@ -479,6 +495,12 @@ export function mountUiColorPanel(container, {
   });
 
   registerAccentRow('展開可能項目・仕訳セル（ハイライト）', 'expandableHighlight', '▶ 勘定科目');
+  registerAccentRow('マウスオーバー（行）', 'rowHoverBorder', 'ホバー');
+  registerAccentRow('行選択（枠線）', 'rowSelectionRing', '選択中');
+  registerJournalTintRow('編集可能セル（ホバー）', 'planEditableCellHoverBg', PLAN_EDITABLE_CELL_HOVER_ALPHA, '編集中', 'cellBg', true);
+  registerBgRow('右クリックメニュー（背景）', 'contextMenuBg', 'メニュー');
+  registerJournalTintRow('右クリックメニュー（影）', 'contextMenuShadowBg', CONTEXT_MENU_SHADOW_ALPHA, '影', 'contextMenuBg');
+  registerJournalTintRow('右クリックメニュー（行ホバー）', 'contextMenuItemHoverBg', CONTEXT_MENU_ITEM_HOVER_ALPHA, '行', 'contextMenuBg');
   registerJournalTintRow('仕訳詳細（背面オーバーレイ）', 'journalOverlayBg', JOURNAL_OVERLAY_ALPHA, '背面', 'browserBg');
   registerBgRow('仕訳詳細（モーダル背景）', 'journalModalBg', 'モーダル');
   registerTextRow('仕訳詳細（文字色）', 'journalTextColor', '仕訳明細', {
@@ -493,28 +515,17 @@ export function mountUiColorPanel(container, {
   registerJournalTintRow('仕訳詳細（モーダル影）', 'journalModalShadowBg', JOURNAL_MODAL_SHADOW_ALPHA, '影');
   registerJournalTintRow('仕訳詳細（行ホバー）', 'journalRowHoverBg', JOURNAL_ROW_HOVER_ALPHA, '行');
   registerJournalTintRow('仕訳詳細（閉じる・ホバー）', 'journalCloseHoverBg', JOURNAL_CLOSE_HOVER_ALPHA, '×');
-  registerBgRow('予実表（固定ヘッダー背景）', 'tableHeaderBg', '見出し');
-  registerBgRow('右クリックメニュー（背景）', 'contextMenuBg', 'メニュー');
-  registerJournalTintRow('右クリックメニュー（影）', 'contextMenuShadowBg', CONTEXT_MENU_SHADOW_ALPHA, '影', 'contextMenuBg');
-  registerJournalTintRow('右クリックメニュー（行ホバー）', 'contextMenuItemHoverBg', CONTEXT_MENU_ITEM_HOVER_ALPHA, '行', 'contextMenuBg');
-  registerBgRow('表示モード「予実」（背景）', 'periodModeBudgetActualBg', '予実');
-  registerBgRow('表示モード「実績」（背景）', 'periodModeActualBg', '予実');
-  registerBgRow('表示モード「計画」（背景）', 'periodModePlanBg', '予実');
-  registerTextRow('表示モードバッジ（文字）', 'periodModeTextColor', '予実', {
-    previewBgKey: 'periodModeBudgetActualBg',
-    refresh: false,
-  });
-  registerBgTextRow('ダッシュボードボタン（通常）', 'dashboardNavBg', 'dashboardNavText', 'ダッシュボードを表示');
-  registerBorderRow('ダッシュボードボタン（枠線・通常）', 'dashboardNavBorder', 'dashboardNavBg');
-  registerBgRow('ダッシュボードボタン（ホバー・通常）', 'dashboardNavHoverBg', 'ダッシュボードを表示', '#ffffff');
-  registerBgTextRow('ダッシュボードボタン（表示中）', 'dashboardNavActiveBg', 'dashboardNavActiveText', '予実表を表示');
-  registerBorderRow('ダッシュボードボタン（枠線・表示中）', 'dashboardNavActiveBorder', 'dashboardNavActiveBg');
+  registerJournalTintRow('読み込み中（オーバーレイ）', 'loadingOverlayBg', LOADING_OVERLAY_ALPHA, '読み込み', 'browserBg');
+  registerBgRow('設定パネル（背景）', 'settingsSurfaceBg', '背景');
+  registerBgRow('入力欄（背景）', 'settingsInputBg', '背景');
+  registerBorderRow('入力欄（枠線）', 'settingsInputBorder', 'settingsSurfaceBg');
+  registerBgRow('ボタン（背景）', 'settingsButtonBg', '背景');
+  registerBgRow('設定表行（ホバー）', 'settingsRowHoverBg', '背景');
   registerBgTextRow('設定画面ボタン（表示中）', 'settingsNavActiveBg', 'settingsNavActiveText', '予実表を表示');
   registerBorderRow('設定画面ボタン（枠線・表示中）', 'settingsNavActiveBorder', 'settingsNavActiveBg');
   registerBgTextRow('ショートカットキー（kbd）', 'kbdBg', 'kbdTextColor', 'F10');
   registerBorderRow('ショートカットキー（kbd・枠線）', 'kbdBorderColor', 'kbdBg');
   registerBgRow('ショートカットキー（kbd・影）', 'kbdShadowColor', 'F10', '#ffffff');
-  registerJournalTintRow('読み込み中（オーバーレイ）', 'loadingOverlayBg', LOADING_OVERLAY_ALPHA, '読み込み', 'browserBg');
   registerTextRow('成功・OK表示', 'statusOkColor', 'OK', {
     previewBgKey: 'browserBg',
     refresh: false,
@@ -532,7 +543,6 @@ export function mountUiColorPanel(container, {
     refresh: false,
   });
   registerAccentRow('操作強調（スライダー・D&D等）', 'interactiveAccentColor', '強調');
-  registerJournalTintRow('賞与月列（ハイライト）', 'bonusMonthColumnBg', 0.08, '賞与月', 'cellBg');
   registerBgRow('削除ボタン（背景）', 'deleteBtnBg', '削除', '#ffffff');
   registerBgRow('削除ボタン（ホバー）', 'deleteBtnBgHover', '削除', '#ffffff');
   registerBorderRow('削除ボタン（枠線）', 'deleteBtnBorder', 'cellBg');
@@ -542,8 +552,6 @@ export function mountUiColorPanel(container, {
     refresh: false,
   });
   registerAccentRow('アクセンント（選択マーク等）', 'accentColor', '✓ 選択');
-  registerAccentRow('マウスオーバー（行）', 'rowHoverBorder', 'ホバー');
-  registerAccentRow('行選択（枠線）', 'rowSelectionRing', '選択中');
 
   table.appendChild(tbody);
   panel.appendChild(table);
