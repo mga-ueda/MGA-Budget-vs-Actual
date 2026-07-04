@@ -4374,7 +4374,12 @@ function switchMainTab(nextTab) {
   if (prevTab === 'plan' && nextTab !== 'plan') {
     resetPlanBodyScroll();
     cachePlanTableColumnWidthsFromDom();
-    resetContentFitScale();
+    // ダッシュボードでは予実表と同じヘッダー倍率（content fit）を維持する
+    if (nextTab === 'dashboard') {
+      setContentFitScale(lastPlanTableContentFitScale);
+    } else {
+      resetContentFitScale();
+    }
     applyPlanDisplayScales();
   }
   if (prevTab === 'dashboard' && nextTab !== 'dashboard') {

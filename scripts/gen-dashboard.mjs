@@ -69,8 +69,8 @@ const DASHBOARD_BREAKDOWN_MODES = [
   { id: 'account', label: '${K.breakdownAccount}' },
   { id: 'sub', label: '${K.breakdownSub}' },
 ];
-const DASH_COLOR_INCOME = '#0000ff';
-const DASH_COLOR_EXPENSE = '#ff0000';
+const DASH_COLOR_INCOME = '#548235';
+const DASH_COLOR_EXPENSE = '#c65911';
 const DASH_COLOR_BAR = '#ff8800';
 const DASH_ITEM_COLORS = [
   '#4C78A8', '#F58518', '#54A24B', '#E45756', '#72B7B2', '#EECA3B', '#B279A2', '#FF6B45',
