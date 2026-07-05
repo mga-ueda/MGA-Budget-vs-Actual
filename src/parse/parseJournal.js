@@ -29,11 +29,11 @@ export const BS_SECTION_IDS = new Set([
   'currentAssets', 'fixedAssets', 'deferredAssets', 'currentLiab', 'fixedLiab', 'equity', 'cashBalance',
 ]);
 
-const COLOR_FALLBACK = { color: '#44403c', barColor: '#292524' };
+const COLOR_FALLBACK = { color: '#44403c', barColor: '#292524', textColor: '#ffffff' };
 
 function sectionColors(id) {
   const d = DEFAULT_SECTION_COLORS[id] ?? COLOR_FALLBACK;
-  return { color: d.color, barColor: d.barColor };
+  return { color: d.color, barColor: d.barColor, textColor: d.textColor ?? COLOR_FALLBACK.textColor };
 }
 
 const REVENUE_ACCOUNTS = new Set(['売上高', '受取利息', '雑収入', '営業外収益']);
@@ -787,13 +787,12 @@ export function insertSgaSummarySections(planData) {
   const hasSga = [taxableV, sgaV].some((v) => (v.合計 ?? 0) !== 0);
   if (!hasSga) return planData;
 
-  const summaryColors = sectionColors('expense');
   const makeSummarySection = (id, totalLabel, values, aggregateFormula) => ({
     id,
     label: '',
     hideCategory: true,
     filter: 'other',
-    ...summaryColors,
+    ...sectionColors(id),
     rows: [makeTotalRow(`${id}-row`, totalLabel, values, 'flow', aggregateFormula)],
   });
 

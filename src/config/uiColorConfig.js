@@ -12,6 +12,11 @@ const REMOVED_HOVER_COLOR_KEYS = [
 
 const REMOVED_COLOR_KEYS = [
   'deleteBtnBorder',
+  'interactiveAccentColor',
+  'kbdShadowColor',
+  'statusInvalidColor',
+  'journalCloseHoverBg',
+  'headerControlBorder',
 ];
 
 const MERGED_SETTINGS_ACTIVE_KEYS = {
@@ -37,20 +42,34 @@ const MERGED_PRIMARY_BUTTON_BG_KEYS = [
   'primaryButtonBgEnd',
 ];
 
+const MERGED_POPUP_BG_SOURCE_KEYS = [
+  'journalModalBg',
+];
+
+const MERGED_POPUP_SHADOW_SOURCE_KEYS = [
+  'journalModalShadowBg',
+];
+
+const MERGED_POPUP_ROW_HOVER_SOURCE_KEYS = [
+  'journalRowHoverBg',
+  'settingsRowHoverBg',
+];
+
+const MERGED_HEADER_ROW_BG_SOURCE_KEYS = [
+  'settingsSurfaceBg',
+  'journalTableHeaderBg',
+];
+
 const SETTLEMENT_MONTH_OVERLAY_ALPHA = 0.28;
 const SETTLEMENT_MONTH_RING_ALPHA = 0.45;
 const SETTLEMENT_MONTH_OVERLAY_HEAD_ALPHA = 0.34;
 const SETTLEMENT_MONTH_OVERLAY_TOTAL_ALPHA = 0.32;
 
 const JOURNAL_OVERLAY_ALPHA = 0.65;
-const JOURNAL_MODAL_SHADOW_ALPHA = 0.45;
-const JOURNAL_ROW_HOVER_ALPHA = 0.03;
-const JOURNAL_CLOSE_HOVER_ALPHA = 0.08;
 
-const CONTEXT_MENU_SHADOW_ALPHA = 0.45;
-const CONTEXT_MENU_ITEM_HOVER_ALPHA = 0.08;
+const POPUP_SHADOW_ALPHA = 0.45;
+const POPUP_ROW_HOVER_ALPHA = 0.08;
 const LOADING_OVERLAY_ALPHA = 0.38;
-const CSV_DROP_ACTIVE_BG_ALPHA = 0.08;
 const PLAN_EDITABLE_CELL_HOVER_ALPHA = 0.14;
 const HEADER_CONTROL_FOCUS_RING_ALPHA = 0.22;
 
@@ -65,11 +84,10 @@ const SHARED_UI_COLORS = {
 
 export const DEFAULT_UI_COLORS_DARK = {
   browserBg: '#262626',
-  settingsSurfaceBg: '#19191A',
   settingsInputBg: '#353535',
   settingsInputBorder: '#565656',
   settingsButtonBg: '#262626',
-  settingsRowHoverBg: '#2E2E2E',
+  settingsButtonTextColor: '#ffffff',
   monthRowBg: '#595959',
   monthRowText: '#ffffff',
   currentMonthBorder: '#ff0000',
@@ -80,7 +98,6 @@ export const DEFAULT_UI_COLORS_DARK = {
   planAmountColor: '#00B0F0',
   planEditableCellHoverBg: '#C0C0C0',
   headerControlBg: '#262626',
-  headerControlBorder: '#565656',
   headerControlActiveBorder: '#929292',
   dashboardNavBg: '#1e3a5f',
   dashboardNavText: '#bfdbfe',
@@ -89,7 +106,6 @@ export const DEFAULT_UI_COLORS_DARK = {
   kbdBg: '#373737',
   kbdTextColor: '#929292',
   kbdBorderColor: '#505050',
-  kbdShadowColor: '#454545',
   fillColor1: '#404040',
   fillColor2: '#3F1B1B',
   warningTextColor: '#FFFF00',
@@ -97,11 +113,6 @@ export const DEFAULT_UI_COLORS_DARK = {
   rowHoverBorder: '#00ffff',
   rowSelectionRing: '#ffff00',
   journalOverlayBg: '#000000',
-  journalModalBg: '#1e1e28',
-  journalModalShadowBg: '#000000',
-  journalRowHoverBg: '#ffffff',
-  journalCloseHoverBg: '#ffffff',
-  journalTableHeaderBg: '#262626',
   accentColor: '#ff0000',
   deleteBtnBg: '#dc2626',
   deleteBtnText: '#ffffff',
@@ -117,20 +128,18 @@ export const DEFAULT_UI_COLORS_DARK = {
   loadingOverlayBg: '#08080e',
   statusOkColor: '#86efac',
   statusErrorColor: '#fca5a5',
-  statusInvalidColor: '#ef4444',
   primaryButtonBg: '#3b82f6',
   primaryButtonTextColor: '#ffffff',
-  interactiveAccentColor: '#2563eb',
+  buttonBorderColor: '#ffffff',
   ...SHARED_UI_COLORS,
 };
 
 export const DEFAULT_UI_COLORS_LIGHT = {
   browserBg: '#E8E8E8',
-  settingsSurfaceBg: '#D9D9D9',
   settingsInputBg: '#FFFFFF',
   settingsInputBorder: '#B8B8B8',
   settingsButtonBg: '#FFFFFF',
-  settingsRowHoverBg: '#EFEFEF',
+  settingsButtonTextColor: '#ffffff',
   monthRowBg: '#D9D9D9',
   monthRowText: '#1A1A1A',
   currentMonthBorder: '#ff0000',
@@ -141,7 +150,6 @@ export const DEFAULT_UI_COLORS_LIGHT = {
   planAmountColor: '#0078D4',
   planEditableCellHoverBg: '#808080',
   headerControlBg: '#FFFFFF',
-  headerControlBorder: '#B8B8B8',
   headerControlActiveBorder: '#757575',
   dashboardNavBg: '#eff6ff',
   dashboardNavText: '#1d4ed8',
@@ -150,7 +158,6 @@ export const DEFAULT_UI_COLORS_LIGHT = {
   kbdBg: '#EFEFEF',
   kbdTextColor: '#757575',
   kbdBorderColor: '#B8B8B8',
-  kbdShadowColor: '#C8C8C8',
   fillColor1: '#E8EEF4',
   fillColor2: '#F5E8E8',
   warningTextColor: '#8B6914',
@@ -158,11 +165,6 @@ export const DEFAULT_UI_COLORS_LIGHT = {
   rowHoverBorder: '#0078D4',
   rowSelectionRing: '#E6B800',
   journalOverlayBg: '#000000',
-  journalModalBg: '#FFFFFF',
-  journalModalShadowBg: '#000000',
-  journalRowHoverBg: '#000000',
-  journalCloseHoverBg: '#000000',
-  journalTableHeaderBg: '#FFFFFF',
   accentColor: '#0078D4',
   deleteBtnBg: '#dc2626',
   deleteBtnText: '#ffffff',
@@ -178,10 +180,9 @@ export const DEFAULT_UI_COLORS_LIGHT = {
   loadingOverlayBg: '#000000',
   statusOkColor: '#15803d',
   statusErrorColor: '#dc2626',
-  statusInvalidColor: '#ef4444',
   primaryButtonBg: '#3b82f6',
   primaryButtonTextColor: '#ffffff',
-  interactiveAccentColor: '#2563eb',
+  buttonBorderColor: '#ffffff',
   ...SHARED_UI_COLORS,
   negativeAmountColor: '#C00000',
 };
@@ -229,7 +230,7 @@ export function getDefaultUiColors(mode = 'dark') {
   return { ...DEFAULTS_BY_MODE[key] };
 }
 
-const UI_COLOR_LEGACY_KEYS = [...UI_COLOR_KEYS, 'textFaintColor', 'appBg', 'bonusMonthColumnBg', 'journalTextColor'];
+const UI_COLOR_LEGACY_KEYS = [...UI_COLOR_KEYS, 'textFaintColor', 'appBg', 'bonusMonthColumnBg', 'journalTextColor', 'journalModalBg', 'journalModalShadowBg', 'journalRowHoverBg', 'settingsRowHoverBg', 'settingsSurfaceBg', 'journalTableHeaderBg', 'journalCloseHoverBg', 'headerControlBorder'];
 
 function migrateUiColorBucket(bucket = {}) {
   const next = { ...bucket };
@@ -294,6 +295,50 @@ function migrateUiColorBucket(bucket = {}) {
     }
   }
   for (const key of MERGED_PRIMARY_BUTTON_BG_KEYS) {
+    delete next[key];
+  }
+  if (next.contextMenuBg == null) {
+    for (const key of MERGED_POPUP_BG_SOURCE_KEYS) {
+      if (next[key] != null) {
+        next.contextMenuBg = next[key];
+        break;
+      }
+    }
+  }
+  for (const key of MERGED_POPUP_BG_SOURCE_KEYS) {
+    delete next[key];
+  }
+  if (next.contextMenuShadowBg == null) {
+    for (const key of MERGED_POPUP_SHADOW_SOURCE_KEYS) {
+      if (next[key] != null) {
+        next.contextMenuShadowBg = next[key];
+        break;
+      }
+    }
+  }
+  for (const key of MERGED_POPUP_SHADOW_SOURCE_KEYS) {
+    delete next[key];
+  }
+  if (next.contextMenuItemHoverBg == null) {
+    for (const key of MERGED_POPUP_ROW_HOVER_SOURCE_KEYS) {
+      if (next[key] != null) {
+        next.contextMenuItemHoverBg = next[key];
+        break;
+      }
+    }
+  }
+  for (const key of MERGED_POPUP_ROW_HOVER_SOURCE_KEYS) {
+    delete next[key];
+  }
+  if (next.monthRowBg == null) {
+    for (const key of MERGED_HEADER_ROW_BG_SOURCE_KEYS) {
+      if (next[key] != null) {
+        next.monthRowBg = next[key];
+        break;
+      }
+    }
+  }
+  for (const key of MERGED_HEADER_ROW_BG_SOURCE_KEYS) {
     delete next[key];
   }
   for (const key of REMOVED_HOVER_COLOR_KEYS) {
@@ -465,33 +510,31 @@ export function applyUiColors(config = {}) {
   const colors = getUiColors(config);
   const {
     browserBg,
-    settingsSurfaceBg, settingsInputBg, settingsInputBorder,
-    settingsButtonBg, settingsRowHoverBg,
+    settingsInputBg, settingsInputBorder,
+    settingsButtonBg,
+    settingsButtonTextColor,
     cellBg, textColor, textDimColor,
     negativeAmountColor,
     yearRowBg, yearRowText, monthRowBg, monthRowText,
     currentMonthBorder, settlementMonthBg,
     rowHoverBorder, rowSelectionRing,
     expandableHighlight,
-    journalOverlayBg, journalModalBg, journalModalShadowBg,
-    journalRowHoverBg, journalCloseHoverBg,
-    journalTableHeaderBg,
+    journalOverlayBg,
     accentColor,
     deleteBtnBg, deleteBtnText,
     contextMenuBg, contextMenuShadowBg, contextMenuItemHoverBg,
     periodModeBudgetActualBg, periodModeActualBg, periodModePlanBg,
     periodModeBudgetActualText, periodModeActualText, periodModePlanText,
     loadingOverlayBg,
-    statusOkColor, statusErrorColor, statusInvalidColor,
+    statusOkColor, statusErrorColor,
     primaryButtonBg, primaryButtonTextColor,
-    interactiveAccentColor,
+    buttonBorderColor,
     fillColor1, fillColor2,
     planAmountColor, planEditableCellHoverBg, amountVarianceColor,
-    headerControlBg, headerControlBorder,
-    headerControlActiveBorder,
+    headerControlBg, headerControlActiveBorder,
     dashboardNavBg, dashboardNavText,
     dashboardNavActiveBg, dashboardNavActiveText,
-    kbdBg, kbdTextColor, kbdBorderColor, kbdShadowColor,
+    kbdBg, kbdTextColor, kbdBorderColor,
     warningTextColor,
   } = colors;
 
@@ -506,34 +549,21 @@ export function applyUiColors(config = {}) {
   doc.style.setProperty('--plan-text', textColor);
   doc.style.setProperty('--plan-text-dim', opaqueHex(textDimColor));
   doc.style.setProperty('--plan-accent', opaqueHex(accentColor));
+  doc.style.setProperty('--plan-menu-check-color', opaqueHex(accentColor));
   doc.style.setProperty(
     '--plan-journal-overlay',
     hexToRgba(journalOverlayBg, JOURNAL_OVERLAY_ALPHA),
   );
-  doc.style.setProperty('--plan-journal-modal-bg', opaqueHex(journalModalBg));
-  doc.style.setProperty(
-    '--plan-journal-modal-shadow',
-    hexToRgba(journalModalShadowBg, JOURNAL_MODAL_SHADOW_ALPHA),
-  );
-  doc.style.setProperty(
-    '--plan-journal-row-hover',
-    hexToRgba(journalRowHoverBg, JOURNAL_ROW_HOVER_ALPHA),
-  );
-  doc.style.setProperty(
-    '--plan-journal-close-hover',
-    hexToRgba(journalCloseHoverBg, JOURNAL_CLOSE_HOVER_ALPHA),
-  );
   doc.style.setProperty('--plan-journal-text', opaqueHex(textColor));
-  doc.style.setProperty('--plan-journal-table-header-bg', opaqueHex(journalTableHeaderBg));
+  doc.style.setProperty('--plan-journal-table-header-bg', monthRowBg);
   doc.style.setProperty('--plan-context-menu-bg', opaqueHex(contextMenuBg));
+  doc.style.setProperty('--plan-hover-boost', hoverBoost);
   doc.style.setProperty(
     '--plan-context-menu-shadow',
-    hexToRgba(contextMenuShadowBg, CONTEXT_MENU_SHADOW_ALPHA),
+    hexToRgba(contextMenuShadowBg, POPUP_SHADOW_ALPHA),
   );
-  doc.style.setProperty(
-    '--plan-context-menu-item-hover',
-    hexToRgba(contextMenuItemHoverBg, CONTEXT_MENU_ITEM_HOVER_ALPHA),
-  );
+  const popupRowHover = hexToRgba(contextMenuItemHoverBg, POPUP_ROW_HOVER_ALPHA);
+  doc.style.setProperty('--plan-popup-row-hover', popupRowHover);
   doc.style.setProperty(
     '--plan-loading-overlay',
     hexToRgba(loadingOverlayBg, LOADING_OVERLAY_ALPHA),
@@ -545,11 +575,12 @@ export function applyUiColors(config = {}) {
   root.dataset.planColorMode = getUiColorMode(config);
   root.style.setProperty('--plan-browser-bg', browserBg);
   root.style.setProperty('--plan-border', borderMix);
-  root.style.setProperty('--plan-surface', opaqueHex(settingsSurfaceBg));
+  root.style.setProperty('--plan-surface', monthRowBg);
   root.style.setProperty('--plan-editor-bg', opaqueHex(settingsInputBg));
   root.style.setProperty('--plan-editor-border', opaqueHex(settingsInputBorder));
   root.style.setProperty('--plan-settings-button-bg', opaqueHex(settingsButtonBg));
-  root.style.setProperty('--plan-settings-row-hover', opaqueHex(settingsRowHoverBg));
+  root.style.setProperty('--plan-settings-button-text', opaqueHex(settingsButtonTextColor));
+  root.style.setProperty('--plan-popup-row-hover', popupRowHover);
   root.style.setProperty('--plan-bg', opaqueHex(settingsInputBg));
   root.style.setProperty('--plan-cell-bg', cellBg);
   root.style.setProperty('--plan-text', textColor);
@@ -557,6 +588,7 @@ export function applyUiColors(config = {}) {
   root.style.setProperty('--plan-text-dim', opaqueHex(textDimColor));
   root.style.setProperty('--plan-negative-amount', negativeAmountColor);
   root.style.setProperty('--plan-accent', opaqueHex(accentColor));
+  root.style.setProperty('--plan-menu-check-color', opaqueHex(accentColor));
   root.style.setProperty('--plan-hover-boost', hoverBoost);
   root.style.setProperty('--plan-delete-btn-bg', opaqueHex(deleteBtnBg));
   root.style.setProperty('--plan-delete-btn-text', opaqueHex(deleteBtnText));
@@ -568,12 +600,10 @@ export function applyUiColors(config = {}) {
   root.style.setProperty('--plan-period-mode-plan-text', opaqueHex(periodModePlanText));
   root.style.setProperty('--plan-status-ok', opaqueHex(statusOkColor));
   root.style.setProperty('--plan-status-error', opaqueHex(statusErrorColor));
-  root.style.setProperty('--plan-status-invalid', opaqueHex(statusInvalidColor));
   root.style.setProperty('--plan-primary-btn-bg', opaqueHex(primaryButtonBg));
   root.style.setProperty('--plan-primary-btn-text', opaqueHex(primaryButtonTextColor));
-  root.style.setProperty('--plan-interactive-accent', opaqueHex(interactiveAccentColor));
+  root.style.setProperty('--plan-button-border', opaqueHex(buttonBorderColor));
   root.style.setProperty('--plan-header-control-bg', opaqueHex(headerControlBg));
-  root.style.setProperty('--plan-header-control-border', opaqueHex(headerControlBorder));
   root.style.setProperty('--plan-header-control-border-active', opaqueHex(headerControlActiveBorder));
   root.style.setProperty(
     '--plan-header-control-focus-ring',
@@ -594,11 +624,6 @@ export function applyUiColors(config = {}) {
   root.style.setProperty('--plan-kbd-bg', opaqueHex(kbdBg));
   root.style.setProperty('--plan-kbd-text', opaqueHex(kbdTextColor));
   root.style.setProperty('--plan-kbd-border', opaqueHex(kbdBorderColor));
-  root.style.setProperty('--plan-kbd-shadow', opaqueHex(kbdShadowColor));
-  root.style.setProperty(
-    '--plan-csv-drop-active-bg',
-    hexToRgba(interactiveAccentColor, CSV_DROP_ACTIVE_BG_ALPHA),
-  );
   root.style.setProperty('--plan-year-row-bg', yearRowBg);
   root.style.setProperty('--plan-year-row-text', yearRowText);
   root.style.setProperty('--plan-month-row-bg', monthRowBg);

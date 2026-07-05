@@ -19,7 +19,7 @@ import {
 } from '../config/uiColorConfig.js';
 import { getSectionBarColor } from '../config/sectionColorConfig.js';
 
-function dashTd(className = 'col-color-input') {
+function dashTd(className = 'col-color-none') {
   const td = document.createElement('td');
   td.className = className;
   td.textContent = '—';
@@ -288,22 +288,35 @@ export function mountUiColorPanel(container, {
     return previewTextColor;
   };
 
-  const registerBgRow = (label, key, previewText, previewTextColor = '#ffffff', previewTextKey = null) => {
+  const applyPreviewKbdStyles = (span, merged) => {
+    const kbd = span.querySelector('kbd');
+    if (!kbd) return;
+    kbd.style.backgroundColor = opaqueHex(merged.kbdBg);
+    kbd.style.color = opaqueHex(merged.kbdTextColor);
+    kbd.style.border = `1px solid ${opaqueHex(merged.kbdBorderColor)}`;
+  };
+
+  const PREVIEW_KBD_KEYS = ['kbdBg', 'kbdTextColor', 'kbdBorderColor'];
+
+  const registerBgRow = (label, key, previewText, previewTextColor = '#ffffff', previewTextKey = null, previewHtml = null, withKbdPreview = false) => {
     const colors = getUiColors(getConfig());
     const bg = colorInputTd(colors[key]);
     const preview = previewTd({
       background: colors[key],
       color: resolveBgRowPreviewColor(colors, previewTextColor, previewTextKey),
-      text: previewText,
+      text: previewHtml ? null : previewText,
+      html: previewHtml,
     });
     const reset = resetBtnTd(keysMatchDefaults(getConfig(), [key]));
     addRow(label, [bg.td, dashTd(), preview.td, reset.td]);
     const previewKeys = previewTextKey
       ? [key, previewTextKey]
       : (previewTextColor == null ? [key, 'textColor'] : [key]);
+    if (withKbdPreview) previewKeys.push(...PREVIEW_KBD_KEYS);
     const syncPreview = (merged) => {
       preview.span.style.background = merged[key];
       preview.span.style.color = resolveBgRowPreviewColor(merged, previewTextColor, previewTextKey);
+      if (withKbdPreview) applyPreviewKbdStyles(preview.span, merged);
       reset.btn.disabled = keysMatchDefaults(getConfig(), [key]);
     };
     subscribePreview(previewKeys, syncPreview);
@@ -323,7 +336,7 @@ export function mountUiColorPanel(container, {
     });
   };
 
-  const registerBgTextRow = (label, bgKey, textKey, previewText, refreshToolbar = false) => {
+  const registerBgTextRow = (label, bgKey, textKey, previewText, refreshToolbar = false, previewClassName = 'ui-color-preview-cell') => {
     const colors = getUiColors(getConfig());
     const bg = colorInputTd(colors[bgKey]);
     const text = colorInputTd(colors[textKey]);
@@ -331,6 +344,7 @@ export function mountUiColorPanel(container, {
       background: colors[bgKey],
       color: colors[textKey],
       text: previewText,
+      className: previewClassName,
     });
     const reset = resetBtnTd(keysMatchDefaults(getConfig(), [bgKey, textKey]));
     addRow(label, [bg.td, text.td, preview.td, reset.td]);
@@ -406,25 +420,28 @@ export function mountUiColorPanel(container, {
     });
   };
 
-  const registerAccentRow = (label, key, previewText) => {
+  const registerAccentRow = (label, key, previewText, { noBorder = false, previewTextColorKey = null } = {}) => {
     const colors = getUiColors(getConfig());
     const text = colorInputTd(colors[key]);
     const preview = previewTd({
       background: colors.cellBg,
-      color: opaqueHex(colors[key]),
+      color: previewTextColorKey ? colors[previewTextColorKey] : opaqueHex(colors[key]),
       text: previewText,
       className: 'ui-color-preview-cell ui-color-preview-hover',
     });
     preview.span.style.boxShadow = 'none';
-    preview.span.style.border = `1px solid ${opaqueHex(colors[key])}`;
+    if (!noBorder) {
+      preview.span.style.border = `1px solid ${opaqueHex(colors[key])}`;
+    }
     const reset = resetBtnTd(keysMatchDefaults(getConfig(), [key]));
     addRow(label, [dashTd(), text.td, preview.td, reset.td]);
-    const previewKeys = [key, 'cellBg'];
+    const previewKeys = previewTextColorKey ? [key, 'cellBg', previewTextColorKey] : [key, 'cellBg'];
     const syncPreview = (merged) => {
       const color = opaqueHex(merged[key]);
       preview.span.style.background = merged.cellBg;
-      preview.span.style.color = color;
-      preview.span.style.border = `1px solid ${color}`;
+      preview.span.style.color = previewTextColorKey ? merged[previewTextColorKey] : color;
+      if (noBorder) preview.span.style.border = 'none';
+      else preview.span.style.border = `1px solid ${color}`;
       reset.btn.disabled = keysMatchDefaults(getConfig(), [key]);
     };
     subscribePreview(previewKeys, syncPreview);
@@ -489,23 +506,26 @@ export function mountUiColorPanel(container, {
     });
   };
 
-  const registerBorderRow = (label, key, previewBgKey, previewText = '枠線', previewTextKey = 'textColor') => {
+  const registerBorderRow = (label, key, previewBgKey, previewText = '枠線', previewTextKey = 'textColor', previewHtml = null, withKbdPreview = false) => {
     const colors = getUiColors(getConfig());
     const border = colorInputTd(colors[key]);
     const preview = previewTd({
       background: colors[previewBgKey],
       color: colors[previewTextKey],
-      text: previewText,
+      text: previewHtml ? null : previewText,
+      html: previewHtml,
       className: 'ui-color-preview-cell',
     });
-    preview.span.style.border = `2px solid ${colors[key]}`;
+    preview.span.style.border = `1px solid ${colors[key]}`;
     const reset = resetBtnTd(keysMatchDefaults(getConfig(), [key]));
     addRow(label, [border.td, dashTd(), preview.td, reset.td]);
     const previewKeys = [key, previewBgKey, previewTextKey];
+    if (withKbdPreview) previewKeys.push(...PREVIEW_KBD_KEYS);
     const syncPreview = (merged) => {
       preview.span.style.background = merged[previewBgKey];
       preview.span.style.color = merged[previewTextKey];
-      preview.span.style.border = `2px solid ${merged[key]}`;
+      preview.span.style.border = `1px solid ${merged[key]}`;
+      if (withKbdPreview) applyPreviewKbdStyles(preview.span, merged);
       reset.btn.disabled = keysMatchDefaults(getConfig(), [key]);
     };
     subscribePreview(previewKeys, syncPreview);
@@ -560,30 +580,27 @@ export function mountUiColorPanel(container, {
   };
 
   const JOURNAL_OVERLAY_ALPHA = 0.65;
-  const JOURNAL_MODAL_SHADOW_ALPHA = 0.45;
-  const JOURNAL_ROW_HOVER_ALPHA = 0.03;
-  const JOURNAL_CLOSE_HOVER_ALPHA = 0.08;
-  const CONTEXT_MENU_SHADOW_ALPHA = 0.45;
-  const CONTEXT_MENU_ITEM_HOVER_ALPHA = 0.08;
+  const POPUP_SHADOW_ALPHA = 0.45;
+  const POPUP_ROW_HOVER_ALPHA = 0.08;
   const LOADING_OVERLAY_ALPHA = 0.38;
   const PLAN_EDITABLE_CELL_HOVER_ALPHA = 0.14;
 
-  const registerJournalTintRow = (label, key, alpha, previewText, previewBgKey = 'journalModalBg') => {
+  const registerJournalTintRow = (label, key, alpha, previewText, previewBgKey = 'contextMenuBg', previewTextKey = 'textColor') => {
     const colors = getUiColors(getConfig());
     const bg = colorInputTd(colors[key]);
     const preview = previewTd({
       background: hexToRgba(colors[key], alpha),
-      color: colors.textColor,
+      color: colors[previewTextKey] ?? colors.textColor,
       text: previewText,
     });
     preview.span.style.boxShadow = `inset 0 0 0 1px ${hexToRgba(colors[previewBgKey] ?? colors.cellBg, 1)}`;
     const reset = resetBtnTd(keysMatchDefaults(getConfig(), [key]));
     addRow(label, [bg.td, dashTd(), preview.td, reset.td]);
-    const previewKeys = [key, previewBgKey, 'textColor'];
+    const previewKeys = [key, previewBgKey, previewTextKey];
     const syncPreview = (merged) => {
       setColorInput(bg, merged[key]);
       preview.span.style.background = hexToRgba(merged[key], alpha);
-      preview.span.style.color = merged.textColor;
+      preview.span.style.color = merged[previewTextKey] ?? merged.textColor;
       preview.span.style.boxShadow = `inset 0 0 0 1px ${opaqueHex(merged[previewBgKey] ?? merged.cellBg)}`;
       reset.btn.disabled = keysMatchDefaults(getConfig(), [key]);
     };
@@ -603,28 +620,27 @@ export function mountUiColorPanel(container, {
   };
 
   // 予実表レイアウト順
-  registerBgRow('ブラウザ（背景）', 'browserBg', '背景');
-  registerBgTextRow('通常文字色', 'cellBg', 'textColor', '¥1,234', true);
-  registerTextRow('薄い文字色', 'textDimColor', '薄い文字のサンプル', {
+  registerBgRow('ブラウザ（背景）', 'browserBg', 'サンプル文字');
+  registerBgTextRow('通常文字色', 'cellBg', 'textColor', '通常文字', true);
+  registerTextRow('薄い文字色', 'textDimColor', '薄い文字', {
     previewBgKey: 'browserBg',
   });
   registerBgTextRow('表示モード「予実」', 'periodModeBudgetActualBg', 'periodModeBudgetActualText', '予実表示', false);
   registerBgTextRow('表示モード「実績」', 'periodModeActualBg', 'periodModeActualText', '実績表示', false);
   registerBgTextRow('表示モード「計画」', 'periodModePlanBg', 'periodModePlanText', '計画表示', false);
-  registerBgRow('ヘッダーコントロール（期選択等）', 'headerControlBg', 'メニュー F10', null, 'textColor');
-  registerBorderRow('ヘッダーコントロール（枠線）', 'headerControlBorder', 'headerControlBg', 'メニュー F10', 'textColor');
-  registerBorderRow('ヘッダーコントロール（選択時・枠線）', 'headerControlActiveBorder', 'headerControlBg', 'メニュー F10', 'textColor');
+  registerBgRow('ヘッダーコントロール（期選択等）', 'headerControlBg', null, null, 'textColor', 'メニュー <kbd>F10</kbd>', true);
+  registerBorderRow('ヘッダーコントロール（選択時・枠線）', 'headerControlActiveBorder', 'headerControlBg', null, 'textColor', 'メニュー <kbd>F10</kbd>', true);
   registerNavBtnBgTextRow('ダッシュボードボタン（通常）', 'dashboardNavBg', 'dashboardNavText', 'ダッシュボードを表示');
   registerNavBtnBgTextRow('予実表表示ボタン（表示中）', 'dashboardNavActiveBg', 'dashboardNavActiveText', '予実表を表示');
-  registerBgTextRow('年行（ヘッダー）', 'yearRowBg', 'yearRowText', '2025年');
-  registerBgTextRow('月行（ヘッダー）', 'monthRowBg', 'monthRowText', '6月');
-  registerBorderRow('当月列（オーバーレイ）', 'currentMonthBorder', 'monthRowBg', '6月', 'monthRowText');
-  registerBgRow('決算整理列（オーバーレイ）', 'settlementMonthBg', '3月');
+  registerBgTextRow('年行（ヘッダー）', 'yearRowBg', 'yearRowText', `${new Date().getFullYear()}年`, false);
+  registerBgTextRow('ヘッダー行', 'monthRowBg', 'monthRowText', `${new Date().getMonth() + 1}月`, false);
+  registerBorderRow('当月列（オーバーレイ）', 'currentMonthBorder', 'monthRowBg', `${new Date().getMonth() + 1}月`, 'monthRowText');
+  registerBgRow('決算整理列（オーバーレイ）', 'settlementMonthBg', `${new Date().getMonth() + 1}月`);
   registerTextRow('マイナス値（金額）', 'negativeAmountColor', null, {
     html: '<span class="amount-yen amount-negative amount-has-prefix"><span class="amount-prefix">-¥</span>1,234</span>',
   });
-  registerTextRow('計画金額', 'planAmountColor', '¥1,234,567');
-  registerTextRow('金額差異', 'amountVarianceColor', '¥1,234,567');
+  registerTextRow('計画金額', 'planAmountColor', '¥1,234');
+  registerTextRow('金額差異', 'amountVarianceColor', '¥1,234');
   registerFillRow('塗り色1（注目）', 'fillColor1', '注目行');
   registerFillRow('塗り色2（注意）', 'fillColor2', '注意行');
 
@@ -656,28 +672,19 @@ export function mountUiColorPanel(container, {
     warningReset.btn.disabled = true;
   });
 
-  registerAccentRow('展開可能項目・仕訳セル（ハイライト）', 'expandableHighlight', '▶ 勘定科目');
-  registerAccentRow('マウスオーバー（行）', 'rowHoverBorder', 'ホバー');
-  registerAccentRow('行選択（枠線）', 'rowSelectionRing', '選択中');
-  registerJournalTintRow('編集可能セル（ホバー）', 'planEditableCellHoverBg', PLAN_EDITABLE_CELL_HOVER_ALPHA, '編集中', 'cellBg');
-  registerBgRow('右クリックメニュー（背景）', 'contextMenuBg', 'メニュー');
-  registerJournalTintRow('右クリックメニュー（影）', 'contextMenuShadowBg', CONTEXT_MENU_SHADOW_ALPHA, '影', 'contextMenuBg');
-  registerJournalTintRow('右クリックメニュー（行ホバー）', 'contextMenuItemHoverBg', CONTEXT_MENU_ITEM_HOVER_ALPHA, '行', 'contextMenuBg');
-  registerJournalTintRow('仕訳詳細（背面オーバーレイ）', 'journalOverlayBg', JOURNAL_OVERLAY_ALPHA, '背面', 'browserBg');
-  registerBgRow('仕訳詳細（モーダル背景）', 'journalModalBg', 'モーダル');
-  registerBgRow('仕訳詳細（表ヘッダー背景）', 'journalTableHeaderBg', '見出し');
-  registerJournalTintRow('仕訳詳細（モーダル影）', 'journalModalShadowBg', JOURNAL_MODAL_SHADOW_ALPHA, '影');
-  registerJournalTintRow('仕訳詳細（行ホバー）', 'journalRowHoverBg', JOURNAL_ROW_HOVER_ALPHA, '行');
-  registerJournalTintRow('仕訳詳細（閉じる・ホバー）', 'journalCloseHoverBg', JOURNAL_CLOSE_HOVER_ALPHA, '×');
+  registerAccentRow('展開可能項目・仕訳セル（ハイライト）', 'expandableHighlight', '▶ 勘定科目', { noBorder: true });
+  registerAccentRow('マウスオーバー（行）', 'rowHoverBorder', '勘定科目', { previewTextColorKey: 'textColor' });
+  registerAccentRow('行選択（枠線）', 'rowSelectionRing', '勘定科目', { previewTextColorKey: 'textColor' });
+  registerJournalTintRow('編集可能セル（ホバー）', 'planEditableCellHoverBg', PLAN_EDITABLE_CELL_HOVER_ALPHA, '¥1,234', 'cellBg', 'planAmountColor');
+  registerBgRow('ポップアップ（背景）', 'contextMenuBg', 'サンプル文字');
+  registerJournalTintRow('ポップアップ（影）', 'contextMenuShadowBg', POPUP_SHADOW_ALPHA, 'サンプル文字', 'contextMenuBg');
+  registerJournalTintRow('ポップアップ（行ホバー）', 'contextMenuItemHoverBg', POPUP_ROW_HOVER_ALPHA, 'サンプル文字', 'contextMenuBg');
+  registerJournalTintRow('仕訳詳細（背面オーバーレイ）', 'journalOverlayBg', JOURNAL_OVERLAY_ALPHA, 'サンプル文字', 'browserBg');
   registerJournalTintRow('読み込み中（オーバーレイ）', 'loadingOverlayBg', LOADING_OVERLAY_ALPHA, '読み込み', 'browserBg');
-  registerBgRow('設定パネル（背景）', 'settingsSurfaceBg', '背景');
-  registerBgRow('入力欄（背景）', 'settingsInputBg', '背景');
-  registerBorderRow('入力欄（枠線）', 'settingsInputBorder', 'settingsSurfaceBg');
-  registerBgRow('ボタン（背景）', 'settingsButtonBg', '背景');
-  registerBgRow('設定表行（ホバー）', 'settingsRowHoverBg', '背景');
+  registerBgRow('入力欄（背景）', 'settingsInputBg', 'サンプル文字');
+  registerBorderRow('入力欄（枠線）', 'settingsInputBorder', 'monthRowBg', 'サンプル文字');
   registerBgTextRow('ショートカットキー（kbd）', 'kbdBg', 'kbdTextColor', 'F10');
   registerBorderRow('ショートカットキー（kbd・枠線）', 'kbdBorderColor', 'kbdBg');
-  registerBgRow('ショートカットキー（kbd・影）', 'kbdShadowColor', 'F10', '#ffffff');
   registerTextRow('成功・OK表示', 'statusOkColor', 'OK', {
     previewBgKey: 'browserBg',
     refresh: false,
@@ -686,11 +693,11 @@ export function mountUiColorPanel(container, {
     previewBgKey: 'browserBg',
     refresh: false,
   });
-  registerBorderRow('入力エラー（枠線）', 'statusInvalidColor', 'settingsSurfaceBg');
-  registerBgTextRow('主要ボタン', 'primaryButtonBg', 'primaryButtonTextColor', '開く', false);
-  registerAccentRow('操作強調（スライダー・D&D等）', 'interactiveAccentColor', '強調');
-  registerBgTextRow('削除ボタン', 'deleteBtnBg', 'deleteBtnText', '削除', false);
-  registerAccentRow('アクセンント（選択マーク等）', 'accentColor', '✓ 選択');
+  registerBgTextRow('主要ボタン', 'primaryButtonBg', 'primaryButtonTextColor', '開く', false, 'ui-color-preview-cell ui-color-preview-action-btn');
+  registerBgTextRow('その他ボタン', 'settingsButtonBg', 'settingsButtonTextColor', '↑', false, 'ui-color-preview-cell ui-color-preview-action-btn');
+  registerBgTextRow('削除ボタン', 'deleteBtnBg', 'deleteBtnText', '削除', false, 'ui-color-preview-cell ui-color-preview-action-btn');
+  registerBorderRow('ボタン（枠線）', 'buttonBorderColor', 'primaryButtonBg', '開く', 'primaryButtonTextColor');
+  registerAccentRow('アクセント（選択マーク等）', 'accentColor', '✓', { noBorder: true });
 
   table.appendChild(tbody);
   panel.appendChild(table);

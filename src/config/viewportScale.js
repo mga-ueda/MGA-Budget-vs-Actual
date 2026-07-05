@@ -1,6 +1,9 @@
 /** Reference viewport width (scale = 1.0 at this width). */
 export const DESIGN_VIEWPORT_WIDTH = 1600;
 
+/** WebKit scrollbar thickness (px). Fixed so layout math does not track scrollbar presence. */
+export const PLAN_SCROLLBAR_SIZE = 8;
+
 export const MIN_VIEWPORT_SCALE = 0.65;
 /** Wide screens may scale above 1.0 up to this cap. */
 export const MAX_VIEWPORT_SCALE = 1.1;
@@ -13,14 +16,22 @@ export const MAX_CONTENT_FIT_SCALE_ABSOLUTE = 1.42;
 let currentViewportScale = 1;
 let currentContentFitScale = 1;
 
-export function computeViewportScale(width = window.innerWidth) {
+/** Layout viewport width excluding the root scrollbar (stable for scale math). */
+export function getLayoutViewportWidth() {
+  if (typeof document !== 'undefined' && document.documentElement) {
+    return document.documentElement.clientWidth;
+  }
+  return typeof window !== 'undefined' ? window.innerWidth : DESIGN_VIEWPORT_WIDTH;
+}
+
+export function computeViewportScale(width = getLayoutViewportWidth()) {
   const raw = width / DESIGN_VIEWPORT_WIDTH;
   const clamped = Math.min(MAX_VIEWPORT_SCALE, Math.max(MIN_VIEWPORT_SCALE, raw));
   return Math.round(clamped * 100) / 100;
 }
 
 /** Upper content-fit cap rises on viewports wider than the design width. */
-export function computeMaxContentFitScale(width = window.innerWidth) {
+export function computeMaxContentFitScale(width = getLayoutViewportWidth()) {
   if (width <= DESIGN_VIEWPORT_WIDTH) return MAX_CONTENT_FIT_SCALE;
   const extra = (width - DESIGN_VIEWPORT_WIDTH) / DESIGN_VIEWPORT_WIDTH;
   const scaled = MAX_CONTENT_FIT_SCALE + extra * 0.4;

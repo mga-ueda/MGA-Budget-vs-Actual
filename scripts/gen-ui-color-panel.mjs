@@ -21,16 +21,18 @@ const L = {
   layoutComment: jp(0x4e88, 0x5b9f, 0x8868, 0x30ec, 0x30a4, 0x30a2, 0x30a6, 0x30c8, 0x9806),
   browserBg: jp(0x30d6, 0x30e9, 0x30a6, 0x30b6, 0xff08, 0x80cc, 0x666f, 0xff09),
   normalText: jp(0x901a, 0x5e38, 0x6587, 0x5b57, 0x8272),
-  settingsSurfaceBg: jp(0x8a2d, 0x5b9a, 0x30d1, 0x30cd, 0x30eb, 0xff08, 0x80cc, 0x666f, 0xff09),
   settingsInputBg: jp(0x5165, 0x529b, 0x6b04, 0xff08, 0x80cc, 0x666f, 0xff09),
   settingsInputBorder: jp(0x5165, 0x529b, 0x6b04, 0xff08, 0x67a0, 0x7dda, 0xff09),
-  settingsButtonBg: jp(0x30dc, 0x30bf, 0x30f3, 0xff08, 0x80cc, 0x666f, 0xff09),
-  settingsRowHoverBg: jp(0x8a2d, 0x5b9a, 0x8868, 0x884c, 0xff08, 0x30db, 0x30d0, 0x30fc, 0xff09),
+  miscBtn: jp(0x305d, 0x306e, 0x4ed6, 0x30dc, 0x30bf, 0x30f3),
+  settingsButtonPreview: jp(0x2191),
   bgPreview: jp(0x80cc, 0x666f),
+  sampleText: jp(0x30b5, 0x30f3, 0x30d7, 0x30eb, 0x6587, 0x5b57),
+  normalTextPreview: jp(0x901a, 0x5e38, 0x6587, 0x5b57),
+  dimTextPreview: jp(0x8584, 0x3044, 0x6587, 0x5b57),
   borderPreview: jp(0x67a0, 0x7dda),
   yearRow: jp(0x5e74, 0x884c, 0xff08, 0x30d8, 0x30c3, 0x30c0, 0x30fc, 0xff09),
   yearPreview: jp(0x3232, 0x30e5, 0x5e74).replace('32', '2025'),
-  monthRow: jp(0x6708, 0x884c, 0xff08, 0x30d8, 0x30c3, 0x30c0, 0x30fc, 0xff09),
+  monthRow: jp(0x30d8, 0x30c3, 0x30c0, 0x30fc, 0x884c),
   monthPreview: jp(0x36, 0x6708),
   currentMonth: jp(0x5f53, 0x6708, 0x5217, 0xff08, 0x30aa, 0x30fc, 0x30d0, 0x30fc, 0x30ec, 0x30a4, 0xff09),
   settlementMonth: jp(0x6c7a, 0x7b97, 0x6574, 0x7406, 0x5217, 0xff08, 0x30aa, 0x30fc, 0x30d0, 0x30fc, 0x30ec, 0x30a4, 0xff09),
@@ -45,7 +47,7 @@ const L = {
   dimPreview: jp(0x8584, 0x3044, 0x6587, 0x5b57, 0x306e, 0x30b5, 0x30f3, 0x30d7, 0x30eb),
   negative: jp(0x30de, 0x30a4, 0x30ca, 0x30b9, 0x5024, 0xff08, 0x91d1, 0x984d, 0xff09),
   planAmount: jp(0x8a08, 0x753b, 0x91d1, 0x984d),
-  planAmountPreview: jp(0xa5, 0x31, 0x2c, 0x32, 0x33, 0x34, 0x2c, 0x35, 0x36, 0x37),
+  planAmountPreview: jp(0xa5, 0x31, 0x2c, 0x32, 0x33, 0x34),
   variance: jp(0x91d1, 0x984d, 0x5dee, 0x7570),
   fill1: jp(0x5857, 0x308a, 0x8272, 0x31, 0xff08, 0x6ce8, 0x76ee, 0xff09),
   fill1Preview: jp(0x6ce8, 0x76ee, 0x884c),
@@ -59,17 +61,17 @@ const L = {
   expandable: jp(0x5c55, 0x958b, 0x53ef, 0x80fd, 0x9805, 0x76ee, 0x30fb, 0x4ed5, 0x8a33, 0x30bb, 0x30eb, 0xff08, 0x30cf, 0x30a4, 0x30e9, 0x30a4, 0x30c8, 0xff09),
   expandablePreview: jp(0x25b6, 0x20, 0x52d8, 0x5b9a, 0x79d1, 0x76ee),
   hover: jp(0x30de, 0x30a6, 0x30b9, 0x30aa, 0x30fc, 0x30d0, 0x30fc, 0xff08, 0x884c, 0xff09),
-  hoverPreview: jp(0x30db, 0x30d0, 0x30fc),
+  hoverPreview: jp(0x52d8, 0x5b9a, 0x79d1, 0x76ee),
   selection: jp(0x884c, 0x9078, 0x629e, 0xff08, 0x67a0, 0x7dda, 0xff09),
-  selectionPreview: jp(0x9078, 0x629e, 0x4e2d),
-  accentColor: jp(0x30a2, 0x30af, 0x30bb, 0x30f3, 0x30f3, 0x30c8, 0xff08, 0x9078, 0x629e, 0x30de, 0x30fc, 0x30af, 0x7b49, 0xff09),
-  accentPreview: jp(0x2713, 0x20, 0x9078, 0x629e),
+  selectionPreview: jp(0x52d8, 0x5b9a, 0x79d1, 0x76ee),
+  accentColor: jp(0x30a2, 0x30af, 0x30bb, 0x30f3, 0x30c8, 0xff08, 0x9078, 0x629e, 0x30de, 0x30fc, 0x30af, 0x7b49, 0xff09),
+  accentPreview: jp(0x2713),
   deleteBtn: jp(0x524a, 0x9664, 0x30dc, 0x30bf, 0x30f3),
   deletePreview: jp(0x524a, 0x9664),
-  contextMenuBg: jp(0x53f3, 0x30af, 0x30ea, 0x30c3, 0x30af, 0x30e1, 0x30cb, 0x30e5, 0x30fc, 0xff08, 0x80cc, 0x666f, 0xff09),
-  contextMenuShadow: jp(0x53f3, 0x30af, 0x30ea, 0x30c3, 0x30af, 0x30e1, 0x30cb, 0x30e5, 0x30fc, 0xff08, 0x5f71, 0xff09),
-  contextMenuHover: jp(0x53f3, 0x30af, 0x30ea, 0x30c3, 0x30af, 0x30e1, 0x30cb, 0x30e5, 0x30fc, 0xff08, 0x884c, 0x30db, 0x30d0, 0x30fc, 0xff09),
-  contextMenuPreview: jp(0x30e1, 0x30cb, 0x30e5, 0x30fc),
+  contextMenuBg: jp(0x30dd, 0x30c3, 0x30d7, 0x30a2, 0x30c3, 0x30d7, 0xff08, 0x80cc, 0x666f, 0xff09),
+  contextMenuPreview: jp(0x30d1, 0x30cd, 0x30eb),
+  popupShadow: jp(0x30dd, 0x30c3, 0x30d7, 0x30a2, 0x30c3, 0x30d7, 0xff08, 0x5f71, 0xff09),
+  popupRowHover: jp(0x30dd, 0x30c3, 0x30d7, 0x30a2, 0x30c3, 0x30d7, 0xff08, 0x884c, 0x30db, 0x30d0, 0x30fc, 0xff09),
   periodModeBudgetActual: jp(0x8868, 0x793a, 0x30e2, 0x30fc, 0x30c9, 0x300c, 0x4e88, 0x5b9f, 0x300d),
   periodModeActual: jp(0x8868, 0x793a, 0x30e2, 0x30fc, 0x30c9, 0x300c, 0x5b9f, 0x7e3e, 0x300d),
   periodModePlan: jp(0x8868, 0x793a, 0x30e2, 0x30fc, 0x30c9, 0x300c, 0x8a08, 0x753b, 0x300d),
@@ -91,49 +93,39 @@ const L = {
   settingsNavActiveBorder: jp(0x8a2d, 0x5b9a, 0x753b, 0x9762, 0x30dc, 0x30bf, 0x30f3, 0xff08, 0x67a0, 0x7dda, 0x30fb, 0x8868, 0x793a, 0x4e2d, 0xff09),
   shortcutKbd: `${jp(0x30b7, 0x30e7, 0x30fc, 0x30c8, 0x30ab, 0x30c3, 0x30c8, 0x30ad, 0x30fc)}（kbd）`,
   shortcutKbdBorder: `${jp(0x30b7, 0x30e7, 0x30fc, 0x30c8, 0x30ab, 0x30c3, 0x30c8, 0x30ad, 0x30fc)}（kbd・${jp(0x67a0, 0x7dda)}）`,
-  shortcutKbdShadow: `${jp(0x30b7, 0x30e7, 0x30fc, 0x30c8, 0x30ab, 0x30c3, 0x30c8, 0x30ad, 0x30fc)}（kbd・${jp(0x5f71)}）`,
   kbdPreview: 'F10',
   loadingOverlay: jp(0x8aad, 0x307f, 0x8fbc, 0x307f, 0x4e2d, 0xff08, 0x30aa, 0x30fc, 0x30d0, 0x30fc, 0x30ec, 0x30a4, 0xff09),
   loadingPreview: jp(0x8aad, 0x307f, 0x8fbc, 0x307f),
   statusOk: jp(0x6210, 0x529f, 0x30fb, 0x4f, 0x4b, 0x8868, 0x793a),
   statusError: jp(0x30a8, 0x30e9, 0x30fc, 0x8868, 0x793a),
-  statusInvalid: jp(0x5165, 0x529b, 0x30a8, 0x30e9, 0x30fc, 0xff08, 0x67a0, 0x7dda, 0xff09),
   statusOkPreview: jp(0x4f, 0x4b),
   statusErrorPreview: jp(0x4e, 0x47),
   primaryBtn: jp(0x4e3b, 0x8981, 0x30dc, 0x30bf, 0x30f3),
   primaryBtnPreview: jp(0x958b, 0x304f),
-  interactiveAccent: jp(0x64cd, 0x4f5c, 0x5f37, 0x8abf, 0xff08, 0x30b9, 0x30e9, 0x30a4, 0x30c0, 0x30fc, 0x30fb, 0x44, 0x26, 0x44, 0x7b49, 0xff09),
-  interactivePreview: jp(0x5f37, 0x8abf),
+  buttonBorder: jp(0x30dc, 0x30bf, 0x30f3, 0xff08, 0x67a0, 0x7dda, 0xff09),
   journalOverlay: jp(0x4ed5, 0x8a33, 0x8a73, 0x7d30, 0xff08, 0x80cc, 0x9762, 0x30aa, 0x30fc, 0x30d0, 0x30fc, 0x30ec, 0x30a4, 0xff09),
   journalModal: jp(0x4ed5, 0x8a33, 0x8a73, 0x7d30, 0xff08, 0x30e2, 0x30fc, 0x30c0, 0x30eb, 0x80cc, 0x666f, 0xff09),
   journalText: jp(0x4ed5, 0x8a33, 0x8a73, 0x7d30, 0xff08, 0x6587, 0x5b57, 0x8272, 0xff09),
   journalHint: jp(0x4ed5, 0x8a33, 0x8a73, 0x7d30, 0xff08, 0x88dc, 0x8db3, 0x6587, 0xff09),
-  journalTableHeader: jp(0x4ed5, 0x8a33, 0x8a73, 0x7d30, 0xff08, 0x8868, 0x30d8, 0x30c3, 0x30c0, 0x30fc, 0x80cc, 0x666f, 0xff09),
-  journalShadow: jp(0x4ed5, 0x8a33, 0x8a73, 0x7d30, 0xff08, 0x30e2, 0x30fc, 0x30c0, 0x30eb, 0x5f71, 0xff09),
-  journalRowHover: jp(0x4ed5, 0x8a33, 0x8a73, 0x7d30, 0xff08, 0x884c, 0x30db, 0x30d0, 0x30fc, 0xff09),
-  journalCloseHover: jp(0x4ed5, 0x8a33, 0x8a73, 0x7d30, 0xff08, 0x9589, 0x3058, 0x308b, 0x30fb, 0x30db, 0x30d0, 0x30fc, 0xff09),
   journalTextPreview: jp(0x4ed5, 0x8a33, 0x660e, 0x7d30),
   journalHintPreview: jp(0x4ef6, 0x6570, 0x30fb, 0x7a7a, 0x6b04, 0x30e1, 0x30c3, 0x30bb, 0x30fc, 0x30b8),
-  journalHeaderPreview: jp(0x898b, 0x51fa, 0x3057),
   journalModalPreview: jp(0x30e2, 0x30fc, 0x30c0, 0x30eb),
   journalBackPreview: jp(0x80cc, 0x9762),
   journalRowPreview: jp(0x884c),
-  journalClosePreview: jp(0x00d7),
   journalShadowPreview: jp(0x5f71),
   modeLabel: jp(0x8868, 0x793a, 0x30e2, 0x30fc, 0x30c9),
   modeDark: jp(0x30c0, 0x30fc, 0x30af, 0x30e2, 0x30fc, 0x30c9),
   modeLight: jp(0x30e9, 0x30a4, 0x30c8, 0x30e2, 0x30fc, 0x30c9),
   hoverBoostLabel: jp(0x30db, 0x30d0, 0x30fc, 0x660e, 0x308b, 0x3055),
   headerControl: jp(0x30d8, 0x30c3, 0x30c0, 0x30fc, 0x30b3, 0x30f3, 0x30c8, 0x30ed, 0x30fc, 0x30eb, 0xff08, 0x671f, 0x9078, 0x629e, 0x7b49, 0xff09),
-  headerControlBorder: jp(0x30d8, 0x30c3, 0x30c0, 0x30fc, 0x30b3, 0x30f3, 0x30c8, 0x30ed, 0x30fc, 0x30eb, 0xff08, 0x67a0, 0x7dda, 0xff09),
   headerControlHover: jp(0x30d8, 0x30c3, 0x30c0, 0x30fc, 0x30b3, 0x30f3, 0x30c8, 0x30ed, 0x30fc, 0x30eb, 0xff08, 0x30db, 0x30d0, 0x30fc, 0xff09),
   headerControlActiveBorder: jp(0x30d8, 0x30c3, 0x30c0, 0x30fc, 0x30b3, 0x30f3, 0x30c8, 0x30ed, 0x30fc, 0x30eb, 0xff08, 0x9078, 0x629e, 0x6642, 0x30fb, 0x67a0, 0x7dda, 0xff09),
-  headerControlPreview: jp(0x30e1, 0x30cb, 0x30e5, 0x30fc) + ' F10',
+  headerControlPreviewHtml: jp(0x30e1, 0x30cb, 0x30e5, 0x30fc) + ' <kbd>F10</kbd>',
   planEditableCellHover: jp(0x7de8, 0x96c6, 0x53ef, 0x80fd, 0x30bb, 0x30eb, 0xff08, 0x30db, 0x30d0, 0x30fc, 0xff09),
-  planEditableCellHoverPreview: jp(0x7de8, 0x96c6, 0x4e2d),
 };
 
-L.yearPreview = '2025' + jp(0x5e74);
+const yearSuffix = jp(0x5e74);
+const monthSuffix = jp(0x6708);
 
 const content = `import {
   getUiColors,
@@ -156,7 +148,7 @@ const content = `import {
 } from '../config/uiColorConfig.js';
 import { getSectionBarColor } from '../config/sectionColorConfig.js';
 
-function dashTd(className = 'col-color-input') {
+function dashTd(className = 'col-color-none') {
   const td = document.createElement('td');
   td.className = className;
   td.textContent = '${L.emDash}';
@@ -425,22 +417,35 @@ export function mountUiColorPanel(container, {
     return previewTextColor;
   };
 
-  const registerBgRow = (label, key, previewText, previewTextColor = '#ffffff', previewTextKey = null) => {
+  const applyPreviewKbdStyles = (span, merged) => {
+    const kbd = span.querySelector('kbd');
+    if (!kbd) return;
+    kbd.style.backgroundColor = opaqueHex(merged.kbdBg);
+    kbd.style.color = opaqueHex(merged.kbdTextColor);
+    kbd.style.border = \`1px solid \${opaqueHex(merged.kbdBorderColor)}\`;
+  };
+
+  const PREVIEW_KBD_KEYS = ['kbdBg', 'kbdTextColor', 'kbdBorderColor'];
+
+  const registerBgRow = (label, key, previewText, previewTextColor = '#ffffff', previewTextKey = null, previewHtml = null, withKbdPreview = false) => {
     const colors = getUiColors(getConfig());
     const bg = colorInputTd(colors[key]);
     const preview = previewTd({
       background: colors[key],
       color: resolveBgRowPreviewColor(colors, previewTextColor, previewTextKey),
-      text: previewText,
+      text: previewHtml ? null : previewText,
+      html: previewHtml,
     });
     const reset = resetBtnTd(keysMatchDefaults(getConfig(), [key]));
     addRow(label, [bg.td, dashTd(), preview.td, reset.td]);
     const previewKeys = previewTextKey
       ? [key, previewTextKey]
       : (previewTextColor == null ? [key, 'textColor'] : [key]);
+    if (withKbdPreview) previewKeys.push(...PREVIEW_KBD_KEYS);
     const syncPreview = (merged) => {
       preview.span.style.background = merged[key];
       preview.span.style.color = resolveBgRowPreviewColor(merged, previewTextColor, previewTextKey);
+      if (withKbdPreview) applyPreviewKbdStyles(preview.span, merged);
       reset.btn.disabled = keysMatchDefaults(getConfig(), [key]);
     };
     subscribePreview(previewKeys, syncPreview);
@@ -460,7 +465,7 @@ export function mountUiColorPanel(container, {
     });
   };
 
-  const registerBgTextRow = (label, bgKey, textKey, previewText, refreshToolbar = false) => {
+  const registerBgTextRow = (label, bgKey, textKey, previewText, refreshToolbar = false, previewClassName = 'ui-color-preview-cell') => {
     const colors = getUiColors(getConfig());
     const bg = colorInputTd(colors[bgKey]);
     const text = colorInputTd(colors[textKey]);
@@ -468,6 +473,7 @@ export function mountUiColorPanel(container, {
       background: colors[bgKey],
       color: colors[textKey],
       text: previewText,
+      className: previewClassName,
     });
     const reset = resetBtnTd(keysMatchDefaults(getConfig(), [bgKey, textKey]));
     addRow(label, [bg.td, text.td, preview.td, reset.td]);
@@ -543,25 +549,28 @@ export function mountUiColorPanel(container, {
     });
   };
 
-  const registerAccentRow = (label, key, previewText) => {
+  const registerAccentRow = (label, key, previewText, { noBorder = false, previewTextColorKey = null } = {}) => {
     const colors = getUiColors(getConfig());
     const text = colorInputTd(colors[key]);
     const preview = previewTd({
       background: colors.cellBg,
-      color: opaqueHex(colors[key]),
+      color: previewTextColorKey ? colors[previewTextColorKey] : opaqueHex(colors[key]),
       text: previewText,
       className: 'ui-color-preview-cell ui-color-preview-hover',
     });
     preview.span.style.boxShadow = 'none';
-    preview.span.style.border = \`1px solid \${opaqueHex(colors[key])}\`;
+    if (!noBorder) {
+      preview.span.style.border = \`1px solid \${opaqueHex(colors[key])}\`;
+    }
     const reset = resetBtnTd(keysMatchDefaults(getConfig(), [key]));
     addRow(label, [dashTd(), text.td, preview.td, reset.td]);
-    const previewKeys = [key, 'cellBg'];
+    const previewKeys = previewTextColorKey ? [key, 'cellBg', previewTextColorKey] : [key, 'cellBg'];
     const syncPreview = (merged) => {
       const color = opaqueHex(merged[key]);
       preview.span.style.background = merged.cellBg;
-      preview.span.style.color = color;
-      preview.span.style.border = \`1px solid \${color}\`;
+      preview.span.style.color = previewTextColorKey ? merged[previewTextColorKey] : color;
+      if (noBorder) preview.span.style.border = 'none';
+      else preview.span.style.border = \`1px solid \${color}\`;
       reset.btn.disabled = keysMatchDefaults(getConfig(), [key]);
     };
     subscribePreview(previewKeys, syncPreview);
@@ -626,23 +635,26 @@ export function mountUiColorPanel(container, {
     });
   };
 
-  const registerBorderRow = (label, key, previewBgKey, previewText = '${L.borderPreview}', previewTextKey = 'textColor') => {
+  const registerBorderRow = (label, key, previewBgKey, previewText = '${L.borderPreview}', previewTextKey = 'textColor', previewHtml = null, withKbdPreview = false) => {
     const colors = getUiColors(getConfig());
     const border = colorInputTd(colors[key]);
     const preview = previewTd({
       background: colors[previewBgKey],
       color: colors[previewTextKey],
-      text: previewText,
+      text: previewHtml ? null : previewText,
+      html: previewHtml,
       className: 'ui-color-preview-cell',
     });
-    preview.span.style.border = \`2px solid \${colors[key]}\`;
+    preview.span.style.border = \`1px solid \${colors[key]}\`;
     const reset = resetBtnTd(keysMatchDefaults(getConfig(), [key]));
     addRow(label, [border.td, dashTd(), preview.td, reset.td]);
     const previewKeys = [key, previewBgKey, previewTextKey];
+    if (withKbdPreview) previewKeys.push(...PREVIEW_KBD_KEYS);
     const syncPreview = (merged) => {
       preview.span.style.background = merged[previewBgKey];
       preview.span.style.color = merged[previewTextKey];
-      preview.span.style.border = \`2px solid \${merged[key]}\`;
+      preview.span.style.border = \`1px solid \${merged[key]}\`;
+      if (withKbdPreview) applyPreviewKbdStyles(preview.span, merged);
       reset.btn.disabled = keysMatchDefaults(getConfig(), [key]);
     };
     subscribePreview(previewKeys, syncPreview);
@@ -697,30 +709,27 @@ export function mountUiColorPanel(container, {
   };
 
   const JOURNAL_OVERLAY_ALPHA = 0.65;
-  const JOURNAL_MODAL_SHADOW_ALPHA = 0.45;
-  const JOURNAL_ROW_HOVER_ALPHA = 0.03;
-  const JOURNAL_CLOSE_HOVER_ALPHA = 0.08;
-  const CONTEXT_MENU_SHADOW_ALPHA = 0.45;
-  const CONTEXT_MENU_ITEM_HOVER_ALPHA = 0.08;
+  const POPUP_SHADOW_ALPHA = 0.45;
+  const POPUP_ROW_HOVER_ALPHA = 0.08;
   const LOADING_OVERLAY_ALPHA = 0.38;
   const PLAN_EDITABLE_CELL_HOVER_ALPHA = 0.14;
 
-  const registerJournalTintRow = (label, key, alpha, previewText, previewBgKey = 'journalModalBg') => {
+  const registerJournalTintRow = (label, key, alpha, previewText, previewBgKey = 'contextMenuBg', previewTextKey = 'textColor') => {
     const colors = getUiColors(getConfig());
     const bg = colorInputTd(colors[key]);
     const preview = previewTd({
       background: hexToRgba(colors[key], alpha),
-      color: colors.textColor,
+      color: colors[previewTextKey] ?? colors.textColor,
       text: previewText,
     });
     preview.span.style.boxShadow = \`inset 0 0 0 1px \${hexToRgba(colors[previewBgKey] ?? colors.cellBg, 1)}\`;
     const reset = resetBtnTd(keysMatchDefaults(getConfig(), [key]));
     addRow(label, [bg.td, dashTd(), preview.td, reset.td]);
-    const previewKeys = [key, previewBgKey, 'textColor'];
+    const previewKeys = [key, previewBgKey, previewTextKey];
     const syncPreview = (merged) => {
       setColorInput(bg, merged[key]);
       preview.span.style.background = hexToRgba(merged[key], alpha);
-      preview.span.style.color = merged.textColor;
+      preview.span.style.color = merged[previewTextKey] ?? merged.textColor;
       preview.span.style.boxShadow = \`inset 0 0 0 1px \${opaqueHex(merged[previewBgKey] ?? merged.cellBg)}\`;
       reset.btn.disabled = keysMatchDefaults(getConfig(), [key]);
     };
@@ -740,23 +749,22 @@ export function mountUiColorPanel(container, {
   };
 
   // ${L.layoutComment}
-  registerBgRow('${L.browserBg}', 'browserBg', '${L.bgPreview}');
-  registerBgTextRow('${L.normalText}', 'cellBg', 'textColor', '${L.cellPreview}', true);
-  registerTextRow('${L.dimText}', 'textDimColor', '${L.dimPreview}', {
+  registerBgRow('${L.browserBg}', 'browserBg', '${L.sampleText}');
+  registerBgTextRow('${L.normalText}', 'cellBg', 'textColor', '${L.normalTextPreview}', true);
+  registerTextRow('${L.dimText}', 'textDimColor', '${L.dimTextPreview}', {
     previewBgKey: 'browserBg',
   });
   registerBgTextRow('${L.periodModeBudgetActual}', 'periodModeBudgetActualBg', 'periodModeBudgetActualText', '${L.periodModePreviewBudgetActual}', false);
   registerBgTextRow('${L.periodModeActual}', 'periodModeActualBg', 'periodModeActualText', '${L.periodModePreviewActual}', false);
   registerBgTextRow('${L.periodModePlan}', 'periodModePlanBg', 'periodModePlanText', '${L.periodModePreviewPlan}', false);
-  registerBgRow('${L.headerControl}', 'headerControlBg', '${L.headerControlPreview}', null, 'textColor');
-  registerBorderRow('${L.headerControlBorder}', 'headerControlBorder', 'headerControlBg', '${L.headerControlPreview}', 'textColor');
-  registerBorderRow('${L.headerControlActiveBorder}', 'headerControlActiveBorder', 'headerControlBg', '${L.headerControlPreview}', 'textColor');
+  registerBgRow('${L.headerControl}', 'headerControlBg', null, null, 'textColor', '${L.headerControlPreviewHtml}', true);
+  registerBorderRow('${L.headerControlActiveBorder}', 'headerControlActiveBorder', 'headerControlBg', null, 'textColor', '${L.headerControlPreviewHtml}', true);
   registerNavBtnBgTextRow('${L.dashboardNav}', 'dashboardNavBg', 'dashboardNavText', '${L.dashboardNavPreview}');
   registerNavBtnBgTextRow('${L.planReturnNavActive}', 'dashboardNavActiveBg', 'dashboardNavActiveText', '${L.planTableNavPreview}');
-  registerBgTextRow('${L.yearRow}', 'yearRowBg', 'yearRowText', '${L.yearPreview}');
-  registerBgTextRow('${L.monthRow}', 'monthRowBg', 'monthRowText', '${L.monthPreview}');
-  registerBorderRow('${L.currentMonth}', 'currentMonthBorder', 'monthRowBg', '${L.monthPreview}', 'monthRowText');
-  registerBgRow('${L.settlementMonth}', 'settlementMonthBg', '${L.settlementPreview}');
+  registerBgTextRow('${L.yearRow}', 'yearRowBg', 'yearRowText', \`\${new Date().getFullYear()}${yearSuffix}\`, false);
+  registerBgTextRow('${L.monthRow}', 'monthRowBg', 'monthRowText', \`\${new Date().getMonth() + 1}${monthSuffix}\`, false);
+  registerBorderRow('${L.currentMonth}', 'currentMonthBorder', 'monthRowBg', \`\${new Date().getMonth() + 1}${monthSuffix}\`, 'monthRowText');
+  registerBgRow('${L.settlementMonth}', 'settlementMonthBg', \`\${new Date().getMonth() + 1}${monthSuffix}\`);
   registerTextRow('${L.negative}', 'negativeAmountColor', null, {
     html: '<span class="amount-yen amount-negative amount-has-prefix"><span class="amount-prefix">-\u00a5</span>1,234</span>',
   });
@@ -793,28 +801,19 @@ export function mountUiColorPanel(container, {
     warningReset.btn.disabled = true;
   });
 
-  registerAccentRow('${L.expandable}', 'expandableHighlight', '${L.expandablePreview}');
-  registerAccentRow('${L.hover}', 'rowHoverBorder', '${L.hoverPreview}');
-  registerAccentRow('${L.selection}', 'rowSelectionRing', '${L.selectionPreview}');
-  registerJournalTintRow('${L.planEditableCellHover}', 'planEditableCellHoverBg', PLAN_EDITABLE_CELL_HOVER_ALPHA, '${L.planEditableCellHoverPreview}', 'cellBg');
-  registerBgRow('${L.contextMenuBg}', 'contextMenuBg', '${L.contextMenuPreview}');
-  registerJournalTintRow('${L.contextMenuShadow}', 'contextMenuShadowBg', CONTEXT_MENU_SHADOW_ALPHA, '${L.journalShadowPreview}', 'contextMenuBg');
-  registerJournalTintRow('${L.contextMenuHover}', 'contextMenuItemHoverBg', CONTEXT_MENU_ITEM_HOVER_ALPHA, '${L.journalRowPreview}', 'contextMenuBg');
-  registerJournalTintRow('${L.journalOverlay}', 'journalOverlayBg', JOURNAL_OVERLAY_ALPHA, '${L.journalBackPreview}', 'browserBg');
-  registerBgRow('${L.journalModal}', 'journalModalBg', '${L.journalModalPreview}');
-  registerBgRow('${L.journalTableHeader}', 'journalTableHeaderBg', '${L.journalHeaderPreview}');
-  registerJournalTintRow('${L.journalShadow}', 'journalModalShadowBg', JOURNAL_MODAL_SHADOW_ALPHA, '${L.journalShadowPreview}');
-  registerJournalTintRow('${L.journalRowHover}', 'journalRowHoverBg', JOURNAL_ROW_HOVER_ALPHA, '${L.journalRowPreview}');
-  registerJournalTintRow('${L.journalCloseHover}', 'journalCloseHoverBg', JOURNAL_CLOSE_HOVER_ALPHA, '${L.journalClosePreview}');
+  registerAccentRow('${L.expandable}', 'expandableHighlight', '${L.expandablePreview}', { noBorder: true });
+  registerAccentRow('${L.hover}', 'rowHoverBorder', '${L.hoverPreview}', { previewTextColorKey: 'textColor' });
+  registerAccentRow('${L.selection}', 'rowSelectionRing', '${L.selectionPreview}', { previewTextColorKey: 'textColor' });
+  registerJournalTintRow('${L.planEditableCellHover}', 'planEditableCellHoverBg', PLAN_EDITABLE_CELL_HOVER_ALPHA, '${L.planAmountPreview}', 'cellBg', 'planAmountColor');
+  registerBgRow('${L.contextMenuBg}', 'contextMenuBg', '${L.sampleText}');
+  registerJournalTintRow('${L.popupShadow}', 'contextMenuShadowBg', POPUP_SHADOW_ALPHA, '${L.sampleText}', 'contextMenuBg');
+  registerJournalTintRow('${L.popupRowHover}', 'contextMenuItemHoverBg', POPUP_ROW_HOVER_ALPHA, '${L.sampleText}', 'contextMenuBg');
+  registerJournalTintRow('${L.journalOverlay}', 'journalOverlayBg', JOURNAL_OVERLAY_ALPHA, '${L.sampleText}', 'browserBg');
   registerJournalTintRow('${L.loadingOverlay}', 'loadingOverlayBg', LOADING_OVERLAY_ALPHA, '${L.loadingPreview}', 'browserBg');
-  registerBgRow('${L.settingsSurfaceBg}', 'settingsSurfaceBg', '${L.bgPreview}');
-  registerBgRow('${L.settingsInputBg}', 'settingsInputBg', '${L.bgPreview}');
-  registerBorderRow('${L.settingsInputBorder}', 'settingsInputBorder', 'settingsSurfaceBg');
-  registerBgRow('${L.settingsButtonBg}', 'settingsButtonBg', '${L.bgPreview}');
-  registerBgRow('${L.settingsRowHoverBg}', 'settingsRowHoverBg', '${L.bgPreview}');
+  registerBgRow('${L.settingsInputBg}', 'settingsInputBg', '${L.sampleText}');
+  registerBorderRow('${L.settingsInputBorder}', 'settingsInputBorder', 'monthRowBg', '${L.sampleText}');
   registerBgTextRow('${L.shortcutKbd}', 'kbdBg', 'kbdTextColor', '${L.kbdPreview}');
   registerBorderRow('${L.shortcutKbdBorder}', 'kbdBorderColor', 'kbdBg');
-  registerBgRow('${L.shortcutKbdShadow}', 'kbdShadowColor', '${L.kbdPreview}', '#ffffff');
   registerTextRow('${L.statusOk}', 'statusOkColor', '${L.statusOkPreview}', {
     previewBgKey: 'browserBg',
     refresh: false,
@@ -823,11 +822,11 @@ export function mountUiColorPanel(container, {
     previewBgKey: 'browserBg',
     refresh: false,
   });
-  registerBorderRow('${L.statusInvalid}', 'statusInvalidColor', 'settingsSurfaceBg');
-  registerBgTextRow('${L.primaryBtn}', 'primaryButtonBg', 'primaryButtonTextColor', '${L.primaryBtnPreview}', false);
-  registerAccentRow('${L.interactiveAccent}', 'interactiveAccentColor', '${L.interactivePreview}');
-  registerBgTextRow('${L.deleteBtn}', 'deleteBtnBg', 'deleteBtnText', '${L.deletePreview}', false);
-  registerAccentRow('${L.accentColor}', 'accentColor', '${L.accentPreview}');
+  registerBgTextRow('${L.primaryBtn}', 'primaryButtonBg', 'primaryButtonTextColor', '${L.primaryBtnPreview}', false, 'ui-color-preview-cell ui-color-preview-action-btn');
+  registerBgTextRow('${L.miscBtn}', 'settingsButtonBg', 'settingsButtonTextColor', '${L.settingsButtonPreview}', false, 'ui-color-preview-cell ui-color-preview-action-btn');
+  registerBgTextRow('${L.deleteBtn}', 'deleteBtnBg', 'deleteBtnText', '${L.deletePreview}', false, 'ui-color-preview-cell ui-color-preview-action-btn');
+  registerBorderRow('${L.buttonBorder}', 'buttonBorderColor', 'primaryButtonBg', '${L.primaryBtnPreview}', 'primaryButtonTextColor');
+  registerAccentRow('${L.accentColor}', 'accentColor', '${L.accentPreview}', { noBorder: true });
 
   table.appendChild(tbody);
   panel.appendChild(table);

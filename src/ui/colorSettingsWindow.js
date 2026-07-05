@@ -1,10 +1,26 @@
+import { getLayoutViewportWidth } from '../config/viewportScale.js';
+
 const POS_STORAGE_KEY = 'mga-color-settings-window-pos';
 const DEFAULT_WIDTH = 440;
 const DEFAULT_TOP = 72;
 const DEFAULT_RIGHT = 16;
+const MIN_WINDOW_WIDTH = 300;
+const MIN_WINDOW_HEIGHT = 140;
+const WINDOW_HEIGHT_RATIO = 0.6666666666666666;
+const VIEWPORT_EDGE_MARGIN = 16;
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
+}
+
+function getMaxWindowWidth() {
+  return Math.max(MIN_WINDOW_WIDTH, getLayoutViewportWidth() - VIEWPORT_EDGE_MARGIN);
+}
+
+function getTargetWindowHeight() {
+  const viewportMax = window.innerHeight - VIEWPORT_EDGE_MARGIN;
+  const target = Math.floor(window.innerHeight * WINDOW_HEIGHT_RATIO);
+  return Math.max(MIN_WINDOW_HEIGHT, Math.min(target, viewportMax));
 }
 
 function loadWindowPosition() {
@@ -37,12 +53,45 @@ function applyDefaultPosition(el) {
 
 function clampWindowPosition(el) {
   const rect = el.getBoundingClientRect();
-  const left = clamp(rect.left, 8, window.innerWidth - rect.width - 8);
+  const left = clamp(rect.left, 8, getLayoutViewportWidth() - rect.width - 8);
   const top = clamp(rect.top, 8, window.innerHeight - rect.height - 8);
   el.style.left = `${left}px`;
   el.style.top = `${top}px`;
   el.style.right = 'auto';
   saveWindowPosition(left, top);
+}
+
+function measureColorSettingsWindowWidth(shell) {
+  const previousWidth = shell.style.width;
+  const previousMaxWidth = shell.style.maxWidth;
+  shell.style.width = 'max-content';
+  shell.style.maxWidth = 'none';
+  const measured = Math.ceil(shell.offsetWidth);
+  shell.style.width = previousWidth;
+  shell.style.maxWidth = previousMaxWidth;
+  return measured > 0 ? measured : DEFAULT_WIDTH;
+}
+
+function fitColorSettingsWindowWidth(shell) {
+  const measured = measureColorSettingsWindowWidth(shell);
+  const maxWidth = getMaxWindowWidth();
+  const nextWidth = clamp(measured, MIN_WINDOW_WIDTH, maxWidth);
+  shell.style.maxWidth = `${maxWidth}px`;
+  if (Math.abs(nextWidth - shell.offsetWidth) <= 1) return;
+  shell.style.width = `${nextWidth}px`;
+}
+
+function fitColorSettingsWindowHeight(shell) {
+  const targetHeight = getTargetWindowHeight();
+  shell.style.maxHeight = `${targetHeight}px`;
+  if (Math.abs(targetHeight - shell.offsetHeight) <= 1) return;
+  shell.style.height = `${targetHeight}px`;
+}
+
+function syncColorSettingsWindowLayout(shell, body) {
+  fitColorSettingsWindowWidth(shell);
+  fitColorSettingsWindowHeight(shell);
+  clampWindowPosition(shell);
 }
 
 function bindWindowDrag(handle, el) {
@@ -61,7 +110,7 @@ function bindWindowDrag(handle, el) {
       const left = clamp(
         startLeft + ev.clientX - startX,
         8,
-        window.innerWidth - el.offsetWidth - 8,
+        getLayoutViewportWidth() - el.offsetWidth - 8,
       );
       const top = clamp(
         startTop + ev.clientY - startY,
@@ -128,10 +177,23 @@ export function createColorSettingsWindow({
   applyDefaultPosition(shell);
   bindWindowDrag(header, shell);
 
+  let layoutObserver = null;
+  const bindLayoutObserver = () => {
+    layoutObserver?.disconnect();
+    const content = body.querySelector('.color-settings-content');
+    if (!content) return;
+    layoutObserver = new ResizeObserver(() => {
+      if (!open) return;
+      syncColorSettingsWindowLayout(shell, body);
+    });
+    layoutObserver.observe(content);
+  };
+
   const ensureMounted = () => {
     if (mounted) return;
     mountContent(body);
     mounted = true;
+    bindLayoutObserver();
   };
 
   const setOpen = (next) => {
@@ -141,7 +203,7 @@ export function createColorSettingsWindow({
     shell.classList.toggle('is-open', open);
     if (open) {
       ensureMounted();
-      requestAnimationFrame(() => clampWindowPosition(shell));
+      requestAnimationFrame(() => syncColorSettingsWindowLayout(shell, body));
     }
     onOpenChange?.(open);
   };
@@ -150,7 +212,7 @@ export function createColorSettingsWindow({
 
   window.addEventListener('resize', () => {
     if (!open) return;
-    clampWindowPosition(shell);
+    syncColorSettingsWindowLayout(shell, body);
   });
 
   return {
@@ -163,8 +225,12 @@ export function createColorSettingsWindow({
       body.replaceChildren();
       mounted = false;
       ensureMounted();
+      if (open) {
+        requestAnimationFrame(() => syncColorSettingsWindowLayout(shell, body));
+      }
     },
     destroy: () => {
+      layoutObserver?.disconnect();
       shell.remove();
     },
   };

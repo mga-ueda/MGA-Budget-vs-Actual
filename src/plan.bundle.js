@@ -1016,6 +1016,11 @@ const REMOVED_HOVER_COLOR_KEYS = [
 
 const REMOVED_COLOR_KEYS = [
   'deleteBtnBorder',
+  'interactiveAccentColor',
+  'kbdShadowColor',
+  'statusInvalidColor',
+  'journalCloseHoverBg',
+  'headerControlBorder',
 ];
 
 const MERGED_SETTINGS_ACTIVE_KEYS = {
@@ -1041,20 +1046,34 @@ const MERGED_PRIMARY_BUTTON_BG_KEYS = [
   'primaryButtonBgEnd',
 ];
 
+const MERGED_POPUP_BG_SOURCE_KEYS = [
+  'journalModalBg',
+];
+
+const MERGED_POPUP_SHADOW_SOURCE_KEYS = [
+  'journalModalShadowBg',
+];
+
+const MERGED_POPUP_ROW_HOVER_SOURCE_KEYS = [
+  'journalRowHoverBg',
+  'settingsRowHoverBg',
+];
+
+const MERGED_HEADER_ROW_BG_SOURCE_KEYS = [
+  'settingsSurfaceBg',
+  'journalTableHeaderBg',
+];
+
 const SETTLEMENT_MONTH_OVERLAY_ALPHA = 0.28;
 const SETTLEMENT_MONTH_RING_ALPHA = 0.45;
 const SETTLEMENT_MONTH_OVERLAY_HEAD_ALPHA = 0.34;
 const SETTLEMENT_MONTH_OVERLAY_TOTAL_ALPHA = 0.32;
 
 const JOURNAL_OVERLAY_ALPHA = 0.65;
-const JOURNAL_MODAL_SHADOW_ALPHA = 0.45;
-const JOURNAL_ROW_HOVER_ALPHA = 0.03;
-const JOURNAL_CLOSE_HOVER_ALPHA = 0.08;
 
-const CONTEXT_MENU_SHADOW_ALPHA = 0.45;
-const CONTEXT_MENU_ITEM_HOVER_ALPHA = 0.08;
+const POPUP_SHADOW_ALPHA = 0.45;
+const POPUP_ROW_HOVER_ALPHA = 0.08;
 const LOADING_OVERLAY_ALPHA = 0.38;
-const CSV_DROP_ACTIVE_BG_ALPHA = 0.08;
 const PLAN_EDITABLE_CELL_HOVER_ALPHA = 0.14;
 const HEADER_CONTROL_FOCUS_RING_ALPHA = 0.22;
 
@@ -1069,11 +1088,10 @@ const SHARED_UI_COLORS = {
 
 const DEFAULT_UI_COLORS_DARK = {
   browserBg: '#262626',
-  settingsSurfaceBg: '#19191A',
   settingsInputBg: '#353535',
   settingsInputBorder: '#565656',
   settingsButtonBg: '#262626',
-  settingsRowHoverBg: '#2E2E2E',
+  settingsButtonTextColor: '#ffffff',
   monthRowBg: '#595959',
   monthRowText: '#ffffff',
   currentMonthBorder: '#ff0000',
@@ -1084,7 +1102,6 @@ const DEFAULT_UI_COLORS_DARK = {
   planAmountColor: '#00B0F0',
   planEditableCellHoverBg: '#C0C0C0',
   headerControlBg: '#262626',
-  headerControlBorder: '#565656',
   headerControlActiveBorder: '#929292',
   dashboardNavBg: '#1e3a5f',
   dashboardNavText: '#bfdbfe',
@@ -1093,7 +1110,6 @@ const DEFAULT_UI_COLORS_DARK = {
   kbdBg: '#373737',
   kbdTextColor: '#929292',
   kbdBorderColor: '#505050',
-  kbdShadowColor: '#454545',
   fillColor1: '#404040',
   fillColor2: '#3F1B1B',
   warningTextColor: '#FFFF00',
@@ -1101,11 +1117,6 @@ const DEFAULT_UI_COLORS_DARK = {
   rowHoverBorder: '#00ffff',
   rowSelectionRing: '#ffff00',
   journalOverlayBg: '#000000',
-  journalModalBg: '#1e1e28',
-  journalModalShadowBg: '#000000',
-  journalRowHoverBg: '#ffffff',
-  journalCloseHoverBg: '#ffffff',
-  journalTableHeaderBg: '#262626',
   accentColor: '#ff0000',
   deleteBtnBg: '#dc2626',
   deleteBtnText: '#ffffff',
@@ -1121,20 +1132,18 @@ const DEFAULT_UI_COLORS_DARK = {
   loadingOverlayBg: '#08080e',
   statusOkColor: '#86efac',
   statusErrorColor: '#fca5a5',
-  statusInvalidColor: '#ef4444',
   primaryButtonBg: '#3b82f6',
   primaryButtonTextColor: '#ffffff',
-  interactiveAccentColor: '#2563eb',
+  buttonBorderColor: '#ffffff',
   ...SHARED_UI_COLORS,
 };
 
 const DEFAULT_UI_COLORS_LIGHT = {
   browserBg: '#E8E8E8',
-  settingsSurfaceBg: '#D9D9D9',
   settingsInputBg: '#FFFFFF',
   settingsInputBorder: '#B8B8B8',
   settingsButtonBg: '#FFFFFF',
-  settingsRowHoverBg: '#EFEFEF',
+  settingsButtonTextColor: '#ffffff',
   monthRowBg: '#D9D9D9',
   monthRowText: '#1A1A1A',
   currentMonthBorder: '#ff0000',
@@ -1145,7 +1154,6 @@ const DEFAULT_UI_COLORS_LIGHT = {
   planAmountColor: '#0078D4',
   planEditableCellHoverBg: '#808080',
   headerControlBg: '#FFFFFF',
-  headerControlBorder: '#B8B8B8',
   headerControlActiveBorder: '#757575',
   dashboardNavBg: '#eff6ff',
   dashboardNavText: '#1d4ed8',
@@ -1154,7 +1162,6 @@ const DEFAULT_UI_COLORS_LIGHT = {
   kbdBg: '#EFEFEF',
   kbdTextColor: '#757575',
   kbdBorderColor: '#B8B8B8',
-  kbdShadowColor: '#C8C8C8',
   fillColor1: '#E8EEF4',
   fillColor2: '#F5E8E8',
   warningTextColor: '#8B6914',
@@ -1162,11 +1169,6 @@ const DEFAULT_UI_COLORS_LIGHT = {
   rowHoverBorder: '#0078D4',
   rowSelectionRing: '#E6B800',
   journalOverlayBg: '#000000',
-  journalModalBg: '#FFFFFF',
-  journalModalShadowBg: '#000000',
-  journalRowHoverBg: '#000000',
-  journalCloseHoverBg: '#000000',
-  journalTableHeaderBg: '#FFFFFF',
   accentColor: '#0078D4',
   deleteBtnBg: '#dc2626',
   deleteBtnText: '#ffffff',
@@ -1182,10 +1184,9 @@ const DEFAULT_UI_COLORS_LIGHT = {
   loadingOverlayBg: '#000000',
   statusOkColor: '#15803d',
   statusErrorColor: '#dc2626',
-  statusInvalidColor: '#ef4444',
   primaryButtonBg: '#3b82f6',
   primaryButtonTextColor: '#ffffff',
-  interactiveAccentColor: '#2563eb',
+  buttonBorderColor: '#ffffff',
   ...SHARED_UI_COLORS,
   negativeAmountColor: '#C00000',
 };
@@ -1233,7 +1234,7 @@ function getDefaultUiColors(mode = 'dark') {
   return { ...DEFAULTS_BY_MODE[key] };
 }
 
-const UI_COLOR_LEGACY_KEYS = [...UI_COLOR_KEYS, 'textFaintColor', 'appBg', 'bonusMonthColumnBg', 'journalTextColor'];
+const UI_COLOR_LEGACY_KEYS = [...UI_COLOR_KEYS, 'textFaintColor', 'appBg', 'bonusMonthColumnBg', 'journalTextColor', 'journalModalBg', 'journalModalShadowBg', 'journalRowHoverBg', 'settingsRowHoverBg', 'settingsSurfaceBg', 'journalTableHeaderBg', 'journalCloseHoverBg', 'headerControlBorder'];
 
 function migrateUiColorBucket(bucket = {}) {
   const next = { ...bucket };
@@ -1298,6 +1299,50 @@ function migrateUiColorBucket(bucket = {}) {
     }
   }
   for (const key of MERGED_PRIMARY_BUTTON_BG_KEYS) {
+    delete next[key];
+  }
+  if (next.contextMenuBg == null) {
+    for (const key of MERGED_POPUP_BG_SOURCE_KEYS) {
+      if (next[key] != null) {
+        next.contextMenuBg = next[key];
+        break;
+      }
+    }
+  }
+  for (const key of MERGED_POPUP_BG_SOURCE_KEYS) {
+    delete next[key];
+  }
+  if (next.contextMenuShadowBg == null) {
+    for (const key of MERGED_POPUP_SHADOW_SOURCE_KEYS) {
+      if (next[key] != null) {
+        next.contextMenuShadowBg = next[key];
+        break;
+      }
+    }
+  }
+  for (const key of MERGED_POPUP_SHADOW_SOURCE_KEYS) {
+    delete next[key];
+  }
+  if (next.contextMenuItemHoverBg == null) {
+    for (const key of MERGED_POPUP_ROW_HOVER_SOURCE_KEYS) {
+      if (next[key] != null) {
+        next.contextMenuItemHoverBg = next[key];
+        break;
+      }
+    }
+  }
+  for (const key of MERGED_POPUP_ROW_HOVER_SOURCE_KEYS) {
+    delete next[key];
+  }
+  if (next.monthRowBg == null) {
+    for (const key of MERGED_HEADER_ROW_BG_SOURCE_KEYS) {
+      if (next[key] != null) {
+        next.monthRowBg = next[key];
+        break;
+      }
+    }
+  }
+  for (const key of MERGED_HEADER_ROW_BG_SOURCE_KEYS) {
     delete next[key];
   }
   for (const key of REMOVED_HOVER_COLOR_KEYS) {
@@ -1469,33 +1514,31 @@ function applyUiColors(config = {}) {
   const colors = getUiColors(config);
   const {
     browserBg,
-    settingsSurfaceBg, settingsInputBg, settingsInputBorder,
-    settingsButtonBg, settingsRowHoverBg,
+    settingsInputBg, settingsInputBorder,
+    settingsButtonBg,
+    settingsButtonTextColor,
     cellBg, textColor, textDimColor,
     negativeAmountColor,
     yearRowBg, yearRowText, monthRowBg, monthRowText,
     currentMonthBorder, settlementMonthBg,
     rowHoverBorder, rowSelectionRing,
     expandableHighlight,
-    journalOverlayBg, journalModalBg, journalModalShadowBg,
-    journalRowHoverBg, journalCloseHoverBg,
-    journalTableHeaderBg,
+    journalOverlayBg,
     accentColor,
     deleteBtnBg, deleteBtnText,
     contextMenuBg, contextMenuShadowBg, contextMenuItemHoverBg,
     periodModeBudgetActualBg, periodModeActualBg, periodModePlanBg,
     periodModeBudgetActualText, periodModeActualText, periodModePlanText,
     loadingOverlayBg,
-    statusOkColor, statusErrorColor, statusInvalidColor,
+    statusOkColor, statusErrorColor,
     primaryButtonBg, primaryButtonTextColor,
-    interactiveAccentColor,
+    buttonBorderColor,
     fillColor1, fillColor2,
     planAmountColor, planEditableCellHoverBg, amountVarianceColor,
-    headerControlBg, headerControlBorder,
-    headerControlActiveBorder,
+    headerControlBg, headerControlActiveBorder,
     dashboardNavBg, dashboardNavText,
     dashboardNavActiveBg, dashboardNavActiveText,
-    kbdBg, kbdTextColor, kbdBorderColor, kbdShadowColor,
+    kbdBg, kbdTextColor, kbdBorderColor,
     warningTextColor,
   } = colors;
 
@@ -1510,34 +1553,21 @@ function applyUiColors(config = {}) {
   doc.style.setProperty('--plan-text', textColor);
   doc.style.setProperty('--plan-text-dim', opaqueHex(textDimColor));
   doc.style.setProperty('--plan-accent', opaqueHex(accentColor));
+  doc.style.setProperty('--plan-menu-check-color', opaqueHex(accentColor));
   doc.style.setProperty(
     '--plan-journal-overlay',
     hexToRgba(journalOverlayBg, JOURNAL_OVERLAY_ALPHA),
   );
-  doc.style.setProperty('--plan-journal-modal-bg', opaqueHex(journalModalBg));
-  doc.style.setProperty(
-    '--plan-journal-modal-shadow',
-    hexToRgba(journalModalShadowBg, JOURNAL_MODAL_SHADOW_ALPHA),
-  );
-  doc.style.setProperty(
-    '--plan-journal-row-hover',
-    hexToRgba(journalRowHoverBg, JOURNAL_ROW_HOVER_ALPHA),
-  );
-  doc.style.setProperty(
-    '--plan-journal-close-hover',
-    hexToRgba(journalCloseHoverBg, JOURNAL_CLOSE_HOVER_ALPHA),
-  );
   doc.style.setProperty('--plan-journal-text', opaqueHex(textColor));
-  doc.style.setProperty('--plan-journal-table-header-bg', opaqueHex(journalTableHeaderBg));
+  doc.style.setProperty('--plan-journal-table-header-bg', monthRowBg);
   doc.style.setProperty('--plan-context-menu-bg', opaqueHex(contextMenuBg));
+  doc.style.setProperty('--plan-hover-boost', hoverBoost);
   doc.style.setProperty(
     '--plan-context-menu-shadow',
-    hexToRgba(contextMenuShadowBg, CONTEXT_MENU_SHADOW_ALPHA),
+    hexToRgba(contextMenuShadowBg, POPUP_SHADOW_ALPHA),
   );
-  doc.style.setProperty(
-    '--plan-context-menu-item-hover',
-    hexToRgba(contextMenuItemHoverBg, CONTEXT_MENU_ITEM_HOVER_ALPHA),
-  );
+  const popupRowHover = hexToRgba(contextMenuItemHoverBg, POPUP_ROW_HOVER_ALPHA);
+  doc.style.setProperty('--plan-popup-row-hover', popupRowHover);
   doc.style.setProperty(
     '--plan-loading-overlay',
     hexToRgba(loadingOverlayBg, LOADING_OVERLAY_ALPHA),
@@ -1549,11 +1579,12 @@ function applyUiColors(config = {}) {
   root.dataset.planColorMode = getUiColorMode(config);
   root.style.setProperty('--plan-browser-bg', browserBg);
   root.style.setProperty('--plan-border', borderMix);
-  root.style.setProperty('--plan-surface', opaqueHex(settingsSurfaceBg));
+  root.style.setProperty('--plan-surface', monthRowBg);
   root.style.setProperty('--plan-editor-bg', opaqueHex(settingsInputBg));
   root.style.setProperty('--plan-editor-border', opaqueHex(settingsInputBorder));
   root.style.setProperty('--plan-settings-button-bg', opaqueHex(settingsButtonBg));
-  root.style.setProperty('--plan-settings-row-hover', opaqueHex(settingsRowHoverBg));
+  root.style.setProperty('--plan-settings-button-text', opaqueHex(settingsButtonTextColor));
+  root.style.setProperty('--plan-popup-row-hover', popupRowHover);
   root.style.setProperty('--plan-bg', opaqueHex(settingsInputBg));
   root.style.setProperty('--plan-cell-bg', cellBg);
   root.style.setProperty('--plan-text', textColor);
@@ -1561,6 +1592,7 @@ function applyUiColors(config = {}) {
   root.style.setProperty('--plan-text-dim', opaqueHex(textDimColor));
   root.style.setProperty('--plan-negative-amount', negativeAmountColor);
   root.style.setProperty('--plan-accent', opaqueHex(accentColor));
+  root.style.setProperty('--plan-menu-check-color', opaqueHex(accentColor));
   root.style.setProperty('--plan-hover-boost', hoverBoost);
   root.style.setProperty('--plan-delete-btn-bg', opaqueHex(deleteBtnBg));
   root.style.setProperty('--plan-delete-btn-text', opaqueHex(deleteBtnText));
@@ -1572,12 +1604,10 @@ function applyUiColors(config = {}) {
   root.style.setProperty('--plan-period-mode-plan-text', opaqueHex(periodModePlanText));
   root.style.setProperty('--plan-status-ok', opaqueHex(statusOkColor));
   root.style.setProperty('--plan-status-error', opaqueHex(statusErrorColor));
-  root.style.setProperty('--plan-status-invalid', opaqueHex(statusInvalidColor));
   root.style.setProperty('--plan-primary-btn-bg', opaqueHex(primaryButtonBg));
   root.style.setProperty('--plan-primary-btn-text', opaqueHex(primaryButtonTextColor));
-  root.style.setProperty('--plan-interactive-accent', opaqueHex(interactiveAccentColor));
+  root.style.setProperty('--plan-button-border', opaqueHex(buttonBorderColor));
   root.style.setProperty('--plan-header-control-bg', opaqueHex(headerControlBg));
-  root.style.setProperty('--plan-header-control-border', opaqueHex(headerControlBorder));
   root.style.setProperty('--plan-header-control-border-active', opaqueHex(headerControlActiveBorder));
   root.style.setProperty(
     '--plan-header-control-focus-ring',
@@ -1598,11 +1628,6 @@ function applyUiColors(config = {}) {
   root.style.setProperty('--plan-kbd-bg', opaqueHex(kbdBg));
   root.style.setProperty('--plan-kbd-text', opaqueHex(kbdTextColor));
   root.style.setProperty('--plan-kbd-border', opaqueHex(kbdBorderColor));
-  root.style.setProperty('--plan-kbd-shadow', opaqueHex(kbdShadowColor));
-  root.style.setProperty(
-    '--plan-csv-drop-active-bg',
-    hexToRgba(interactiveAccentColor, CSV_DROP_ACTIVE_BG_ALPHA),
-  );
   root.style.setProperty('--plan-year-row-bg', yearRowBg);
   root.style.setProperty('--plan-year-row-text', yearRowText);
   root.style.setProperty('--plan-month-row-bg', monthRowBg);
@@ -1639,11 +1664,11 @@ const BS_SECTION_IDS = new Set([
   'currentAssets', 'fixedAssets', 'deferredAssets', 'currentLiab', 'fixedLiab', 'equity', 'cashBalance',
 ]);
 
-const COLOR_FALLBACK = { color: '#44403c', barColor: '#292524' };
+const COLOR_FALLBACK = { color: '#44403c', barColor: '#292524', textColor: '#ffffff' };
 
 function sectionColors(id) {
   const d = DEFAULT_SECTION_COLORS[id] ?? COLOR_FALLBACK;
-  return { color: d.color, barColor: d.barColor };
+  return { color: d.color, barColor: d.barColor, textColor: d.textColor ?? COLOR_FALLBACK.textColor };
 }
 
 const REVENUE_ACCOUNTS = new Set(['売上高', '受取利息', '雑収入', '営業外収益']);
@@ -2397,13 +2422,12 @@ function insertSgaSummarySections(planData) {
   const hasSga = [taxableV, sgaV].some((v) => (v.合計 ?? 0) !== 0);
   if (!hasSga) return planData;
 
-  const summaryColors = sectionColors('expense');
   const makeSummarySection = (id, totalLabel, values, aggregateFormula) => ({
     id,
     label: '',
     hideCategory: true,
     filter: 'other',
-    ...summaryColors,
+    ...sectionColors(id),
     rows: [makeTotalRow(`${id}-row`, totalLabel, values, 'flow', aggregateFormula)],
   });
 
@@ -9212,6 +9236,9 @@ function purgeClosedPeriodPlanStorage({
 /** Reference viewport width (scale = 1.0 at this width). */
 const DESIGN_VIEWPORT_WIDTH = 1600;
 
+/** WebKit scrollbar thickness (px). Fixed so layout math does not track scrollbar presence. */
+const PLAN_SCROLLBAR_SIZE = 8;
+
 const MIN_VIEWPORT_SCALE = 0.65;
 /** Wide screens may scale above 1.0 up to this cap. */
 const MAX_VIEWPORT_SCALE = 1.1;
@@ -9224,14 +9251,22 @@ const MAX_CONTENT_FIT_SCALE_ABSOLUTE = 1.42;
 let currentViewportScale = 1;
 let currentContentFitScale = 1;
 
-function computeViewportScale(width = window.innerWidth) {
+/** Layout viewport width excluding the root scrollbar (stable for scale math). */
+function getLayoutViewportWidth() {
+  if (typeof document !== 'undefined' && document.documentElement) {
+    return document.documentElement.clientWidth;
+  }
+  return typeof window !== 'undefined' ? window.innerWidth : DESIGN_VIEWPORT_WIDTH;
+}
+
+function computeViewportScale(width = getLayoutViewportWidth()) {
   const raw = width / DESIGN_VIEWPORT_WIDTH;
   const clamped = Math.min(MAX_VIEWPORT_SCALE, Math.max(MIN_VIEWPORT_SCALE, raw));
   return Math.round(clamped * 100) / 100;
 }
 
 /** Upper content-fit cap rises on viewports wider than the design width. */
-function computeMaxContentFitScale(width = window.innerWidth) {
+function computeMaxContentFitScale(width = getLayoutViewportWidth()) {
   if (width <= DESIGN_VIEWPORT_WIDTH) return MAX_CONTENT_FIT_SCALE;
   const extra = (width - DESIGN_VIEWPORT_WIDTH) / DESIGN_VIEWPORT_WIDTH;
   const scaled = MAX_CONTENT_FIT_SCALE + extra * 0.4;
@@ -11751,7 +11786,7 @@ function mountExpensePlanOverrideSection({
 }
 
 /* ui/uiColorPanel.js */
-function dashTd(className = 'col-color-input') {
+function dashTd(className = 'col-color-none') {
   const td = document.createElement('td');
   td.className = className;
   td.textContent = '—';
@@ -12020,22 +12055,35 @@ function mountUiColorPanel(container, {
     return previewTextColor;
   };
 
-  const registerBgRow = (label, key, previewText, previewTextColor = '#ffffff', previewTextKey = null) => {
+  const applyPreviewKbdStyles = (span, merged) => {
+    const kbd = span.querySelector('kbd');
+    if (!kbd) return;
+    kbd.style.backgroundColor = opaqueHex(merged.kbdBg);
+    kbd.style.color = opaqueHex(merged.kbdTextColor);
+    kbd.style.border = `1px solid ${opaqueHex(merged.kbdBorderColor)}`;
+  };
+
+  const PREVIEW_KBD_KEYS = ['kbdBg', 'kbdTextColor', 'kbdBorderColor'];
+
+  const registerBgRow = (label, key, previewText, previewTextColor = '#ffffff', previewTextKey = null, previewHtml = null, withKbdPreview = false) => {
     const colors = getUiColors(getConfig());
     const bg = colorInputTd(colors[key]);
     const preview = previewTd({
       background: colors[key],
       color: resolveBgRowPreviewColor(colors, previewTextColor, previewTextKey),
-      text: previewText,
+      text: previewHtml ? null : previewText,
+      html: previewHtml,
     });
     const reset = resetBtnTd(keysMatchDefaults(getConfig(), [key]));
     addRow(label, [bg.td, dashTd(), preview.td, reset.td]);
     const previewKeys = previewTextKey
       ? [key, previewTextKey]
       : (previewTextColor == null ? [key, 'textColor'] : [key]);
+    if (withKbdPreview) previewKeys.push(...PREVIEW_KBD_KEYS);
     const syncPreview = (merged) => {
       preview.span.style.background = merged[key];
       preview.span.style.color = resolveBgRowPreviewColor(merged, previewTextColor, previewTextKey);
+      if (withKbdPreview) applyPreviewKbdStyles(preview.span, merged);
       reset.btn.disabled = keysMatchDefaults(getConfig(), [key]);
     };
     subscribePreview(previewKeys, syncPreview);
@@ -12055,7 +12103,7 @@ function mountUiColorPanel(container, {
     });
   };
 
-  const registerBgTextRow = (label, bgKey, textKey, previewText, refreshToolbar = false) => {
+  const registerBgTextRow = (label, bgKey, textKey, previewText, refreshToolbar = false, previewClassName = 'ui-color-preview-cell') => {
     const colors = getUiColors(getConfig());
     const bg = colorInputTd(colors[bgKey]);
     const text = colorInputTd(colors[textKey]);
@@ -12063,6 +12111,7 @@ function mountUiColorPanel(container, {
       background: colors[bgKey],
       color: colors[textKey],
       text: previewText,
+      className: previewClassName,
     });
     const reset = resetBtnTd(keysMatchDefaults(getConfig(), [bgKey, textKey]));
     addRow(label, [bg.td, text.td, preview.td, reset.td]);
@@ -12138,25 +12187,28 @@ function mountUiColorPanel(container, {
     });
   };
 
-  const registerAccentRow = (label, key, previewText) => {
+  const registerAccentRow = (label, key, previewText, { noBorder = false, previewTextColorKey = null } = {}) => {
     const colors = getUiColors(getConfig());
     const text = colorInputTd(colors[key]);
     const preview = previewTd({
       background: colors.cellBg,
-      color: opaqueHex(colors[key]),
+      color: previewTextColorKey ? colors[previewTextColorKey] : opaqueHex(colors[key]),
       text: previewText,
       className: 'ui-color-preview-cell ui-color-preview-hover',
     });
     preview.span.style.boxShadow = 'none';
-    preview.span.style.border = `1px solid ${opaqueHex(colors[key])}`;
+    if (!noBorder) {
+      preview.span.style.border = `1px solid ${opaqueHex(colors[key])}`;
+    }
     const reset = resetBtnTd(keysMatchDefaults(getConfig(), [key]));
     addRow(label, [dashTd(), text.td, preview.td, reset.td]);
-    const previewKeys = [key, 'cellBg'];
+    const previewKeys = previewTextColorKey ? [key, 'cellBg', previewTextColorKey] : [key, 'cellBg'];
     const syncPreview = (merged) => {
       const color = opaqueHex(merged[key]);
       preview.span.style.background = merged.cellBg;
-      preview.span.style.color = color;
-      preview.span.style.border = `1px solid ${color}`;
+      preview.span.style.color = previewTextColorKey ? merged[previewTextColorKey] : color;
+      if (noBorder) preview.span.style.border = 'none';
+      else preview.span.style.border = `1px solid ${color}`;
       reset.btn.disabled = keysMatchDefaults(getConfig(), [key]);
     };
     subscribePreview(previewKeys, syncPreview);
@@ -12221,23 +12273,26 @@ function mountUiColorPanel(container, {
     });
   };
 
-  const registerBorderRow = (label, key, previewBgKey, previewText = '枠線', previewTextKey = 'textColor') => {
+  const registerBorderRow = (label, key, previewBgKey, previewText = '枠線', previewTextKey = 'textColor', previewHtml = null, withKbdPreview = false) => {
     const colors = getUiColors(getConfig());
     const border = colorInputTd(colors[key]);
     const preview = previewTd({
       background: colors[previewBgKey],
       color: colors[previewTextKey],
-      text: previewText,
+      text: previewHtml ? null : previewText,
+      html: previewHtml,
       className: 'ui-color-preview-cell',
     });
-    preview.span.style.border = `2px solid ${colors[key]}`;
+    preview.span.style.border = `1px solid ${colors[key]}`;
     const reset = resetBtnTd(keysMatchDefaults(getConfig(), [key]));
     addRow(label, [border.td, dashTd(), preview.td, reset.td]);
     const previewKeys = [key, previewBgKey, previewTextKey];
+    if (withKbdPreview) previewKeys.push(...PREVIEW_KBD_KEYS);
     const syncPreview = (merged) => {
       preview.span.style.background = merged[previewBgKey];
       preview.span.style.color = merged[previewTextKey];
-      preview.span.style.border = `2px solid ${merged[key]}`;
+      preview.span.style.border = `1px solid ${merged[key]}`;
+      if (withKbdPreview) applyPreviewKbdStyles(preview.span, merged);
       reset.btn.disabled = keysMatchDefaults(getConfig(), [key]);
     };
     subscribePreview(previewKeys, syncPreview);
@@ -12292,30 +12347,27 @@ function mountUiColorPanel(container, {
   };
 
   const JOURNAL_OVERLAY_ALPHA = 0.65;
-  const JOURNAL_MODAL_SHADOW_ALPHA = 0.45;
-  const JOURNAL_ROW_HOVER_ALPHA = 0.03;
-  const JOURNAL_CLOSE_HOVER_ALPHA = 0.08;
-  const CONTEXT_MENU_SHADOW_ALPHA = 0.45;
-  const CONTEXT_MENU_ITEM_HOVER_ALPHA = 0.08;
+  const POPUP_SHADOW_ALPHA = 0.45;
+  const POPUP_ROW_HOVER_ALPHA = 0.08;
   const LOADING_OVERLAY_ALPHA = 0.38;
   const PLAN_EDITABLE_CELL_HOVER_ALPHA = 0.14;
 
-  const registerJournalTintRow = (label, key, alpha, previewText, previewBgKey = 'journalModalBg') => {
+  const registerJournalTintRow = (label, key, alpha, previewText, previewBgKey = 'contextMenuBg', previewTextKey = 'textColor') => {
     const colors = getUiColors(getConfig());
     const bg = colorInputTd(colors[key]);
     const preview = previewTd({
       background: hexToRgba(colors[key], alpha),
-      color: colors.textColor,
+      color: colors[previewTextKey] ?? colors.textColor,
       text: previewText,
     });
     preview.span.style.boxShadow = `inset 0 0 0 1px ${hexToRgba(colors[previewBgKey] ?? colors.cellBg, 1)}`;
     const reset = resetBtnTd(keysMatchDefaults(getConfig(), [key]));
     addRow(label, [bg.td, dashTd(), preview.td, reset.td]);
-    const previewKeys = [key, previewBgKey, 'textColor'];
+    const previewKeys = [key, previewBgKey, previewTextKey];
     const syncPreview = (merged) => {
       setColorInput(bg, merged[key]);
       preview.span.style.background = hexToRgba(merged[key], alpha);
-      preview.span.style.color = merged.textColor;
+      preview.span.style.color = merged[previewTextKey] ?? merged.textColor;
       preview.span.style.boxShadow = `inset 0 0 0 1px ${opaqueHex(merged[previewBgKey] ?? merged.cellBg)}`;
       reset.btn.disabled = keysMatchDefaults(getConfig(), [key]);
     };
@@ -12335,28 +12387,27 @@ function mountUiColorPanel(container, {
   };
 
   // 予実表レイアウト順
-  registerBgRow('ブラウザ（背景）', 'browserBg', '背景');
-  registerBgTextRow('通常文字色', 'cellBg', 'textColor', '¥1,234', true);
-  registerTextRow('薄い文字色', 'textDimColor', '薄い文字のサンプル', {
+  registerBgRow('ブラウザ（背景）', 'browserBg', 'サンプル文字');
+  registerBgTextRow('通常文字色', 'cellBg', 'textColor', '通常文字', true);
+  registerTextRow('薄い文字色', 'textDimColor', '薄い文字', {
     previewBgKey: 'browserBg',
   });
   registerBgTextRow('表示モード「予実」', 'periodModeBudgetActualBg', 'periodModeBudgetActualText', '予実表示', false);
   registerBgTextRow('表示モード「実績」', 'periodModeActualBg', 'periodModeActualText', '実績表示', false);
   registerBgTextRow('表示モード「計画」', 'periodModePlanBg', 'periodModePlanText', '計画表示', false);
-  registerBgRow('ヘッダーコントロール（期選択等）', 'headerControlBg', 'メニュー F10', null, 'textColor');
-  registerBorderRow('ヘッダーコントロール（枠線）', 'headerControlBorder', 'headerControlBg', 'メニュー F10', 'textColor');
-  registerBorderRow('ヘッダーコントロール（選択時・枠線）', 'headerControlActiveBorder', 'headerControlBg', 'メニュー F10', 'textColor');
+  registerBgRow('ヘッダーコントロール（期選択等）', 'headerControlBg', null, null, 'textColor', 'メニュー <kbd>F10</kbd>', true);
+  registerBorderRow('ヘッダーコントロール（選択時・枠線）', 'headerControlActiveBorder', 'headerControlBg', null, 'textColor', 'メニュー <kbd>F10</kbd>', true);
   registerNavBtnBgTextRow('ダッシュボードボタン（通常）', 'dashboardNavBg', 'dashboardNavText', 'ダッシュボードを表示');
   registerNavBtnBgTextRow('予実表表示ボタン（表示中）', 'dashboardNavActiveBg', 'dashboardNavActiveText', '予実表を表示');
-  registerBgTextRow('年行（ヘッダー）', 'yearRowBg', 'yearRowText', '2025年');
-  registerBgTextRow('月行（ヘッダー）', 'monthRowBg', 'monthRowText', '6月');
-  registerBorderRow('当月列（オーバーレイ）', 'currentMonthBorder', 'monthRowBg', '6月', 'monthRowText');
-  registerBgRow('決算整理列（オーバーレイ）', 'settlementMonthBg', '3月');
+  registerBgTextRow('年行（ヘッダー）', 'yearRowBg', 'yearRowText', `${new Date().getFullYear()}年`, false);
+  registerBgTextRow('ヘッダー行', 'monthRowBg', 'monthRowText', `${new Date().getMonth() + 1}月`, false);
+  registerBorderRow('当月列（オーバーレイ）', 'currentMonthBorder', 'monthRowBg', `${new Date().getMonth() + 1}月`, 'monthRowText');
+  registerBgRow('決算整理列（オーバーレイ）', 'settlementMonthBg', `${new Date().getMonth() + 1}月`);
   registerTextRow('マイナス値（金額）', 'negativeAmountColor', null, {
     html: '<span class="amount-yen amount-negative amount-has-prefix"><span class="amount-prefix">-¥</span>1,234</span>',
   });
-  registerTextRow('計画金額', 'planAmountColor', '¥1,234,567');
-  registerTextRow('金額差異', 'amountVarianceColor', '¥1,234,567');
+  registerTextRow('計画金額', 'planAmountColor', '¥1,234');
+  registerTextRow('金額差異', 'amountVarianceColor', '¥1,234');
   registerFillRow('塗り色1（注目）', 'fillColor1', '注目行');
   registerFillRow('塗り色2（注意）', 'fillColor2', '注意行');
 
@@ -12388,28 +12439,19 @@ function mountUiColorPanel(container, {
     warningReset.btn.disabled = true;
   });
 
-  registerAccentRow('展開可能項目・仕訳セル（ハイライト）', 'expandableHighlight', '▶ 勘定科目');
-  registerAccentRow('マウスオーバー（行）', 'rowHoverBorder', 'ホバー');
-  registerAccentRow('行選択（枠線）', 'rowSelectionRing', '選択中');
-  registerJournalTintRow('編集可能セル（ホバー）', 'planEditableCellHoverBg', PLAN_EDITABLE_CELL_HOVER_ALPHA, '編集中', 'cellBg');
-  registerBgRow('右クリックメニュー（背景）', 'contextMenuBg', 'メニュー');
-  registerJournalTintRow('右クリックメニュー（影）', 'contextMenuShadowBg', CONTEXT_MENU_SHADOW_ALPHA, '影', 'contextMenuBg');
-  registerJournalTintRow('右クリックメニュー（行ホバー）', 'contextMenuItemHoverBg', CONTEXT_MENU_ITEM_HOVER_ALPHA, '行', 'contextMenuBg');
-  registerJournalTintRow('仕訳詳細（背面オーバーレイ）', 'journalOverlayBg', JOURNAL_OVERLAY_ALPHA, '背面', 'browserBg');
-  registerBgRow('仕訳詳細（モーダル背景）', 'journalModalBg', 'モーダル');
-  registerBgRow('仕訳詳細（表ヘッダー背景）', 'journalTableHeaderBg', '見出し');
-  registerJournalTintRow('仕訳詳細（モーダル影）', 'journalModalShadowBg', JOURNAL_MODAL_SHADOW_ALPHA, '影');
-  registerJournalTintRow('仕訳詳細（行ホバー）', 'journalRowHoverBg', JOURNAL_ROW_HOVER_ALPHA, '行');
-  registerJournalTintRow('仕訳詳細（閉じる・ホバー）', 'journalCloseHoverBg', JOURNAL_CLOSE_HOVER_ALPHA, '×');
+  registerAccentRow('展開可能項目・仕訳セル（ハイライト）', 'expandableHighlight', '▶ 勘定科目', { noBorder: true });
+  registerAccentRow('マウスオーバー（行）', 'rowHoverBorder', '勘定科目', { previewTextColorKey: 'textColor' });
+  registerAccentRow('行選択（枠線）', 'rowSelectionRing', '勘定科目', { previewTextColorKey: 'textColor' });
+  registerJournalTintRow('編集可能セル（ホバー）', 'planEditableCellHoverBg', PLAN_EDITABLE_CELL_HOVER_ALPHA, '¥1,234', 'cellBg', 'planAmountColor');
+  registerBgRow('ポップアップ（背景）', 'contextMenuBg', 'サンプル文字');
+  registerJournalTintRow('ポップアップ（影）', 'contextMenuShadowBg', POPUP_SHADOW_ALPHA, 'サンプル文字', 'contextMenuBg');
+  registerJournalTintRow('ポップアップ（行ホバー）', 'contextMenuItemHoverBg', POPUP_ROW_HOVER_ALPHA, 'サンプル文字', 'contextMenuBg');
+  registerJournalTintRow('仕訳詳細（背面オーバーレイ）', 'journalOverlayBg', JOURNAL_OVERLAY_ALPHA, 'サンプル文字', 'browserBg');
   registerJournalTintRow('読み込み中（オーバーレイ）', 'loadingOverlayBg', LOADING_OVERLAY_ALPHA, '読み込み', 'browserBg');
-  registerBgRow('設定パネル（背景）', 'settingsSurfaceBg', '背景');
-  registerBgRow('入力欄（背景）', 'settingsInputBg', '背景');
-  registerBorderRow('入力欄（枠線）', 'settingsInputBorder', 'settingsSurfaceBg');
-  registerBgRow('ボタン（背景）', 'settingsButtonBg', '背景');
-  registerBgRow('設定表行（ホバー）', 'settingsRowHoverBg', '背景');
+  registerBgRow('入力欄（背景）', 'settingsInputBg', 'サンプル文字');
+  registerBorderRow('入力欄（枠線）', 'settingsInputBorder', 'monthRowBg', 'サンプル文字');
   registerBgTextRow('ショートカットキー（kbd）', 'kbdBg', 'kbdTextColor', 'F10');
   registerBorderRow('ショートカットキー（kbd・枠線）', 'kbdBorderColor', 'kbdBg');
-  registerBgRow('ショートカットキー（kbd・影）', 'kbdShadowColor', 'F10', '#ffffff');
   registerTextRow('成功・OK表示', 'statusOkColor', 'OK', {
     previewBgKey: 'browserBg',
     refresh: false,
@@ -12418,11 +12460,11 @@ function mountUiColorPanel(container, {
     previewBgKey: 'browserBg',
     refresh: false,
   });
-  registerBorderRow('入力エラー（枠線）', 'statusInvalidColor', 'settingsSurfaceBg');
-  registerBgTextRow('主要ボタン', 'primaryButtonBg', 'primaryButtonTextColor', '開く', false);
-  registerAccentRow('操作強調（スライダー・D&D等）', 'interactiveAccentColor', '強調');
-  registerBgTextRow('削除ボタン', 'deleteBtnBg', 'deleteBtnText', '削除', false);
-  registerAccentRow('アクセンント（選択マーク等）', 'accentColor', '✓ 選択');
+  registerBgTextRow('主要ボタン', 'primaryButtonBg', 'primaryButtonTextColor', '開く', false, 'ui-color-preview-cell ui-color-preview-action-btn');
+  registerBgTextRow('その他ボタン', 'settingsButtonBg', 'settingsButtonTextColor', '↑', false, 'ui-color-preview-cell ui-color-preview-action-btn');
+  registerBgTextRow('削除ボタン', 'deleteBtnBg', 'deleteBtnText', '削除', false, 'ui-color-preview-cell ui-color-preview-action-btn');
+  registerBorderRow('ボタン（枠線）', 'buttonBorderColor', 'primaryButtonBg', '開く', 'primaryButtonTextColor');
+  registerAccentRow('アクセント（選択マーク等）', 'accentColor', '✓', { noBorder: true });
 
   table.appendChild(tbody);
   panel.appendChild(table);
@@ -12434,9 +12476,23 @@ const POS_STORAGE_KEY = 'mga-color-settings-window-pos';
 const DEFAULT_WIDTH = 440;
 const DEFAULT_TOP = 72;
 const DEFAULT_RIGHT = 16;
+const MIN_WINDOW_WIDTH = 300;
+const MIN_WINDOW_HEIGHT = 140;
+const WINDOW_HEIGHT_RATIO = 0.6666666666666666;
+const VIEWPORT_EDGE_MARGIN = 16;
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
+}
+
+function getMaxWindowWidth() {
+  return Math.max(MIN_WINDOW_WIDTH, getLayoutViewportWidth() - VIEWPORT_EDGE_MARGIN);
+}
+
+function getTargetWindowHeight() {
+  const viewportMax = window.innerHeight - VIEWPORT_EDGE_MARGIN;
+  const target = Math.floor(window.innerHeight * WINDOW_HEIGHT_RATIO);
+  return Math.max(MIN_WINDOW_HEIGHT, Math.min(target, viewportMax));
 }
 
 function loadWindowPosition() {
@@ -12469,12 +12525,45 @@ function applyDefaultPosition(el) {
 
 function clampWindowPosition(el) {
   const rect = el.getBoundingClientRect();
-  const left = clamp(rect.left, 8, window.innerWidth - rect.width - 8);
+  const left = clamp(rect.left, 8, getLayoutViewportWidth() - rect.width - 8);
   const top = clamp(rect.top, 8, window.innerHeight - rect.height - 8);
   el.style.left = `${left}px`;
   el.style.top = `${top}px`;
   el.style.right = 'auto';
   saveWindowPosition(left, top);
+}
+
+function measureColorSettingsWindowWidth(shell) {
+  const previousWidth = shell.style.width;
+  const previousMaxWidth = shell.style.maxWidth;
+  shell.style.width = 'max-content';
+  shell.style.maxWidth = 'none';
+  const measured = Math.ceil(shell.offsetWidth);
+  shell.style.width = previousWidth;
+  shell.style.maxWidth = previousMaxWidth;
+  return measured > 0 ? measured : DEFAULT_WIDTH;
+}
+
+function fitColorSettingsWindowWidth(shell) {
+  const measured = measureColorSettingsWindowWidth(shell);
+  const maxWidth = getMaxWindowWidth();
+  const nextWidth = clamp(measured, MIN_WINDOW_WIDTH, maxWidth);
+  shell.style.maxWidth = `${maxWidth}px`;
+  if (Math.abs(nextWidth - shell.offsetWidth) <= 1) return;
+  shell.style.width = `${nextWidth}px`;
+}
+
+function fitColorSettingsWindowHeight(shell) {
+  const targetHeight = getTargetWindowHeight();
+  shell.style.maxHeight = `${targetHeight}px`;
+  if (Math.abs(targetHeight - shell.offsetHeight) <= 1) return;
+  shell.style.height = `${targetHeight}px`;
+}
+
+function syncColorSettingsWindowLayout(shell, body) {
+  fitColorSettingsWindowWidth(shell);
+  fitColorSettingsWindowHeight(shell);
+  clampWindowPosition(shell);
 }
 
 function bindWindowDrag(handle, el) {
@@ -12493,7 +12582,7 @@ function bindWindowDrag(handle, el) {
       const left = clamp(
         startLeft + ev.clientX - startX,
         8,
-        window.innerWidth - el.offsetWidth - 8,
+        getLayoutViewportWidth() - el.offsetWidth - 8,
       );
       const top = clamp(
         startTop + ev.clientY - startY,
@@ -12560,10 +12649,23 @@ function createColorSettingsWindow({
   applyDefaultPosition(shell);
   bindWindowDrag(header, shell);
 
+  let layoutObserver = null;
+  const bindLayoutObserver = () => {
+    layoutObserver?.disconnect();
+    const content = body.querySelector('.color-settings-content');
+    if (!content) return;
+    layoutObserver = new ResizeObserver(() => {
+      if (!open) return;
+      syncColorSettingsWindowLayout(shell, body);
+    });
+    layoutObserver.observe(content);
+  };
+
   const ensureMounted = () => {
     if (mounted) return;
     mountContent(body);
     mounted = true;
+    bindLayoutObserver();
   };
 
   const setOpen = (next) => {
@@ -12573,7 +12675,7 @@ function createColorSettingsWindow({
     shell.classList.toggle('is-open', open);
     if (open) {
       ensureMounted();
-      requestAnimationFrame(() => clampWindowPosition(shell));
+      requestAnimationFrame(() => syncColorSettingsWindowLayout(shell, body));
     }
     onOpenChange?.(open);
   };
@@ -12582,7 +12684,7 @@ function createColorSettingsWindow({
 
   window.addEventListener('resize', () => {
     if (!open) return;
-    clampWindowPosition(shell);
+    syncColorSettingsWindowLayout(shell, body);
   });
 
   return {
@@ -12595,8 +12697,12 @@ function createColorSettingsWindow({
       body.replaceChildren();
       mounted = false;
       ensureMounted();
+      if (open) {
+        requestAnimationFrame(() => syncColorSettingsWindowLayout(shell, body));
+      }
     },
     destroy: () => {
+      layoutObserver?.disconnect();
       shell.remove();
     },
   };
@@ -15394,6 +15500,9 @@ function initColorSettingsWindow() {
     mountContent: (container) => {
       container.appendChild(buildColorSettingsContent());
     },
+    onOpenChange: () => {
+      syncMainMenuChecks();
+    },
   });
 }
 
@@ -16359,7 +16468,9 @@ function applyFixedColumnPlate(plate, monthRect, topY, bottomY, clipRect) {
 
   const left = Math.round(monthRect.left);
   const top = Math.round(clippedTop);
-  const width = Math.round(monthRect.width);
+  const isCurrentMonthPlate = plate.classList.contains('plan-column-plate--current')
+    || plate.classList.contains('plan-column-plate--current-header');
+  const width = Math.round(monthRect.width) - (isCurrentMonthPlate ? 1 : 0);
   const height = Math.round(clippedBottom - clippedTop);
   const key = `${left}|${top}|${width}|${height}`;
 
@@ -18791,12 +18902,12 @@ function applyPlanColors(planData) {
     monthDisplayConfig,
   });
   const withProfit = rebuildProfitSectionInPlanData(withCashForecast);
+  const withSga = insertSgaSummarySections(withProfit);
   const colored = {
-    ...withProfit,
-    sections: applySectionColors(withProfit.sections, sectionColorConfig, getPlanColorMode()),
+    ...withSga,
+    sections: applySectionColors(withSga.sections, sectionColorConfig, getPlanColorMode()),
   };
-  const withSga = insertSgaSummarySections(colored);
-  const sorted = applyExpenseSortToPlanData(withSga, expenseSortConfig);
+  const sorted = applyExpenseSortToPlanData(colored, expenseSortConfig);
   return {
     ...sorted,
     visibilityCandidates: collectVisibilityCandidates(sorted.sections),
@@ -18979,6 +19090,7 @@ function openMainMenu({ focusFirst = false } = {}) {
   const trigger = document.getElementById('plan-main-menu-trigger');
   const panel = document.getElementById('plan-main-menu-panel');
   if (!trigger || !panel) return;
+  syncMainMenuChecks();
   panel.hidden = false;
   trigger.setAttribute('aria-expanded', 'true');
   if (focusFirst) {
@@ -19122,6 +19234,7 @@ function renderMainTabs() {
     menuTrigger.innerHTML = 'メニュー <kbd>F10</kbd>';
     menuTrigger.removeAttribute('title');
   }
+  syncMainMenuChecks();
 }
 
 function getFilterButtonColors(filterId) {
@@ -20901,7 +21014,6 @@ function appendCsvNameSettingsPanel(wrap) {
       const result = testCsvNameExample(kind.id, csvNameConfig);
       testTd.textContent = result.ok ? '一致' : (result.error ?? '—');
       testTd.className = `col-csvname-test${result.ok ? ' is-ok' : ' is-ng'}`;
-      patternInput.classList.toggle('is-invalid', !compileCsvPattern(csvNameConfig[kind.id].pattern));
     }
 
     function persistField(field, value) {
@@ -23942,6 +24054,23 @@ function handleMainMenuAction(value) {
   }
 }
 
+function isMainMenuEntryActive(value) {
+  if (value === 'colors') return colorSettingsWindow?.isOpen() ?? false;
+  if (value.startsWith('action:')) return false;
+  return activeTab === value;
+}
+
+function syncMainMenuChecks() {
+  for (const btn of getMainMenuItems()) {
+    const { menuValue } = btn.dataset;
+    if (!menuValue) continue;
+    const checked = isMainMenuEntryActive(menuValue);
+    btn.classList.toggle('is-checked', checked);
+    const check = btn.querySelector('.plan-main-menu-item-check');
+    if (check) check.textContent = checked ? '✓' : '';
+  }
+}
+
 function buildMainMenu() {
   const panel = document.getElementById('plan-main-menu-panel');
   if (!panel) return;
@@ -23967,10 +24096,16 @@ function buildMainMenu() {
     if (entry.indented) btn.classList.add('plan-main-menu-item--indented');
     else btn.classList.add('plan-main-menu-item--top');
     btn.role = 'menuitem';
+    btn.dataset.menuValue = entry.value;
     if (entry.shortcutKey) {
       btn.dataset.shortcutKey = entry.shortcutKey;
       btn.setAttribute('aria-keyshortcuts', entry.shortcutKey);
     }
+
+    const checkSpan = document.createElement('span');
+    checkSpan.className = 'plan-main-menu-item-check';
+    checkSpan.setAttribute('aria-hidden', 'true');
+    btn.appendChild(checkSpan);
 
     const labelSpan = document.createElement('span');
     labelSpan.className = 'plan-main-menu-item-label';
@@ -23992,6 +24127,7 @@ function buildMainMenu() {
     });
     panel.appendChild(btn);
   }
+  syncMainMenuChecks();
 }
 
 function bindMainMenu() {

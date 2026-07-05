@@ -34,7 +34,6 @@ import {
   saveCsvNameConfig,
   resetCsvNameConfig,
   testCsvNameExample,
-  compileCsvPattern,
   formatCsvNameHintLines,
 } from '../csv/csvLoader.js';
 import {
@@ -622,6 +621,9 @@ function initColorSettingsWindow() {
   colorSettingsWindow = createColorSettingsWindow({
     mountContent: (container) => {
       container.appendChild(buildColorSettingsContent());
+    },
+    onOpenChange: () => {
+      syncMainMenuChecks();
     },
   });
 }
@@ -1588,7 +1590,9 @@ function applyFixedColumnPlate(plate, monthRect, topY, bottomY, clipRect) {
 
   const left = Math.round(monthRect.left);
   const top = Math.round(clippedTop);
-  const width = Math.round(monthRect.width);
+  const isCurrentMonthPlate = plate.classList.contains('plan-column-plate--current')
+    || plate.classList.contains('plan-column-plate--current-header');
+  const width = Math.round(monthRect.width) - (isCurrentMonthPlate ? 1 : 0);
   const height = Math.round(clippedBottom - clippedTop);
   const key = `${left}|${top}|${width}|${height}`;
 
@@ -4020,12 +4024,12 @@ function applyPlanColors(planData) {
     monthDisplayConfig,
   });
   const withProfit = rebuildProfitSectionInPlanData(withCashForecast);
+  const withSga = insertSgaSummarySections(withProfit);
   const colored = {
-    ...withProfit,
-    sections: applySectionColors(withProfit.sections, sectionColorConfig, getPlanColorMode()),
+    ...withSga,
+    sections: applySectionColors(withSga.sections, sectionColorConfig, getPlanColorMode()),
   };
-  const withSga = insertSgaSummarySections(colored);
-  const sorted = applyExpenseSortToPlanData(withSga, expenseSortConfig);
+  const sorted = applyExpenseSortToPlanData(colored, expenseSortConfig);
   return {
     ...sorted,
     visibilityCandidates: collectVisibilityCandidates(sorted.sections),
@@ -4208,6 +4212,7 @@ function openMainMenu({ focusFirst = false } = {}) {
   const trigger = document.getElementById('plan-main-menu-trigger');
   const panel = document.getElementById('plan-main-menu-panel');
   if (!trigger || !panel) return;
+  syncMainMenuChecks();
   panel.hidden = false;
   trigger.setAttribute('aria-expanded', 'true');
   if (focusFirst) {
@@ -4351,6 +4356,7 @@ function renderMainTabs() {
     menuTrigger.innerHTML = 'メニュー <kbd>F10</kbd>';
     menuTrigger.removeAttribute('title');
   }
+  syncMainMenuChecks();
 }
 
 function getFilterButtonColors(filterId) {
@@ -6130,7 +6136,6 @@ function appendCsvNameSettingsPanel(wrap) {
       const result = testCsvNameExample(kind.id, csvNameConfig);
       testTd.textContent = result.ok ? '一致' : (result.error ?? '—');
       testTd.className = `col-csvname-test${result.ok ? ' is-ok' : ' is-ng'}`;
-      patternInput.classList.toggle('is-invalid', !compileCsvPattern(csvNameConfig[kind.id].pattern));
     }
 
     function persistField(field, value) {
@@ -9171,6 +9176,23 @@ function handleMainMenuAction(value) {
   }
 }
 
+function isMainMenuEntryActive(value) {
+  if (value === 'colors') return colorSettingsWindow?.isOpen() ?? false;
+  if (value.startsWith('action:')) return false;
+  return activeTab === value;
+}
+
+function syncMainMenuChecks() {
+  for (const btn of getMainMenuItems()) {
+    const { menuValue } = btn.dataset;
+    if (!menuValue) continue;
+    const checked = isMainMenuEntryActive(menuValue);
+    btn.classList.toggle('is-checked', checked);
+    const check = btn.querySelector('.plan-main-menu-item-check');
+    if (check) check.textContent = checked ? '✓' : '';
+  }
+}
+
 function buildMainMenu() {
   const panel = document.getElementById('plan-main-menu-panel');
   if (!panel) return;
@@ -9196,10 +9218,16 @@ function buildMainMenu() {
     if (entry.indented) btn.classList.add('plan-main-menu-item--indented');
     else btn.classList.add('plan-main-menu-item--top');
     btn.role = 'menuitem';
+    btn.dataset.menuValue = entry.value;
     if (entry.shortcutKey) {
       btn.dataset.shortcutKey = entry.shortcutKey;
       btn.setAttribute('aria-keyshortcuts', entry.shortcutKey);
     }
+
+    const checkSpan = document.createElement('span');
+    checkSpan.className = 'plan-main-menu-item-check';
+    checkSpan.setAttribute('aria-hidden', 'true');
+    btn.appendChild(checkSpan);
 
     const labelSpan = document.createElement('span');
     labelSpan.className = 'plan-main-menu-item-label';
@@ -9221,6 +9249,7 @@ function buildMainMenu() {
     });
     panel.appendChild(btn);
   }
+  syncMainMenuChecks();
 }
 
 function bindMainMenu() {
