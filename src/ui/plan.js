@@ -1390,7 +1390,7 @@ function applyAggregateCellTooltip(td, row, section, columnKey, drilldownHint = 
   const detail = getAggregateFormulaDetail(row, section, data, columnKey);
   if (!detail) return;
   td.classList.add('aggregate-formula-cell');
-  td.title = drilldownHint ? `${detail}\n\n${drilldownHint}` : detail;
+  td.title = drilldownHint ? `${detail}\n${drilldownHint}` : detail;
 }
 
 function appendSectionCategoryLabel(categoryTd, section) {

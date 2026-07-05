@@ -132,21 +132,19 @@ function getKpiValueStatus(value, rangeMin, rangeMax) {
 export function getPlanKpiTooltip(key, value = null) {
   const item = PLAN_KPI_TOOLTIPS[key];
   if (!item) return '';
-  const lines = [\`${LABEL_FORMULA}\`, item.formula, ''];
-  if (item.formulaNote) lines.push(item.formulaNote, '');
-  lines.push(\`${LABEL_BENCHMARK}\`, item.benchmark, '');
+  const lines = [\`${LABEL_FORMULA}\`, item.formula];
+  if (item.formulaNote) lines.push(item.formulaNote);
+  lines.push(\`${LABEL_BENCHMARK}\`, item.benchmark);
 
   const status = getKpiValueStatus(value, item.rangeMin, item.rangeMax);
-  if (status === 'high') lines.push('${STATUS_HIGH}', '');
-  else if (status === 'low') lines.push('${STATUS_LOW}', '');
-  else if (status === 'ok') lines.push('${STATUS_OK}', '');
+  if (status === 'high') lines.push('${STATUS_HIGH}');
+  else if (status === 'low') lines.push('${STATUS_LOW}');
+  else if (status === 'ok') lines.push('${STATUS_OK}');
 
   lines.push(
     \`${LABEL_TIPS}\`,
-    '',
     \`${LABEL_HIGH}\`,
     item.tipHigh,
-    '',
     \`${LABEL_LOW}\`,
     item.tipLow,
   );

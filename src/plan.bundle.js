@@ -5716,21 +5716,19 @@ function getKpiValueStatus(value, rangeMin, rangeMax) {
 function getPlanKpiTooltip(key, value = null) {
   const item = PLAN_KPI_TOOLTIPS[key];
   if (!item) return '';
-  const lines = [`【計算式】`, item.formula, ''];
-  if (item.formulaNote) lines.push(item.formulaNote, '');
-  lines.push(`【中小企業の目安】`, item.benchmark, '');
+  const lines = [`【計算式】`, item.formula];
+  if (item.formulaNote) lines.push(item.formulaNote);
+  lines.push(`【中小企業の目安】`, item.benchmark);
 
   const status = getKpiValueStatus(value, item.rangeMin, item.rangeMax);
-  if (status === 'high') lines.push('※現在は目安より高めです', '');
-  else if (status === 'low') lines.push('※現在は目安より低めです', '');
-  else if (status === 'ok') lines.push('※現在は目安の範囲内です', '');
+  if (status === 'high') lines.push('※現在は目安より高めです');
+  else if (status === 'low') lines.push('※現在は目安より低めです');
+  else if (status === 'ok') lines.push('※現在は目安の範囲内です');
 
   lines.push(
     `【TIPS】`,
-    '',
     `【目安より高い場合】`,
     item.tipHigh,
-    '',
     `【目安より低い場合】`,
     item.tipLow,
   );
@@ -16409,7 +16407,7 @@ function applyAggregateCellTooltip(td, row, section, columnKey, drilldownHint = 
   const detail = getAggregateFormulaDetail(row, section, data, columnKey);
   if (!detail) return;
   td.classList.add('aggregate-formula-cell');
-  td.title = drilldownHint ? `${detail}\n\n${drilldownHint}` : detail;
+  td.title = drilldownHint ? `${detail}\n${drilldownHint}` : detail;
 }
 
 function appendSectionCategoryLabel(categoryTd, section) {
