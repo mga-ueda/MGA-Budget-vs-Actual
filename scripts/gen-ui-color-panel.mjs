@@ -36,7 +36,7 @@ const L = {
   monthPreview: jp(0x36, 0x6708),
   currentMonth: jp(0x5f53, 0x6708, 0x5217, 0xff08, 0x30aa, 0x30fc, 0x30d0, 0x30fc, 0x30ec, 0x30a4, 0xff09),
   settlementMonth: jp(0x6c7a, 0x7b97, 0x6574, 0x7406, 0x5217, 0xff08, 0x30aa, 0x30fc, 0x30d0, 0x30fc, 0x30ec, 0x30a4, 0xff09),
-  settlementPreview: jp(0x33, 0x6708),
+  settlementPreview: jp(0x6c7a, 0x7b97, 0x6574, 0x7406),
   cellRow: jp(0x30bb, 0x30eb, 0xff08, 0x660e, 0x7d30, 0x884c, 0xff09),
   cellPreview: jp(0xa5, 0x31, 0x2c, 0x32, 0x33, 0x34),
   noteText: jp(0x6ce8, 0x91c8, 0x6587, 0x30fb, 0x8aac, 0x660e, 0x6587),
@@ -93,7 +93,7 @@ const L = {
   settingsNavActiveBorder: jp(0x8a2d, 0x5b9a, 0x753b, 0x9762, 0x30dc, 0x30bf, 0x30f3, 0xff08, 0x67a0, 0x7dda, 0x30fb, 0x8868, 0x793a, 0x4e2d, 0xff09),
   shortcutKbd: `${jp(0x30b7, 0x30e7, 0x30fc, 0x30c8, 0x30ab, 0x30c3, 0x30c8, 0x30ad, 0x30fc)}（kbd）`,
   shortcutKbdBorder: `${jp(0x30b7, 0x30e7, 0x30fc, 0x30c8, 0x30ab, 0x30c3, 0x30c8, 0x30ad, 0x30fc)}（kbd・${jp(0x67a0, 0x7dda)}）`,
-  kbdPreview: 'F10',
+  kbdPreviewHtml: '<kbd>F10</kbd>',
   loadingOverlay: jp(0x8aad, 0x307f, 0x8fbc, 0x307f, 0x4e2d, 0xff08, 0x30aa, 0x30fc, 0x30d0, 0x30fc, 0x30ec, 0x30a4, 0xff09),
   loadingPreview: jp(0x8aad, 0x307f, 0x8fbc, 0x307f),
   statusOk: jp(0x6210, 0x529f, 0x30fb, 0x4f, 0x4b, 0x8868, 0x793a),
@@ -116,6 +116,7 @@ const L = {
   modeLabel: jp(0x8868, 0x793a, 0x30e2, 0x30fc, 0x30c9),
   modeDark: jp(0x30c0, 0x30fc, 0x30af, 0x30e2, 0x30fc, 0x30c9),
   modeLight: jp(0x30e9, 0x30a4, 0x30c8, 0x30e2, 0x30fc, 0x30c9),
+  modeSystem: jp(0x30b7, 0x30b9, 0x30c6, 0x30e0),
   hoverBoostLabel: jp(0x30db, 0x30d0, 0x30fc, 0x660e, 0x308b, 0x3055),
   headerControl: jp(0x30d8, 0x30c3, 0x30c0, 0x30fc, 0x30b3, 0x30f3, 0x30c8, 0x30ed, 0x30fc, 0x30eb, 0xff08, 0x671f, 0x9078, 0x629e, 0x7b49, 0xff09),
   headerControlHover: jp(0x30d8, 0x30c3, 0x30c0, 0x30fc, 0x30b3, 0x30f3, 0x30c8, 0x30ed, 0x30fc, 0x30eb, 0xff08, 0x30db, 0x30d0, 0x30fc, 0xff09),
@@ -130,6 +131,7 @@ const monthSuffix = jp(0x6708);
 const content = `import {
   getUiColors,
   getUiColorMode,
+  getUiColorModeSetting,
   getDefaultUiColors,
   switchUiColorMode,
   setUiColorKey,
@@ -302,13 +304,13 @@ export function mountUiColorPanel(container, {
   const modeSelect = document.createElement('select');
   modeSelect.className = 'ui-color-mode-select app-settings-input';
   modeSelect.setAttribute('aria-label', '${L.modeLabel}');
-  for (const [value, label] of [['dark', '${L.modeDark}'], ['light', '${L.modeLight}']]) {
+  for (const [value, label] of [['system', '${L.modeSystem}'], ['dark', '${L.modeDark}'], ['light', '${L.modeLight}']]) {
     const option = document.createElement('option');
     option.value = value;
     option.textContent = label;
     modeSelect.appendChild(option);
   }
-  modeSelect.value = getUiColorMode(getConfig());
+  modeSelect.value = getUiColorModeSetting(getConfig());
   const hoverBoostLabel = document.createElement('label');
   hoverBoostLabel.className = 'ui-color-mode-label ui-color-hover-boost-label';
   hoverBoostLabel.textContent = '${L.hoverBoostLabel}';
@@ -465,22 +467,30 @@ export function mountUiColorPanel(container, {
     });
   };
 
-  const registerBgTextRow = (label, bgKey, textKey, previewText, refreshToolbar = false, previewClassName = 'ui-color-preview-cell') => {
+  const registerBgTextRow = (label, bgKey, textKey, previewText, refreshToolbar = false, previewClassName = 'ui-color-preview-cell', previewHtml = null, withKbdPreview = false, previewBgKey = 'cellBg', previewTextKey = 'textColor') => {
     const colors = getUiColors(getConfig());
     const bg = colorInputTd(colors[bgKey]);
     const text = colorInputTd(colors[textKey]);
     const preview = previewTd({
-      background: colors[bgKey],
-      color: colors[textKey],
-      text: previewText,
+      background: withKbdPreview ? colors[previewBgKey] : colors[bgKey],
+      color: withKbdPreview ? colors[previewTextKey] : colors[textKey],
+      text: previewHtml ? null : previewText,
+      html: previewHtml,
       className: previewClassName,
     });
     const reset = resetBtnTd(keysMatchDefaults(getConfig(), [bgKey, textKey]));
     addRow(label, [bg.td, text.td, preview.td, reset.td]);
     const previewKeys = [bgKey, textKey];
+    if (withKbdPreview) previewKeys.push(...PREVIEW_KBD_KEYS, previewBgKey, previewTextKey);
     const syncPreview = (merged) => {
-      preview.span.style.background = merged[bgKey];
-      preview.span.style.color = merged[textKey];
+      if (withKbdPreview) {
+        preview.span.style.background = merged[previewBgKey];
+        preview.span.style.color = merged[previewTextKey];
+        applyPreviewKbdStyles(preview.span, merged);
+      } else {
+        preview.span.style.background = merged[bgKey];
+        preview.span.style.color = merged[textKey];
+      }
       reset.btn.disabled = keysMatchDefaults(getConfig(), [bgKey, textKey]);
     };
     subscribePreview(previewKeys, syncPreview);
@@ -645,7 +655,12 @@ export function mountUiColorPanel(container, {
       html: previewHtml,
       className: 'ui-color-preview-cell',
     });
-    preview.span.style.border = \`1px solid \${colors[key]}\`;
+    if (withKbdPreview && key === 'kbdBorderColor') {
+      preview.span.style.border = 'none';
+    } else {
+      preview.span.style.border = \`1px solid \${colors[key]}\`;
+    }
+    if (withKbdPreview) applyPreviewKbdStyles(preview.span, colors);
     const reset = resetBtnTd(keysMatchDefaults(getConfig(), [key]));
     addRow(label, [border.td, dashTd(), preview.td, reset.td]);
     const previewKeys = [key, previewBgKey, previewTextKey];
@@ -653,8 +668,13 @@ export function mountUiColorPanel(container, {
     const syncPreview = (merged) => {
       preview.span.style.background = merged[previewBgKey];
       preview.span.style.color = merged[previewTextKey];
-      preview.span.style.border = \`1px solid \${merged[key]}\`;
-      if (withKbdPreview) applyPreviewKbdStyles(preview.span, merged);
+      if (withKbdPreview && key === 'kbdBorderColor') {
+        preview.span.style.border = 'none';
+        applyPreviewKbdStyles(preview.span, merged);
+      } else {
+        preview.span.style.border = \`1px solid \${merged[key]}\`;
+        if (withKbdPreview) applyPreviewKbdStyles(preview.span, merged);
+      }
       reset.btn.disabled = keysMatchDefaults(getConfig(), [key]);
     };
     subscribePreview(previewKeys, syncPreview);
@@ -713,24 +733,47 @@ export function mountUiColorPanel(container, {
   const POPUP_ROW_HOVER_ALPHA = 0.08;
   const LOADING_OVERLAY_ALPHA = 0.38;
   const PLAN_EDITABLE_CELL_HOVER_ALPHA = 0.14;
+  const SETTLEMENT_MONTH_OVERLAY_HEAD_ALPHA = 0.34;
 
-  const registerJournalTintRow = (label, key, alpha, previewText, previewBgKey = 'contextMenuBg', previewTextKey = 'textColor') => {
+  const tintPreviewBackground = (hex, alpha, underHex) =>
+    \`linear-gradient(\${hexToRgba(hex, alpha)}, \${hexToRgba(hex, alpha)}), \${opaqueHex(underHex)}\`;
+
+  const registerJournalTintRow = (label, key, alpha, previewText, previewBgKey = 'contextMenuBg', previewTextKey = 'textColor', withPreviewBorder = true, layerOverlay = false) => {
     const colors = getUiColors(getConfig());
     const bg = colorInputTd(colors[key]);
+    const under = colors[previewBgKey] ?? colors.cellBg;
     const preview = previewTd({
-      background: hexToRgba(colors[key], alpha),
+      background: layerOverlay ? under : tintPreviewBackground(colors[key], alpha, under),
       color: colors[previewTextKey] ?? colors.textColor,
       text: previewText,
     });
-    preview.span.style.boxShadow = \`inset 0 0 0 1px \${hexToRgba(colors[previewBgKey] ?? colors.cellBg, 1)}\`;
+    let overlayLayer = null;
+    if (layerOverlay) {
+      preview.span.style.position = 'relative';
+      overlayLayer = document.createElement('span');
+      overlayLayer.className = 'ui-color-preview-overlay-layer';
+      overlayLayer.style.background = hexToRgba(colors[key], alpha);
+      preview.span.appendChild(overlayLayer);
+    }
+    if (withPreviewBorder) {
+      preview.span.style.boxShadow = \`inset 0 0 0 1px \${hexToRgba(colors[previewBgKey] ?? colors.cellBg, 1)}\`;
+    }
     const reset = resetBtnTd(keysMatchDefaults(getConfig(), [key]));
     addRow(label, [bg.td, dashTd(), preview.td, reset.td]);
     const previewKeys = [key, previewBgKey, previewTextKey];
     const syncPreview = (merged) => {
       setColorInput(bg, merged[key]);
-      preview.span.style.background = hexToRgba(merged[key], alpha);
-      preview.span.style.color = merged[previewTextKey] ?? merged.textColor;
-      preview.span.style.boxShadow = \`inset 0 0 0 1px \${opaqueHex(merged[previewBgKey] ?? merged.cellBg)}\`;
+      if (layerOverlay) {
+        preview.span.style.background = merged[previewBgKey] ?? merged.cellBg;
+        preview.span.style.color = merged[previewTextKey] ?? merged.textColor;
+        overlayLayer.style.background = hexToRgba(merged[key], alpha);
+      } else {
+        preview.span.style.background = tintPreviewBackground(merged[key], alpha, merged[previewBgKey] ?? merged.cellBg);
+        preview.span.style.color = merged[previewTextKey] ?? merged.textColor;
+      }
+      preview.span.style.boxShadow = withPreviewBorder
+        ? \`inset 0 0 0 1px \${opaqueHex(merged[previewBgKey] ?? merged.cellBg)}\`
+        : 'none';
       reset.btn.disabled = keysMatchDefaults(getConfig(), [key]);
     };
     subscribePreview(previewKeys, syncPreview);
@@ -764,7 +807,7 @@ export function mountUiColorPanel(container, {
   registerBgTextRow('${L.yearRow}', 'yearRowBg', 'yearRowText', \`\${new Date().getFullYear()}${yearSuffix}\`, false);
   registerBgTextRow('${L.monthRow}', 'monthRowBg', 'monthRowText', \`\${new Date().getMonth() + 1}${monthSuffix}\`, false);
   registerBorderRow('${L.currentMonth}', 'currentMonthBorder', 'monthRowBg', \`\${new Date().getMonth() + 1}${monthSuffix}\`, 'monthRowText');
-  registerBgRow('${L.settlementMonth}', 'settlementMonthBg', \`\${new Date().getMonth() + 1}${monthSuffix}\`);
+  registerJournalTintRow('${L.settlementMonth}', 'settlementMonthBg', SETTLEMENT_MONTH_OVERLAY_HEAD_ALPHA, '${L.settlementPreview}', 'monthRowBg', 'monthRowText', true, true);
   registerTextRow('${L.negative}', 'negativeAmountColor', null, {
     html: '<span class="amount-yen amount-negative amount-has-prefix"><span class="amount-prefix">-\u00a5</span>1,234</span>',
   });
@@ -808,12 +851,12 @@ export function mountUiColorPanel(container, {
   registerBgRow('${L.contextMenuBg}', 'contextMenuBg', '${L.sampleText}');
   registerJournalTintRow('${L.popupShadow}', 'contextMenuShadowBg', POPUP_SHADOW_ALPHA, '${L.sampleText}', 'contextMenuBg');
   registerJournalTintRow('${L.popupRowHover}', 'contextMenuItemHoverBg', POPUP_ROW_HOVER_ALPHA, '${L.sampleText}', 'contextMenuBg');
-  registerJournalTintRow('${L.journalOverlay}', 'journalOverlayBg', JOURNAL_OVERLAY_ALPHA, '${L.sampleText}', 'browserBg');
+  registerJournalTintRow('${L.journalOverlay}', 'journalOverlayBg', JOURNAL_OVERLAY_ALPHA, '${L.sampleText}', 'browserBg', 'textColor', false);
   registerJournalTintRow('${L.loadingOverlay}', 'loadingOverlayBg', LOADING_OVERLAY_ALPHA, '${L.loadingPreview}', 'browserBg');
   registerBgRow('${L.settingsInputBg}', 'settingsInputBg', '${L.sampleText}');
   registerBorderRow('${L.settingsInputBorder}', 'settingsInputBorder', 'monthRowBg', '${L.sampleText}');
-  registerBgTextRow('${L.shortcutKbd}', 'kbdBg', 'kbdTextColor', '${L.kbdPreview}');
-  registerBorderRow('${L.shortcutKbdBorder}', 'kbdBorderColor', 'kbdBg');
+  registerBgTextRow('${L.shortcutKbd}', 'kbdBg', 'kbdTextColor', null, false, 'ui-color-preview-cell', '${L.kbdPreviewHtml}', true, 'headerControlBg', 'textColor');
+  registerBorderRow('${L.shortcutKbdBorder}', 'kbdBorderColor', 'headerControlBg', null, 'textColor', '${L.kbdPreviewHtml}', true);
   registerTextRow('${L.statusOk}', 'statusOkColor', '${L.statusOkPreview}', {
     previewBgKey: 'browserBg',
     refresh: false,

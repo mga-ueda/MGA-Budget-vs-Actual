@@ -686,33 +686,64 @@ const SECTION_COLOR_STORAGE_KEY = 'mga-section-colors';
 const DEFAULT_TEXT_COLOR = '#ffffff';
 const DEFAULT_DARK_TEXT_COLOR = '#000000';
 
-/** 大項目ごとのデフォルト色（parseJournal.js から参照） */
-const DEFAULT_SECTION_COLORS = {
-  revenue: { color: '#203764', barColor: '#203764', textColor: DEFAULT_TEXT_COLOR },
-  nonOperating: { color: '#1f4e78', barColor: '#1f4e78', textColor: DEFAULT_TEXT_COLOR },
-  nonOperatingExpense: { color: '#4338ca', barColor: '#3730a3', textColor: DEFAULT_TEXT_COLOR },
-  specialLoss: { color: '#991b1b', barColor: '#7f1d1d', textColor: DEFAULT_TEXT_COLOR },
-  specialProfit: { color: '#166534', barColor: '#14532d', textColor: DEFAULT_TEXT_COLOR },
-  personnel: { color: '#806000', barColor: '#806000', textColor: DEFAULT_TEXT_COLOR },
-  expense: { color: '#375623', barColor: '#375623', textColor: DEFAULT_TEXT_COLOR },
-  other: { color: '#375623', barColor: '#375623', textColor: DEFAULT_TEXT_COLOR },
-  outsourcing: { color: '#548235', barColor: '#548235', textColor: DEFAULT_TEXT_COLOR },
-  tax: { color: '#9a3412', barColor: '#7c2d12', textColor: DEFAULT_TEXT_COLOR },
-  revenueVariance: { color: '#c00000', barColor: '#c00000', textColor: DEFAULT_TEXT_COLOR },
+/** 大項目ごとのデフォルト色（ダークモード） */
+const DEFAULT_SECTION_COLORS_DARK = {
+  revenue: { color: '#002061', barColor: '#002061', textColor: DEFAULT_TEXT_COLOR },
+  revenueVariance: { color: '#660000', barColor: '#660000', textColor: DEFAULT_TEXT_COLOR },
+  nonOperating: { color: '#003666', barColor: '#003666', textColor: DEFAULT_TEXT_COLOR },
+  nonOperatingExpense: { color: '#273c91', barColor: '#273c91', textColor: DEFAULT_TEXT_COLOR },
+  specialLoss: { color: '#660000', barColor: '#660000', textColor: DEFAULT_TEXT_COLOR },
+  specialProfit: { color: '#002061', barColor: '#002061', textColor: DEFAULT_TEXT_COLOR },
+  personnel: { color: '#664d00', barColor: '#664d00', textColor: DEFAULT_TEXT_COLOR },
+  expense: { color: '#183d00', barColor: '#183d00', textColor: DEFAULT_TEXT_COLOR },
+  other: { color: '#143300', barColor: '#143300', textColor: DEFAULT_TEXT_COLOR },
+  outsourcing: { color: '#344d00', barColor: '#344d00', textColor: DEFAULT_TEXT_COLOR },
+  tax: { color: '#5f2411', barColor: '#5f2411', textColor: DEFAULT_TEXT_COLOR },
   profit: { color: '#ffc000', barColor: '#ffc000', textColor: DEFAULT_DARK_TEXT_COLOR },
-  currentAssets: { color: '#1f4e78', barColor: '#1f4e78', textColor: DEFAULT_TEXT_COLOR },
-  fixedAssets: { color: '#1f4e78', barColor: '#1f4e78', textColor: DEFAULT_TEXT_COLOR },
-  deferredAssets: { color: '#1f4e78', barColor: '#1f4e78', textColor: DEFAULT_TEXT_COLOR },
-  currentLiab: { color: '#595959', barColor: '#595959', textColor: DEFAULT_TEXT_COLOR },
-  fixedLiab: { color: '#595959', barColor: '#595959', textColor: DEFAULT_TEXT_COLOR },
-  equity: { color: '#bf8f00', barColor: '#bf8f00', textColor: DEFAULT_DARK_TEXT_COLOR },
-  otherPay: { color: '#1f4e78', barColor: '#1f4e78', textColor: DEFAULT_TEXT_COLOR },
-  cfIn: { color: '#548235', barColor: '#548235', textColor: DEFAULT_TEXT_COLOR },
-  cfOut: { color: '#c65911', barColor: '#c65911', textColor: DEFAULT_TEXT_COLOR },
-  cashBalance: { color: '#203764', barColor: '#203764', textColor: DEFAULT_TEXT_COLOR },
-  sgaTaxable: { color: '#375623', barColor: '#375623', textColor: DEFAULT_TEXT_COLOR },
-  sgaTotal: { color: '#375623', barColor: '#375623', textColor: DEFAULT_TEXT_COLOR },
+  currentAssets: { color: '#153a5b', barColor: '#153a5b', textColor: DEFAULT_TEXT_COLOR },
+  fixedAssets: { color: '#153a5b', barColor: '#153a5b', textColor: DEFAULT_TEXT_COLOR },
+  deferredAssets: { color: '#153a5b', barColor: '#153a5b', textColor: DEFAULT_TEXT_COLOR },
+  currentLiab: { color: '#4f4f4f', barColor: '#4f4f4f', textColor: DEFAULT_TEXT_COLOR },
+  fixedLiab: { color: '#4f4f4f', barColor: '#4f4f4f', textColor: DEFAULT_TEXT_COLOR },
+  equity: { color: '#ffc000', barColor: '#ffc000', textColor: DEFAULT_DARK_TEXT_COLOR },
+  otherPay: { color: '#00549e', barColor: '#00549e', textColor: DEFAULT_TEXT_COLOR },
+  cfIn: { color: '#2d7000', barColor: '#2d7000', textColor: DEFAULT_TEXT_COLOR },
+  cfOut: { color: '#b34700', barColor: '#b34700', textColor: DEFAULT_TEXT_COLOR },
+  cashBalance: { color: '#003399', barColor: '#003399', textColor: DEFAULT_TEXT_COLOR },
+  sgaTaxable: { color: '#143300', barColor: '#143300', textColor: DEFAULT_TEXT_COLOR },
+  sgaTotal: { color: '#143300', barColor: '#143300', textColor: DEFAULT_TEXT_COLOR },
 };
+
+/** 大項目ごとのデフォルト色（ライトモード） */
+const DEFAULT_SECTION_COLORS_LIGHT = {
+  revenue: { color: '#3b67bf', barColor: '#3b67bf', textColor: DEFAULT_TEXT_COLOR },
+  revenueVariance: { color: '#c35555', barColor: '#c35555', textColor: DEFAULT_TEXT_COLOR },
+  nonOperating: { color: '#2d6495', barColor: '#2d6495', textColor: DEFAULT_TEXT_COLOR },
+  nonOperatingExpense: { color: '#4e62b1', barColor: '#4e62b1', textColor: DEFAULT_TEXT_COLOR },
+  specialLoss: { color: '#c35555', barColor: '#c35555', textColor: DEFAULT_TEXT_COLOR },
+  specialProfit: { color: '#3b67bf', barColor: '#3b67bf', textColor: DEFAULT_TEXT_COLOR },
+  personnel: { color: '#9f832d', barColor: '#9f832d', textColor: DEFAULT_TEXT_COLOR },
+  expense: { color: '#488023', barColor: '#488023', textColor: DEFAULT_TEXT_COLOR },
+  other: { color: '#488023', barColor: '#488023', textColor: DEFAULT_TEXT_COLOR },
+  outsourcing: { color: '#7aa225', barColor: '#7aa225', textColor: DEFAULT_TEXT_COLOR },
+  tax: { color: '#9f5138', barColor: '#9f5138', textColor: DEFAULT_TEXT_COLOR },
+  profit: { color: '#ffc000', barColor: '#ffc000', textColor: DEFAULT_DARK_TEXT_COLOR },
+  currentAssets: { color: '#3e6b93', barColor: '#3e6b93', textColor: DEFAULT_TEXT_COLOR },
+  fixedAssets: { color: '#3e6b93', barColor: '#3e6b93', textColor: DEFAULT_TEXT_COLOR },
+  deferredAssets: { color: '#3e6b93', barColor: '#3e6b93', textColor: DEFAULT_TEXT_COLOR },
+  currentLiab: { color: '#878787', barColor: '#878787', textColor: DEFAULT_TEXT_COLOR },
+  fixedLiab: { color: '#878787', barColor: '#878787', textColor: DEFAULT_TEXT_COLOR },
+  equity: { color: '#ffc000', barColor: '#ffc000', textColor: DEFAULT_DARK_TEXT_COLOR },
+  otherPay: { color: '#3285cd', barColor: '#3285cd', textColor: DEFAULT_TEXT_COLOR },
+  cfIn: { color: '#5fa72f', barColor: '#5fa72f', textColor: DEFAULT_TEXT_COLOR },
+  cfOut: { color: '#d77433', barColor: '#d77433', textColor: DEFAULT_TEXT_COLOR },
+  cashBalance: { color: '#3258a4', barColor: '#3258a4', textColor: DEFAULT_TEXT_COLOR },
+  sgaTaxable: { color: '#488023', barColor: '#488023', textColor: DEFAULT_TEXT_COLOR },
+  sgaTotal: { color: '#488023', barColor: '#488023', textColor: DEFAULT_TEXT_COLOR },
+};
+
+/** parseJournal.js 等の後方互換用（ダークモード既定） */
+const DEFAULT_SECTION_COLORS = DEFAULT_SECTION_COLORS_DARK;
 
 /** 色設定に常に表示する大項目（予実表の並びに準拠） */
 const SECTION_COLOR_SECTION_DEFS = [
@@ -782,7 +813,39 @@ function isPerModeSectionColorConfig(config) {
   return keys.every((key) => SECTION_COLOR_MODE_KEYS.has(key));
 }
 
-function normalizeSectionOverrides(raw = {}) {
+function getDefaultSectionColor(sectionId, mode = 'dark') {
+  const defaults = mode === 'light' ? DEFAULT_SECTION_COLORS_LIGHT : DEFAULT_SECTION_COLORS_DARK;
+  return defaults[sectionId] ?? FALLBACK;
+}
+
+function getEffectiveSectionOverrideColors(sectionId, override, mode = 'dark') {
+  const defaults = getDefaultSectionColor(sectionId, mode);
+  if (!override) {
+    return { barColor: defaults.barColor, textColor: defaults.textColor };
+  }
+  if (typeof override === 'string') {
+    return { barColor: override, textColor: defaults.textColor };
+  }
+  return {
+    barColor: override.barColor ?? defaults.barColor,
+    textColor: override.textColor ?? defaults.textColor,
+  };
+}
+
+function sectionOverrideMatchesDefault(sectionId, override, mode = 'dark') {
+  const defaults = getDefaultSectionColor(sectionId, mode);
+  const effective = getEffectiveSectionOverrideColors(sectionId, override, mode);
+  return effective.barColor === defaults.barColor && effective.textColor === defaults.textColor;
+}
+
+function isSectionColorCustom(config, mode, sectionId) {
+  const bucket = getSectionColorModeBucket(config, mode);
+  const override = bucket[sectionId];
+  if (override == null) return false;
+  return !sectionOverrideMatchesDefault(sectionId, override, mode);
+}
+
+function normalizeSectionOverrides(raw = {}, mode = 'dark') {
   const normalized = {};
   const migrated = { ...raw };
   if (migrated.receivables && !migrated.revenueVariance) {
@@ -791,12 +854,14 @@ function normalizeSectionOverrides(raw = {}) {
   delete migrated.receivables;
   for (const [id, val] of Object.entries(migrated)) {
     if (typeof val === 'string') {
-      normalized[id] = val;
+      if (!sectionOverrideMatchesDefault(id, val, mode)) normalized[id] = val;
     } else if (val) {
       const entry = {};
       if (typeof val.barColor === 'string') entry.barColor = val.barColor;
       if (typeof val.textColor === 'string') entry.textColor = val.textColor;
-      if (Object.keys(entry).length) normalized[id] = entry;
+      if (Object.keys(entry).length && !sectionOverrideMatchesDefault(id, entry, mode)) {
+        normalized[id] = entry;
+      }
     }
   }
   return normalized;
@@ -808,12 +873,12 @@ function normalizeSectionColorConfig(config = {}) {
   }
   if (isPerModeSectionColorConfig(config)) {
     return {
-      dark: normalizeSectionOverrides(config.dark),
-      light: normalizeSectionOverrides(config.light),
+      dark: normalizeSectionOverrides(config.dark, 'dark'),
+      light: normalizeSectionOverrides(config.light, 'light'),
     };
   }
   return {
-    dark: normalizeSectionOverrides(config),
+    dark: normalizeSectionOverrides(config, 'dark'),
     light: {},
   };
 }
@@ -851,7 +916,7 @@ function resetSectionColorModeOverrides(config, mode = 'dark') {
 }
 
 function getSectionColors(sectionId, config = {}, mode = 'dark') {
-  const defaults = DEFAULT_SECTION_COLORS[sectionId] ?? FALLBACK;
+  const defaults = getDefaultSectionColor(sectionId, mode);
   const bucket = getSectionColorModeBucket(config, mode);
   const override = bucket[sectionId]
     ?? (sectionId === 'revenueVariance' ? bucket.receivables : undefined);
@@ -888,7 +953,7 @@ function collectSectionColorDefs(sections = [], config = {}, mode = 'dark') {
   const bucket = getSectionColorModeBucket(config, mode);
   const registryIds = new Set(SECTION_COLOR_SECTION_DEFS.map((d) => d.id));
   const defs = SECTION_COLOR_SECTION_DEFS.map(({ id }) => {
-    const defaults = DEFAULT_SECTION_COLORS[id] ?? FALLBACK;
+    const defaults = getDefaultSectionColor(id, mode);
     const current = getSectionColors(id, config, mode);
     return {
       sectionId: id,
@@ -899,13 +964,13 @@ function collectSectionColorDefs(sections = [], config = {}, mode = 'dark') {
       defaultColor: defaults.color,
       defaultBarColor: defaults.barColor,
       defaultTextColor: defaults.textColor,
-      isCustom: Object.prototype.hasOwnProperty.call(bucket, id),
+      isCustom: isSectionColorCustom(config, mode, id),
     };
   });
 
   for (const s of sections) {
     if (registryIds.has(s.id)) continue;
-    const defaults = DEFAULT_SECTION_COLORS[s.id] ?? FALLBACK;
+    const defaults = getDefaultSectionColor(s.id, mode);
     const current = getSectionColors(s.id, config, mode);
     defs.push({
       sectionId: s.id,
@@ -916,7 +981,7 @@ function collectSectionColorDefs(sections = [], config = {}, mode = 'dark') {
       defaultColor: defaults.color,
       defaultBarColor: defaults.barColor,
       defaultTextColor: defaults.textColor,
-      isCustom: Object.prototype.hasOwnProperty.call(bucket, s.id),
+      isCustom: isSectionColorCustom(config, mode, s.id),
     });
   }
 
@@ -1004,7 +1069,7 @@ function sectionMatchesFilter(section, config, sectionIds = []) {
 /* config/uiColorConfig.js */
 const UI_COLOR_STORAGE_KEY = 'mga-ui-colors';
 
-const DEFAULT_HOVER_BOOST_PERCENT = 10;
+const DEFAULT_HOVER_BOOST_PERCENT = 20;
 
 const REMOVED_HOVER_COLOR_KEYS = [
   'dashboardNavHoverBg',
@@ -1078,51 +1143,53 @@ const PLAN_EDITABLE_CELL_HOVER_ALPHA = 0.14;
 const HEADER_CONTROL_FOCUS_RING_ALPHA = 0.22;
 
 const UI_COLOR_MODES = ['dark', 'light'];
+const UI_COLOR_MODE_SETTINGS = ['dark', 'light', 'system'];
+const DEFAULT_UI_COLOR_MODE_SETTING = 'system';
 
 const SHARED_UI_COLORS = {
-  yearRowBg: '#c65911',
+  yearRowBg: '#ff8000',
   yearRowText: '#ffffff',
-  amountVarianceColor: '#C65911',
-  negativeAmountColor: '#ff0000',
+  amountVarianceColor: '#ff6600',
+  negativeAmountColor: '#ff3838',
 };
 
 const DEFAULT_UI_COLORS_DARK = {
-  browserBg: '#262626',
+  browserBg: '#2d2d2d',
   settingsInputBg: '#353535',
   settingsInputBorder: '#565656',
   settingsButtonBg: '#262626',
   settingsButtonTextColor: '#ffffff',
-  monthRowBg: '#595959',
+  monthRowBg: '#424242',
   monthRowText: '#ffffff',
   currentMonthBorder: '#ff0000',
   settlementMonthBg: '#000000',
   cellBg: '#262626',
   textColor: '#ffffff',
   textDimColor: '#929292',
-  planAmountColor: '#00B0F0',
-  planEditableCellHoverBg: '#C0C0C0',
+  planAmountColor: '#00bbff',
+  planEditableCellHoverBg: '#00a7b3',
   headerControlBg: '#262626',
-  headerControlActiveBorder: '#929292',
-  dashboardNavBg: '#1e3a5f',
-  dashboardNavText: '#bfdbfe',
-  dashboardNavActiveBg: '#2563eb',
+  headerControlActiveBorder: '#00ffff',
+  dashboardNavBg: '#16a34a',
+  dashboardNavText: '#ffffff',
+  dashboardNavActiveBg: '#0891b2',
   dashboardNavActiveText: '#ffffff',
   kbdBg: '#373737',
-  kbdTextColor: '#929292',
-  kbdBorderColor: '#505050',
-  fillColor1: '#404040',
-  fillColor2: '#3F1B1B',
+  kbdTextColor: '#ffffff',
+  kbdBorderColor: '#636363',
+  fillColor1: '#363636',
+  fillColor2: '#521414',
   warningTextColor: '#FFFF00',
   expandableHighlight: '#00ffff',
   rowHoverBorder: '#00ffff',
   rowSelectionRing: '#ffff00',
   journalOverlayBg: '#000000',
-  accentColor: '#ff0000',
-  deleteBtnBg: '#dc2626',
+  accentColor: '#00ffff',
+  deleteBtnBg: '#ff4848',
   deleteBtnText: '#ffffff',
   contextMenuBg: '#1e1e28',
   contextMenuShadowBg: '#000000',
-  contextMenuItemHoverBg: '#ffffff',
+  contextMenuItemHoverBg: '#5385f9',
   periodModeBudgetActualBg: '#0891b2',
   periodModeActualBg: '#16a34a',
   periodModePlanBg: '#ea580c',
@@ -1131,64 +1198,66 @@ const DEFAULT_UI_COLORS_DARK = {
   periodModePlanText: '#ffffff',
   loadingOverlayBg: '#08080e',
   statusOkColor: '#86efac',
-  statusErrorColor: '#fca5a5',
+  statusErrorColor: '#ff4848',
   primaryButtonBg: '#3b82f6',
   primaryButtonTextColor: '#ffffff',
-  buttonBorderColor: '#ffffff',
+  buttonBorderColor: '#8a8a8a',
   ...SHARED_UI_COLORS,
 };
 
 const DEFAULT_UI_COLORS_LIGHT = {
-  browserBg: '#E8E8E8',
-  settingsInputBg: '#FFFFFF',
-  settingsInputBorder: '#B8B8B8',
-  settingsButtonBg: '#FFFFFF',
-  settingsButtonTextColor: '#ffffff',
-  monthRowBg: '#D9D9D9',
-  monthRowText: '#1A1A1A',
-  currentMonthBorder: '#ff0000',
-  settlementMonthBg: '#B0B0B0',
-  cellBg: '#FFFFFF',
-  textColor: '#1A1A1A',
-  textDimColor: '#757575',
-  planAmountColor: '#0078D4',
-  planEditableCellHoverBg: '#808080',
-  headerControlBg: '#FFFFFF',
-  headerControlActiveBorder: '#757575',
-  dashboardNavBg: '#eff6ff',
-  dashboardNavText: '#1d4ed8',
-  dashboardNavActiveBg: '#2563eb',
+  browserBg: '#ffffff',
+  settingsInputBg: '#ededed',
+  settingsInputBorder: '#e0e0e0',
+  settingsButtonBg: '#dedede',
+  settingsButtonTextColor: '#000000',
+  monthRowBg: '#dedede',
+  monthRowText: '#000000',
+  currentMonthBorder: '#ff8a8a',
+  settlementMonthBg: '#c2c2c2',
+  cellBg: '#ffffff',
+  textColor: '#000000',
+  textDimColor: '#8a8a8a',
+  planAmountColor: '#00a5e0',
+  planEditableCellHoverBg: '#52bfc7',
+  headerControlBg: '#c9c9c9',
+  headerControlActiveBorder: '#005aad',
+  dashboardNavBg: '#16a34a',
+  dashboardNavText: '#ffffff',
+  dashboardNavActiveBg: '#0891b2',
   dashboardNavActiveText: '#ffffff',
-  kbdBg: '#EFEFEF',
-  kbdTextColor: '#757575',
-  kbdBorderColor: '#B8B8B8',
-  fillColor1: '#E8EEF4',
-  fillColor2: '#F5E8E8',
-  warningTextColor: '#8B6914',
-  expandableHighlight: '#0078D4',
-  rowHoverBorder: '#0078D4',
-  rowSelectionRing: '#E6B800',
-  journalOverlayBg: '#000000',
-  accentColor: '#0078D4',
-  deleteBtnBg: '#dc2626',
+  kbdBg: '#fafafa',
+  kbdTextColor: '#000000',
+  kbdBorderColor: '#636363',
+  fillColor1: '#e8e8e8',
+  fillColor2: '#ffdbdb',
+  warningTextColor: '#FFFF00',
+  expandableHighlight: '#005aad',
+  rowHoverBorder: '#005aad',
+  rowSelectionRing: '#ff8000',
+  journalOverlayBg: '#ffffff',
+  accentColor: '#005aad',
+  deleteBtnBg: '#ff4848',
   deleteBtnText: '#ffffff',
-  contextMenuBg: '#FFFFFF',
+  contextMenuBg: '#ffffff',
   contextMenuShadowBg: '#000000',
-  contextMenuItemHoverBg: '#000000',
+  contextMenuItemHoverBg: '#004cff',
   periodModeBudgetActualBg: '#0891b2',
   periodModeActualBg: '#16a34a',
   periodModePlanBg: '#ea580c',
   periodModeBudgetActualText: '#ffffff',
   periodModeActualText: '#ffffff',
   periodModePlanText: '#ffffff',
-  loadingOverlayBg: '#000000',
-  statusOkColor: '#15803d',
-  statusErrorColor: '#dc2626',
+  loadingOverlayBg: '#08080e',
+  statusOkColor: '#00b341',
+  statusErrorColor: '#ff4d4d',
   primaryButtonBg: '#3b82f6',
   primaryButtonTextColor: '#ffffff',
-  buttonBorderColor: '#ffffff',
-  ...SHARED_UI_COLORS,
-  negativeAmountColor: '#C00000',
+  buttonBorderColor: '#919191',
+  yearRowBg: '#f09c47',
+  yearRowText: '#ffffff',
+  amountVarianceColor: '#ff6600',
+  negativeAmountColor: '#ff0000',
 };
 
 const UI_COLOR_KEYS = Object.keys(DEFAULT_UI_COLORS_DARK);
@@ -1225,8 +1294,40 @@ function opaqueHex(hex) {
   return `#${toHex(rgb.r)}${toHex(rgb.g)}${toHex(rgb.b)}`;
 }
 
+function getSystemPreferredColorMode() {
+  if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+  return 'dark';
+}
+
+/** 保存されている表示モード設定（dark / light / system） */
+function getUiColorModeSetting(config = {}) {
+  const mode = config.colorMode;
+  if (mode === 'light' || mode === 'system' || mode === 'dark') return mode;
+  return DEFAULT_UI_COLOR_MODE_SETTING;
+}
+
+/** 適用する表示モード（system の場合は OS 設定を解決） */
 function getUiColorMode(config = {}) {
-  return config.colorMode === 'light' ? 'light' : 'dark';
+  const setting = getUiColorModeSetting(config);
+  if (setting === 'system') return getSystemPreferredColorMode();
+  return setting;
+}
+
+/** OS の配色モード変更を監視（system 選択時に使用） */
+function subscribeSystemColorMode(onChange) {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+    return () => {};
+  }
+  const media = window.matchMedia('(prefers-color-scheme: dark)');
+  const handler = () => onChange(getSystemPreferredColorMode());
+  if (typeof media.addEventListener === 'function') {
+    media.addEventListener('change', handler);
+    return () => media.removeEventListener('change', handler);
+  }
+  media.addListener(handler);
+  return () => media.removeListener(handler);
 }
 
 function getDefaultUiColors(mode = 'dark') {
@@ -1361,10 +1462,10 @@ function hasLegacyUiColorFlatKeys(config) {
 /** localStorage / エクスポート用の正規形（モード別上書き） */
 function normalizeUiColorConfig(config = {}) {
   if (!config || typeof config !== 'object') {
-    return { colorMode: 'dark', dark: {}, light: {} };
+    return { colorMode: DEFAULT_UI_COLOR_MODE_SETTING, dark: {}, light: {} };
   }
 
-  const colorMode = config.colorMode === 'light' ? 'light' : 'dark';
+  const colorMode = getUiColorModeSetting(config);
   let dark = migrateUiColorBucket(
     typeof config.dark === 'object' && config.dark !== null ? { ...config.dark } : {},
   );
@@ -1373,11 +1474,11 @@ function normalizeUiColorConfig(config = {}) {
   );
 
   if (hasLegacyUiColorFlatKeys(config)) {
-    const bucket = colorMode === 'light' ? light : dark;
+    const bucket = getUiColorMode({ colorMode, dark, light }) === 'light' ? light : dark;
     for (const key of UI_COLOR_LEGACY_KEYS) {
       if (config[key] != null) bucket[key] = config[key];
     }
-    if (colorMode === 'light') {
+    if (getUiColorMode({ colorMode, dark, light }) === 'light') {
       light = migrateUiColorBucket(bucket);
     } else {
       dark = migrateUiColorBucket(bucket);
@@ -1402,9 +1503,10 @@ function getUiColorModeBucket(config, mode = getUiColorMode(config)) {
 /** 表示モード切替（各モードの上書きは保持） */
 function switchUiColorMode(config, mode) {
   const normalized = normalizeUiColorConfig(config);
+  const colorMode = mode === 'light' ? 'light' : mode === 'system' ? 'system' : 'dark';
   return {
     ...normalized,
-    colorMode: mode === 'light' ? 'light' : 'dark',
+    colorMode,
   };
 }
 
@@ -11940,13 +12042,13 @@ function mountUiColorPanel(container, {
   const modeSelect = document.createElement('select');
   modeSelect.className = 'ui-color-mode-select app-settings-input';
   modeSelect.setAttribute('aria-label', '表示モード');
-  for (const [value, label] of [['dark', 'ダークモード'], ['light', 'ライトモード']]) {
+  for (const [value, label] of [['system', 'システム'], ['dark', 'ダークモード'], ['light', 'ライトモード']]) {
     const option = document.createElement('option');
     option.value = value;
     option.textContent = label;
     modeSelect.appendChild(option);
   }
-  modeSelect.value = getUiColorMode(getConfig());
+  modeSelect.value = getUiColorModeSetting(getConfig());
   const hoverBoostLabel = document.createElement('label');
   hoverBoostLabel.className = 'ui-color-mode-label ui-color-hover-boost-label';
   hoverBoostLabel.textContent = 'ホバー明るさ';
@@ -12103,22 +12205,30 @@ function mountUiColorPanel(container, {
     });
   };
 
-  const registerBgTextRow = (label, bgKey, textKey, previewText, refreshToolbar = false, previewClassName = 'ui-color-preview-cell') => {
+  const registerBgTextRow = (label, bgKey, textKey, previewText, refreshToolbar = false, previewClassName = 'ui-color-preview-cell', previewHtml = null, withKbdPreview = false, previewBgKey = 'cellBg', previewTextKey = 'textColor') => {
     const colors = getUiColors(getConfig());
     const bg = colorInputTd(colors[bgKey]);
     const text = colorInputTd(colors[textKey]);
     const preview = previewTd({
-      background: colors[bgKey],
-      color: colors[textKey],
-      text: previewText,
+      background: withKbdPreview ? colors[previewBgKey] : colors[bgKey],
+      color: withKbdPreview ? colors[previewTextKey] : colors[textKey],
+      text: previewHtml ? null : previewText,
+      html: previewHtml,
       className: previewClassName,
     });
     const reset = resetBtnTd(keysMatchDefaults(getConfig(), [bgKey, textKey]));
     addRow(label, [bg.td, text.td, preview.td, reset.td]);
     const previewKeys = [bgKey, textKey];
+    if (withKbdPreview) previewKeys.push(...PREVIEW_KBD_KEYS, previewBgKey, previewTextKey);
     const syncPreview = (merged) => {
-      preview.span.style.background = merged[bgKey];
-      preview.span.style.color = merged[textKey];
+      if (withKbdPreview) {
+        preview.span.style.background = merged[previewBgKey];
+        preview.span.style.color = merged[previewTextKey];
+        applyPreviewKbdStyles(preview.span, merged);
+      } else {
+        preview.span.style.background = merged[bgKey];
+        preview.span.style.color = merged[textKey];
+      }
       reset.btn.disabled = keysMatchDefaults(getConfig(), [bgKey, textKey]);
     };
     subscribePreview(previewKeys, syncPreview);
@@ -12283,7 +12393,12 @@ function mountUiColorPanel(container, {
       html: previewHtml,
       className: 'ui-color-preview-cell',
     });
-    preview.span.style.border = `1px solid ${colors[key]}`;
+    if (withKbdPreview && key === 'kbdBorderColor') {
+      preview.span.style.border = 'none';
+    } else {
+      preview.span.style.border = `1px solid ${colors[key]}`;
+    }
+    if (withKbdPreview) applyPreviewKbdStyles(preview.span, colors);
     const reset = resetBtnTd(keysMatchDefaults(getConfig(), [key]));
     addRow(label, [border.td, dashTd(), preview.td, reset.td]);
     const previewKeys = [key, previewBgKey, previewTextKey];
@@ -12291,8 +12406,13 @@ function mountUiColorPanel(container, {
     const syncPreview = (merged) => {
       preview.span.style.background = merged[previewBgKey];
       preview.span.style.color = merged[previewTextKey];
-      preview.span.style.border = `1px solid ${merged[key]}`;
-      if (withKbdPreview) applyPreviewKbdStyles(preview.span, merged);
+      if (withKbdPreview && key === 'kbdBorderColor') {
+        preview.span.style.border = 'none';
+        applyPreviewKbdStyles(preview.span, merged);
+      } else {
+        preview.span.style.border = `1px solid ${merged[key]}`;
+        if (withKbdPreview) applyPreviewKbdStyles(preview.span, merged);
+      }
       reset.btn.disabled = keysMatchDefaults(getConfig(), [key]);
     };
     subscribePreview(previewKeys, syncPreview);
@@ -12351,24 +12471,47 @@ function mountUiColorPanel(container, {
   const POPUP_ROW_HOVER_ALPHA = 0.08;
   const LOADING_OVERLAY_ALPHA = 0.38;
   const PLAN_EDITABLE_CELL_HOVER_ALPHA = 0.14;
+  const SETTLEMENT_MONTH_OVERLAY_HEAD_ALPHA = 0.34;
 
-  const registerJournalTintRow = (label, key, alpha, previewText, previewBgKey = 'contextMenuBg', previewTextKey = 'textColor') => {
+  const tintPreviewBackground = (hex, alpha, underHex) =>
+    `linear-gradient(${hexToRgba(hex, alpha)}, ${hexToRgba(hex, alpha)}), ${opaqueHex(underHex)}`;
+
+  const registerJournalTintRow = (label, key, alpha, previewText, previewBgKey = 'contextMenuBg', previewTextKey = 'textColor', withPreviewBorder = true, layerOverlay = false) => {
     const colors = getUiColors(getConfig());
     const bg = colorInputTd(colors[key]);
+    const under = colors[previewBgKey] ?? colors.cellBg;
     const preview = previewTd({
-      background: hexToRgba(colors[key], alpha),
+      background: layerOverlay ? under : tintPreviewBackground(colors[key], alpha, under),
       color: colors[previewTextKey] ?? colors.textColor,
       text: previewText,
     });
-    preview.span.style.boxShadow = `inset 0 0 0 1px ${hexToRgba(colors[previewBgKey] ?? colors.cellBg, 1)}`;
+    let overlayLayer = null;
+    if (layerOverlay) {
+      preview.span.style.position = 'relative';
+      overlayLayer = document.createElement('span');
+      overlayLayer.className = 'ui-color-preview-overlay-layer';
+      overlayLayer.style.background = hexToRgba(colors[key], alpha);
+      preview.span.appendChild(overlayLayer);
+    }
+    if (withPreviewBorder) {
+      preview.span.style.boxShadow = `inset 0 0 0 1px ${hexToRgba(colors[previewBgKey] ?? colors.cellBg, 1)}`;
+    }
     const reset = resetBtnTd(keysMatchDefaults(getConfig(), [key]));
     addRow(label, [bg.td, dashTd(), preview.td, reset.td]);
     const previewKeys = [key, previewBgKey, previewTextKey];
     const syncPreview = (merged) => {
       setColorInput(bg, merged[key]);
-      preview.span.style.background = hexToRgba(merged[key], alpha);
-      preview.span.style.color = merged[previewTextKey] ?? merged.textColor;
-      preview.span.style.boxShadow = `inset 0 0 0 1px ${opaqueHex(merged[previewBgKey] ?? merged.cellBg)}`;
+      if (layerOverlay) {
+        preview.span.style.background = merged[previewBgKey] ?? merged.cellBg;
+        preview.span.style.color = merged[previewTextKey] ?? merged.textColor;
+        overlayLayer.style.background = hexToRgba(merged[key], alpha);
+      } else {
+        preview.span.style.background = tintPreviewBackground(merged[key], alpha, merged[previewBgKey] ?? merged.cellBg);
+        preview.span.style.color = merged[previewTextKey] ?? merged.textColor;
+      }
+      preview.span.style.boxShadow = withPreviewBorder
+        ? `inset 0 0 0 1px ${opaqueHex(merged[previewBgKey] ?? merged.cellBg)}`
+        : 'none';
       reset.btn.disabled = keysMatchDefaults(getConfig(), [key]);
     };
     subscribePreview(previewKeys, syncPreview);
@@ -12402,7 +12545,7 @@ function mountUiColorPanel(container, {
   registerBgTextRow('年行（ヘッダー）', 'yearRowBg', 'yearRowText', `${new Date().getFullYear()}年`, false);
   registerBgTextRow('ヘッダー行', 'monthRowBg', 'monthRowText', `${new Date().getMonth() + 1}月`, false);
   registerBorderRow('当月列（オーバーレイ）', 'currentMonthBorder', 'monthRowBg', `${new Date().getMonth() + 1}月`, 'monthRowText');
-  registerBgRow('決算整理列（オーバーレイ）', 'settlementMonthBg', `${new Date().getMonth() + 1}月`);
+  registerJournalTintRow('決算整理列（オーバーレイ）', 'settlementMonthBg', SETTLEMENT_MONTH_OVERLAY_HEAD_ALPHA, '決算整理', 'monthRowBg', 'monthRowText', true, true);
   registerTextRow('マイナス値（金額）', 'negativeAmountColor', null, {
     html: '<span class="amount-yen amount-negative amount-has-prefix"><span class="amount-prefix">-¥</span>1,234</span>',
   });
@@ -12446,12 +12589,12 @@ function mountUiColorPanel(container, {
   registerBgRow('ポップアップ（背景）', 'contextMenuBg', 'サンプル文字');
   registerJournalTintRow('ポップアップ（影）', 'contextMenuShadowBg', POPUP_SHADOW_ALPHA, 'サンプル文字', 'contextMenuBg');
   registerJournalTintRow('ポップアップ（行ホバー）', 'contextMenuItemHoverBg', POPUP_ROW_HOVER_ALPHA, 'サンプル文字', 'contextMenuBg');
-  registerJournalTintRow('仕訳詳細（背面オーバーレイ）', 'journalOverlayBg', JOURNAL_OVERLAY_ALPHA, 'サンプル文字', 'browserBg');
+  registerJournalTintRow('仕訳詳細（背面オーバーレイ）', 'journalOverlayBg', JOURNAL_OVERLAY_ALPHA, 'サンプル文字', 'browserBg', 'textColor', false);
   registerJournalTintRow('読み込み中（オーバーレイ）', 'loadingOverlayBg', LOADING_OVERLAY_ALPHA, '読み込み', 'browserBg');
   registerBgRow('入力欄（背景）', 'settingsInputBg', 'サンプル文字');
   registerBorderRow('入力欄（枠線）', 'settingsInputBorder', 'monthRowBg', 'サンプル文字');
-  registerBgTextRow('ショートカットキー（kbd）', 'kbdBg', 'kbdTextColor', 'F10');
-  registerBorderRow('ショートカットキー（kbd・枠線）', 'kbdBorderColor', 'kbdBg');
+  registerBgTextRow('ショートカットキー（kbd）', 'kbdBg', 'kbdTextColor', null, false, 'ui-color-preview-cell', '<kbd>F10</kbd>', true, 'headerControlBg', 'textColor');
+  registerBorderRow('ショートカットキー（kbd・枠線）', 'kbdBorderColor', 'headerControlBg', null, 'textColor', '<kbd>F10</kbd>', true);
   registerTextRow('成功・OK表示', 'statusOkColor', 'OK', {
     previewBgKey: 'browserBg',
     refresh: false,
@@ -24281,6 +24424,14 @@ async function init() {
   applyViewportScale(computeViewportScale());
   bindViewportScale(applyPlanViewportScaleChange);
   applyUiColors(uiColorConfig);
+  subscribeSystemColorMode(() => {
+    if (getUiColorModeSetting(uiColorConfig) !== 'system') return;
+    applyUiColors(uiColorConfig);
+    refreshColorDependentViews();
+    refreshColorSettingsPanels();
+    refreshToolbarFilterStyles();
+    renderToolbar();
+  });
   applyBrandSettings(appSettings);
   applyFontScale(appSettings.fontScale);
   applyRowPaddingScale(appSettings.rowPaddingScale);

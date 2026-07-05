@@ -1369,6 +1369,13 @@ select.app-settings-input {
   background-color: var(--plan-editor-bg-focus);
 }
 
+.ui-color-preview-overlay-layer {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
 .section-color-preview,
 .ui-color-preview-cell {
   box-sizing: border-box;

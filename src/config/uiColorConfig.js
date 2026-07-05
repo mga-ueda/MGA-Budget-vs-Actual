@@ -1,6 +1,6 @@
 const UI_COLOR_STORAGE_KEY = 'mga-ui-colors';
 
-export const DEFAULT_HOVER_BOOST_PERCENT = 10;
+export const DEFAULT_HOVER_BOOST_PERCENT = 20;
 
 const REMOVED_HOVER_COLOR_KEYS = [
   'dashboardNavHoverBg',
@@ -74,51 +74,53 @@ const PLAN_EDITABLE_CELL_HOVER_ALPHA = 0.14;
 const HEADER_CONTROL_FOCUS_RING_ALPHA = 0.22;
 
 export const UI_COLOR_MODES = ['dark', 'light'];
+export const UI_COLOR_MODE_SETTINGS = ['dark', 'light', 'system'];
+export const DEFAULT_UI_COLOR_MODE_SETTING = 'system';
 
 const SHARED_UI_COLORS = {
-  yearRowBg: '#c65911',
+  yearRowBg: '#ff8000',
   yearRowText: '#ffffff',
-  amountVarianceColor: '#C65911',
-  negativeAmountColor: '#ff0000',
+  amountVarianceColor: '#ff6600',
+  negativeAmountColor: '#ff3838',
 };
 
 export const DEFAULT_UI_COLORS_DARK = {
-  browserBg: '#262626',
+  browserBg: '#2d2d2d',
   settingsInputBg: '#353535',
   settingsInputBorder: '#565656',
   settingsButtonBg: '#262626',
   settingsButtonTextColor: '#ffffff',
-  monthRowBg: '#595959',
+  monthRowBg: '#424242',
   monthRowText: '#ffffff',
   currentMonthBorder: '#ff0000',
   settlementMonthBg: '#000000',
   cellBg: '#262626',
   textColor: '#ffffff',
   textDimColor: '#929292',
-  planAmountColor: '#00B0F0',
-  planEditableCellHoverBg: '#C0C0C0',
+  planAmountColor: '#00bbff',
+  planEditableCellHoverBg: '#00a7b3',
   headerControlBg: '#262626',
-  headerControlActiveBorder: '#929292',
-  dashboardNavBg: '#1e3a5f',
-  dashboardNavText: '#bfdbfe',
-  dashboardNavActiveBg: '#2563eb',
+  headerControlActiveBorder: '#00ffff',
+  dashboardNavBg: '#16a34a',
+  dashboardNavText: '#ffffff',
+  dashboardNavActiveBg: '#0891b2',
   dashboardNavActiveText: '#ffffff',
   kbdBg: '#373737',
-  kbdTextColor: '#929292',
-  kbdBorderColor: '#505050',
-  fillColor1: '#404040',
-  fillColor2: '#3F1B1B',
+  kbdTextColor: '#ffffff',
+  kbdBorderColor: '#636363',
+  fillColor1: '#363636',
+  fillColor2: '#521414',
   warningTextColor: '#FFFF00',
   expandableHighlight: '#00ffff',
   rowHoverBorder: '#00ffff',
   rowSelectionRing: '#ffff00',
   journalOverlayBg: '#000000',
-  accentColor: '#ff0000',
-  deleteBtnBg: '#dc2626',
+  accentColor: '#00ffff',
+  deleteBtnBg: '#ff4848',
   deleteBtnText: '#ffffff',
   contextMenuBg: '#1e1e28',
   contextMenuShadowBg: '#000000',
-  contextMenuItemHoverBg: '#ffffff',
+  contextMenuItemHoverBg: '#5385f9',
   periodModeBudgetActualBg: '#0891b2',
   periodModeActualBg: '#16a34a',
   periodModePlanBg: '#ea580c',
@@ -127,64 +129,66 @@ export const DEFAULT_UI_COLORS_DARK = {
   periodModePlanText: '#ffffff',
   loadingOverlayBg: '#08080e',
   statusOkColor: '#86efac',
-  statusErrorColor: '#fca5a5',
+  statusErrorColor: '#ff4848',
   primaryButtonBg: '#3b82f6',
   primaryButtonTextColor: '#ffffff',
-  buttonBorderColor: '#ffffff',
+  buttonBorderColor: '#8a8a8a',
   ...SHARED_UI_COLORS,
 };
 
 export const DEFAULT_UI_COLORS_LIGHT = {
-  browserBg: '#E8E8E8',
-  settingsInputBg: '#FFFFFF',
-  settingsInputBorder: '#B8B8B8',
-  settingsButtonBg: '#FFFFFF',
-  settingsButtonTextColor: '#ffffff',
-  monthRowBg: '#D9D9D9',
-  monthRowText: '#1A1A1A',
-  currentMonthBorder: '#ff0000',
-  settlementMonthBg: '#B0B0B0',
-  cellBg: '#FFFFFF',
-  textColor: '#1A1A1A',
-  textDimColor: '#757575',
-  planAmountColor: '#0078D4',
-  planEditableCellHoverBg: '#808080',
-  headerControlBg: '#FFFFFF',
-  headerControlActiveBorder: '#757575',
-  dashboardNavBg: '#eff6ff',
-  dashboardNavText: '#1d4ed8',
-  dashboardNavActiveBg: '#2563eb',
+  browserBg: '#ffffff',
+  settingsInputBg: '#ededed',
+  settingsInputBorder: '#e0e0e0',
+  settingsButtonBg: '#dedede',
+  settingsButtonTextColor: '#000000',
+  monthRowBg: '#dedede',
+  monthRowText: '#000000',
+  currentMonthBorder: '#ff8a8a',
+  settlementMonthBg: '#c2c2c2',
+  cellBg: '#ffffff',
+  textColor: '#000000',
+  textDimColor: '#8a8a8a',
+  planAmountColor: '#00a5e0',
+  planEditableCellHoverBg: '#52bfc7',
+  headerControlBg: '#c9c9c9',
+  headerControlActiveBorder: '#005aad',
+  dashboardNavBg: '#16a34a',
+  dashboardNavText: '#ffffff',
+  dashboardNavActiveBg: '#0891b2',
   dashboardNavActiveText: '#ffffff',
-  kbdBg: '#EFEFEF',
-  kbdTextColor: '#757575',
-  kbdBorderColor: '#B8B8B8',
-  fillColor1: '#E8EEF4',
-  fillColor2: '#F5E8E8',
-  warningTextColor: '#8B6914',
-  expandableHighlight: '#0078D4',
-  rowHoverBorder: '#0078D4',
-  rowSelectionRing: '#E6B800',
-  journalOverlayBg: '#000000',
-  accentColor: '#0078D4',
-  deleteBtnBg: '#dc2626',
+  kbdBg: '#fafafa',
+  kbdTextColor: '#000000',
+  kbdBorderColor: '#636363',
+  fillColor1: '#e8e8e8',
+  fillColor2: '#ffdbdb',
+  warningTextColor: '#FFFF00',
+  expandableHighlight: '#005aad',
+  rowHoverBorder: '#005aad',
+  rowSelectionRing: '#ff8000',
+  journalOverlayBg: '#ffffff',
+  accentColor: '#005aad',
+  deleteBtnBg: '#ff4848',
   deleteBtnText: '#ffffff',
-  contextMenuBg: '#FFFFFF',
+  contextMenuBg: '#ffffff',
   contextMenuShadowBg: '#000000',
-  contextMenuItemHoverBg: '#000000',
+  contextMenuItemHoverBg: '#004cff',
   periodModeBudgetActualBg: '#0891b2',
   periodModeActualBg: '#16a34a',
   periodModePlanBg: '#ea580c',
   periodModeBudgetActualText: '#ffffff',
   periodModeActualText: '#ffffff',
   periodModePlanText: '#ffffff',
-  loadingOverlayBg: '#000000',
-  statusOkColor: '#15803d',
-  statusErrorColor: '#dc2626',
+  loadingOverlayBg: '#08080e',
+  statusOkColor: '#00b341',
+  statusErrorColor: '#ff4d4d',
   primaryButtonBg: '#3b82f6',
   primaryButtonTextColor: '#ffffff',
-  buttonBorderColor: '#ffffff',
-  ...SHARED_UI_COLORS,
-  negativeAmountColor: '#C00000',
+  buttonBorderColor: '#919191',
+  yearRowBg: '#f09c47',
+  yearRowText: '#ffffff',
+  amountVarianceColor: '#ff6600',
+  negativeAmountColor: '#ff0000',
 };
 
 export const UI_COLOR_KEYS = Object.keys(DEFAULT_UI_COLORS_DARK);
@@ -221,8 +225,40 @@ export function opaqueHex(hex) {
   return `#${toHex(rgb.r)}${toHex(rgb.g)}${toHex(rgb.b)}`;
 }
 
+export function getSystemPreferredColorMode() {
+  if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+  return 'dark';
+}
+
+/** 保存されている表示モード設定（dark / light / system） */
+export function getUiColorModeSetting(config = {}) {
+  const mode = config.colorMode;
+  if (mode === 'light' || mode === 'system' || mode === 'dark') return mode;
+  return DEFAULT_UI_COLOR_MODE_SETTING;
+}
+
+/** 適用する表示モード（system の場合は OS 設定を解決） */
 export function getUiColorMode(config = {}) {
-  return config.colorMode === 'light' ? 'light' : 'dark';
+  const setting = getUiColorModeSetting(config);
+  if (setting === 'system') return getSystemPreferredColorMode();
+  return setting;
+}
+
+/** OS の配色モード変更を監視（system 選択時に使用） */
+export function subscribeSystemColorMode(onChange) {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+    return () => {};
+  }
+  const media = window.matchMedia('(prefers-color-scheme: dark)');
+  const handler = () => onChange(getSystemPreferredColorMode());
+  if (typeof media.addEventListener === 'function') {
+    media.addEventListener('change', handler);
+    return () => media.removeEventListener('change', handler);
+  }
+  media.addListener(handler);
+  return () => media.removeListener(handler);
 }
 
 export function getDefaultUiColors(mode = 'dark') {
@@ -357,10 +393,10 @@ function hasLegacyUiColorFlatKeys(config) {
 /** localStorage / エクスポート用の正規形（モード別上書き） */
 export function normalizeUiColorConfig(config = {}) {
   if (!config || typeof config !== 'object') {
-    return { colorMode: 'dark', dark: {}, light: {} };
+    return { colorMode: DEFAULT_UI_COLOR_MODE_SETTING, dark: {}, light: {} };
   }
 
-  const colorMode = config.colorMode === 'light' ? 'light' : 'dark';
+  const colorMode = getUiColorModeSetting(config);
   let dark = migrateUiColorBucket(
     typeof config.dark === 'object' && config.dark !== null ? { ...config.dark } : {},
   );
@@ -369,11 +405,11 @@ export function normalizeUiColorConfig(config = {}) {
   );
 
   if (hasLegacyUiColorFlatKeys(config)) {
-    const bucket = colorMode === 'light' ? light : dark;
+    const bucket = getUiColorMode({ colorMode, dark, light }) === 'light' ? light : dark;
     for (const key of UI_COLOR_LEGACY_KEYS) {
       if (config[key] != null) bucket[key] = config[key];
     }
-    if (colorMode === 'light') {
+    if (getUiColorMode({ colorMode, dark, light }) === 'light') {
       light = migrateUiColorBucket(bucket);
     } else {
       dark = migrateUiColorBucket(bucket);
@@ -398,9 +434,10 @@ function getUiColorModeBucket(config, mode = getUiColorMode(config)) {
 /** 表示モード切替（各モードの上書きは保持） */
 export function switchUiColorMode(config, mode) {
   const normalized = normalizeUiColorConfig(config);
+  const colorMode = mode === 'light' ? 'light' : mode === 'system' ? 'system' : 'dark';
   return {
     ...normalized,
-    colorMode: mode === 'light' ? 'light' : 'dark',
+    colorMode,
   };
 }
 

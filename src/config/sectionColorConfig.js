@@ -3,33 +3,64 @@ const SECTION_COLOR_STORAGE_KEY = 'mga-section-colors';
 const DEFAULT_TEXT_COLOR = '#ffffff';
 const DEFAULT_DARK_TEXT_COLOR = '#000000';
 
-/** 大項目ごとのデフォルト色（parseJournal.js から参照） */
-export const DEFAULT_SECTION_COLORS = {
-  revenue: { color: '#203764', barColor: '#203764', textColor: DEFAULT_TEXT_COLOR },
-  nonOperating: { color: '#1f4e78', barColor: '#1f4e78', textColor: DEFAULT_TEXT_COLOR },
-  nonOperatingExpense: { color: '#4338ca', barColor: '#3730a3', textColor: DEFAULT_TEXT_COLOR },
-  specialLoss: { color: '#991b1b', barColor: '#7f1d1d', textColor: DEFAULT_TEXT_COLOR },
-  specialProfit: { color: '#166534', barColor: '#14532d', textColor: DEFAULT_TEXT_COLOR },
-  personnel: { color: '#806000', barColor: '#806000', textColor: DEFAULT_TEXT_COLOR },
-  expense: { color: '#375623', barColor: '#375623', textColor: DEFAULT_TEXT_COLOR },
-  other: { color: '#375623', barColor: '#375623', textColor: DEFAULT_TEXT_COLOR },
-  outsourcing: { color: '#548235', barColor: '#548235', textColor: DEFAULT_TEXT_COLOR },
-  tax: { color: '#9a3412', barColor: '#7c2d12', textColor: DEFAULT_TEXT_COLOR },
-  revenueVariance: { color: '#c00000', barColor: '#c00000', textColor: DEFAULT_TEXT_COLOR },
+/** 大項目ごとのデフォルト色（ダークモード） */
+export const DEFAULT_SECTION_COLORS_DARK = {
+  revenue: { color: '#002061', barColor: '#002061', textColor: DEFAULT_TEXT_COLOR },
+  revenueVariance: { color: '#660000', barColor: '#660000', textColor: DEFAULT_TEXT_COLOR },
+  nonOperating: { color: '#003666', barColor: '#003666', textColor: DEFAULT_TEXT_COLOR },
+  nonOperatingExpense: { color: '#273c91', barColor: '#273c91', textColor: DEFAULT_TEXT_COLOR },
+  specialLoss: { color: '#660000', barColor: '#660000', textColor: DEFAULT_TEXT_COLOR },
+  specialProfit: { color: '#002061', barColor: '#002061', textColor: DEFAULT_TEXT_COLOR },
+  personnel: { color: '#664d00', barColor: '#664d00', textColor: DEFAULT_TEXT_COLOR },
+  expense: { color: '#183d00', barColor: '#183d00', textColor: DEFAULT_TEXT_COLOR },
+  other: { color: '#143300', barColor: '#143300', textColor: DEFAULT_TEXT_COLOR },
+  outsourcing: { color: '#344d00', barColor: '#344d00', textColor: DEFAULT_TEXT_COLOR },
+  tax: { color: '#5f2411', barColor: '#5f2411', textColor: DEFAULT_TEXT_COLOR },
   profit: { color: '#ffc000', barColor: '#ffc000', textColor: DEFAULT_DARK_TEXT_COLOR },
-  currentAssets: { color: '#1f4e78', barColor: '#1f4e78', textColor: DEFAULT_TEXT_COLOR },
-  fixedAssets: { color: '#1f4e78', barColor: '#1f4e78', textColor: DEFAULT_TEXT_COLOR },
-  deferredAssets: { color: '#1f4e78', barColor: '#1f4e78', textColor: DEFAULT_TEXT_COLOR },
-  currentLiab: { color: '#595959', barColor: '#595959', textColor: DEFAULT_TEXT_COLOR },
-  fixedLiab: { color: '#595959', barColor: '#595959', textColor: DEFAULT_TEXT_COLOR },
-  equity: { color: '#bf8f00', barColor: '#bf8f00', textColor: DEFAULT_DARK_TEXT_COLOR },
-  otherPay: { color: '#1f4e78', barColor: '#1f4e78', textColor: DEFAULT_TEXT_COLOR },
-  cfIn: { color: '#548235', barColor: '#548235', textColor: DEFAULT_TEXT_COLOR },
-  cfOut: { color: '#c65911', barColor: '#c65911', textColor: DEFAULT_TEXT_COLOR },
-  cashBalance: { color: '#203764', barColor: '#203764', textColor: DEFAULT_TEXT_COLOR },
-  sgaTaxable: { color: '#375623', barColor: '#375623', textColor: DEFAULT_TEXT_COLOR },
-  sgaTotal: { color: '#375623', barColor: '#375623', textColor: DEFAULT_TEXT_COLOR },
+  currentAssets: { color: '#153a5b', barColor: '#153a5b', textColor: DEFAULT_TEXT_COLOR },
+  fixedAssets: { color: '#153a5b', barColor: '#153a5b', textColor: DEFAULT_TEXT_COLOR },
+  deferredAssets: { color: '#153a5b', barColor: '#153a5b', textColor: DEFAULT_TEXT_COLOR },
+  currentLiab: { color: '#4f4f4f', barColor: '#4f4f4f', textColor: DEFAULT_TEXT_COLOR },
+  fixedLiab: { color: '#4f4f4f', barColor: '#4f4f4f', textColor: DEFAULT_TEXT_COLOR },
+  equity: { color: '#ffc000', barColor: '#ffc000', textColor: DEFAULT_DARK_TEXT_COLOR },
+  otherPay: { color: '#00549e', barColor: '#00549e', textColor: DEFAULT_TEXT_COLOR },
+  cfIn: { color: '#2d7000', barColor: '#2d7000', textColor: DEFAULT_TEXT_COLOR },
+  cfOut: { color: '#b34700', barColor: '#b34700', textColor: DEFAULT_TEXT_COLOR },
+  cashBalance: { color: '#003399', barColor: '#003399', textColor: DEFAULT_TEXT_COLOR },
+  sgaTaxable: { color: '#143300', barColor: '#143300', textColor: DEFAULT_TEXT_COLOR },
+  sgaTotal: { color: '#143300', barColor: '#143300', textColor: DEFAULT_TEXT_COLOR },
 };
+
+/** 大項目ごとのデフォルト色（ライトモード） */
+export const DEFAULT_SECTION_COLORS_LIGHT = {
+  revenue: { color: '#3b67bf', barColor: '#3b67bf', textColor: DEFAULT_TEXT_COLOR },
+  revenueVariance: { color: '#c35555', barColor: '#c35555', textColor: DEFAULT_TEXT_COLOR },
+  nonOperating: { color: '#2d6495', barColor: '#2d6495', textColor: DEFAULT_TEXT_COLOR },
+  nonOperatingExpense: { color: '#4e62b1', barColor: '#4e62b1', textColor: DEFAULT_TEXT_COLOR },
+  specialLoss: { color: '#c35555', barColor: '#c35555', textColor: DEFAULT_TEXT_COLOR },
+  specialProfit: { color: '#3b67bf', barColor: '#3b67bf', textColor: DEFAULT_TEXT_COLOR },
+  personnel: { color: '#9f832d', barColor: '#9f832d', textColor: DEFAULT_TEXT_COLOR },
+  expense: { color: '#488023', barColor: '#488023', textColor: DEFAULT_TEXT_COLOR },
+  other: { color: '#488023', barColor: '#488023', textColor: DEFAULT_TEXT_COLOR },
+  outsourcing: { color: '#7aa225', barColor: '#7aa225', textColor: DEFAULT_TEXT_COLOR },
+  tax: { color: '#9f5138', barColor: '#9f5138', textColor: DEFAULT_TEXT_COLOR },
+  profit: { color: '#ffc000', barColor: '#ffc000', textColor: DEFAULT_DARK_TEXT_COLOR },
+  currentAssets: { color: '#3e6b93', barColor: '#3e6b93', textColor: DEFAULT_TEXT_COLOR },
+  fixedAssets: { color: '#3e6b93', barColor: '#3e6b93', textColor: DEFAULT_TEXT_COLOR },
+  deferredAssets: { color: '#3e6b93', barColor: '#3e6b93', textColor: DEFAULT_TEXT_COLOR },
+  currentLiab: { color: '#878787', barColor: '#878787', textColor: DEFAULT_TEXT_COLOR },
+  fixedLiab: { color: '#878787', barColor: '#878787', textColor: DEFAULT_TEXT_COLOR },
+  equity: { color: '#ffc000', barColor: '#ffc000', textColor: DEFAULT_DARK_TEXT_COLOR },
+  otherPay: { color: '#3285cd', barColor: '#3285cd', textColor: DEFAULT_TEXT_COLOR },
+  cfIn: { color: '#5fa72f', barColor: '#5fa72f', textColor: DEFAULT_TEXT_COLOR },
+  cfOut: { color: '#d77433', barColor: '#d77433', textColor: DEFAULT_TEXT_COLOR },
+  cashBalance: { color: '#3258a4', barColor: '#3258a4', textColor: DEFAULT_TEXT_COLOR },
+  sgaTaxable: { color: '#488023', barColor: '#488023', textColor: DEFAULT_TEXT_COLOR },
+  sgaTotal: { color: '#488023', barColor: '#488023', textColor: DEFAULT_TEXT_COLOR },
+};
+
+/** parseJournal.js 等の後方互換用（ダークモード既定） */
+export const DEFAULT_SECTION_COLORS = DEFAULT_SECTION_COLORS_DARK;
 
 /** 色設定に常に表示する大項目（予実表の並びに準拠） */
 export const SECTION_COLOR_SECTION_DEFS = [
@@ -99,7 +130,39 @@ function isPerModeSectionColorConfig(config) {
   return keys.every((key) => SECTION_COLOR_MODE_KEYS.has(key));
 }
 
-function normalizeSectionOverrides(raw = {}) {
+function getDefaultSectionColor(sectionId, mode = 'dark') {
+  const defaults = mode === 'light' ? DEFAULT_SECTION_COLORS_LIGHT : DEFAULT_SECTION_COLORS_DARK;
+  return defaults[sectionId] ?? FALLBACK;
+}
+
+function getEffectiveSectionOverrideColors(sectionId, override, mode = 'dark') {
+  const defaults = getDefaultSectionColor(sectionId, mode);
+  if (!override) {
+    return { barColor: defaults.barColor, textColor: defaults.textColor };
+  }
+  if (typeof override === 'string') {
+    return { barColor: override, textColor: defaults.textColor };
+  }
+  return {
+    barColor: override.barColor ?? defaults.barColor,
+    textColor: override.textColor ?? defaults.textColor,
+  };
+}
+
+function sectionOverrideMatchesDefault(sectionId, override, mode = 'dark') {
+  const defaults = getDefaultSectionColor(sectionId, mode);
+  const effective = getEffectiveSectionOverrideColors(sectionId, override, mode);
+  return effective.barColor === defaults.barColor && effective.textColor === defaults.textColor;
+}
+
+export function isSectionColorCustom(config, mode, sectionId) {
+  const bucket = getSectionColorModeBucket(config, mode);
+  const override = bucket[sectionId];
+  if (override == null) return false;
+  return !sectionOverrideMatchesDefault(sectionId, override, mode);
+}
+
+function normalizeSectionOverrides(raw = {}, mode = 'dark') {
   const normalized = {};
   const migrated = { ...raw };
   if (migrated.receivables && !migrated.revenueVariance) {
@@ -108,12 +171,14 @@ function normalizeSectionOverrides(raw = {}) {
   delete migrated.receivables;
   for (const [id, val] of Object.entries(migrated)) {
     if (typeof val === 'string') {
-      normalized[id] = val;
+      if (!sectionOverrideMatchesDefault(id, val, mode)) normalized[id] = val;
     } else if (val) {
       const entry = {};
       if (typeof val.barColor === 'string') entry.barColor = val.barColor;
       if (typeof val.textColor === 'string') entry.textColor = val.textColor;
-      if (Object.keys(entry).length) normalized[id] = entry;
+      if (Object.keys(entry).length && !sectionOverrideMatchesDefault(id, entry, mode)) {
+        normalized[id] = entry;
+      }
     }
   }
   return normalized;
@@ -125,12 +190,12 @@ export function normalizeSectionColorConfig(config = {}) {
   }
   if (isPerModeSectionColorConfig(config)) {
     return {
-      dark: normalizeSectionOverrides(config.dark),
-      light: normalizeSectionOverrides(config.light),
+      dark: normalizeSectionOverrides(config.dark, 'dark'),
+      light: normalizeSectionOverrides(config.light, 'light'),
     };
   }
   return {
-    dark: normalizeSectionOverrides(config),
+    dark: normalizeSectionOverrides(config, 'dark'),
     light: {},
   };
 }
@@ -168,7 +233,7 @@ export function resetSectionColorModeOverrides(config, mode = 'dark') {
 }
 
 export function getSectionColors(sectionId, config = {}, mode = 'dark') {
-  const defaults = DEFAULT_SECTION_COLORS[sectionId] ?? FALLBACK;
+  const defaults = getDefaultSectionColor(sectionId, mode);
   const bucket = getSectionColorModeBucket(config, mode);
   const override = bucket[sectionId]
     ?? (sectionId === 'revenueVariance' ? bucket.receivables : undefined);
@@ -205,7 +270,7 @@ export function collectSectionColorDefs(sections = [], config = {}, mode = 'dark
   const bucket = getSectionColorModeBucket(config, mode);
   const registryIds = new Set(SECTION_COLOR_SECTION_DEFS.map((d) => d.id));
   const defs = SECTION_COLOR_SECTION_DEFS.map(({ id }) => {
-    const defaults = DEFAULT_SECTION_COLORS[id] ?? FALLBACK;
+    const defaults = getDefaultSectionColor(id, mode);
     const current = getSectionColors(id, config, mode);
     return {
       sectionId: id,
@@ -216,13 +281,13 @@ export function collectSectionColorDefs(sections = [], config = {}, mode = 'dark
       defaultColor: defaults.color,
       defaultBarColor: defaults.barColor,
       defaultTextColor: defaults.textColor,
-      isCustom: Object.prototype.hasOwnProperty.call(bucket, id),
+      isCustom: isSectionColorCustom(config, mode, id),
     };
   });
 
   for (const s of sections) {
     if (registryIds.has(s.id)) continue;
-    const defaults = DEFAULT_SECTION_COLORS[s.id] ?? FALLBACK;
+    const defaults = getDefaultSectionColor(s.id, mode);
     const current = getSectionColors(s.id, config, mode);
     defs.push({
       sectionId: s.id,
@@ -233,7 +298,7 @@ export function collectSectionColorDefs(sections = [], config = {}, mode = 'dark
       defaultColor: defaults.color,
       defaultBarColor: defaults.barColor,
       defaultTextColor: defaults.textColor,
-      isCustom: Object.prototype.hasOwnProperty.call(bucket, s.id),
+      isCustom: isSectionColorCustom(config, mode, s.id),
     });
   }
 

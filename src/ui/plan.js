@@ -156,6 +156,8 @@ import {
   saveUiColorConfig,
   getUiColors,
   getUiColorMode,
+  getUiColorModeSetting,
+  subscribeSystemColorMode,
   resetUiColorModeOverrides,
   applyUiColors,
   hexToRgba,
@@ -9403,6 +9405,14 @@ async function init() {
   applyViewportScale(computeViewportScale());
   bindViewportScale(applyPlanViewportScaleChange);
   applyUiColors(uiColorConfig);
+  subscribeSystemColorMode(() => {
+    if (getUiColorModeSetting(uiColorConfig) !== 'system') return;
+    applyUiColors(uiColorConfig);
+    refreshColorDependentViews();
+    refreshColorSettingsPanels();
+    refreshToolbarFilterStyles();
+    renderToolbar();
+  });
   applyBrandSettings(appSettings);
   applyFontScale(appSettings.fontScale);
   applyRowPaddingScale(appSettings.rowPaddingScale);
