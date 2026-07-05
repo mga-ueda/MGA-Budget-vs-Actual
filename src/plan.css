@@ -1792,6 +1792,11 @@ select.app-settings-input {
   background-color: var(--settlement-month-overlay-head);
 }
 
+/* 月行ヘッダーセルのみホバー明るさで着色（決算整理は対象外） */
+.plan-table thead .month-row th.col-amount-month:not(.settlement-month):hover {
+  background: color-mix(in srgb, var(--plan-month-row-bg) calc(100% - var(--plan-hover-boost)), white var(--plan-hover-boost));
+}
+
 .plan-row-hover-plate {
   position: absolute;
   box-sizing: border-box;
