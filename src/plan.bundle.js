@@ -17988,6 +17988,36 @@ function persistEmployeeSalaryPlanMonthly(employeeId, nextMonthly) {
   refreshPlanTable();
 }
 
+function persistEmployeeSalaryPlanBonusMonthly(employeeId, nextBonusMonthly) {
+  const emp = employees.find((e) => e.id === employeeId);
+  if (!emp) return;
+  const fiscalMonths = buildFiscalYearMonths(appSettings.fiscalEndMonth);
+  const plan = getEmployeeSalaryPlan(
+    salaryPlans,
+    appSettings.fiscalPeriod,
+    employeeId,
+    emp,
+    fiscalMonths,
+  );
+  salaryPlans = setEmployeeSalaryPlan(
+    salaryPlans,
+    appSettings.fiscalPeriod,
+    employeeId,
+    { ...plan, bonusMonthly: nextBonusMonthly },
+  );
+  syncPlanDataToCurrentPeriod();
+  setPlanKpi(calcPlanKpiMetrics(data, buildPlanKpiOptions()));
+  refreshPlanTable();
+}
+
+function isEmployeeSalaryPlanBonusMonth(month, fiscalPeriod, fiscalMonths, emp) {
+  if (isDirectorEmployee(emp)) return false;
+  const bonusMonthLabels = bonusPaymentMonthLabels(
+    getBonusPaymentMonths(salaryPlanSettings, fiscalPeriod, fiscalMonths),
+  );
+  return bonusMonthLabels.includes(month);
+}
+
 function startEmployeeSalaryPlanCellEdit(td, {
   employeeId,
   month,
@@ -18009,7 +18039,8 @@ function startEmployeeSalaryPlanCellEdit(td, {
     emp,
     fiscalMonths,
   );
-  const rawValue = plan.monthly[month];
+  const isBonusMonth = isEmployeeSalaryPlanBonusMonth(month, fiscalPeriod, fiscalMonths, emp);
+  const rawValue = isBonusMonth ? plan.bonusMonthly[month] : plan.monthly[month];
 
   const input = document.createElement('input');
   input.type = 'text';
@@ -18031,6 +18062,14 @@ function startEmployeeSalaryPlanCellEdit(td, {
         fillForward,
         rawValue,
       );
+      input.remove();
+      if (isBonusMonth) {
+        persistEmployeeSalaryPlanBonusMonthly(employeeId, {
+          ...plan.bonusMonthly,
+          [month]: parsed,
+        });
+        return;
+      }
       const lockedMonths = getPlanTableFillForwardSkipMonths(
         fiscalPeriod,
         fiscalMonths,
@@ -18045,13 +18084,13 @@ function startEmployeeSalaryPlanCellEdit(td, {
           lockedMonths,
         )
         : { ...plan.monthly, [month]: parsed };
-      input.remove();
       persistEmployeeSalaryPlanMonthly(employeeId, nextMonthly);
       return;
     }
     input.remove();
+    const monthly = plan.monthly[month] ?? 0;
     const bonus = plan.bonusMonthly[month] ?? 0;
-    td.innerHTML = formatAmount((rawValue ?? 0) + bonus, 'item');
+    td.innerHTML = formatAmount(monthly + bonus, 'item');
   };
 
   input.addEventListener('keydown', (e) => {
@@ -18059,6 +18098,7 @@ function startEmployeeSalaryPlanCellEdit(td, {
       finish,
       td,
       scopeId: 'plan-table-employee-salary',
+      allowShiftFillForward: !isBonusMonth,
       onTabNext: (nextTd, { nextMonth }) => {
         if (!nextTd || !nextMonth) return;
         requestAnimationFrame(() => {

@@ -2341,12 +2341,13 @@ tr.row-man-month .col-sub {
   cursor: pointer;
 }
 
-.plan-table tbody td.col-amount.plan-man-month-editing {
+/* 予実表: セル編集時も行高を変えない（input をセル内に絶対配置） */
+.plan-table tbody td.col-amount:has(> .salary-plan-amount-input) {
   position: relative;
   overflow: hidden;
 }
 
-.plan-table tbody td.col-amount .plan-man-month-amount-input {
+.plan-table tbody td.col-amount > .salary-plan-amount-input {
   position: absolute;
   inset: 0;
   box-sizing: border-box;
@@ -2365,7 +2366,7 @@ tr.row-man-month .col-sub {
   box-shadow: inset 0 0 0 1px var(--plan-editor-border);
 }
 
-.plan-table tbody td.col-amount .plan-man-month-amount-input:focus {
+.plan-table tbody td.col-amount > .salary-plan-amount-input:focus {
   outline: none;
   box-shadow: inset 0 0 0 1px var(--plan-editor-border-hover);
 }
