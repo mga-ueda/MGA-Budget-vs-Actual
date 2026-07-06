@@ -996,6 +996,7 @@ body {
   align-items: center;
   gap: 0.75rem 1.25rem;
   margin-top: 0;
+  padding-top: 0;
 }
 
 .tax-payment-plan-years-row {
@@ -1026,6 +1027,7 @@ body {
 .tax-payment-settings-header .expand-settings-desc {
   max-width: 100%;
   width: 100%;
+  margin-bottom: 10px;
 }
 
 .expense-plan-override-add-row {
@@ -3606,7 +3608,9 @@ html[data-plan-color-mode="light"] .plan-loading-overlay-panel {
 
 .expand-settings-wrap.employee-settings-wrap .salary-plan-section .salary-plan-header .salary-plan-desc,
 .expand-settings-wrap.outsourcing-settings-wrap .salary-plan-section .salary-plan-header .salary-plan-desc {
-  padding-top: 0.35rem;
+  margin-top: 10px;
+  margin-bottom: 10px;
+  padding-top: 0;
 }
 
 .expand-settings-wrap.employee-settings-wrap .salary-plan-header-spaced .salary-plan-desc {
@@ -3778,6 +3782,10 @@ html[data-plan-color-mode="light"] .plan-loading-overlay-panel {
   font-size: 0.75rem;
   color: var(--plan-text-dim);
   line-height: 1.5;
+}
+
+.expense-plan-override-section .salary-plan-header .salary-plan-desc {
+  margin-top: 10px;
 }
 
 .salary-plan-bonus-month-config {
