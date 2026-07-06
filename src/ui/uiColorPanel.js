@@ -689,7 +689,7 @@ export function mountUiColorPanel(container, {
   registerNavBtnBgTextRow('予実表表示ボタン（表示中）', 'dashboardNavActiveBg', 'dashboardNavActiveText', '予実表を表示');
   registerBgTextRow('ダッシュボード・収益サイドバー（ヘッダー）', 'dashboardSidebarRevenueBg', 'dashboardSidebarRevenueText', '収益合計', false);
   registerBgTextRow('ダッシュボード・支出サイドバー（ヘッダー）', 'dashboardSidebarExpenseBg', 'dashboardSidebarExpenseText', '支出合計', false);
-  registerBgRow('ダッシュボード・サイドバー（棒グラフ）', 'dashboardSidebarBarBg', '56.77%', '#ffffff');
+  registerBgRow('ダッシュボード・サイドバー（棒グラフ）', 'dashboardSidebarBarBg', '56.77%', null);
   registerBgRow('ダッシュボード・利益率推移（低）', 'dashboardProfitLineLow', '低');
   registerBgRow('ダッシュボード・利益率推移（高）', 'dashboardProfitLineHigh', '高');
   registerBgRow('ダッシュボード・預金残高推移（低）', 'dashboardCashLineLow', '低');

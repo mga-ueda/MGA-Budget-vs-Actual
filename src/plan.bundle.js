@@ -1180,15 +1180,15 @@ const DEFAULT_UI_COLORS_DARK = {
   dashboardNavText: '#ffffff',
   dashboardNavActiveBg: '#0891b2',
   dashboardNavActiveText: '#ffffff',
-  dashboardSidebarRevenueBg: '#2f7ed8',
+  dashboardSidebarRevenueBg: '#004fa8',
   dashboardSidebarRevenueText: '#ffffff',
-  dashboardSidebarExpenseBg: '#c42525',
+  dashboardSidebarExpenseBg: '#990000',
   dashboardSidebarExpenseText: '#ffffff',
-  dashboardSidebarBarBg: '#ff8800',
-  dashboardProfitLineLow: '#c45c5c',
-  dashboardProfitLineHigh: '#4a9fd4',
-  dashboardCashLineLow: '#c45c5c',
-  dashboardCashLineHigh: '#22c55e',
+  dashboardSidebarBarBg: '#ff8000',
+  dashboardProfitLineLow: '#ff0000',
+  dashboardProfitLineHigh: '#008ae0',
+  dashboardCashLineLow: '#ff0000',
+  dashboardCashLineHigh: '#00c749',
   dashboardChartShadowColor: '#000000',
   kbdBg: '#373737',
   kbdTextColor: '#ffffff',
@@ -1246,11 +1246,11 @@ const DEFAULT_UI_COLORS_LIGHT = {
   dashboardSidebarRevenueText: '#ffffff',
   dashboardSidebarExpenseBg: '#c42525',
   dashboardSidebarExpenseText: '#ffffff',
-  dashboardSidebarBarBg: '#ff8800',
-  dashboardProfitLineLow: '#c45c5c',
-  dashboardProfitLineHigh: '#4a9fd4',
-  dashboardCashLineLow: '#c45c5c',
-  dashboardCashLineHigh: '#22c55e',
+  dashboardSidebarBarBg: '#ffb35c',
+  dashboardProfitLineLow: '#ff0000',
+  dashboardProfitLineHigh: '#2eafff',
+  dashboardCashLineLow: '#ff0000',
+  dashboardCashLineHigh: '#5ef394',
   dashboardChartShadowColor: '#000000',
   kbdBg: '#fafafa',
   kbdTextColor: '#000000',
@@ -12611,7 +12611,7 @@ function mountUiColorPanel(container, {
   registerNavBtnBgTextRow('予実表表示ボタン（表示中）', 'dashboardNavActiveBg', 'dashboardNavActiveText', '予実表を表示');
   registerBgTextRow('ダッシュボード・収益サイドバー（ヘッダー）', 'dashboardSidebarRevenueBg', 'dashboardSidebarRevenueText', '収益合計', false);
   registerBgTextRow('ダッシュボード・支出サイドバー（ヘッダー）', 'dashboardSidebarExpenseBg', 'dashboardSidebarExpenseText', '支出合計', false);
-  registerBgRow('ダッシュボード・サイドバー（棒グラフ）', 'dashboardSidebarBarBg', '56.77%', '#ffffff');
+  registerBgRow('ダッシュボード・サイドバー（棒グラフ）', 'dashboardSidebarBarBg', '56.77%', null);
   registerBgRow('ダッシュボード・利益率推移（低）', 'dashboardProfitLineLow', '低');
   registerBgRow('ダッシュボード・利益率推移（高）', 'dashboardProfitLineHigh', '高');
   registerBgRow('ダッシュボード・預金残高推移（低）', 'dashboardCashLineLow', '低');
