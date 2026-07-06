@@ -1,4 +1,5 @@
 import { canonicalExpenseAccount, EXPENSE_SECTION_ACCOUNTS } from './expenseAccountConfig.js';
+import { formatFiscalPeriodLabel } from './appSettings.js';
 import { normalizeAmount, emptyMonthly } from './planAmountUtils.js';
 
 const EXPENSE_PLAN_OVERRIDE_STORAGE_KEY = 'mga-expense-plan-overrides';
@@ -28,11 +29,11 @@ export function saveExpensePlanOverrides(overrides) {
   return overrides;
 }
 
-/** 支払い計画オーバーライドの対象期間（今期・来期） */
+/** 支払い計画オーバーライドの対象期間 */
 export function buildExpensePlanOverridePeriodEntries(currentPeriod) {
   return [
-    { period: currentPeriod, label: "今期" },
-    { period: currentPeriod + 1, label: "来期" },
+    { period: currentPeriod, label: formatFiscalPeriodLabel(currentPeriod) },
+    { period: currentPeriod + 1, label: formatFiscalPeriodLabel(currentPeriod + 1) },
   ];
 }
 

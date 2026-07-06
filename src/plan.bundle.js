@@ -4799,17 +4799,16 @@ function setPaymentPlanYears(settings, planYears) {
   });
 }
 
+/** 予実表の「その他支払」合計行ラベル */
+const TAX_PAY_OTHER_PAY_TOTAL_LABEL = 'その他支払合計';
+
 /** 今期を起点に、計画対象の会計期リストを生成 */
 function buildPaymentPlanPeriodEntries(currentPeriod, planYears) {
   const years = normalizePaymentPlanYears(planYears);
   const entries = [];
   for (let i = 0; i < years; i += 1) {
     const period = currentPeriod + i;
-    let label;
-    if (i === 0) label = '今期';
-    else if (i === 1) label = '来期';
-    else label = `第${i + 1}期`;
-    entries.push({ period, label });
+    entries.push({ period, label: formatFiscalPeriodLabel(period) });
   }
   return entries;
 }
@@ -4842,11 +4841,11 @@ function saveExpensePlanOverrides(overrides) {
   return overrides;
 }
 
-/** 支払い計画オーバーライドの対象期間（今期・来期） */
+/** 支払い計画オーバーライドの対象期間 */
 function buildExpensePlanOverridePeriodEntries(currentPeriod) {
   return [
-    { period: currentPeriod, label: "今期" },
-    { period: currentPeriod + 1, label: "来期" },
+    { period: currentPeriod, label: formatFiscalPeriodLabel(currentPeriod) },
+    { period: currentPeriod + 1, label: formatFiscalPeriodLabel(currentPeriod + 1) },
   ];
 }
 
@@ -6485,7 +6484,6 @@ function enrichPlanDataWithEmployeeSalaryRows(planData, {
 const TAX_PAY_OTHER_SECTION_LABEL = 'その他';
 const TAX_PAY_OTHER_TOTAL_LABEL = 'その他合計';
 const TAX_PAY_OTHER_PAY_SECTION_LABEL = 'その他支払';
-const TAX_PAY_OTHER_PAY_TOTAL_LABEL = 'その他支払合計';
 const TAX_PAY_TAX_SECTION_LABEL = '法人税';
 const NO_SUB_LABEL = '補助科目なし';
 
@@ -10849,6 +10847,832 @@ async function reloadPlanDataFromSavedFolder(expandConfig, periodOptions, option
   }
 }
 
+/* ui/planSettingsTableUi.js */
+const planAmountCellConfigs = new WeakMap();
+
+function applyPlanAmountVarianceClass(td, monthIndex, value, prevValue) {
+  if (monthIndex === 0) {
+    td.classList.add('salary-plan-amount-start-month');
+  } else if (prevValue !== undefined && salaryPlanAmountDiffersFromPrevious(prevValue, value)) {
+    td.classList.add('salary-plan-amount-changed');
+  }
+}
+
+function createPlanMonthDisplayUi({
+  appSettings,
+  currentPeriod,
+  fiscalMonths,
+  getMonthDisplayConfig,
+  getPastMonthsForPeriod,
+  onToggleMonthDisplay,
+}) {
+  function isMonthEditable(fiscalPeriod, month) {
+    return !getPastMonthsForPeriod(fiscalPeriod).has(month);
+  }
+
+  function isBudgetActualCurrentPeriod(fiscalPeriod) {
+    return fiscalPeriod === currentPeriod
+      && getFiscalPeriodDisplayMode(appSettings.businessStartYear, fiscalPeriod) === 'budget-actual';
+  }
+
+  function getMonthDisplayModeForPeriod(month) {
+    return getMonthDisplayMode(
+      getMonthDisplayConfig(),
+      currentPeriod,
+      month,
+      appSettings.businessStartYear,
+      fiscalMonths,
+    );
+  }
+
+  function monthPlanActualClass(fiscalPeriod, month) {
+    const displayMode = getFiscalPeriodDisplayMode(appSettings.businessStartYear, fiscalPeriod);
+    if (displayMode === 'plan') return 'salary-plan-month-plan';
+    if (displayMode === 'actual') return 'salary-plan-month-actual';
+    return isMonthEditable(fiscalPeriod, month) ? 'salary-plan-month-plan' : 'salary-plan-month-actual';
+  }
+
+  function getHighlightFiscalMonthForTable(fiscalPeriod) {
+    if (fiscalPeriod !== currentPeriod) return null;
+    if (getFiscalPeriodDisplayMode(appSettings.businessStartYear, fiscalPeriod) !== 'budget-actual') {
+      return null;
+    }
+    return getCurrentFiscalMonthLabel(
+      appSettings.businessStartYear,
+      fiscalPeriod,
+      fiscalMonths,
+    );
+  }
+
+  function syncMonthHighlightClasses(el, month, fiscalPeriod) {
+    if (!el) return;
+    const highlightFiscalMonth = getHighlightFiscalMonthForTable(fiscalPeriod);
+    el.classList.toggle('current-month', highlightFiscalMonth != null && month === highlightFiscalMonth);
+  }
+
+  function configureMonthHeaderTh(th, month, fiscalPeriod) {
+    th.className = 'salary-plan-col-month';
+    th.textContent = month;
+    syncMonthHighlightClasses(th, month, fiscalPeriod);
+    if (!isBudgetActualCurrentPeriod(fiscalPeriod) || !isMonthDisplayToggleTarget(month)) return;
+
+    const mode = getMonthDisplayModeForPeriod(month);
+    th.classList.add('month-display-toggle', `month-display-${mode}`);
+    th.title = getMonthDisplayClickHint(mode);
+    th.tabIndex = 0;
+    th.setAttribute('role', 'button');
+
+    const activate = () => {
+      if (typeof onToggleMonthDisplay === 'function') onToggleMonthDisplay(month);
+    };
+    th.addEventListener('click', activate);
+    th.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        activate();
+      }
+    });
+  }
+
+  function updateMonthHeaderTh(th, month, fiscalPeriod) {
+    syncMonthHighlightClasses(th, month, fiscalPeriod);
+    if (!isBudgetActualCurrentPeriod(fiscalPeriod) || !isMonthDisplayToggleTarget(month)) return;
+    const mode = getMonthDisplayModeForPeriod(month);
+    th.classList.add('month-display-toggle');
+    th.classList.toggle('month-display-actual', mode === 'actual');
+    th.classList.toggle('month-display-plan', mode === 'plan');
+    th.title = getMonthDisplayClickHint(mode);
+    th.setAttribute('aria-pressed', mode === 'plan' ? 'true' : 'false');
+  }
+
+  function bindPlanAmountCellDblClick(td, startNumericCellEdit) {
+    if (td.dataset.planAmountEditBound === '1') return;
+    td.dataset.planAmountEditBound = '1';
+    td.addEventListener('dblclick', () => {
+      const config = planAmountCellConfigs.get(td);
+      if (config?.editable) startNumericCellEdit(td, config);
+    });
+  }
+
+  function setPlanAmountCellContent(td, {
+    month,
+    monthIndex,
+    value,
+    prevValue,
+    editable,
+    fiscalPeriod,
+    title = '',
+    formatValue,
+    rawValue,
+    parseValue,
+    onSave,
+    extraClass = '',
+    allowShiftFillForward = false,
+    tabScopeId,
+    onEditClose,
+    forcePlanMonthColor = false,
+  }, startNumericCellEdit) {
+    if (td.querySelector('input')) return;
+
+    const colorClass = forcePlanMonthColor
+      ? 'salary-plan-month-plan'
+      : monthPlanActualClass(fiscalPeriod, month);
+    td.className = `salary-plan-amount-cell ${colorClass} ${extraClass}`.trim();
+    tagPlanEditableCell(td, { month });
+    td.dataset.planMonth = month;
+    td.classList.remove(
+      'salary-plan-cell-editable',
+      'salary-plan-cell-disabled',
+      'salary-plan-amount-start-month',
+      'salary-plan-amount-changed',
+    );
+    applyPlanAmountVarianceClass(td, monthIndex, value, prevValue);
+    td.textContent = formatValue(value);
+    syncMonthHighlightClasses(td, month, fiscalPeriod);
+
+    if (editable) {
+      td.classList.add('salary-plan-cell-editable');
+      td.title = title;
+      planAmountCellConfigs.set(td, {
+        rawValue,
+        editable: true,
+        formatValue,
+        parseValue,
+        onSave,
+        allowShiftFillForward,
+        tabScopeId,
+        onEditClose,
+      });
+      bindPlanAmountCellDblClick(td, startNumericCellEdit);
+      return;
+    }
+
+    td.classList.add('salary-plan-cell-disabled');
+    td.removeAttribute('title');
+    planAmountCellConfigs.delete(td);
+  }
+
+  return {
+    isMonthEditable,
+    monthPlanActualClass,
+    configureMonthHeaderTh,
+    updateMonthHeaderTh,
+    syncMonthHighlightClasses,
+    setPlanAmountCellContent,
+    getHighlightFiscalMonthForTable,
+  };
+}
+
+function createPlanAmountCellEditor({ onEditClose }) {
+  return function startNumericCellEdit(td, {
+    rawValue,
+    editable,
+    formatValue,
+    parseValue,
+    onSave,
+    allowShiftFillForward = false,
+    tabScopeId,
+    onEditClose: cellOnEditClose,
+  }) {
+    if (!editable) return;
+    if (td.querySelector('input')) return;
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.inputMode = 'decimal';
+    input.className = 'salary-plan-amount-input';
+    input.autocomplete = 'off';
+    input.spellcheck = false;
+    input.value = rawValue != null && rawValue !== 0 ? String(rawValue) : '';
+
+    let editClosed = false;
+
+    const finish = (save, fillForward = false) => {
+      if (editClosed) return;
+      editClosed = true;
+      if (save) {
+        const parsed = allowShiftFillForward && fillForward
+          ? parseSalaryPlanAmountInputWithFillForward(input.value, true, rawValue)
+          : parseValue(input.value);
+        onSave(parsed, allowShiftFillForward && fillForward);
+      }
+      const closeHandler = cellOnEditClose ?? onEditClose;
+      if (closeHandler) closeHandler();
+    };
+
+    input.addEventListener('keydown', (e) => {
+      handlePlanAmountCellKeydown(e, {
+        finish,
+        td,
+        scopeId: tabScopeId,
+        allowShiftFillForward,
+      });
+    });
+    input.addEventListener('blur', () => {
+      setTimeout(() => {
+        if (!editClosed) finish(true, false);
+      }, 0);
+    });
+
+    td.textContent = '';
+    td.appendChild(input);
+    input.focus();
+    input.select();
+  };
+}
+
+function applyPlanSettingsColumnPlateRect(plate, monthRect, topY, bottomY, clipRect) {
+  const clippedTop = Math.max(topY, clipRect.top);
+  const clippedBottom = Math.min(bottomY, clipRect.bottom);
+  if (clippedBottom <= clippedTop + 0.5) {
+    plate.hidden = true;
+    return;
+  }
+  const left = Math.round(monthRect.left);
+  const top = Math.round(clippedTop);
+  const width = Math.round(monthRect.right) - left;
+  const height = Math.round(clippedBottom - clippedTop);
+  plate.hidden = false;
+  plate.style.position = 'fixed';
+  plate.style.zIndex = '25';
+  plate.style.left = `${left}px`;
+  plate.style.width = `${width}px`;
+  plate.style.top = `${top}px`;
+  plate.style.height = `${height}px`;
+}
+
+function syncPlanSettingsTableColumnPlates(tableWrap, table, highlightMonth, fiscalMonths) {
+  if (!tableWrap || !table?.isConnected) return;
+
+  const plateHost = tableWrap;
+  tableWrap.parentElement?.querySelectorAll(':scope > .plan-settings-column-plate-layer').forEach((el) => {
+    el.remove();
+  });
+  let layer = plateHost.querySelector(':scope > .plan-settings-column-plate-layer');
+  if (!layer) {
+    layer = document.createElement('div');
+    layer.className = 'plan-settings-column-plate-layer plan-column-plate-layer';
+    layer.setAttribute('aria-hidden', 'true');
+    plateHost.appendChild(layer);
+  }
+
+  let headerPlate = layer.querySelector('.plan-settings-column-plate--current-header');
+  if (!headerPlate) {
+    headerPlate = document.createElement('div');
+    headerPlate.className = 'plan-column-plate plan-column-plate--current-header plan-settings-column-plate--current-header';
+    layer.appendChild(headerPlate);
+  }
+
+  let bodyPlate = layer.querySelector('.plan-settings-column-plate--current');
+  if (!bodyPlate) {
+    bodyPlate = document.createElement('div');
+    bodyPlate.className = 'plan-column-plate plan-column-plate--current plan-settings-column-plate--current';
+    layer.appendChild(bodyPlate);
+  }
+
+  const monthIndex = highlightMonth ? fiscalMonths.indexOf(highlightMonth) : -1;
+  if (monthIndex < 0) {
+    headerPlate.hidden = true;
+    bodyPlate.hidden = true;
+    return;
+  }
+
+  const monthThs = table.querySelectorAll('thead th.salary-plan-col-month');
+  const monthTh = monthThs[monthIndex];
+  if (!monthTh) {
+    headerPlate.hidden = true;
+    bodyPlate.hidden = true;
+    return;
+  }
+
+  const clipRect = tableWrap.getBoundingClientRect();
+  const monthRect = monthTh.getBoundingClientRect();
+  applyPlanSettingsColumnPlateRect(headerPlate, monthRect, monthRect.top, monthRect.bottom, clipRect);
+
+  let bottomY = monthRect.bottom;
+  for (const tr of table.tBodies[0]?.querySelectorAll('tr') ?? []) {
+    const amountCells = tr.querySelectorAll('td.salary-plan-amount-cell');
+    const td = amountCells[monthIndex];
+    if (td) bottomY = Math.max(bottomY, td.getBoundingClientRect().bottom);
+  }
+  applyPlanSettingsColumnPlateRect(bodyPlate, monthRect, monthRect.bottom, bottomY, clipRect);
+}
+
+function syncAllPlanSettingsTableColumnPlates(wrap, fiscalMonths, currentPeriod, appSettings) {
+  if (!wrap?.isConnected) return;
+  const highlightMonth = getFiscalPeriodDisplayMode(
+    appSettings.businessStartYear,
+    currentPeriod,
+  ) === 'budget-actual'
+    ? getCurrentFiscalMonthLabel(
+      appSettings.businessStartYear,
+      currentPeriod,
+      fiscalMonths,
+    )
+    : null;
+
+  wrap.querySelectorAll('.salary-plan-table-wrap').forEach((tableWrap) => {
+    const table = tableWrap.querySelector('table[data-fiscal-period]');
+    if (!table) return;
+    const fiscalPeriod = Number(table.dataset.fiscalPeriod);
+    const tableHighlight = fiscalPeriod === currentPeriod ? highlightMonth : null;
+    syncPlanSettingsTableColumnPlates(tableWrap, table, tableHighlight, fiscalMonths);
+  });
+}
+
+function bindPlanSettingsTableWrapScrollSync(wrap, sync) {
+  wrap?.querySelectorAll('.salary-plan-table-wrap').forEach((el) => {
+    if (el.__planSettingsPlateScrollBound) return;
+    el.__planSettingsPlateScrollBound = true;
+    el.addEventListener('scroll', sync, { passive: true });
+  });
+}
+
+function refreshPlanSettingsColumnPlates(wrap, fiscalMonths, currentPeriod, appSettings) {
+  if (!wrap?.isConnected) return;
+  const sync = wrap.__planSettingsPlateWindowSync
+    ?? (() => syncAllPlanSettingsTableColumnPlates(wrap, fiscalMonths, currentPeriod, appSettings));
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    syncAllPlanSettingsTableColumnPlates(wrap, fiscalMonths, currentPeriod, appSettings);
+    bindPlanSettingsTableWrapScrollSync(wrap, sync);
+  }));
+}
+
+function bindPlanSettingsColumnPlateSync(wrap, fiscalMonths, currentPeriod, appSettings) {
+  if (wrap.__planSettingsPlateWindowSync) {
+    window.removeEventListener('scroll', wrap.__planSettingsPlateWindowSync, true);
+  }
+  const sync = () => syncAllPlanSettingsTableColumnPlates(wrap, fiscalMonths, currentPeriod, appSettings);
+  wrap.__planSettingsPlateWindowSync = sync;
+  bindPlanSettingsTableWrapScrollSync(wrap, sync);
+  window.addEventListener('scroll', sync, true);
+  sync();
+}
+
+function bindPlanSettingsTableUi(wrap, fiscalMonths, currentPeriod, appSettings) {
+  bindPlanSettingsScalableLayout(wrap, { fiscalMonths, currentPeriod, appSettings });
+}
+
+const PLAN_SETTINGS_UI_SCALE_VAR = '--plan-settings-ui-scale';
+const PLAN_SETTINGS_UI_SCALE_MAX = 1.45;
+const PLAN_SETTINGS_UI_SCALE_FIT_THRESHOLD = 0.97;
+
+const PLAN_SETTINGS_TABLE_COL_LABEL_PX = 64;
+const PLAN_SETTINGS_TABLE_COL_SUB_PX = 64;
+const PLAN_SETTINGS_TABLE_COL_MONTH_MIN_PX = 52;
+const PLAN_SETTINGS_TABLE_COL_TOTAL_PX = 84;
+const PLAN_SETTINGS_TABLE_COL_ACTIONS_PX = 104;
+
+function measureExtraDigitWidthFromWrap(wrap) {
+  const table = wrap?.querySelector(
+    '.revenue-plan-table, .tax-payment-plan-table, .outsourcing-plan-table, .expense-plan-override-table, .salary-plan-table',
+  );
+  const style = table ? getComputedStyle(table) : getComputedStyle(wrap);
+  const probe = document.createElement('span');
+  probe.setAttribute('aria-hidden', 'true');
+  probe.style.cssText = 'position:absolute;visibility:hidden;white-space:nowrap;font-variant-numeric:tabular-nums;';
+  probe.style.font = style.font;
+  probe.textContent = '9';
+  wrap.appendChild(probe);
+  const width = Math.ceil(probe.getBoundingClientRect().width);
+  probe.remove();
+  return width;
+}
+
+/** 受注計画と同様、列最小幅から表の自然幅を見積もる（scrollWidth は容器幅に引き伸ばされるため使わない） */
+function measureSalaryPlanTableNaturalWidth(wrap, monthCount, {
+  subColumns = 1,
+  actionsColumn = false,
+  leadingColumnsPx = 0,
+} = {}) {
+  const extraDigitW = measureExtraDigitWidthFromWrap(wrap);
+  const monthMinW = PLAN_SETTINGS_TABLE_COL_MONTH_MIN_PX + extraDigitW;
+  const totalW = PLAN_SETTINGS_TABLE_COL_TOTAL_PX + extraDigitW;
+  const labelW = leadingColumnsPx > 0
+    ? leadingColumnsPx
+    : PLAN_SETTINGS_TABLE_COL_LABEL_PX + (subColumns > 0 ? PLAN_SETTINGS_TABLE_COL_SUB_PX : 0);
+  const actionsW = actionsColumn ? PLAN_SETTINGS_TABLE_COL_ACTIONS_PX : 0;
+  return labelW + monthCount * monthMinW + totalW + actionsW;
+}
+
+/** 描画済みテーブルの内容に基づく幅（一時的に max-content で計測） */
+function measureTableIntrinsicWidth(table) {
+  if (!table?.isConnected) return 0;
+  const host = table.closest('.salary-plan-table-wrap, .employee-settings-column-list') ?? table.parentElement;
+  const prev = {
+    tableWidth: table.style.width,
+    tableMinWidth: table.style.minWidth,
+    hostWidth: host?.style.width,
+    hostMinWidth: host?.style.minWidth,
+  };
+  if (host) {
+    host.style.width = 'max-content';
+    host.style.minWidth = 'max-content';
+  }
+  table.style.width = 'max-content';
+  table.style.minWidth = 'max-content';
+  const width = Math.ceil(table.getBoundingClientRect().width);
+  table.style.width = prev.tableWidth;
+  table.style.minWidth = prev.tableMinWidth;
+  if (host) {
+    host.style.width = prev.hostWidth;
+    host.style.minWidth = prev.hostMinWidth;
+  }
+  return width;
+}
+
+/** 設定ページ自動ズームの下限・上限（予実表の content-fit・設定 UI スケールと同等のレンジ） */
+const PLAN_SETTINGS_AUTO_ZOOM_MIN = 0.72;
+const PLAN_SETTINGS_AUTO_ZOOM_MAX = 1.45;
+
+/** rem を px に変換する（ズーム前の CSS px 基準で自然幅を見積もるため） */
+function planSettingsRemToPx(rem) {
+  const base = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+  return rem * base;
+}
+
+/** 要素を一時的に max-content 幅にして自然幅を計測する（折り返し・伸縮の影響を除外） */
+function measureElementIntrinsicWidth(el) {
+  if (!el?.isConnected) return 0;
+  const prev = {
+    width: el.style.width,
+    minWidth: el.style.minWidth,
+    maxWidth: el.style.maxWidth,
+  };
+  el.style.width = 'max-content';
+  el.style.minWidth = 'max-content';
+  el.style.maxWidth = 'none';
+  const width = Math.ceil(el.getBoundingClientRect().width);
+  el.style.width = prev.width;
+  el.style.minWidth = prev.minWidth;
+  el.style.maxWidth = prev.maxWidth;
+  return width;
+}
+
+/**
+ * フォーム中心の設定ページ（税率定義・表示・その他）をブラウザ幅に合わせて丸ごと拡縮する。
+ * rem 固定幅の入力欄やチェックボックスも含めて一括追従できるよう CSS zoom を使う。
+ * 予実表と同じく「自然幅 : 使える幅」の比率で一発確定し、再計測ループは行わない。
+ */
+function layoutPlanSettingsAutoZoom(wrap, measureNaturalWidth) {
+  if (!wrap?.isConnected) return;
+  const host = wrap.parentElement;
+  if (!host) return;
+
+  const prevZoom = wrap.style.zoom || '';
+  wrap.style.zoom = '1';
+  const naturalW = measureNaturalWidth(wrap);
+  const availableW = host.clientWidth;
+  if (!(naturalW > 0) || !(availableW > 0)) {
+    wrap.style.zoom = prevZoom;
+    return;
+  }
+
+  // 1% は丸め・サブピクセル誤差の安全マージン（予実表の content-fit と同じ）
+  const raw = (availableW / naturalW) * 0.99;
+  const scale = Math.round(
+    Math.min(PLAN_SETTINGS_AUTO_ZOOM_MAX, Math.max(PLAN_SETTINGS_AUTO_ZOOM_MIN, raw)) * 100,
+  ) / 100;
+  wrap.style.zoom = scale === 1 ? '' : String(scale);
+}
+
+/**
+ * 自動ズームをページ表示中ずっと追従させる（途中でのウィンドウ最大化・リサイズ対応）。
+ * zoom は wrap 自身の計測系を変えるため、影響を受けない親（#plan-root）の幅を監視する。
+ */
+function bindPlanSettingsAutoZoom(wrap, measureNaturalWidth) {
+  const host = wrap.parentElement;
+  if (!host) return;
+  host.__planSettingsAutoZoomObserver?.disconnect();
+
+  if (host.__planSettingsAutoZoomDispose) {
+    host.__planSettingsAutoZoomDispose();
+    host.__planSettingsAutoZoomDispose = null;
+  }
+
+  let lastHostW = 0;
+  const dispose = () => {
+    observer.disconnect();
+    window.removeEventListener('resize', onWindowResize);
+    if (host.__planSettingsAutoZoomDispose === dispose) {
+      host.__planSettingsAutoZoomDispose = null;
+    }
+  };
+  const run = (force = false) => {
+    if (!wrap.isConnected) {
+      dispose();
+      return;
+    }
+    // 高さだけの変化（行の増減など）では再計測しない
+    if (!force && host.clientWidth === lastHostW) return;
+    lastHostW = host.clientWidth;
+    layoutPlanSettingsAutoZoom(wrap, measureNaturalWidth);
+  };
+
+  const observer = new ResizeObserver(() => run(false));
+  // ブラウザ最大化などウィンドウ由来の変化は resize イベントでも拾う（RO の取りこぼし対策）
+  const onWindowResize = () => run(false);
+  window.addEventListener('resize', onWindowResize);
+
+  requestAnimationFrame(() => requestAnimationFrame(() => run(true)));
+  document.fonts?.ready?.then(() => run(true)).catch(() => {});
+  observer.observe(host);
+  host.__planSettingsAutoZoomDispose = dispose;
+  return () => run(true);
+}
+
+function measurePlanSettingsPageNaturalWidth(wrap, monthCount, variants = []) {
+  const defaults = [{ subColumns: 1, actionsColumn: false }];
+  const configs = variants.length > 0 ? variants : defaults;
+  let maxW = 0;
+  for (const config of configs) {
+    maxW = Math.max(maxW, measureSalaryPlanTableNaturalWidth(wrap, monthCount, config));
+  }
+  return maxW;
+}
+
+const EMPLOYEE_COL_NO_MIN_PX = 36;
+const EMPLOYEE_COL_NO_MAX_PX = 48;
+const EMPLOYEE_COL_KIND_MIN_PX = 40;
+const EMPLOYEE_COL_KIND_MAX_PX = 56;
+const EMPLOYEE_COL_NAME_MIN_PX = 52;
+const EMPLOYEE_COL_NAME_MAX_PX = 96;
+const EMPLOYEE_COL_SUB_MIN_PX = 80;
+const EMPLOYEE_COL_SUB_MAX_PX = 132;
+const EMPLOYEE_COL_MONTH_MIN_PX = 52;
+const EMPLOYEE_COL_TOTAL_MIN_PX = 84;
+const EMPLOYEE_COL_INCREASE_PX = 68;
+const EMPLOYEE_AMOUNT_CELL_PADDING_PX = 12;
+const EMPLOYEE_LEADING_CELL_PADDING_PX = 10;
+
+function measureEmployeeTableFont(wrap) {
+  const table = wrap?.querySelector('.employee-salary-plan-table, .salary-overtime-plan-table');
+  const style = table ? getComputedStyle(table) : getComputedStyle(wrap);
+  return style.font;
+}
+
+function measureEmployeeAmountDigitWidth(wrap) {
+  const font = measureEmployeeTableFont(wrap);
+  const probe = document.createElement('span');
+  probe.setAttribute('aria-hidden', 'true');
+  probe.style.cssText = 'position:absolute;visibility:hidden;white-space:nowrap;font-variant-numeric:tabular-nums;';
+  probe.style.font = font;
+  probe.textContent = '9';
+  wrap.appendChild(probe);
+  const width = Math.ceil(probe.getBoundingClientRect().width);
+  probe.remove();
+  return width;
+}
+
+function measureMaxCellTextWidth(wrap, selector, font) {
+  let maxW = 0;
+  const probe = document.createElement('span');
+  probe.setAttribute('aria-hidden', 'true');
+  probe.style.cssText = 'position:absolute;visibility:hidden;white-space:nowrap;font-variant-numeric:tabular-nums;';
+  probe.style.font = font;
+  wrap.appendChild(probe);
+  wrap.querySelectorAll(selector).forEach((el) => {
+    const text = el.textContent?.trim();
+    if (!text) return;
+    probe.textContent = text;
+    maxW = Math.max(maxW, Math.ceil(probe.getBoundingClientRect().width));
+  });
+  probe.remove();
+  return maxW;
+}
+
+function measureEmployeeLeadingColumnWidth(wrap, cellSelector, font, headerLabels, minPx, maxPx) {
+  let maxW = minPx;
+  const probe = document.createElement('span');
+  probe.setAttribute('aria-hidden', 'true');
+  probe.style.cssText = 'position:absolute;visibility:hidden;white-space:nowrap;';
+  probe.style.font = font;
+  wrap.appendChild(probe);
+
+  for (const label of headerLabels) {
+    probe.textContent = label;
+    maxW = Math.max(maxW, Math.ceil(probe.getBoundingClientRect().width));
+  }
+
+  wrap.querySelectorAll(cellSelector).forEach((el) => {
+    const text = el.textContent?.trim();
+    if (!text) return;
+    probe.textContent = text;
+    maxW = Math.max(maxW, Math.ceil(probe.getBoundingClientRect().width));
+  });
+
+  probe.remove();
+  return Math.min(maxPx, maxW + EMPLOYEE_LEADING_CELL_PADDING_PX);
+}
+
+function buildEmployeePlanTableColgroup({ variant, monthCount, hasIncrease = false }) {
+  const colgroup = document.createElement('colgroup');
+  const colClasses = [];
+  if (variant === 'overtime') {
+    colClasses.push('employee-col-kind');
+  } else {
+    colClasses.push('employee-col-no', 'employee-col-name', 'employee-col-sub', 'employee-col-kind');
+  }
+  for (let i = 0; i < monthCount; i += 1) {
+    colClasses.push('employee-col-month');
+  }
+  colClasses.push('employee-col-total');
+  if (hasIncrease) colClasses.push('employee-col-increase');
+  for (const className of colClasses) {
+    const col = document.createElement('col');
+    col.className = className;
+    colgroup.appendChild(col);
+  }
+  return colgroup;
+}
+
+function measureEmployeeSettingsTableLayout(wrap, monthCount, availableW) {
+  const font = measureEmployeeTableFont(wrap);
+  const extraDigitW = measureEmployeeAmountDigitWidth(wrap);
+  const monthContentW = measureMaxCellTextWidth(
+    wrap,
+    '.salary-plan-table td.salary-plan-amount-cell, .salary-plan-table th.salary-plan-col-month',
+    font,
+  );
+  const totalContentW = measureMaxCellTextWidth(
+    wrap,
+    '.salary-plan-table td.salary-plan-col-total',
+    font,
+  );
+
+  let monthW = Math.max(
+    EMPLOYEE_COL_MONTH_MIN_PX + extraDigitW,
+    monthContentW + EMPLOYEE_AMOUNT_CELL_PADDING_PX,
+  );
+  let totalW = Math.max(
+    EMPLOYEE_COL_TOTAL_MIN_PX + extraDigitW * 2,
+    totalContentW + EMPLOYEE_AMOUNT_CELL_PADDING_PX,
+  );
+
+  const noW = measureEmployeeLeadingColumnWidth(
+    wrap,
+    '.employee-salary-plan-table .salary-plan-col-no',
+    font,
+    ['番号'],
+    EMPLOYEE_COL_NO_MIN_PX,
+    EMPLOYEE_COL_NO_MAX_PX,
+  );
+  const nameW = measureEmployeeLeadingColumnWidth(
+    wrap,
+    '.employee-salary-plan-table .salary-plan-col-name',
+    font,
+    ['氏名'],
+    EMPLOYEE_COL_NAME_MIN_PX,
+    EMPLOYEE_COL_NAME_MAX_PX,
+  );
+  const subW = measureEmployeeLeadingColumnWidth(
+    wrap,
+    '.employee-salary-plan-table .salary-plan-col-sub',
+    font,
+    ['市区町村'],
+    EMPLOYEE_COL_SUB_MIN_PX,
+    EMPLOYEE_COL_SUB_MAX_PX,
+  );
+  const kindW = measureEmployeeLeadingColumnWidth(
+    wrap,
+    '.salary-plan-table .salary-plan-col-kind',
+    font,
+    ['種別', '月額', '賞与', '残業手当'],
+    EMPLOYEE_COL_KIND_MIN_PX,
+    EMPLOYEE_COL_KIND_MAX_PX,
+  );
+  const hasIncrease = wrap.querySelector('.employee-salary-plan-table .salary-plan-col-increase') != null;
+  const increaseW = hasIncrease ? EMPLOYEE_COL_INCREASE_PX : 0;
+
+  const overtimeFixedW = kindW + totalW;
+  const salaryFixedW = noW + nameW + subW + kindW + totalW + increaseW;
+  const naturalW = Math.max(
+    overtimeFixedW + monthCount * monthW,
+    salaryFixedW + monthCount * monthW,
+  );
+
+  if (availableW > 0 && availableW > salaryFixedW + monthCount * monthW) {
+    monthW = Math.max(monthW, (availableW - salaryFixedW) / monthCount);
+  }
+
+  return {
+    noW,
+    nameW,
+    subW,
+    kindW,
+    monthW,
+    totalW,
+    increaseW,
+    naturalW,
+  };
+}
+
+function layoutEmployeeSettingsTables(wrap, monthCount) {
+  if (!wrap?.isConnected || monthCount <= 0) return;
+
+  const availableW = getPlanSettingsWrapAvailableWidth(wrap);
+  if (availableW <= 0) return;
+
+  resetPlanSettingsUiScale(wrap);
+  let layout = measureEmployeeSettingsTableLayout(wrap, monthCount, availableW);
+  applyPlanSettingsUiScale(wrap, layout.naturalW, availableW);
+  layout = measureEmployeeSettingsTableLayout(wrap, monthCount, availableW);
+
+  wrap.style.setProperty('--employee-col-no-w', `${layout.noW}px`);
+  wrap.style.setProperty('--employee-col-name-w', `${layout.nameW}px`);
+  wrap.style.setProperty('--employee-col-sub-w', `${layout.subW}px`);
+  wrap.style.setProperty('--employee-col-kind-w', `${layout.kindW}px`);
+  wrap.style.setProperty('--employee-col-month-w', `${layout.monthW}px`);
+  wrap.style.setProperty('--employee-col-total-w', `${layout.totalW}px`);
+  wrap.style.setProperty('--employee-col-increase-w', `${layout.increaseW}px`);
+  wrap.style.setProperty('--employee-plan-table-w', `${Math.ceil(layout.naturalW)}px`);
+}
+
+function bindEmployeeSettingsLayout(wrap, {
+  monthCount,
+  fiscalMonths,
+  currentPeriod,
+  appSettings,
+} = {}) {
+  wrap.__employeeLayoutObserver?.disconnect();
+  const run = () => {
+    layoutEmployeeSettingsTables(wrap, monthCount);
+    syncAllPlanSettingsTableColumnPlates(wrap, fiscalMonths, currentPeriod, appSettings);
+  };
+  requestAnimationFrame(() => requestAnimationFrame(run));
+  const observer = new ResizeObserver(run);
+  observer.observe(wrap);
+  wrap.__employeeLayoutObserver = observer;
+  bindPlanSettingsColumnPlateSync(wrap, fiscalMonths, currentPeriod, appSettings);
+}
+
+function resetPlanSettingsUiScale(wrap) {
+  if (wrap) wrap.style.setProperty(PLAN_SETTINGS_UI_SCALE_VAR, '1');
+}
+
+function applyPlanSettingsUiScale(wrap, naturalW, availableW) {
+  resetPlanSettingsUiScale(wrap);
+  if (!wrap || availableW <= 0 || naturalW <= 0) return 1;
+  let scale = 1;
+  if (naturalW < availableW * PLAN_SETTINGS_UI_SCALE_FIT_THRESHOLD) {
+    scale = Math.min(PLAN_SETTINGS_UI_SCALE_MAX, availableW / naturalW);
+    wrap.style.setProperty(PLAN_SETTINGS_UI_SCALE_VAR, String(Math.round(scale * 100) / 100));
+  }
+  return scale;
+}
+
+function getPlanSettingsWrapAvailableWidth(wrap) {
+  const refWrap = wrap?.querySelector('.salary-plan-table-wrap') ?? wrap;
+  return refWrap?.clientWidth ?? 0;
+}
+
+function measurePlanSettingsTablesNaturalWidth(wrap, tableSelector = 'table') {
+  let maxNaturalW = 0;
+  wrap?.querySelectorAll(tableSelector).forEach((table) => {
+    maxNaturalW = Math.max(maxNaturalW, table.scrollWidth);
+  });
+  return maxNaturalW;
+}
+
+function layoutPlanSettingsScalableWrap(wrap, measureNaturalWidth) {
+  if (!wrap?.isConnected) return 1;
+  const availableW = getPlanSettingsWrapAvailableWidth(wrap);
+  if (availableW <= 0) return 1;
+  const naturalW = typeof measureNaturalWidth === 'function'
+    ? measureNaturalWidth(wrap, availableW)
+    : measurePlanSettingsTablesNaturalWidth(wrap);
+  return applyPlanSettingsUiScale(wrap, naturalW, availableW);
+}
+
+function bindPlanSettingsScalableLayout(wrap, {
+  measureNaturalWidth,
+  fiscalMonths,
+  currentPeriod,
+  appSettings,
+  onAfterLayout,
+} = {}) {
+  wrap.__planSettingsScalableLayoutObserver?.disconnect();
+  const run = () => {
+    layoutPlanSettingsScalableWrap(wrap, measureNaturalWidth);
+    onAfterLayout?.();
+    syncAllPlanSettingsTableColumnPlates(wrap, fiscalMonths, currentPeriod, appSettings);
+  };
+  requestAnimationFrame(() => requestAnimationFrame(run));
+  const observer = new ResizeObserver(run);
+  observer.observe(wrap);
+  wrap.__planSettingsScalableLayoutObserver = observer;
+  bindPlanSettingsColumnPlateSync(wrap, fiscalMonths, currentPeriod, appSettings);
+}
+
+function applySectionFilterTitleStyle(titleEl, sectionId, getSectionFilterColors) {
+  if (!titleEl || !getSectionFilterColors) return;
+  titleEl.classList.add('salary-plan-title--section-filter');
+  titleEl.dataset.sectionFilter = sectionId;
+  const { background, color } = getSectionFilterColors(sectionId);
+  titleEl.style.setProperty('--filter-btn-bg', background);
+  titleEl.style.color = color;
+}
+
 /* ui/revenueSettings.js */
 const REVENUE_ACCOUNT = '売上高';
 const ROW_MAN_MONTHS = '人月';
@@ -10873,7 +11697,6 @@ const REVENUE_COL_ACTIONS_PX = 104;
 const REVENUE_COL_CLIENT_MIN_PX = 64;
 const REVENUE_COL_CLIENT_MAX_PX = 120;
 const REVENUE_COL_MONTH_MIN_PX = 52;
-const REVENUE_FONT_SCALE_MAX = 1.45;
 
 function measureExtraDigitWidthBeforeYen(wrap) {
   const table = wrap.querySelector('.revenue-plan-table, .misc-income-plan-table');
@@ -10928,19 +11751,13 @@ function measureRevenueTableLayout(wrap, monthCount, availableW) {
 function layoutRevenueSettingsTables(wrap, monthCount) {
   if (!wrap?.isConnected || monthCount <= 0) return;
 
-  const refWrap = wrap.querySelector('.salary-plan-table-wrap') ?? wrap;
-  const availableW = refWrap.clientWidth;
+  const availableW = getPlanSettingsWrapAvailableWidth(wrap);
   if (availableW <= 0) return;
 
-  wrap.style.setProperty('--revenue-plan-font-scale', '1');
+  resetPlanSettingsUiScale(wrap);
   let layout = measureRevenueTableLayout(wrap, monthCount, availableW);
-
-  let fontScale = 1;
-  if (layout.naturalW < availableW * 0.97) {
-    fontScale = Math.min(REVENUE_FONT_SCALE_MAX, availableW / layout.naturalW);
-    wrap.style.setProperty('--revenue-plan-font-scale', String(Math.round(fontScale * 100) / 100));
-    layout = measureRevenueTableLayout(wrap, monthCount, availableW);
-  }
+  applyPlanSettingsUiScale(wrap, layout.naturalW, availableW);
+  layout = measureRevenueTableLayout(wrap, monthCount, availableW);
 
   wrap.style.setProperty('--revenue-col-client-w', `${layout.clientW}px`);
   wrap.style.setProperty('--revenue-col-kind-w', `${REVENUE_COL_KIND_PX}px`);
@@ -10989,19 +11806,16 @@ function applyRevenueColumnPlateRect(plate, monthRect, topY, bottomY, clipRect) 
 function syncRevenueTableColumnPlates(tableWrap, table, highlightMonth, fiscalMonths) {
   if (!tableWrap || !table?.isConnected) return;
 
-  const plateHost = tableWrap.parentElement ?? tableWrap;
+  const plateHost = tableWrap;
+  tableWrap.parentElement?.querySelectorAll(':scope > .revenue-column-plate-layer').forEach((el) => {
+    el.remove();
+  });
   let layer = plateHost.querySelector(':scope > .revenue-column-plate-layer');
   if (!layer) {
-    const legacyLayer = tableWrap.querySelector('.revenue-column-plate-layer');
-    if (legacyLayer) {
-      layer = legacyLayer;
-      plateHost.appendChild(layer);
-    } else {
-      layer = document.createElement('div');
-      layer.className = 'revenue-column-plate-layer plan-column-plate-layer';
-      layer.setAttribute('aria-hidden', 'true');
-      plateHost.appendChild(layer);
-    }
+    layer = document.createElement('div');
+    layer.className = 'revenue-column-plate-layer plan-column-plate-layer';
+    layer.setAttribute('aria-hidden', 'true');
+    plateHost.appendChild(layer);
   }
 
   let headerPlate = layer.querySelector('.revenue-column-plate--current-header');
@@ -11083,24 +11897,17 @@ function bindRevenueColumnPlateSync(wrap, fiscalMonths, currentPeriod, appSettin
   sync();
 }
 
-function applySectionFilterTitleStyle(titleEl, sectionId, getSectionFilterColors) {
-  if (!titleEl || !getSectionFilterColors) return;
-  titleEl.classList.add('salary-plan-title--section-filter');
-  titleEl.dataset.sectionFilter = sectionId;
-  const { background, color } = getSectionFilterColors(sectionId);
-  titleEl.style.setProperty('--filter-btn-bg', background);
-  titleEl.style.color = color;
-}
 
 function refreshRevenueSettingsSectionTitles(getSectionFilterColors) {
   if (!getSectionFilterColors) return;
-  document.querySelectorAll('.revenue-settings-wrap [data-section-filter]').forEach((el) => {
+  document.querySelectorAll(
+    '.revenue-settings-wrap [data-section-filter], .expense-plan-override-section [data-section-filter], .employee-settings-wrap [data-section-filter], .outsourcing-settings-wrap [data-section-filter], .tax-payment-settings-wrap [data-section-filter]',
+  ).forEach((el) => {
     applySectionFilterTitleStyle(el, el.dataset.sectionFilter, getSectionFilterColors);
   });
 }
 
 
-const planAmountCellConfigs = new WeakMap();
 let revenueSettingsMonthDisplayApplier = null;
 
 function applyRevenueSettingsMonthDisplayDom() {
@@ -11168,7 +11975,7 @@ function mountRevenueSettingsPanel({
   }
 
   const wrap = document.createElement('div');
-  wrap.className = 'expand-settings-wrap revenue-settings-wrap';
+  wrap.className = 'expand-settings-wrap revenue-settings-wrap plan-settings-scalable';
 
   const header = document.createElement('div');
   header.className = 'expand-settings-header tax-payment-settings-header';
@@ -11395,6 +12202,8 @@ function mountRevenueSettingsPanel({
 
     for (const client of clients) {
       const displayRevenue = buildDisplayRevenueMonthly(client, fiscalPeriod);
+      const displayManMonths = buildDisplayManMonthsMonthly(client, fiscalPeriod);
+      const displayUnitPrice = buildDisplayUnitPriceMonthly(client, fiscalPeriod);
       const trMan = table.querySelector(
         `tr.revenue-plan-row--manMonths[data-revenue-client-group="${CSS.escape(client.id)}"]`,
       );
@@ -11404,11 +12213,11 @@ function mountRevenueSettingsPanel({
           const td = trMan.querySelector(`td[data-plan-month="${CSS.escape(month)}"]`);
           if (!td) continue;
           const prevMonth = i > 0 ? fiscalMonths[i - 1] : null;
-          const prevValue = prevMonth != null ? client.manMonths[prevMonth] : undefined;
+          const prevValue = prevMonth != null ? displayManMonths[prevMonth] : undefined;
           setPlanAmountCellContent(td, {
             month,
             monthIndex: i,
-            value: client.manMonths[month],
+            value: displayManMonths[month],
             prevValue,
             editable: isMonthEditable(fiscalPeriod, month),
             fiscalPeriod,
@@ -11433,6 +12242,10 @@ function mountRevenueSettingsPanel({
             },
           });
         }
+        const manMonthTotalTd = trMan.querySelector('td.salary-plan-col-total');
+        if (manMonthTotalTd) {
+          manMonthTotalTd.textContent = formatManMonths(sumMonthlyMap(displayManMonths, fiscalMonths));
+        }
       }
 
       const trUnit = table.querySelector(
@@ -11444,14 +12257,11 @@ function mountRevenueSettingsPanel({
           const td = trUnit.querySelector(`td[data-plan-month="${CSS.escape(month)}"]`);
           if (!td) continue;
           const prevMonth = i > 0 ? fiscalMonths[i - 1] : null;
-          const unitPrice = getEffectiveUnitPrice(client, month);
-          const prevUnitPrice = prevMonth != null
-            ? getEffectiveUnitPrice(client, prevMonth)
-            : undefined;
+          const prevUnitPrice = prevMonth != null ? displayUnitPrice[prevMonth] : undefined;
           setPlanAmountCellContent(td, {
             month,
             monthIndex: i,
-            value: unitPrice,
+            value: displayUnitPrice[month],
             prevValue: prevUnitPrice,
             editable: isMonthEditable(fiscalPeriod, month),
             fiscalPeriod,
@@ -11500,8 +12310,9 @@ function mountRevenueSettingsPanel({
     }
     for (const client of clients) {
       const displayRevenue = buildDisplayRevenueMonthly(client, fiscalPeriod);
+      const displayManMonths = buildDisplayManMonthsMonthly(client, fiscalPeriod);
       for (const month of fiscalMonths) {
-        manMonthMonthlyTotals[month] += client.manMonths[month] ?? 0;
+        manMonthMonthlyTotals[month] += displayManMonths[month] ?? 0;
         displayMonthlyTotals[month] = (displayMonthlyTotals[month] ?? 0) + (displayRevenue[month] ?? 0);
       }
     }
@@ -11623,7 +12434,9 @@ function mountRevenueSettingsPanel({
       if (fiscalPeriod !== currentPeriod) return;
       syncMiscIncomeTableMonthDisplay(table, fiscalPeriod);
     });
-    syncAllRevenueTableColumnPlates(rootWrap, fiscalMonths, currentPeriod, appSettings);
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      syncAllRevenueTableColumnPlates(rootWrap, fiscalMonths, currentPeriod, appSettings);
+    }));
   }
 
   function getClientActualMonthly(client) {
@@ -11666,6 +12479,30 @@ function mountRevenueSettingsPanel({
         display[month] = planned[month] ?? null;
       } else {
         display[month] = actual[month] ?? null;
+      }
+    }
+    return display;
+  }
+
+  function buildDisplayManMonthsMonthly(client, fiscalPeriod) {
+    const display = {};
+    for (const month of fiscalMonths) {
+      if (isMonthEditable(fiscalPeriod, month)) {
+        display[month] = client.manMonths[month] ?? null;
+      } else {
+        display[month] = null;
+      }
+    }
+    return display;
+  }
+
+  function buildDisplayUnitPriceMonthly(client, fiscalPeriod) {
+    const display = {};
+    for (const month of fiscalMonths) {
+      if (isMonthEditable(fiscalPeriod, month)) {
+        display[month] = getEffectiveUnitPrice(client, month);
+      } else {
+        display[month] = null;
       }
     }
     return display;
@@ -12013,6 +12850,8 @@ function mountRevenueSettingsPanel({
 
   function appendClientRows(tbody, client, fiscalPeriod, clientIndex, clientCount) {
     const displayRevenue = buildDisplayRevenueMonthly(client, fiscalPeriod);
+    const displayManMonths = buildDisplayManMonthsMonthly(client, fiscalPeriod);
+    const displayUnitPrice = buildDisplayUnitPriceMonthly(client, fiscalPeriod);
     const rowKinds = [
       { kind: ROW_UNIT_PRICE, key: 'unitPrice' },
       { kind: ROW_MAN_MONTHS, key: 'manMonths' },
@@ -12041,11 +12880,11 @@ function mountRevenueSettingsPanel({
         const prevMonth = i > 0 ? fiscalMonths[i - 1] : null;
 
         if (key === 'manMonths') {
-          const prevValue = prevMonth != null ? client.manMonths[prevMonth] : undefined;
+          const prevValue = prevMonth != null ? displayManMonths[prevMonth] : undefined;
           appendPlanAmountCell(tr, {
             month,
             monthIndex: i,
-            value: client.manMonths[month],
+            value: displayManMonths[month],
             prevValue,
             editable,
             fiscalPeriod,
@@ -12070,14 +12909,11 @@ function mountRevenueSettingsPanel({
             },
           });
         } else if (key === 'unitPrice') {
-          const unitPrice = getEffectiveUnitPrice(client, month);
-          const prevUnitPrice = prevMonth != null
-            ? getEffectiveUnitPrice(client, prevMonth)
-            : undefined;
+          const prevUnitPrice = prevMonth != null ? displayUnitPrice[prevMonth] : undefined;
           appendPlanAmountCell(tr, {
             month,
             monthIndex: i,
-            value: unitPrice,
+            value: displayUnitPrice[month],
             prevValue: prevUnitPrice,
             editable,
             fiscalPeriod,
@@ -12110,7 +12946,7 @@ function mountRevenueSettingsPanel({
       const totalTd = document.createElement('td');
       totalTd.className = 'salary-plan-col-total';
       if (key === 'manMonths') {
-        totalTd.textContent = formatManMonths(sumMonthlyMap(client.manMonths, fiscalMonths));
+        totalTd.textContent = formatManMonths(sumMonthlyMap(displayManMonths, fiscalMonths));
       } else if (key === 'unitPrice') {
         totalTd.textContent = '';
       } else if (key === 'revenue') {
@@ -12191,8 +13027,9 @@ function mountRevenueSettingsPanel({
     }
     for (const client of clients) {
       const displayRevenue = buildDisplayRevenueMonthly(client, fiscalPeriod);
+      const displayManMonths = buildDisplayManMonthsMonthly(client, fiscalPeriod);
       for (const month of fiscalMonths) {
-        manMonthMonthlyTotals[month] += client.manMonths[month] ?? 0;
+        manMonthMonthlyTotals[month] += displayManMonths[month] ?? 0;
         displayMonthlyTotals[month] = (displayMonthlyTotals[month] ?? 0) + (displayRevenue[month] ?? 0);
       }
     }
@@ -12589,6 +13426,11 @@ function mountExpensePlanOverrideSection({
   setExpensePlanOverrides,
   refreshPlanTableIfNeeded,
   getMonthDisplayConfig,
+  onToggleMonthDisplay,
+  monthDisplayUi,
+  startNumericCellEdit,
+  getSectionFilterColors,
+  refreshPlanSettingsColumnPlates,
 }) {
   const fiscalMonths = buildFiscalYearMonths(appSettings.fiscalEndMonth);
   const currentPeriod = appSettings.fiscalPeriod;
@@ -12622,32 +13464,24 @@ function mountExpensePlanOverrideSection({
     refreshPlanTableIfNeeded();
   }
 
-  function startCellEdit(td, account, month, fiscalPeriod) {
-    if (!isMonthEditable(fiscalPeriod, month)) return;
-    if (td.querySelector('input')) return;
-
+  function appendAmountCell(tr, { account, month, monthIndex, fiscalPeriod, value, prevValue, editable }) {
     const plan = getExpenseOverrideMonthly(expensePlanOverrides, fiscalPeriod, account, fiscalMonths);
-    const rawValue = plan[month];
-
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.inputMode = 'numeric';
-    input.className = 'salary-plan-amount-input';
-    input.autocomplete = 'off';
-    input.spellcheck = false;
-    input.value = rawValue != null && rawValue !== 0 ? String(rawValue) : '';
-
-    let editClosed = false;
-
-    const finish = (save, fillForward = false) => {
-      if (editClosed) return;
-      editClosed = true;
-      if (save) {
-        const parsed = parseSalaryPlanAmountInputWithFillForward(
-          input.value,
-          fillForward,
-          rawValue,
-        );
+    const td = document.createElement('td');
+    tr.appendChild(td);
+    monthDisplayUi.setPlanAmountCellContent(td, {
+      month,
+      monthIndex,
+      value,
+      prevValue,
+      editable,
+      fiscalPeriod,
+      title: 'ダブルクリックで編集（Shift+Enter で後続月へ同額反映）',
+      formatValue: formatSalaryPlanYen,
+      rawValue: plan[month],
+      parseValue: parseSalaryPlanAmountInput,
+      allowShiftFillForward: true,
+      tabScopeId: `expense-override-${fiscalPeriod}`,
+      onSave: (parsed, fillForward) => {
         const pastMonths = getPastMonthsForPeriod(fiscalPeriod);
         const next = fillForward
           ? applyAmountFromMonthForwardSkippingPast(
@@ -12659,69 +13493,101 @@ function mountExpensePlanOverrideSection({
           )
           : { ...plan, [month]: parsed };
         persistMonthly(account, next, fiscalPeriod);
-      }
-      renderOverrideSection();
-    };
-
-    input.addEventListener('keydown', (e) => {
-      handlePlanAmountCellKeydown(e, {
-        finish,
-        td,
-        scopeId: `expense-override-${fiscalPeriod}`,
-      });
-    });
-    input.addEventListener('blur', () => {
-      setTimeout(() => {
-        if (!editClosed) finish(true, false);
-      }, 0);
-    });
-
-    td.textContent = '';
-    td.appendChild(input);
-    input.focus();
-    input.select();
+      },
+      onEditClose: () => renderOverrideSection(),
+    }, startNumericCellEdit);
   }
 
-  function appendAmountCell(tr, { account, month, fiscalPeriod, value, prevValue, editable }) {
-    const td = document.createElement('td');
-    td.className = 'salary-plan-amount-cell';
-    if (month === fiscalMonths[0]) {
-      td.classList.add('salary-plan-amount-start-month');
-    } else if (prevValue !== undefined && salaryPlanAmountDiffersFromPrevious(prevValue, value)) {
-      td.classList.add('salary-plan-amount-changed');
+  function syncExpenseOverrideTableMonthDisplay(table, fiscalPeriod) {
+    if (fiscalPeriod !== currentPeriod) return;
+
+    table.querySelectorAll('thead th.salary-plan-col-month').forEach((th, i) => {
+      const month = fiscalMonths[i];
+      if (month) monthDisplayUi.updateMonthHeaderTh(th, month, fiscalPeriod);
+    });
+
+    for (const account of getExpenseOverrideAccounts(expensePlanOverrides, fiscalPeriod)) {
+      const tr = table.querySelector(`tbody tr[data-plan-row-key="${CSS.escape(account)}"]`);
+      if (!tr) continue;
+      const displayMonthly = getExpenseOverrideMonthly(
+        expensePlanOverrides,
+        fiscalPeriod,
+        account,
+        fiscalMonths,
+      );
+      const amountCells = tr.querySelectorAll('td.salary-plan-amount-cell');
+      for (let i = 0; i < fiscalMonths.length; i += 1) {
+        const month = fiscalMonths[i];
+        const td = amountCells[i];
+        if (!td) continue;
+        const prevMonth = i > 0 ? fiscalMonths[i - 1] : null;
+        const prevValue = prevMonth != null ? displayMonthly[prevMonth] : undefined;
+        const plan = getExpenseOverrideMonthly(expensePlanOverrides, fiscalPeriod, account, fiscalMonths);
+        monthDisplayUi.setPlanAmountCellContent(td, {
+          month,
+          monthIndex: i,
+          value: displayMonthly[month],
+          prevValue,
+          editable: isMonthEditable(fiscalPeriod, month),
+          fiscalPeriod,
+          title: 'ダブルクリックで編集（Shift+Enter で後続月へ同額反映）',
+          formatValue: formatSalaryPlanYen,
+          rawValue: plan[month],
+          parseValue: parseSalaryPlanAmountInput,
+          allowShiftFillForward: true,
+          tabScopeId: `expense-override-${fiscalPeriod}`,
+          onSave: (parsed, fillForward) => {
+            const pastMonths = getPastMonthsForPeriod(fiscalPeriod);
+            const next = fillForward
+              ? applyAmountFromMonthForwardSkippingPast(
+                plan,
+                fiscalMonths,
+                month,
+                parsed,
+                pastMonths,
+              )
+              : { ...plan, [month]: parsed };
+            persistMonthly(account, next, fiscalPeriod);
+          },
+          onEditClose: () => renderOverrideSection(),
+        }, startNumericCellEdit);
+      }
+      const totalTd = tr.querySelector('td.salary-plan-col-total');
+      if (totalTd) {
+        totalTd.textContent = formatSalaryPlanYen(sumDisplayMonthlyTotal(displayMonthly, fiscalMonths));
+      }
     }
-    if (editable) {
-      td.classList.add('salary-plan-cell-editable');
-      tagPlanEditableCell(td, { month });
-      td.title = "ダブルクリックで編集（Shift+Enter で後継月へ同額反映）";
-      td.textContent = formatSalaryPlanYen(value);
-      td.addEventListener('dblclick', () => {
-        startCellEdit(td, account, month, fiscalPeriod);
-      });
-    } else {
-      td.classList.add('salary-plan-cell-disabled');
-      td.textContent = formatSalaryPlanYen(value);
-    }
-    tr.appendChild(td);
   }
 
   function buildOverrideTable(fiscalPeriod) {
     const accounts = getExpenseOverrideAccounts(expensePlanOverrides, fiscalPeriod);
     const table = document.createElement('table');
-    table.className = 'expand-settings-table salary-plan-table expense-plan-override-table';
+    table.className = 'expand-settings-table salary-plan-table expense-plan-override-table tax-payment-plan-table';
+    table.dataset.fiscalPeriod = String(fiscalPeriod);
 
-    const headerLabels = ["勘定科目", ...fiscalMonths, "合計", ''];
     const thead = document.createElement('thead');
     const headerRow = document.createElement('tr');
-    for (const label of headerLabels) {
+
+    const accountTh = document.createElement('th');
+    accountTh.className = 'salary-plan-col-name';
+    accountTh.textContent = '勘定科目';
+    headerRow.appendChild(accountTh);
+
+    for (const month of fiscalMonths) {
       const th = document.createElement('th');
-      th.textContent = label;
-      if (label === "勘定科目") th.className = 'salary-plan-col-name';
-      else if (label === "合計") th.className = 'salary-plan-col-total';
-      else if (label === '') th.className = 'expense-plan-override-col-actions';
-      else th.className = 'salary-plan-col-month';
+      monthDisplayUi.configureMonthHeaderTh(th, month, fiscalPeriod);
       headerRow.appendChild(th);
     }
+
+    const totalTh = document.createElement('th');
+    totalTh.className = 'salary-plan-col-total';
+    totalTh.textContent = '合計';
+    headerRow.appendChild(totalTh);
+
+    const actionsTh = document.createElement('th');
+    actionsTh.className = 'expense-plan-override-col-actions';
+    headerRow.appendChild(actionsTh);
+
     thead.appendChild(headerRow);
     table.appendChild(thead);
 
@@ -12729,9 +13595,9 @@ function mountExpensePlanOverrideSection({
     if (accounts.length === 0) {
       const emptyTr = document.createElement('tr');
       const emptyTd = document.createElement('td');
-      emptyTd.colSpan = headerLabels.length;
+      emptyTd.colSpan = fiscalMonths.length + 3;
       emptyTd.className = 'expense-plan-override-empty';
-      emptyTd.textContent = "オーバーライドする科目がありません。下のプルダウンから追加してください。";
+      emptyTd.textContent = 'オーバーライドする科目がありません。下のプルダウンから追加してください。';
       emptyTr.appendChild(emptyTd);
       tbody.appendChild(emptyTr);
     }
@@ -12745,6 +13611,7 @@ function mountExpensePlanOverrideSection({
       );
       const tr = document.createElement('tr');
       tr.className = 'salary-plan-row-monthly';
+      tr.dataset.planRowKey = account;
       tagPlanEditableRow(tr, account);
 
       const accountTd = document.createElement('td');
@@ -12760,6 +13627,7 @@ function mountExpensePlanOverrideSection({
         appendAmountCell(tr, {
           account,
           month,
+          monthIndex: i,
           fiscalPeriod,
           value: displayMonthly[month],
           prevValue,
@@ -12777,8 +13645,8 @@ function mountExpensePlanOverrideSection({
       const removeBtn = document.createElement('button');
       removeBtn.type = 'button';
       removeBtn.className = 'settings-delete-btn';
-      removeBtn.textContent = "削除";
-      removeBtn.title = "この科目のオーバーライドを解除";
+      removeBtn.textContent = '削除';
+      removeBtn.title = 'この科目のオーバーライドを解除';
       removeBtn.addEventListener('click', () => {
         expensePlanOverrides = removeExpenseOverrideAccount(
           expensePlanOverrides,
@@ -12807,13 +13675,13 @@ function mountExpensePlanOverrideSection({
 
     const select = document.createElement('select');
     select.className = 'app-settings-input expense-plan-override-select';
-    select.setAttribute('aria-label', "オーバーライドする諸経勘定科目");
+    select.setAttribute('aria-label', 'オーバーライドする諸経勘定科目');
 
     const placeholder = document.createElement('option');
     placeholder.value = '';
     placeholder.textContent = candidates.length > 0
-      ? "科目を選択…"
-      : "追加できる科目がありません";
+      ? '科目を選択…'
+      : '追加できる科目がありません';
     placeholder.disabled = true;
     placeholder.selected = true;
     select.appendChild(placeholder);
@@ -12828,7 +13696,7 @@ function mountExpensePlanOverrideSection({
     const addBtn = document.createElement('button');
     addBtn.type = 'button';
     addBtn.className = 'expense-plan-override-add-btn';
-    addBtn.textContent = "追加";
+    addBtn.textContent = '追加';
     addBtn.disabled = candidates.length === 0;
     addBtn.addEventListener('click', () => {
       const account = select.value;
@@ -12856,13 +13724,18 @@ function mountExpensePlanOverrideSection({
     section.className = `salary-plan-section ${SECTION_CLASS}`;
 
     const planHeader = document.createElement('div');
-    planHeader.className = 'salary-plan-header salary-plan-header-spaced';
+    planHeader.className = 'salary-plan-header';
     planHeader.innerHTML = `
-      <h3 class="salary-plan-title">諸経計画オーバーライド</h3>
+      <h3 class="salary-plan-title" data-section-filter="expense">諸経計画オーバーライド</h3>
       <p class="salary-plan-desc">
         自動補完（参照期の平均）を上書きする諸経勘定科目を指定します。オーバーライドした科目は平均補完の対象外となり、入力した月次の計画値が使われます（空欄は補完しません）。今期・来期のみ設定できます。今期の実績表示月は編集できません。予実表で計画表示に切り替えた月は編集できます。また入力した値は予実表にも反します。
       </p>
     `;
+    applySectionFilterTitleStyle(
+      planHeader.querySelector('.salary-plan-title'),
+      'expense',
+      getSectionFilterColors,
+    );
     section.appendChild(planHeader);
 
     for (const { period, label } of periodEntries) {
@@ -12871,7 +13744,7 @@ function mountExpensePlanOverrideSection({
 
       const blockTitle = document.createElement('h4');
       blockTitle.className = 'salary-plan-period-title';
-      blockTitle.textContent = `${label}（${formatFiscalPeriodLabel(period)}）`;
+      blockTitle.textContent = label;
       block.appendChild(blockTitle);
 
       const tableWrap = document.createElement('div');
@@ -12885,13 +13758,26 @@ function mountExpensePlanOverrideSection({
       section.appendChild(block);
     }
 
-    wrap.appendChild(section);
+    const paymentSection = wrap.querySelector('.tax-payment-plan-section');
+    if (paymentSection) {
+      paymentSection.insertAdjacentElement('afterend', section);
+    } else {
+      wrap.appendChild(section);
+    }
+    refreshPlanSettingsColumnPlates?.();
   }
 
   renderOverrideSection();
 
   return {
     rerender: renderOverrideSection,
+    syncMonthDisplay: (fiscalPeriod) => {
+      wrap.querySelectorAll('table.expense-plan-override-table[data-fiscal-period]').forEach((table) => {
+        const period = Number(table.dataset.fiscalPeriod);
+        if (period !== fiscalPeriod) return;
+        syncExpenseOverrideTableMonthDisplay(table, period);
+      });
+    },
   };
 }
 
@@ -16667,6 +17553,25 @@ function resetDashboardState({ fiscalPeriod = null } = {}) {
 }
 
 /* ui/plan.js */
+let taxPaymentSettingsMonthDisplayApplier = null;
+let outsourcingSettingsMonthDisplayApplier = null;
+let employeeSettingsMonthDisplayApplier = null;
+
+function applyTaxPaymentSettingsMonthDisplayDom() {
+  taxPaymentSettingsMonthDisplayApplier?.();
+}
+
+function applyOutsourcingSettingsMonthDisplayDom() {
+  outsourcingSettingsMonthDisplayApplier?.();
+}
+
+function applyEmployeeSettingsMonthDisplayDom() {
+  employeeSettingsMonthDisplayApplier?.();
+}
+
+
+
+
 function getPeriodOptions() {
   return {
     businessStartYear: appSettings.businessStartYear,
@@ -21431,6 +22336,12 @@ function togglePlanMonthDisplay(monthLabel) {
       renderDashboardView();
     } else if (activeTab === 'orders') {
       applyRevenueSettingsMonthDisplayDom();
+    } else if (activeTab === 'taxpayments') {
+      applyTaxPaymentSettingsMonthDisplayDom();
+    } else if (activeTab === 'outsourcing') {
+      applyOutsourcingSettingsMonthDisplayDom();
+    } else if (activeTab === 'employees') {
+      applyEmployeeSettingsMonthDisplayDom();
     } else {
       applyPlanMonthDisplayDom(root.querySelector('.plan-table'));
     }
@@ -22268,6 +23179,11 @@ function renderVisibilitySettings() {
   bindVisibilitySettingsHeaderActions();
 
   replaceRootPanel(wrap);
+  // 予実表と同様にブラウザ幅へフィットさせる（表の自然幅 ＋ 左右余白 2rem を基準に拡縮）
+  bindPlanSettingsAutoZoom(wrap, () => {
+    const tableW = measureElementIntrinsicWidth(wrap.querySelector('.visibility-config-table'));
+    return tableW > 0 ? tableW + planSettingsRemToPx(2) : 0;
+  });
 }
 
 function renderUiColorPanel(container) {
@@ -22983,22 +23899,37 @@ function renderTaxRateSettings() {
   consumptionTable.renderRows();
   withholdingTable.renderRows();
   replaceRootPanel(wrap);
+  // 予実表と同様にブラウザ幅へフィットさせる。
+  // 自然幅 = 左右余白 2rem ＋ 左カラム 22rem ＋ カラム間 2rem ＋ 源泉所得税表の自然幅（下限 28rem）
+  bindPlanSettingsAutoZoom(wrap, () => {
+    const withholdingW = Math.max(
+      measureElementIntrinsicWidth(wrap.querySelector('.withholding-tax-rate-table')),
+      planSettingsRemToPx(28),
+    );
+    return planSettingsRemToPx(2 + 22 + 2) + withholdingW;
+  });
+}
+
+function applyTaxPaymentPlanTitleStyle(titleEl) {
+  if (!titleEl) return;
+  titleEl.classList.add('salary-plan-title--section-filter');
+  titleEl.dataset.sectionFilter = 'otherPay';
+  const { background, color } = getFilterButtonColors('otherPay');
+  titleEl.style.setProperty('--filter-btn-bg', background);
+  titleEl.style.color = color;
 }
 
 function renderTaxPaymentSettings() {
-  setPlanKpi(null);
-
   const wrap = document.createElement('div');
-  wrap.className = 'expand-settings-wrap tax-payment-settings-wrap';
+  wrap.className = 'expand-settings-wrap tax-payment-settings-wrap plan-settings-scalable';
 
   const header = document.createElement('div');
   header.className = 'expand-settings-header tax-payment-settings-header';
   header.innerHTML = `
-    <p class="expand-settings-desc">租税公課・保険積立金・長期未払金・未払消費税・未払法人税等・法人税等・住民税・役員借入金の支払い計画を設定します。法人税等は予実表の「法人税」セクションに反映されます。住民税は市区町村ごとに入力し、合計が予実表に反映されます。今期の実績表示月は仕訳実績を表示します（編集不可）。予実表で計画表示に切り替えた月は編集できます。住民税のみ過去月も入力でき、予実表にもその値が反映されます。Shift+Enter で入力した月以降の同額を後続月に反映します。</p>
+    <p class="expand-settings-desc">租税公課・保険積立金・長期未払金・未払消費税・未払法人税等・法人税等・住民税・役員借入金の支払い計画を設定します。法人税等は予実表の「法人税」セクションに反映されます。住民税は市区町村ごとに入力し、合計が予実表に反映されます。当期の実績表示月は仕訳実績を表示します（編集不可）。予実表で計画表示に切り替えた月は編集できます。住民税のみ過去月も入力でき、予実表にもその値が反映されます。Shift+Enter で入力した月以降の同額を後続月に反映します。</p>
     <div class="tax-payment-settings-controls">
       <div class="tax-payment-plan-years-row">
         <span class="app-settings-label">計画年数</span>
-        <p class="tax-payment-plan-years-hint">今期を含む年数です。デフォルトは ${DEFAULT_PAYMENT_PLAN_YEARS} 年です。</p>
         <input
           type="number"
           class="app-settings-input tax-payment-plan-years-input"
@@ -23011,6 +23942,7 @@ function renderTaxPaymentSettings() {
           spellcheck="false"
           aria-label="計画年数"
         />
+        <p class="tax-payment-plan-years-hint">選択中の期から数えた年数です。デフォルトは ${DEFAULT_PAYMENT_PLAN_YEARS} 年です。</p>
       </div>
     </div>
   `;
@@ -23065,8 +23997,218 @@ function renderTaxPaymentSettings() {
 
   function refreshPlanTableIfNeeded() {
     refreshSectionColors();
+    refreshPlanKpi();
     if (activeTab === 'plan' && data) refreshPlanTable();
   }
+
+  const monthDisplayUi = createPlanMonthDisplayUi({
+    appSettings,
+    currentPeriod,
+    fiscalMonths,
+    getMonthDisplayConfig: () => monthDisplayConfig,
+    getPastMonthsForPeriod,
+    onToggleMonthDisplay: togglePlanMonthDisplay,
+  });
+  const startNumericCellEdit = createPlanAmountCellEditor({ onEditClose: () => renderPlanSection() });
+
+  function appendPlanAmountCell(tr, {
+    month,
+    monthIndex,
+    fiscalPeriod,
+    value,
+    prevValue,
+    editable,
+    title,
+    formatValue,
+    rawValue,
+    parseValue,
+    onSave,
+    allowShiftFillForward = true,
+    tabScopeId,
+    forcePlanMonthColor = false,
+  }) {
+    const td = document.createElement('td');
+    tr.appendChild(td);
+    monthDisplayUi.setPlanAmountCellContent(td, {
+      month,
+      monthIndex,
+      value,
+      prevValue,
+      editable,
+      fiscalPeriod,
+      title,
+      formatValue,
+      rawValue,
+      parseValue,
+      onSave,
+      allowShiftFillForward,
+      tabScopeId,
+      forcePlanMonthColor,
+      onEditClose: () => renderPlanSection(),
+    }, startNumericCellEdit);
+  }
+
+  function syncTaxPaymentTableMonthDisplay(table, fiscalPeriod) {
+    if (fiscalPeriod !== currentPeriod) return;
+
+    table.querySelectorAll('thead th.salary-plan-col-month').forEach((th, i) => {
+      const month = fiscalMonths[i];
+      if (month) monthDisplayUi.updateMonthHeaderTh(th, month, fiscalPeriod);
+    });
+
+    for (const account of PAYMENT_PLAN_SIMPLE_ACCOUNTS) {
+      const tr = table.querySelector(`tbody tr[data-plan-row-key="${CSS.escape(account)}"]`);
+      if (!tr) continue;
+      const displayMonthly = buildDisplayMonthly(account, fiscalPeriod);
+      const plan = getPlanForPeriod(fiscalPeriod)[account] ?? {};
+      const amountCells = tr.querySelectorAll('td.salary-plan-amount-cell');
+      for (let i = 0; i < fiscalMonths.length; i += 1) {
+        const month = fiscalMonths[i];
+        const td = amountCells[i];
+        if (!td) continue;
+        const prevMonth = i > 0 ? fiscalMonths[i - 1] : null;
+        const prevValue = prevMonth != null ? displayMonthly[prevMonth] : undefined;
+        monthDisplayUi.setPlanAmountCellContent(td, {
+          month,
+          monthIndex: i,
+          value: displayMonthly[month],
+          prevValue,
+          editable: isMonthEditable(fiscalPeriod, month),
+          fiscalPeriod,
+          title: 'ダブルクリックで編集（Shift+Enter で後続月へ同額反映）',
+          formatValue: formatSalaryPlanYen,
+          rawValue: plan[month],
+          parseValue: parseSalaryPlanAmountInput,
+          allowShiftFillForward: true,
+          tabScopeId: `tax-payment-${fiscalPeriod}`,
+          onSave: (parsed, fillForward) => {
+            const pastMonths = getPastMonthsForPeriod(fiscalPeriod);
+            const next = fillForward
+              ? applyAmountFromMonthForwardSkippingPast(
+                plan,
+                fiscalMonths,
+                month,
+                parsed,
+                pastMonths,
+              )
+              : { ...plan, [month]: parsed };
+            persistPlan(account, next, fiscalPeriod);
+          },
+          onEditClose: () => renderPlanSection(),
+        }, startNumericCellEdit);
+      }
+      const totalTd = tr.querySelector('td.salary-plan-col-total');
+      if (totalTd) totalTd.textContent = formatSalaryPlanYen(sumDisplayMonthlyTotal(displayMonthly));
+    }
+
+    for (const entry of getMunicipalitiesForPeriod(fiscalPeriod)) {
+      const tr = table.querySelector(`tbody tr[data-plan-row-key="${CSS.escape(entry.id)}"]`);
+      if (!tr) continue;
+      const displayMonthly = buildMunicipalityDisplayMonthly(entry, fiscalPeriod);
+      const amountCells = tr.querySelectorAll('td.salary-plan-amount-cell');
+      for (let i = 0; i < fiscalMonths.length; i += 1) {
+        const month = fiscalMonths[i];
+        const td = amountCells[i];
+        if (!td) continue;
+        const prevMonth = i > 0 ? fiscalMonths[i - 1] : null;
+        const prevValue = prevMonth != null ? displayMonthly[prevMonth] : undefined;
+        monthDisplayUi.setPlanAmountCellContent(td, {
+          month,
+          monthIndex: i,
+          value: displayMonthly[month],
+          prevValue,
+          editable: isResidentTaxMonthEditable(fiscalPeriod, month),
+          fiscalPeriod,
+          forcePlanMonthColor: true,
+          title: 'ダブルクリックで編集（Shift+Enter で後続月へ同額反映）',
+          formatValue: formatSalaryPlanYen,
+          rawValue: entry.monthly[month],
+          parseValue: parseSalaryPlanAmountInput,
+          allowShiftFillForward: true,
+          tabScopeId: `tax-municipality-${fiscalPeriod}`,
+          onSave: (parsed, fillForward) => {
+            saveMunicipalityMonthly(entry, fiscalPeriod, month, parsed, fillForward);
+          },
+          onEditClose: () => renderPlanSection(),
+        }, startNumericCellEdit);
+      }
+      const totalTd = tr.querySelector('td.salary-plan-col-total');
+      if (totalTd) totalTd.textContent = formatSalaryPlanYen(sumDisplayMonthlyTotal(displayMonthly));
+    }
+
+    const residentTaxTotalDisplay = buildResidentTaxTotalDisplay(fiscalPeriod);
+    const residentTaxTotalTr = table.querySelector('tbody tr[data-plan-row-key="resident-tax-total"]');
+    if (residentTaxTotalTr) {
+      const amountCells = residentTaxTotalTr.querySelectorAll('td.salary-plan-amount-cell');
+      for (let i = 0; i < fiscalMonths.length; i += 1) {
+        const month = fiscalMonths[i];
+        const td = amountCells[i];
+        if (!td) continue;
+        const prevMonth = i > 0 ? fiscalMonths[i - 1] : null;
+        const prevValue = prevMonth != null ? residentTaxTotalDisplay[prevMonth] : undefined;
+        monthDisplayUi.setPlanAmountCellContent(td, {
+          month,
+          monthIndex: i,
+          value: residentTaxTotalDisplay[month],
+          prevValue,
+          editable: false,
+          fiscalPeriod,
+          forcePlanMonthColor: true,
+          formatValue: formatSalaryPlanYen,
+        }, startNumericCellEdit);
+      }
+      const totalTd = residentTaxTotalTr.querySelector('td.salary-plan-col-total');
+      if (totalTd) {
+        totalTd.textContent = formatSalaryPlanYen(sumDisplayMonthlyTotal(residentTaxTotalDisplay));
+      }
+    }
+
+    const grandTotalDisplay = {};
+    for (const month of fiscalMonths) grandTotalDisplay[month] = 0;
+    for (const account of PAYMENT_PLAN_SIMPLE_ACCOUNTS) {
+      const displayMonthly = buildDisplayMonthly(account, fiscalPeriod);
+      for (const month of fiscalMonths) {
+        grandTotalDisplay[month] += displayMonthly[month] ?? 0;
+      }
+    }
+    for (const month of fiscalMonths) {
+      grandTotalDisplay[month] += residentTaxTotalDisplay[month] ?? 0;
+    }
+
+    const grandTr = table.querySelector('tbody tr[data-plan-row-key="grand-total"]');
+    if (grandTr) {
+      const amountCells = grandTr.querySelectorAll('td.salary-plan-amount-cell');
+      for (let i = 0; i < fiscalMonths.length; i += 1) {
+        const month = fiscalMonths[i];
+        const td = amountCells[i];
+        if (!td) continue;
+        monthDisplayUi.setPlanAmountCellContent(td, {
+          month,
+          monthIndex: i,
+          value: grandTotalDisplay[month],
+          prevValue: i > 0 ? grandTotalDisplay[fiscalMonths[i - 1]] : undefined,
+          editable: false,
+          fiscalPeriod,
+          formatValue: formatSalaryPlanYen,
+        }, startNumericCellEdit);
+      }
+      const totalTd = grandTr.querySelector('td.salary-plan-col-total');
+      if (totalTd) totalTd.textContent = formatSalaryPlanYen(sumDisplayMonthlyTotal(grandTotalDisplay));
+    }
+  }
+
+  function applyTaxPaymentMonthDisplayToWrap(rootWrap) {
+    if (!rootWrap?.isConnected) return;
+    rootWrap.querySelectorAll('table.tax-payment-plan-table[data-fiscal-period]').forEach((table) => {
+      const fiscalPeriod = Number(table.dataset.fiscalPeriod);
+      if (fiscalPeriod !== currentPeriod) return;
+      syncTaxPaymentTableMonthDisplay(table, fiscalPeriod);
+    });
+    expenseOverrideMonthDisplaySync?.(currentPeriod);
+    refreshPlanSettingsColumnPlates(rootWrap, fiscalMonths, currentPeriod, appSettings);
+  }
+
+  let expenseOverrideMonthDisplaySync = null;
 
   function getPlanForPeriod(fiscalPeriod) {
     return getPaymentPlansForPeriod(taxPaymentPlans, fiscalPeriod, fiscalMonths);
@@ -23143,8 +24285,37 @@ function renderTaxPaymentSettings() {
     return !getPastMonthsForPeriod(fiscalPeriod).has(month);
   }
 
-  function isResidentTaxMonthEditable() {
+  function isResidentTaxMonthEditable(fiscalPeriod, month) {
+    if (fiscalPeriod !== currentPeriod) return true;
+    const displayMode = getFiscalPeriodDisplayMode(
+      appSettings.businessStartYear,
+      fiscalPeriod,
+    );
+    if (displayMode === 'budget-actual') {
+      return isMonthEditable(fiscalPeriod, month);
+    }
     return true;
+  }
+
+  function saveMunicipalityMonthly(entry, fiscalPeriod, month, parsed, fillForward) {
+    const pastMonths = getPastMonthsForPeriod(fiscalPeriod);
+    const displayMode = getFiscalPeriodDisplayMode(
+      appSettings.businessStartYear,
+      fiscalPeriod,
+    );
+    const skipPast = fiscalPeriod === currentPeriod && displayMode === 'budget-actual';
+    const nextMonthly = fillForward
+      ? (skipPast
+        ? applyAmountFromMonthForwardSkippingPast(
+          entry.monthly,
+          fiscalMonths,
+          month,
+          parsed,
+          pastMonths,
+        )
+        : applyAmountFromMonthForward(entry.monthly, fiscalMonths, month, parsed))
+      : { ...entry.monthly, [month]: parsed };
+    persistMunicipality({ ...entry, monthly: nextMonthly }, fiscalPeriod);
   }
 
   function sumDisplayMonthlyTotal(display) {
@@ -23166,32 +24337,21 @@ function renderTaxPaymentSettings() {
     refreshPlanTableIfNeeded();
   }
 
-  function startCellEdit(td, account, month, fiscalPeriod) {
-    if (!isMonthEditable(fiscalPeriod, month)) return;
-    if (td.querySelector('input')) return;
-
+  function appendAmountCell(tr, { account, month, monthIndex, fiscalPeriod, value, prevValue, editable }) {
     const plan = getPlanForPeriod(fiscalPeriod)[account] ?? {};
-    const rawValue = plan[month];
-
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.inputMode = 'numeric';
-    input.className = 'salary-plan-amount-input';
-    input.autocomplete = 'off';
-    input.spellcheck = false;
-    input.value = rawValue != null && rawValue !== 0 ? String(rawValue) : '';
-
-    let editClosed = false;
-
-    const finish = (save, fillForward = false) => {
-      if (editClosed) return;
-      editClosed = true;
-      if (save) {
-        const parsed = parseSalaryPlanAmountInputWithFillForward(
-          input.value,
-          fillForward,
-          rawValue,
-        );
+    appendPlanAmountCell(tr, {
+      month,
+      monthIndex,
+      fiscalPeriod,
+      value,
+      prevValue,
+      editable,
+      title: 'ダブルクリックで編集（Shift+Enter で後続月へ同額反映）',
+      formatValue: formatSalaryPlanYen,
+      rawValue: plan[month],
+      parseValue: parseSalaryPlanAmountInput,
+      tabScopeId: `tax-payment-${fiscalPeriod}`,
+      onSave: (parsed, fillForward) => {
         const pastMonths = getPastMonthsForPeriod(fiscalPeriod);
         const next = fillForward
           ? applyAmountFromMonthForwardSkippingPast(
@@ -23203,156 +24363,68 @@ function renderTaxPaymentSettings() {
           )
           : { ...plan, [month]: parsed };
         persistPlan(account, next, fiscalPeriod);
-      }
-      renderPlanSection();
-    };
-
-    input.addEventListener('keydown', (e) => {
-      handlePlanAmountCellKeydown(e, {
-        finish,
-        td,
-        scopeId: `tax-payment-${fiscalPeriod}`,
-      });
+      },
     });
-    input.addEventListener('blur', () => {
-      setTimeout(() => {
-        if (!editClosed) finish(true, false);
-      }, 0);
-    });
-
-    td.textContent = '';
-    td.appendChild(input);
-    input.focus();
-    input.select();
-  }
-
-  function startMunicipalityCellEdit(td, entry, month, fiscalPeriod) {
-    if (!isResidentTaxMonthEditable()) return;
-    if (td.querySelector('input')) return;
-
-    const rawValue = entry.monthly[month];
-
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.inputMode = 'numeric';
-    input.className = 'salary-plan-amount-input';
-    input.autocomplete = 'off';
-    input.spellcheck = false;
-    input.value = rawValue != null && rawValue !== 0 ? String(rawValue) : '';
-
-    let editClosed = false;
-
-    const finish = (save, fillForward = false) => {
-      if (editClosed) return;
-      editClosed = true;
-      if (save) {
-        const parsed = parseSalaryPlanAmountInputWithFillForward(
-          input.value,
-          fillForward,
-          rawValue,
-        );
-        const nextMonthly = fillForward
-          ? applyAmountFromMonthForward(
-            entry.monthly,
-            fiscalMonths,
-            month,
-            parsed,
-          )
-          : { ...entry.monthly, [month]: parsed };
-        persistMunicipality({ ...entry, monthly: nextMonthly }, fiscalPeriod);
-      }
-      renderPlanSection();
-    };
-
-    input.addEventListener('keydown', (e) => {
-      handlePlanAmountCellKeydown(e, {
-        finish,
-        td,
-        scopeId: `tax-municipality-${fiscalPeriod}`,
-      });
-    });
-    input.addEventListener('blur', () => {
-      setTimeout(() => {
-        if (!editClosed) finish(true, false);
-      }, 0);
-    });
-
-    td.textContent = '';
-    td.appendChild(input);
-    input.focus();
-    input.select();
-  }
-
-  function appendAmountCell(tr, { account, month, fiscalPeriod, value, prevValue, editable }) {
-    const td = document.createElement('td');
-    td.className = 'salary-plan-amount-cell';
-    if (month === fiscalMonths[0]) {
-      td.classList.add('salary-plan-amount-start-month');
-    } else if (prevValue !== undefined && salaryPlanAmountDiffersFromPrevious(prevValue, value)) {
-      td.classList.add('salary-plan-amount-changed');
-    }
-    if (editable) {
-      td.classList.add('salary-plan-cell-editable');
-      tagPlanEditableCell(td, { month });
-      td.title = 'ダブルクリックで編集（Shift+Enter で後続月へ同額反映）';
-      td.textContent = formatSalaryPlanYen(value);
-      td.addEventListener('dblclick', () => {
-        startCellEdit(td, account, month, fiscalPeriod);
-      });
-    } else {
-      td.classList.add('salary-plan-cell-disabled');
-      td.textContent = formatSalaryPlanYen(value);
-    }
-    tr.appendChild(td);
   }
 
   function appendMunicipalityAmountCell(tr, {
     entry,
     month,
+    monthIndex,
     fiscalPeriod,
     value,
     prevValue,
     editable,
   }) {
-    const td = document.createElement('td');
-    td.className = 'salary-plan-amount-cell';
-    if (month === fiscalMonths[0]) {
-      td.classList.add('salary-plan-amount-start-month');
-    } else if (prevValue !== undefined && salaryPlanAmountDiffersFromPrevious(prevValue, value)) {
-      td.classList.add('salary-plan-amount-changed');
-    }
-    if (editable) {
-      td.classList.add('salary-plan-cell-editable');
-      tagPlanEditableCell(td, { month });
-      td.title = 'ダブルクリックで編集（Shift+Enter で後続月へ同額反映）';
-      td.textContent = formatSalaryPlanYen(value);
-      td.addEventListener('dblclick', () => {
-        startMunicipalityCellEdit(td, entry, month, fiscalPeriod);
-      });
-    } else {
-      td.classList.add('salary-plan-cell-disabled');
-      td.textContent = formatSalaryPlanYen(value);
-    }
-    tr.appendChild(td);
+    appendPlanAmountCell(tr, {
+      month,
+      monthIndex,
+      fiscalPeriod,
+      value,
+      prevValue,
+      editable,
+      title: 'ダブルクリックで編集（Shift+Enter で後続月へ同額反映）',
+      formatValue: formatSalaryPlanYen,
+      rawValue: entry.monthly[month],
+      parseValue: parseSalaryPlanAmountInput,
+      tabScopeId: `tax-municipality-${fiscalPeriod}`,
+      forcePlanMonthColor: true,
+      onSave: (parsed, fillForward) => {
+        saveMunicipalityMonthly(entry, fiscalPeriod, month, parsed, fillForward);
+      },
+    });
   }
 
   function buildTaxPaymentTable(fiscalPeriod) {
     const municipalities = getMunicipalitiesForPeriod(fiscalPeriod);
     const table = document.createElement('table');
-    table.className = 'expand-settings-table salary-plan-table';
+    table.className = 'expand-settings-table salary-plan-table tax-payment-plan-table';
+    table.dataset.fiscalPeriod = String(fiscalPeriod);
 
-    const headerLabels = ['勘定科目', '市区町村', ...fiscalMonths, '合計'];
     const thead = document.createElement('thead');
     const headerRow = document.createElement('tr');
-    for (const label of headerLabels) {
+
+    const accountTh = document.createElement('th');
+    accountTh.className = 'salary-plan-col-name';
+    accountTh.textContent = '勘定科目';
+    headerRow.appendChild(accountTh);
+
+    const subTh = document.createElement('th');
+    subTh.className = 'salary-plan-col-sub';
+    subTh.textContent = '市区町村';
+    headerRow.appendChild(subTh);
+
+    for (const month of fiscalMonths) {
       const th = document.createElement('th');
-      th.textContent = label;
-      if (label === '勘定科目') th.className = 'salary-plan-col-name';
-      else if (label === '市区町村') th.className = 'salary-plan-col-sub';
-      else if (label === '合計') th.className = 'salary-plan-col-total';
-      else th.className = 'salary-plan-col-month';
+      monthDisplayUi.configureMonthHeaderTh(th, month, fiscalPeriod);
       headerRow.appendChild(th);
     }
+
+    const totalTh = document.createElement('th');
+    totalTh.className = 'salary-plan-col-total';
+    totalTh.textContent = '合計';
+    headerRow.appendChild(totalTh);
+
     thead.appendChild(headerRow);
     table.appendChild(thead);
 
@@ -23361,6 +24433,7 @@ function renderTaxPaymentSettings() {
       const displayMonthly = buildDisplayMonthly(account, fiscalPeriod);
       const tr = document.createElement('tr');
       tr.className = 'salary-plan-row-monthly';
+      tr.dataset.planRowKey = account;
       tagPlanEditableRow(tr, account);
 
       const accountTd = document.createElement('td');
@@ -23382,6 +24455,7 @@ function renderTaxPaymentSettings() {
         appendAmountCell(tr, {
           account,
           month,
+          monthIndex: i,
           fiscalPeriod,
           value: displayMonthly[month],
           prevValue,
@@ -23401,6 +24475,7 @@ function renderTaxPaymentSettings() {
       const displayMonthly = buildMunicipalityDisplayMonthly(entry, fiscalPeriod);
       const tr = document.createElement('tr');
       tr.className = 'salary-plan-row-monthly salary-plan-row-sub';
+      tr.dataset.planRowKey = entry.id;
       tagPlanEditableRow(tr, entry.id);
 
       const accountTd = document.createElement('td');
@@ -23415,12 +24490,13 @@ function renderTaxPaymentSettings() {
 
       for (let i = 0; i < fiscalMonths.length; i += 1) {
         const month = fiscalMonths[i];
-        const editable = isResidentTaxMonthEditable();
+        const editable = isResidentTaxMonthEditable(fiscalPeriod, month);
         const prevMonth = i > 0 ? fiscalMonths[i - 1] : null;
         const prevValue = prevMonth != null ? displayMonthly[prevMonth] : undefined;
         appendMunicipalityAmountCell(tr, {
           entry,
           month,
+          monthIndex: i,
           fiscalPeriod,
           value: displayMonthly[month],
           prevValue,
@@ -23438,7 +24514,8 @@ function renderTaxPaymentSettings() {
 
     const residentTaxTotalDisplay = buildResidentTaxTotalDisplay(fiscalPeriod);
     const totalTr = document.createElement('tr');
-    totalTr.className = 'salary-plan-row-monthly salary-plan-row-total';
+    totalTr.className = 'salary-plan-row-monthly salary-plan-row-total salary-plan-total-row';
+    totalTr.dataset.planRowKey = 'resident-tax-total';
 
     const totalAccountTd = document.createElement('td');
     totalAccountTd.className = 'salary-plan-col-name';
@@ -23454,13 +24531,16 @@ function renderTaxPaymentSettings() {
       const month = fiscalMonths[i];
       const prevMonth = i > 0 ? fiscalMonths[i - 1] : null;
       const prevValue = prevMonth != null ? residentTaxTotalDisplay[prevMonth] : undefined;
-      const td = document.createElement('td');
-      td.className = 'salary-plan-amount-cell salary-plan-cell-disabled';
-      td.textContent = formatSalaryPlanYen(residentTaxTotalDisplay[month]);
-      if (prevValue !== undefined && salaryPlanAmountDiffersFromPrevious(prevValue, residentTaxTotalDisplay[month])) {
-        td.classList.add('salary-plan-amount-changed');
-      }
-      totalTr.appendChild(td);
+      appendPlanAmountCell(totalTr, {
+        month,
+        monthIndex: i,
+        fiscalPeriod,
+        value: residentTaxTotalDisplay[month],
+        prevValue,
+        editable: false,
+        forcePlanMonthColor: true,
+        formatValue: formatSalaryPlanYen,
+      });
     }
 
     const residentTaxTotalTd = document.createElement('td');
@@ -23483,18 +24563,25 @@ function renderTaxPaymentSettings() {
 
     const grandTr = document.createElement('tr');
     grandTr.className = 'salary-plan-total-row salary-plan-row-monthly';
+    grandTr.dataset.planRowKey = 'grand-total';
 
     const grandLabelTd = document.createElement('td');
     grandLabelTd.colSpan = 2;
     grandLabelTd.className = 'salary-plan-total-label';
-    grandLabelTd.textContent = '合計';
+    grandLabelTd.textContent = TAX_PAY_OTHER_PAY_TOTAL_LABEL;
     grandTr.appendChild(grandLabelTd);
 
-    for (const month of fiscalMonths) {
-      const td = document.createElement('td');
-      td.className = 'salary-plan-amount-cell salary-plan-cell-disabled';
-      td.textContent = formatSalaryPlanYen(grandTotalDisplay[month]);
-      grandTr.appendChild(td);
+    for (let i = 0; i < fiscalMonths.length; i += 1) {
+      const month = fiscalMonths[i];
+      appendPlanAmountCell(grandTr, {
+        month,
+        monthIndex: i,
+        fiscalPeriod,
+        value: grandTotalDisplay[month],
+        prevValue: i > 0 ? grandTotalDisplay[fiscalMonths[i - 1]] : undefined,
+        editable: false,
+        formatValue: formatSalaryPlanYen,
+      });
     }
 
     const grandTotalTd = document.createElement('td');
@@ -23508,20 +24595,18 @@ function renderTaxPaymentSettings() {
   }
 
   function renderPlanSection() {
-    wrap.querySelector('.salary-plan-section')?.remove();
+    wrap.querySelector('.tax-payment-plan-section')?.remove();
 
     const section = document.createElement('div');
-    section.className = 'salary-plan-section';
+    section.className = 'salary-plan-section tax-payment-plan-section';
 
     const planHeader = document.createElement('div');
     planHeader.className = 'salary-plan-header';
-    planHeader.innerHTML = `
-      <h3 class="salary-plan-title">支払い計画表</h3>
-      <p class="salary-plan-desc">
-        決算月 ${appSettings.fiscalEndMonth}月 を基準とした12か月分です。
-        今期の実績表示月は仕訳実績を表示します（編集不可）。予実表で計画表示に切り替えた月はダブルクリックで編集できます。住民税のみ過去月も入力でき、予実表にもその値が反映されます。Shift+Enter で後続月へ同額を反映できます。
-      </p>
-    `;
+    const planTitle = document.createElement('h3');
+    planTitle.className = 'salary-plan-title';
+    planTitle.textContent = '支払い計画表';
+    applyTaxPaymentPlanTitleStyle(planTitle);
+    planHeader.appendChild(planTitle);
     section.appendChild(planHeader);
 
     for (const { period, label } of planPeriodEntries()) {
@@ -23530,7 +24615,7 @@ function renderTaxPaymentSettings() {
 
       const blockTitle = document.createElement('h4');
       blockTitle.className = 'salary-plan-period-title';
-      blockTitle.textContent = `${label}（${formatFiscalPeriodLabel(period)}）`;
+      blockTitle.textContent = label;
       block.appendChild(blockTitle);
 
       const tableWrap = document.createElement('div');
@@ -23544,29 +24629,95 @@ function renderTaxPaymentSettings() {
       section.appendChild(block);
     }
 
-    wrap.appendChild(section);
+    wrap.insertBefore(section, wrap.querySelector('.expense-plan-override-section'));
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      layoutPlanSettingsScalableWrap(wrap, (rootWrap) => measurePlanSettingsPageNaturalWidth(
+        rootWrap,
+        fiscalMonths.length,
+        [
+          { subColumns: 1, actionsColumn: false },
+          { subColumns: 0, actionsColumn: true },
+        ],
+      ));
+      refreshPlanSettingsColumnPlates(wrap, fiscalMonths, currentPeriod, appSettings);
+    }));
   }
 
   renderPlanSection();
-  mountExpensePlanOverrideSection({
+  const overrideSection = mountExpensePlanOverrideSection({
     wrap,
     appSettings,
     rawPlanData,
     getMonthDisplayConfig: () => monthDisplayConfig,
+    onToggleMonthDisplay: togglePlanMonthDisplay,
+    monthDisplayUi,
+    startNumericCellEdit,
+    getSectionFilterColors: getFilterButtonColors,
     getExpensePlanOverrides: () => expensePlanOverrides,
     setExpensePlanOverrides: (next) => {
       expensePlanOverrides = next;
     },
     refreshPlanTableIfNeeded,
+    refreshPlanSettingsColumnPlates: () => refreshPlanSettingsColumnPlates(
+      wrap,
+      fiscalMonths,
+      currentPeriod,
+      appSettings,
+    ),
+  });
+  expenseOverrideMonthDisplaySync = overrideSection?.syncMonthDisplay ?? null;
+  taxPaymentSettingsMonthDisplayApplier = () => applyTaxPaymentMonthDisplayToWrap(wrap);
+  bindPlanSettingsScalableLayout(wrap, {
+    measureNaturalWidth: (rootWrap) => measurePlanSettingsPageNaturalWidth(
+      rootWrap,
+      fiscalMonths.length,
+      [
+        { subColumns: 1, actionsColumn: false },
+        { subColumns: 0, actionsColumn: true },
+      ],
+    ),
+    fiscalMonths,
+    currentPeriod,
+    appSettings,
   });
   replaceRootPanel(wrap);
+  refreshPlanKpi();
 }
 
 function renderEmployeeSettings() {
-  setPlanKpi(null);
+  const fiscalMonths = buildFiscalYearMonths(appSettings.fiscalEndMonth);
+  const currentPeriod = appSettings.fiscalPeriod;
+
+  const monthDisplayUi = createPlanMonthDisplayUi({
+    appSettings,
+    currentPeriod,
+    fiscalMonths,
+    getMonthDisplayConfig: () => monthDisplayConfig,
+    getPastMonthsForPeriod: (fiscalPeriod) => getSettingsLockedMonthsForPeriod(
+      fiscalPeriod,
+      fiscalMonths,
+    ),
+    onToggleMonthDisplay: togglePlanMonthDisplay,
+  });
+
+  function isSalaryPlanMonthEditable(fiscalPeriod, month) {
+    if (fiscalPeriod !== currentPeriod) return true;
+    const displayMode = getFiscalPeriodDisplayMode(
+      appSettings.businessStartYear,
+      fiscalPeriod,
+    );
+    if (displayMode === 'budget-actual') {
+      return !getSettingsLockedMonthsForPeriod(fiscalPeriod, fiscalMonths).has(month);
+    }
+    return true;
+  }
+
+  function refreshSalaryPlanUi() {
+    renderSalaryPlanSection(employees.filter(isSalaryPlanEmployee));
+  }
 
   const wrap = document.createElement('div');
-  wrap.className = 'expand-settings-wrap employee-settings-wrap';
+  wrap.className = 'expand-settings-wrap employee-settings-wrap plan-settings-scalable';
 
   const header = document.createElement('div');
   header.className = 'expand-settings-header';
@@ -23868,7 +25019,7 @@ function renderEmployeeSettings() {
         }
         persistSalaryPlan(emp, nextPlan, fiscalPeriod);
       }
-      renderSalaryPlanSection(employees.filter(isSalaryPlanEmployee));
+      refreshSalaryPlanUi();
     };
 
     input.addEventListener('keydown', (e) => {
@@ -23895,35 +25046,54 @@ function renderEmployeeSettings() {
     emp,
     rowKind,
     month,
-    fiscalMonths,
+    monthIndex,
     fiscalPeriod,
     value,
     prevValue,
     editable,
   }) {
     const td = document.createElement('td');
-    td.className = 'salary-plan-amount-cell';
-    if (month === fiscalMonths[0] && editable) {
-      td.classList.add('salary-plan-amount-start-month');
-    }
-    if (editable) {
-      td.classList.add('salary-plan-cell-editable');
-      tagPlanEditableCell(td, { month });
-      td.title = rowKind === 'monthly'
-        ? 'ダブルクリックで編集（Shift+Enter で後続月へ同額反映）'
-        : 'ダブルクリックで編集';
-      td.textContent = formatSalaryPlanYen(value);
-      if (prevValue !== undefined && salaryPlanAmountDiffersFromPrevious(prevValue, value)) {
-        td.classList.add('salary-plan-amount-changed');
-      }
-      td.addEventListener('dblclick', () => {
-        startSalaryPlanCellEdit(td, emp, rowKind, month, fiscalMonths, fiscalPeriod);
-      });
-    } else {
-      td.classList.add('salary-plan-cell-disabled');
-      td.textContent = '';
-    }
     tr.appendChild(td);
+    monthDisplayUi.setPlanAmountCellContent(td, {
+      month,
+      monthIndex,
+      value,
+      prevValue,
+      editable,
+      fiscalPeriod,
+      forcePlanMonthColor: true,
+      title: rowKind === 'monthly'
+        ? 'ダブルクリックで編集（Shift+Enter で後続月へ同額反映）'
+        : 'ダブルクリックで編集',
+      formatValue: formatSalaryPlanYen,
+      rawValue: value,
+      allowShiftFillForward: rowKind === 'monthly',
+      tabScopeId: `salary-plan-${fiscalPeriod}`,
+      onEditClose: refreshSalaryPlanUi,
+    }, (editTd) => {
+      startSalaryPlanCellEdit(editTd, emp, rowKind, month, fiscalMonths, fiscalPeriod);
+    });
+  }
+
+  function appendSalaryPlanTotalAmountCell(tr, {
+    month,
+    monthIndex,
+    fiscalPeriod,
+    value,
+    prevValue,
+  }) {
+    const td = document.createElement('td');
+    tr.appendChild(td);
+    monthDisplayUi.setPlanAmountCellContent(td, {
+      month,
+      monthIndex,
+      value,
+      prevValue,
+      editable: false,
+      fiscalPeriod,
+      forcePlanMonthColor: true,
+      formatValue: formatSalaryPlanYen,
+    }, () => {});
   }
 
   function buildTravelAllowanceField(fiscalPeriod, periodLabel) {
@@ -23976,11 +25146,11 @@ function renderEmployeeSettings() {
     config.className = 'salary-plan-travel-allowance-config';
     config.appendChild(buildTravelAllowanceField(
       currentPeriod,
-      `今期（${formatFiscalPeriodLabel(currentPeriod)}）`,
+      formatFiscalPeriodLabel(currentPeriod),
     ));
     config.appendChild(buildTravelAllowanceField(
       nextPeriod,
-      `来期（${formatFiscalPeriodLabel(nextPeriod)}）`,
+      formatFiscalPeriodLabel(nextPeriod),
     ));
     return config;
   }
@@ -24034,7 +25204,7 @@ function renderEmployeeSettings() {
           : { ...overtime, [month]: parsed };
         persistOvertimePlan(next, fiscalPeriod, fiscalMonths);
       }
-      renderSalaryPlanSection(employees.filter(isSalaryPlanEmployee));
+      refreshSalaryPlanUi();
     };
 
     input.addEventListener('keydown', (e) => {
@@ -24058,49 +25228,57 @@ function renderEmployeeSettings() {
 
   function appendOvertimePlanAmountCell(tr, {
     month,
-    fiscalMonths,
+    monthIndex,
     fiscalPeriod,
     value,
     prevValue,
   }) {
-    const editable = !getSettingsLockedMonthsForPeriod(fiscalPeriod, fiscalMonths).has(month);
+    const editable = isSalaryPlanMonthEditable(fiscalPeriod, month);
     const td = document.createElement('td');
-    td.className = 'salary-plan-amount-cell';
-    if (month === fiscalMonths[0] && editable) {
-      td.classList.add('salary-plan-amount-start-month');
-    }
-    if (editable) {
-      td.classList.add('salary-plan-cell-editable');
-      tagPlanEditableCell(td, { month });
-      td.title = 'ダブルクリックで編集（Shift+Enter で後続月へ同額反映）';
-      td.textContent = formatSalaryPlanYen(value);
-      if (prevValue !== undefined && salaryPlanAmountDiffersFromPrevious(prevValue, value)) {
-        td.classList.add('salary-plan-amount-changed');
-      }
-      td.addEventListener('dblclick', () => {
-        startOvertimePlanCellEdit(td, month, fiscalMonths, fiscalPeriod);
-      });
-    } else {
-      td.classList.add('salary-plan-cell-disabled');
-      td.textContent = '';
-    }
     tr.appendChild(td);
+    monthDisplayUi.setPlanAmountCellContent(td, {
+      month,
+      monthIndex,
+      value,
+      prevValue,
+      editable,
+      fiscalPeriod,
+      forcePlanMonthColor: true,
+      title: 'ダブルクリックで編集（Shift+Enter で後続月へ同額反映）',
+      formatValue: formatSalaryPlanYen,
+      rawValue: value,
+      allowShiftFillForward: true,
+      tabScopeId: `salary-overtime-${fiscalPeriod}`,
+      onEditClose: refreshSalaryPlanUi,
+    }, (editTd) => {
+      startOvertimePlanCellEdit(editTd, month, fiscalMonths, fiscalPeriod);
+    });
   }
 
   function buildOvertimePlanTable(fiscalPeriod, fiscalMonths) {
     const overtime = getOvertimePlanForPeriod(fiscalPeriod, fiscalMonths);
     const table = document.createElement('table');
-    table.className = 'expand-settings-table salary-plan-table';
+    table.className = 'expand-settings-table salary-plan-table salary-overtime-plan-table';
+    table.dataset.fiscalPeriod = String(fiscalPeriod);
+    table.appendChild(buildEmployeePlanTableColgroup({
+      variant: 'overtime',
+      monthCount: fiscalMonths.length,
+    }));
 
     const headerLabels = ['種別', ...fiscalMonths, '合計'];
     const thead = document.createElement('thead');
     const headerRow = document.createElement('tr');
     for (const label of headerLabels) {
       const th = document.createElement('th');
-      th.textContent = label;
-      if (label === '種別') th.className = 'salary-plan-col-kind';
-      else if (label === '合計') th.className = 'salary-plan-col-total';
-      else th.className = 'salary-plan-col-month';
+      if (label === '種別') {
+        th.className = 'salary-plan-col-kind';
+        th.textContent = label;
+      } else if (label === '合計') {
+        th.className = 'salary-plan-col-total';
+        th.textContent = label;
+      } else {
+        monthDisplayUi.configureMonthHeaderTh(th, label, fiscalPeriod);
+      }
       headerRow.appendChild(th);
     }
     thead.appendChild(headerRow);
@@ -24121,7 +25299,7 @@ function renderEmployeeSettings() {
       const prevValue = i > 0 ? overtime[fiscalMonths[i - 1]] : undefined;
       appendOvertimePlanAmountCell(tr, {
         month,
-        fiscalMonths,
+        monthIndex: i,
         fiscalPeriod,
         value: overtime[month],
         prevValue,
@@ -24210,7 +25388,13 @@ function renderEmployeeSettings() {
     comparePeriod = null,
   } = {}) {
     const table = document.createElement('table');
-    table.className = 'expand-settings-table salary-plan-table';
+    table.className = 'expand-settings-table salary-plan-table employee-salary-plan-table';
+    table.dataset.fiscalPeriod = String(fiscalPeriod);
+    table.appendChild(buildEmployeePlanTableColgroup({
+      variant: 'salary',
+      monthCount: fiscalMonths.length,
+      hasIncrease: showIncreaseRate,
+    }));
 
     const headerLabels = ['番号', '氏名', '市区町村', '種別', ...fiscalMonths, '合計'];
     if (showIncreaseRate) headerLabels.push('昇給率');
@@ -24219,15 +25403,26 @@ function renderEmployeeSettings() {
     const headerRow = document.createElement('tr');
     for (const label of headerLabels) {
       const th = document.createElement('th');
-      th.textContent = label;
-      if (label === '番号') th.className = 'salary-plan-col-no';
-      else if (label === '氏名') th.className = 'salary-plan-col-name';
-      else if (label === '市区町村') th.className = 'salary-plan-col-sub';
-      else if (label === '種別') th.className = 'salary-plan-col-kind';
-      else if (label === '合計') th.className = 'salary-plan-col-total';
-      else if (label === '昇給率') th.className = 'salary-plan-col-increase';
-      else {
-        th.className = 'salary-plan-col-month';
+      if (label === '番号') {
+        th.className = 'salary-plan-col-no';
+        th.textContent = label;
+      } else if (label === '氏名') {
+        th.className = 'salary-plan-col-name';
+        th.textContent = label;
+      } else if (label === '市区町村') {
+        th.className = 'salary-plan-col-sub';
+        th.textContent = label;
+      } else if (label === '種別') {
+        th.className = 'salary-plan-col-kind';
+        th.textContent = label;
+      } else if (label === '合計') {
+        th.className = 'salary-plan-col-total';
+        th.textContent = label;
+      } else if (label === '昇給率') {
+        th.className = 'salary-plan-col-increase';
+        th.textContent = label;
+      } else {
+        monthDisplayUi.configureMonthHeaderTh(th, label, fiscalPeriod);
       }
       headerRow.appendChild(th);
     }
@@ -24242,6 +25437,8 @@ function renderEmployeeSettings() {
 
       const trMonthly = document.createElement('tr');
       trMonthly.className = 'salary-plan-row-monthly';
+      trMonthly.dataset.planRowKey = `${emp.id}:monthly`;
+      trMonthly.dataset.employeePlanGroup = emp.id;
       tagPlanEditableRow(trMonthly, `${emp.id}:monthly`);
 
       const noTd = document.createElement('td');
@@ -24274,11 +25471,11 @@ function renderEmployeeSettings() {
           emp,
           rowKind: 'monthly',
           month,
-          fiscalMonths,
+          monthIndex: i,
           fiscalPeriod,
           value: plan.monthly[month],
           prevValue,
-          editable: !getSettingsLockedMonthsForPeriod(fiscalPeriod, fiscalMonths).has(month),
+          editable: isSalaryPlanMonthEditable(fiscalPeriod, month),
         });
       }
 
@@ -24308,6 +25505,8 @@ function renderEmployeeSettings() {
       if (!isDirector) {
         const trBonus = document.createElement('tr');
         trBonus.className = 'salary-plan-row-bonus';
+        trBonus.dataset.planRowKey = `${emp.id}:bonus`;
+        trBonus.dataset.employeePlanGroup = emp.id;
         tagPlanEditableRow(trBonus, `${emp.id}:bonus`);
 
         const kindBonusTd = document.createElement('td');
@@ -24318,13 +25517,13 @@ function renderEmployeeSettings() {
         for (let i = 0; i < fiscalMonths.length; i += 1) {
           const month = fiscalMonths[i];
           const isEditable = bonusMonthLabels.includes(month)
-            && !getSettingsLockedMonthsForPeriod(fiscalPeriod, fiscalMonths).has(month);
+            && isSalaryPlanMonthEditable(fiscalPeriod, month);
           const prevValue = i > 0 ? plan.bonusMonthly[fiscalMonths[i - 1]] : undefined;
           appendSalaryPlanAmountCell(trBonus, {
             emp,
             rowKind: 'bonus',
             month,
-            fiscalMonths,
+            monthIndex: i,
             fiscalPeriod,
             value: plan.bonusMonthly[month],
             prevValue: isEditable ? prevValue : undefined,
@@ -24362,18 +25561,23 @@ function renderEmployeeSettings() {
     const trMonthlyTotal = document.createElement('tr');
     trMonthlyTotal.className = 'salary-plan-total-row salary-plan-row-monthly';
     const monthlyTotalLabel = document.createElement('td');
-    monthlyTotalLabel.colSpan = 3;
+    monthlyTotalLabel.colSpan = 4;
     monthlyTotalLabel.className = 'salary-plan-total-label';
     monthlyTotalLabel.textContent = '合計（月額）';
     trMonthlyTotal.appendChild(monthlyTotalLabel);
     let monthlyGrand = 0;
-    for (const month of fiscalMonths) {
-      const td = document.createElement('td');
-      td.className = 'salary-plan-amount-cell';
+    for (let i = 0; i < fiscalMonths.length; i += 1) {
+      const month = fiscalMonths[i];
       const val = monthlyTotals[month] ?? 0;
       monthlyGrand += val;
-      td.textContent = formatSalaryPlanYen(val);
-      trMonthlyTotal.appendChild(td);
+      const prevValue = i > 0 ? (monthlyTotals[fiscalMonths[i - 1]] ?? 0) : undefined;
+      appendSalaryPlanTotalAmountCell(trMonthlyTotal, {
+        month,
+        monthIndex: i,
+        fiscalPeriod,
+        value: val,
+        prevValue,
+      });
     }
     const monthlyGrandTd = document.createElement('td');
     monthlyGrandTd.className = 'salary-plan-col-total';
@@ -24391,18 +25595,23 @@ function renderEmployeeSettings() {
     const trBonusTotal = document.createElement('tr');
     trBonusTotal.className = 'salary-plan-total-row salary-plan-row-bonus';
     const bonusTotalLabel = document.createElement('td');
-    bonusTotalLabel.colSpan = 3;
+    bonusTotalLabel.colSpan = 4;
     bonusTotalLabel.className = 'salary-plan-total-label';
     bonusTotalLabel.textContent = '合計（賞与）';
     trBonusTotal.appendChild(bonusTotalLabel);
     let bonusGrand = 0;
-    for (const month of fiscalMonths) {
-      const td = document.createElement('td');
-      td.className = 'salary-plan-amount-cell';
+    for (let i = 0; i < fiscalMonths.length; i += 1) {
+      const month = fiscalMonths[i];
       const val = bonusTotals[month] ?? 0;
       bonusGrand += val;
-      td.textContent = formatSalaryPlanYen(val);
-      trBonusTotal.appendChild(td);
+      const prevValue = i > 0 ? (bonusTotals[fiscalMonths[i - 1]] ?? 0) : undefined;
+      appendSalaryPlanTotalAmountCell(trBonusTotal, {
+        month,
+        monthIndex: i,
+        fiscalPeriod,
+        value: val,
+        prevValue,
+      });
     }
     const bonusGrandTd = document.createElement('td');
     bonusGrandTd.className = 'salary-plan-col-total';
@@ -24415,8 +25624,300 @@ function renderEmployeeSettings() {
     }
     tbody.appendChild(trBonusTotal);
 
+    const trCombinedTotal = document.createElement('tr');
+    trCombinedTotal.className = 'salary-plan-total-row salary-plan-row-combined';
+    const combinedTotalLabel = document.createElement('td');
+    combinedTotalLabel.colSpan = 4;
+    combinedTotalLabel.className = 'salary-plan-total-label';
+    combinedTotalLabel.textContent = '合計（月額＋賞与）';
+    trCombinedTotal.appendChild(combinedTotalLabel);
+    let combinedGrand = 0;
+    for (let i = 0; i < fiscalMonths.length; i += 1) {
+      const month = fiscalMonths[i];
+      const val = (monthlyTotals[month] ?? 0) + (bonusTotals[month] ?? 0);
+      combinedGrand += val;
+      const prevValue = i > 0
+        ? (monthlyTotals[fiscalMonths[i - 1]] ?? 0) + (bonusTotals[fiscalMonths[i - 1]] ?? 0)
+        : undefined;
+      appendSalaryPlanTotalAmountCell(trCombinedTotal, {
+        month,
+        monthIndex: i,
+        fiscalPeriod,
+        value: val,
+        prevValue,
+      });
+    }
+    const combinedGrandTd = document.createElement('td');
+    combinedGrandTd.className = 'salary-plan-col-total';
+    combinedGrandTd.textContent = formatSalaryPlanYen(combinedGrand);
+    trCombinedTotal.appendChild(combinedGrandTd);
+    if (showIncreaseRate) {
+      const increaseCombinedTd = document.createElement('td');
+      increaseCombinedTd.className = 'salary-plan-col-increase';
+      trCombinedTotal.appendChild(increaseCombinedTd);
+    }
+    tbody.appendChild(trCombinedTotal);
+
     table.appendChild(tbody);
     return table;
+  }
+
+  function bindEmployeePlanGroupRowHover(table) {
+    const tbody = table.tBodies[0];
+    if (!tbody || tbody.dataset.employeePlanGroupHoverBound) return;
+    tbody.dataset.employeePlanGroupHoverBound = '1';
+
+    const setHover = (groupId) => {
+      tbody.querySelectorAll('.is-employee-plan-group-hover').forEach((el) => {
+        el.classList.remove('is-employee-plan-group-hover');
+      });
+      if (!groupId) return;
+      tbody.querySelectorAll('[data-employee-plan-group]').forEach((el) => {
+        if (el.dataset.employeePlanGroup === groupId) {
+          el.classList.add('is-employee-plan-group-hover');
+        }
+      });
+    };
+
+    tbody.addEventListener('mouseover', (ev) => {
+      const groupEl = ev.target.closest('[data-employee-plan-group]');
+      if (!groupEl || !tbody.contains(groupEl)) return;
+      const groupId = groupEl.dataset.employeePlanGroup;
+      if (tbody.dataset.hoverEmployeePlanGroup === groupId) return;
+      tbody.dataset.hoverEmployeePlanGroup = groupId;
+      setHover(groupId);
+    });
+
+    tbody.addEventListener('mouseout', (ev) => {
+      const groupEl = ev.target.closest('[data-employee-plan-group]');
+      if (!groupEl) return;
+      const groupId = groupEl.dataset.employeePlanGroup;
+      const related = ev.relatedTarget;
+      if (related?.closest?.('[data-employee-plan-group]')?.dataset?.employeePlanGroup === groupId) return;
+      if (tbody.dataset.hoverEmployeePlanGroup === groupId) {
+        delete tbody.dataset.hoverEmployeePlanGroup;
+        setHover(null);
+      }
+    });
+
+    tbody.addEventListener('mouseleave', () => {
+      delete tbody.dataset.hoverEmployeePlanGroup;
+      setHover(null);
+    });
+  }
+
+  function syncOvertimePlanTableMonthDisplay(table, fiscalPeriod) {
+    if (fiscalPeriod !== currentPeriod) return;
+
+    table.querySelectorAll('thead th.salary-plan-col-month').forEach((th, i) => {
+      const month = fiscalMonths[i];
+      if (month) monthDisplayUi.updateMonthHeaderTh(th, month, fiscalPeriod);
+    });
+
+    const tr = table.querySelector('tbody tr.salary-plan-row-monthly');
+    if (!tr) return;
+
+    const overtime = getOvertimePlanForPeriod(fiscalPeriod, fiscalMonths);
+    const amountCells = tr.querySelectorAll('td.salary-plan-amount-cell');
+    for (let i = 0; i < fiscalMonths.length; i += 1) {
+      const month = fiscalMonths[i];
+      const td = amountCells[i];
+      if (!td) continue;
+      const prevValue = i > 0 ? overtime[fiscalMonths[i - 1]] : undefined;
+      monthDisplayUi.setPlanAmountCellContent(td, {
+        month,
+        monthIndex: i,
+        value: overtime[month],
+        prevValue,
+        editable: isSalaryPlanMonthEditable(fiscalPeriod, month),
+        fiscalPeriod,
+        forcePlanMonthColor: true,
+        title: 'ダブルクリックで編集（Shift+Enter で後続月へ同額反映）',
+        formatValue: formatSalaryPlanYen,
+        rawValue: overtime[month],
+        allowShiftFillForward: true,
+        tabScopeId: `salary-overtime-${fiscalPeriod}`,
+        onEditClose: refreshSalaryPlanUi,
+      }, (editTd) => {
+        startOvertimePlanCellEdit(editTd, month, fiscalMonths, fiscalPeriod);
+      });
+    }
+  }
+
+  function syncEmployeeSalaryPlanTableMonthDisplay(table, fiscalPeriod, activeEmployees) {
+    if (fiscalPeriod !== currentPeriod) return;
+
+    table.querySelectorAll('thead th.salary-plan-col-month').forEach((th, i) => {
+      const month = fiscalMonths[i];
+      if (month) monthDisplayUi.updateMonthHeaderTh(th, month, fiscalPeriod);
+    });
+
+    const bonusMonthLabels = bonusPaymentMonthLabels(
+      getBonusPaymentMonths(salaryPlanSettings, fiscalPeriod, fiscalMonths),
+    );
+
+    for (const emp of activeEmployees) {
+      const plan = getSalaryPlanForEmployee(emp, fiscalMonths, fiscalPeriod);
+      const trMonthly = table.querySelector(`tbody tr[data-plan-row-key="${CSS.escape(`${emp.id}:monthly`)}"]`);
+      if (trMonthly) {
+        const amountCells = trMonthly.querySelectorAll('td.salary-plan-amount-cell');
+        for (let i = 0; i < fiscalMonths.length; i += 1) {
+          const month = fiscalMonths[i];
+          const td = amountCells[i];
+          if (!td) continue;
+          const prevValue = i > 0 ? plan.monthly[fiscalMonths[i - 1]] : undefined;
+          monthDisplayUi.setPlanAmountCellContent(td, {
+            month,
+            monthIndex: i,
+            value: plan.monthly[month],
+            prevValue,
+            editable: isSalaryPlanMonthEditable(fiscalPeriod, month),
+            fiscalPeriod,
+            forcePlanMonthColor: true,
+            title: 'ダブルクリックで編集（Shift+Enter で後続月へ同額反映）',
+            formatValue: formatSalaryPlanYen,
+            rawValue: plan.monthly[month],
+            allowShiftFillForward: true,
+            tabScopeId: `salary-plan-${fiscalPeriod}`,
+            onEditClose: refreshSalaryPlanUi,
+          }, (editTd) => {
+            startSalaryPlanCellEdit(editTd, emp, 'monthly', month, fiscalMonths, fiscalPeriod);
+          });
+        }
+      }
+
+      if (isDirectorEmployee(emp)) continue;
+
+      const trBonus = table.querySelector(`tbody tr[data-plan-row-key="${CSS.escape(`${emp.id}:bonus`)}"]`);
+      if (!trBonus) continue;
+      const amountCells = trBonus.querySelectorAll('td.salary-plan-amount-cell');
+      for (let i = 0; i < fiscalMonths.length; i += 1) {
+        const month = fiscalMonths[i];
+        const td = amountCells[i];
+        if (!td) continue;
+        const isEditable = bonusMonthLabels.includes(month)
+          && isSalaryPlanMonthEditable(fiscalPeriod, month);
+        const prevValue = i > 0 ? plan.bonusMonthly[fiscalMonths[i - 1]] : undefined;
+        monthDisplayUi.setPlanAmountCellContent(td, {
+          month,
+          monthIndex: i,
+          value: plan.bonusMonthly[month],
+          prevValue: isEditable ? prevValue : undefined,
+          editable: isEditable,
+          fiscalPeriod,
+          forcePlanMonthColor: true,
+          title: 'ダブルクリックで編集',
+          formatValue: formatSalaryPlanYen,
+          rawValue: plan.bonusMonthly[month],
+          allowShiftFillForward: false,
+          tabScopeId: `salary-plan-${fiscalPeriod}`,
+          onEditClose: refreshSalaryPlanUi,
+        }, (editTd) => {
+          startSalaryPlanCellEdit(editTd, emp, 'bonus', month, fiscalMonths, fiscalPeriod);
+        });
+      }
+    }
+
+    const monthlyTotals = computeSalaryPlanMonthlyTotals(
+      activeEmployees,
+      salaryPlans,
+      fiscalPeriod,
+      fiscalMonths,
+      'monthly',
+    );
+    const bonusTotals = computeSalaryPlanMonthlyTotals(
+      activeEmployees,
+      salaryPlans,
+      fiscalPeriod,
+      fiscalMonths,
+      'bonus',
+    );
+
+    const trMonthlyTotal = table.querySelector('tbody tr.salary-plan-total-row.salary-plan-row-monthly');
+    if (trMonthlyTotal) {
+      const amountCells = trMonthlyTotal.querySelectorAll('td.salary-plan-amount-cell');
+      for (let i = 0; i < fiscalMonths.length; i += 1) {
+        const month = fiscalMonths[i];
+        const td = amountCells[i];
+        if (!td) continue;
+        const val = monthlyTotals[month] ?? 0;
+        monthDisplayUi.setPlanAmountCellContent(td, {
+          month,
+          monthIndex: i,
+          value: val,
+          prevValue: i > 0 ? (monthlyTotals[fiscalMonths[i - 1]] ?? 0) : undefined,
+          editable: false,
+          fiscalPeriod,
+          forcePlanMonthColor: true,
+          formatValue: formatSalaryPlanYen,
+        }, () => {});
+      }
+    }
+
+    const trBonusTotal = table.querySelector('tbody tr.salary-plan-total-row.salary-plan-row-bonus');
+    if (trBonusTotal) {
+      const amountCells = trBonusTotal.querySelectorAll('td.salary-plan-amount-cell');
+      for (let i = 0; i < fiscalMonths.length; i += 1) {
+        const month = fiscalMonths[i];
+        const td = amountCells[i];
+        if (!td) continue;
+        const val = bonusTotals[month] ?? 0;
+        monthDisplayUi.setPlanAmountCellContent(td, {
+          month,
+          monthIndex: i,
+          value: val,
+          prevValue: i > 0 ? (bonusTotals[fiscalMonths[i - 1]] ?? 0) : undefined,
+          editable: false,
+          fiscalPeriod,
+          forcePlanMonthColor: true,
+          formatValue: formatSalaryPlanYen,
+        }, () => {});
+      }
+    }
+
+    const trCombinedTotal = table.querySelector('tbody tr.salary-plan-total-row.salary-plan-row-combined');
+    if (trCombinedTotal) {
+      const amountCells = trCombinedTotal.querySelectorAll('td.salary-plan-amount-cell');
+      for (let i = 0; i < fiscalMonths.length; i += 1) {
+        const month = fiscalMonths[i];
+        const td = amountCells[i];
+        if (!td) continue;
+        const val = (monthlyTotals[month] ?? 0) + (bonusTotals[month] ?? 0);
+        monthDisplayUi.setPlanAmountCellContent(td, {
+          month,
+          monthIndex: i,
+          value: val,
+          prevValue: i > 0
+            ? (monthlyTotals[fiscalMonths[i - 1]] ?? 0) + (bonusTotals[fiscalMonths[i - 1]] ?? 0)
+            : undefined,
+          editable: false,
+          fiscalPeriod,
+          forcePlanMonthColor: true,
+          formatValue: formatSalaryPlanYen,
+        }, () => {});
+      }
+    }
+  }
+
+  function applyEmployeeMonthDisplayToWrap(rootWrap) {
+    if (!rootWrap?.isConnected) return;
+    const activeEmployees = employees.filter(isSalaryPlanEmployee);
+    rootWrap.querySelectorAll('table.salary-plan-table[data-fiscal-period]').forEach((table) => {
+      const fiscalPeriod = Number(table.dataset.fiscalPeriod);
+      if (table.classList.contains('salary-overtime-plan-table')) {
+        syncOvertimePlanTableMonthDisplay(table, fiscalPeriod);
+      } else if (table.classList.contains('employee-salary-plan-table')) {
+        syncEmployeeSalaryPlanTableMonthDisplay(table, fiscalPeriod, activeEmployees);
+      }
+    });
+    syncAllPlanSettingsTableColumnPlates(rootWrap, fiscalMonths, currentPeriod, appSettings);
+  }
+
+  function layoutEmployeeSettingsScalableWrap() {
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      layoutEmployeeSettingsTables(wrap, fiscalMonths.length);
+      refreshPlanSettingsColumnPlates(wrap, fiscalMonths, currentPeriod, appSettings);
+    }));
   }
 
   function renderTravelAllowanceSection() {
@@ -24430,22 +25931,33 @@ function renderEmployeeSettings() {
 
     const travelHeader = document.createElement('div');
     travelHeader.className = 'salary-plan-header employee-travel-header';
-    travelHeader.innerHTML = `
-      <h3 class="salary-plan-title">旅費交通費</h3>
-      <p class="salary-plan-desc">
-        一人あたりに支給する月額です。デフォルトは ${formatSalaryPlanYen(DEFAULT_TRAVEL_ALLOWANCE_PER_PERSON)} です。
-      </p>
-    `;
+
+    const travelTitleRow = document.createElement('div');
+    travelTitleRow.className = 'employee-travel-title-row';
+
+    const travelTitle = document.createElement('h3');
+    travelTitle.className = 'salary-plan-title';
+    travelTitle.dataset.sectionFilter = 'personnel';
+    travelTitle.textContent = '旅費交通費';
+    applySectionFilterTitleStyle(travelTitle, 'personnel', getFilterButtonColors);
+    travelTitleRow.appendChild(travelTitle);
+
+    const travelDesc = document.createElement('p');
+    travelDesc.className = 'salary-plan-desc employee-travel-desc';
+    travelDesc.textContent = `一人あたりに支給する月額です。デフォルトは ${formatSalaryPlanYen(DEFAULT_TRAVEL_ALLOWANCE_PER_PERSON)} です。`;
+    travelTitleRow.appendChild(travelDesc);
+    travelHeader.appendChild(travelTitleRow);
+    travelHeader.appendChild(buildTravelAllowanceConfig(currentPeriod, nextPeriod));
     travelColumnEl.appendChild(travelHeader);
-    travelColumnEl.appendChild(buildTravelAllowanceConfig(currentPeriod, nextPeriod));
   }
 
   function renderSalaryPlanSection(activeEmployees) {
     wrap.querySelector('.salary-plan-section')?.remove();
-    if (activeEmployees.length === 0) return;
+    if (activeEmployees.length === 0) {
+      layoutEmployeeSettingsScalableWrap();
+      return;
+    }
 
-    const fiscalMonths = buildFiscalYearMonths(appSettings.fiscalEndMonth);
-    const currentPeriod = appSettings.fiscalPeriod;
     const nextPeriod = appSettings.fiscalPeriod + 1;
 
     const section = document.createElement('div');
@@ -24453,25 +25965,25 @@ function renderEmployeeSettings() {
 
     const overtimeHeader = document.createElement('div');
     overtimeHeader.className = 'salary-plan-header';
-    overtimeHeader.innerHTML = `
-      <h3 class="salary-plan-title">残業手当支払い計画表</h3>
-      <p class="salary-plan-desc">
-        決算月 ${appSettings.fiscalEndMonth}月 を基準とした12か月分です。
-        各セルをダブルクリックで編集できます。Shift+Enter で入力した月以降の同額を後続月に反映します（0円も可）。Enter はその月のみ反映します。
-      </p>
-    `;
+    const overtimeTitle = document.createElement('h3');
+    overtimeTitle.className = 'salary-plan-title';
+    overtimeTitle.dataset.sectionFilter = 'personnel';
+    overtimeTitle.textContent = '残業手当支払い計画表';
+    overtimeHeader.appendChild(overtimeTitle);
+    const overtimeDesc = document.createElement('p');
+    overtimeDesc.className = 'salary-plan-desc';
+    overtimeDesc.textContent = `決算月 ${appSettings.fiscalEndMonth}月 を基準とした12か月分です。各セルをダブルクリックで編集できます。Shift+Enter で入力した月以降の同額を後続月に反映します（0円も可）。Enter はその月のみ反映します。`;
+    overtimeHeader.appendChild(overtimeDesc);
+    applySectionFilterTitleStyle(overtimeTitle, 'personnel', getFilterButtonColors);
     section.appendChild(overtimeHeader);
 
-    for (const { period, label } of [
-      { period: currentPeriod, label: '今期' },
-      { period: nextPeriod, label: '来期' },
-    ]) {
+    for (const period of [currentPeriod, nextPeriod]) {
       const block = document.createElement('div');
       block.className = 'salary-plan-period-block';
 
       const blockTitle = document.createElement('h4');
       blockTitle.className = 'salary-plan-period-title';
-      blockTitle.textContent = `${label}（${formatFiscalPeriodLabel(period)}）`;
+      blockTitle.textContent = formatFiscalPeriodLabel(period);
       block.appendChild(blockTitle);
 
       const tableWrap = document.createElement('div');
@@ -24486,19 +25998,24 @@ function renderEmployeeSettings() {
 
     const salaryHeader = document.createElement('div');
     salaryHeader.className = 'salary-plan-header salary-plan-header-spaced';
-    salaryHeader.innerHTML = `
-      <h3 class="salary-plan-title">給与支払い計画表</h3>
-      <p class="salary-plan-desc">
-        決算月 ${appSettings.fiscalEndMonth}月 を基準とした12か月分です。
-        月額・賞与の各セルをダブルクリックで編集できます。月額は Shift+Enter で後続月へ同額を反映します（0円も可）。Enter はその月のみ反映します。役員は賞与の入力がありません。来期の昇給率は月額合計のみを今期と比較します（賞与は含みません）。
-      </p>
-    `;
+    const salaryTitle = document.createElement('h3');
+    salaryTitle.className = 'salary-plan-title';
+    salaryTitle.dataset.sectionFilter = 'personnel';
+    salaryTitle.textContent = '給与支払い計画表';
+    salaryHeader.appendChild(salaryTitle);
+    const salaryDesc = document.createElement('p');
+    salaryDesc.className = 'salary-plan-desc';
+    salaryDesc.textContent = '決算月 '
+      + `${appSettings.fiscalEndMonth}月 を基準とした12か月分です。`
+      + '月額・賞与の各セルをダブルクリックで編集できます。月額は Shift+Enter で後続月へ同額を反映します（0円も可）。Enter はその月のみ反映します。'
+      + '役員は賞与の入力がありません。'
+      + `${formatFiscalPeriodLabel(nextPeriod)}の昇給率は月額合計のみを${formatFiscalPeriodLabel(currentPeriod)}と比較します（賞与は含みません）。`
+      + '実績表示月は計画値を表示します（編集不可）。';
+    salaryHeader.appendChild(salaryDesc);
+    applySectionFilterTitleStyle(salaryTitle, 'personnel', getFilterButtonColors);
     section.appendChild(salaryHeader);
 
-    for (const { period, label } of [
-      { period: currentPeriod, label: '今期' },
-      { period: nextPeriod, label: '来期' },
-    ]) {
+    for (const period of [currentPeriod, nextPeriod]) {
       const bonusMonthLabels = bonusPaymentMonthLabels(
         getBonusPaymentMonths(salaryPlanSettings, period, fiscalMonths),
       );
@@ -24508,7 +26025,7 @@ function renderEmployeeSettings() {
 
       const blockTitle = document.createElement('h4');
       blockTitle.className = 'salary-plan-period-title';
-      blockTitle.textContent = `${label}（${formatFiscalPeriodLabel(period)}）`;
+      blockTitle.textContent = formatFiscalPeriodLabel(period);
       block.appendChild(blockTitle);
 
       block.appendChild(buildBonusMonthConfig(activeEmployees, period, fiscalMonths));
@@ -24524,11 +26041,13 @@ function renderEmployeeSettings() {
       block.appendChild(tableWrap);
 
       resumePlanCellTabEdit(block, `salary-plan-${period}`);
+      bindEmployeePlanGroupRowHover(tableWrap.querySelector('.employee-salary-plan-table'));
 
       section.appendChild(block);
     }
 
     wrap.appendChild(section);
+    layoutEmployeeSettingsScalableWrap();
   }
 
   renderEmployeeTable();
@@ -24617,6 +26136,17 @@ function renderEmployeeSettings() {
   });
 
   replaceRootPanel(wrap);
+  employeeSettingsMonthDisplayApplier = () => {
+    if (!wrap.isConnected) return;
+    refreshSalaryPlanUi();
+  };
+  bindEmployeeSettingsLayout(wrap, {
+    monthCount: fiscalMonths.length,
+    fiscalMonths,
+    currentPeriod,
+    appSettings,
+  });
+  refreshPlanKpi();
 }
 
 function renderRevenueSettings() {
@@ -24642,8 +26172,6 @@ function renderRevenueSettings() {
 }
 
 function renderOutsourcingSettings() {
-  setPlanKpi(null);
-
   const fiscalMonths = buildFiscalYearMonths(appSettings.fiscalEndMonth);
   const currentPeriod = appSettings.fiscalPeriod;
   const nextPeriod = appSettings.fiscalPeriod + 1;
@@ -24680,7 +26208,7 @@ function renderOutsourcingSettings() {
   }
 
   const wrap = document.createElement('div');
-  wrap.className = 'expand-settings-wrap outsourcing-settings-wrap';
+  wrap.className = 'expand-settings-wrap outsourcing-settings-wrap plan-settings-scalable';
 
   const header = document.createElement('div');
   header.className = 'expand-settings-header';
@@ -24705,7 +26233,144 @@ function renderOutsourcingSettings() {
 
   function refreshPlanTableIfNeeded() {
     refreshSectionColors();
+    refreshPlanKpi();
     if (activeTab === 'plan' && data) refreshPlanTable();
+  }
+
+  const monthDisplayUi = createPlanMonthDisplayUi({
+    appSettings,
+    currentPeriod,
+    fiscalMonths,
+    getMonthDisplayConfig: () => monthDisplayConfig,
+    getPastMonthsForPeriod,
+    onToggleMonthDisplay: togglePlanMonthDisplay,
+  });
+  const startNumericCellEdit = createPlanAmountCellEditor({ onEditClose: () => renderPlanSection() });
+
+  function appendPlanAmountCell(tr, {
+    month,
+    monthIndex,
+    fiscalPeriod,
+    value,
+    prevValue,
+    editable,
+    title,
+    formatValue,
+    rawValue,
+    parseValue,
+    onSave,
+    tabScopeId,
+  }) {
+    const td = document.createElement('td');
+    tr.appendChild(td);
+    monthDisplayUi.setPlanAmountCellContent(td, {
+      month,
+      monthIndex,
+      value,
+      prevValue,
+      editable,
+      fiscalPeriod,
+      title,
+      formatValue,
+      rawValue,
+      parseValue,
+      onSave,
+      allowShiftFillForward: true,
+      tabScopeId,
+      onEditClose: () => renderPlanSection(),
+    }, startNumericCellEdit);
+  }
+
+  function syncOutsourcingPlanTableMonthDisplay(table, fiscalPeriod) {
+    if (fiscalPeriod !== currentPeriod) return;
+
+    table.querySelectorAll('thead th.salary-plan-col-month').forEach((th, i) => {
+      const month = fiscalMonths[i];
+      if (month) monthDisplayUi.updateMonthHeaderTh(th, month, fiscalPeriod);
+    });
+
+    for (const vendor of getVendorsForPeriod(fiscalPeriod)) {
+      const tr = table.querySelector(`tbody tr[data-plan-row-key="${CSS.escape(vendor.id)}"]`);
+      if (!tr) continue;
+      const displayMonthly = buildDisplayMonthly(vendor, fiscalPeriod);
+      const amountCells = tr.querySelectorAll('td.salary-plan-amount-cell');
+      for (let i = 0; i < fiscalMonths.length; i += 1) {
+        const month = fiscalMonths[i];
+        const td = amountCells[i];
+        if (!td) continue;
+        const editable = isMonthEditable(fiscalPeriod, month);
+        const prevMonth = i > 0 ? fiscalMonths[i - 1] : null;
+        const prevValue = prevMonth != null ? displayMonthly[prevMonth] : undefined;
+        monthDisplayUi.setPlanAmountCellContent(td, {
+          month,
+          monthIndex: i,
+          value: displayMonthly[month],
+          prevValue,
+          editable,
+          fiscalPeriod,
+          title: 'ダブルクリックで編集（Shift+Enter で後続月へ同額反映）',
+          formatValue: formatSalaryPlanYen,
+          rawValue: vendor.monthly[month],
+          parseValue: parseSalaryPlanAmountInput,
+          allowShiftFillForward: true,
+          tabScopeId: `outsourcing-${fiscalPeriod}`,
+          onSave: (parsed, fillForward) => {
+            const pastMonths = getPastMonthsForPeriod(fiscalPeriod);
+            const nextMonthly = fillForward
+              ? applyAmountFromMonthForwardSkippingPast(
+                vendor.monthly,
+                fiscalMonths,
+                month,
+                parsed,
+                pastMonths,
+              )
+              : { ...vendor.monthly, [month]: parsed };
+            persistVendor({ ...vendor, monthly: nextMonthly }, fiscalPeriod);
+          },
+          onEditClose: () => renderPlanSection(),
+        }, startNumericCellEdit);
+      }
+      const totalTd = tr.querySelector('td.salary-plan-col-total');
+      if (totalTd) totalTd.textContent = formatSalaryPlanYen(sumDisplayMonthlyTotal(displayMonthly));
+    }
+
+    const trTotal = table.querySelector('tbody tr[data-plan-row-key="total"]');
+    if (trTotal) {
+      const monthlyTotals = emptyMonthlyTotals();
+      for (const vendor of getVendorsForPeriod(fiscalPeriod)) {
+        const displayMonthly = buildDisplayMonthly(vendor, fiscalPeriod);
+        for (const month of fiscalMonths) {
+          monthlyTotals[month] = (monthlyTotals[month] ?? 0) + (displayMonthly[month] ?? 0);
+        }
+      }
+      const amountCells = trTotal.querySelectorAll('td.salary-plan-amount-cell');
+      for (let i = 0; i < fiscalMonths.length; i += 1) {
+        const month = fiscalMonths[i];
+        const td = amountCells[i];
+        if (!td) continue;
+        monthDisplayUi.setPlanAmountCellContent(td, {
+          month,
+          monthIndex: i,
+          value: monthlyTotals[month] ?? 0,
+          prevValue: i > 0 ? (monthlyTotals[fiscalMonths[i - 1]] ?? 0) : undefined,
+          editable: false,
+          fiscalPeriod,
+          formatValue: formatSalaryPlanYen,
+        }, startNumericCellEdit);
+      }
+      const grandTd = trTotal.querySelector('td.salary-plan-col-total');
+      if (grandTd) grandTd.textContent = formatSalaryPlanYen(sumDisplayMonthlyTotal(monthlyTotals));
+    }
+  }
+
+  function applyOutsourcingMonthDisplayToWrap(rootWrap) {
+    if (!rootWrap?.isConnected) return;
+    rootWrap.querySelectorAll('table.outsourcing-plan-table[data-fiscal-period]').forEach((table) => {
+      const fiscalPeriod = Number(table.dataset.fiscalPeriod);
+      if (fiscalPeriod !== currentPeriod) return;
+      syncOutsourcingPlanTableMonthDisplay(table, fiscalPeriod);
+    });
+    refreshPlanSettingsColumnPlates(rootWrap, fiscalMonths, currentPeriod, appSettings);
   }
 
   function getVendorsForPeriod(fiscalPeriod) {
@@ -24756,31 +26421,28 @@ function renderOutsourcingSettings() {
     return total;
   }
 
-  function startCellEdit(td, vendor, month, fiscalPeriod) {
-    if (!isMonthEditable(fiscalPeriod, month)) return;
-    if (td.querySelector('input')) return;
-
-    const rawValue = vendor.monthly[month];
-
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.inputMode = 'numeric';
-    input.className = 'salary-plan-amount-input';
-    input.autocomplete = 'off';
-    input.spellcheck = false;
-    input.value = rawValue != null && rawValue !== 0 ? String(rawValue) : '';
-
-    let editClosed = false;
-
-    const finish = (save, fillForward = false) => {
-      if (editClosed) return;
-      editClosed = true;
-      if (save) {
-        const parsed = parseSalaryPlanAmountInputWithFillForward(
-          input.value,
-          fillForward,
-          rawValue,
-        );
+  function appendAmountCell(tr, {
+    vendor,
+    month,
+    monthIndex,
+    fiscalPeriod,
+    value,
+    prevValue,
+    editable,
+  }) {
+    appendPlanAmountCell(tr, {
+      month,
+      monthIndex,
+      fiscalPeriod,
+      value,
+      prevValue,
+      editable,
+      title: 'ダブルクリックで編集（Shift+Enter で後続月へ同額反映）',
+      formatValue: formatSalaryPlanYen,
+      rawValue: vendor.monthly[month],
+      parseValue: parseSalaryPlanAmountInput,
+      tabScopeId: `outsourcing-${fiscalPeriod}`,
+      onSave: (parsed, fillForward) => {
         const pastMonths = getPastMonthsForPeriod(fiscalPeriod);
         const nextMonthly = fillForward
           ? applyAmountFromMonthForwardSkippingPast(
@@ -24792,58 +26454,8 @@ function renderOutsourcingSettings() {
           )
           : { ...vendor.monthly, [month]: parsed };
         persistVendor({ ...vendor, monthly: nextMonthly }, fiscalPeriod);
-      }
-      renderPlanSection();
-    };
-
-    input.addEventListener('keydown', (e) => {
-      handlePlanAmountCellKeydown(e, {
-        finish,
-        td,
-        scopeId: `outsourcing-${fiscalPeriod}`,
-      });
+      },
     });
-    input.addEventListener('blur', () => {
-      setTimeout(() => {
-        if (!editClosed) finish(true, false);
-      }, 0);
-    });
-
-    td.textContent = '';
-    td.appendChild(input);
-    input.focus();
-    input.select();
-  }
-
-  function appendAmountCell(tr, {
-    vendor,
-    month,
-    fiscalPeriod,
-    value,
-    prevValue,
-    editable,
-  }) {
-    const td = document.createElement('td');
-    td.className = 'salary-plan-amount-cell';
-    if (month === fiscalMonths[0] && editable) {
-      td.classList.add('salary-plan-amount-start-month');
-    }
-    if (editable) {
-      td.classList.add('salary-plan-cell-editable');
-      tagPlanEditableCell(td, { month });
-      td.title = 'ダブルクリックで編集（Shift+Enter で後続月へ同額反映）';
-      td.textContent = formatSalaryPlanYen(value);
-      if (prevValue !== undefined && salaryPlanAmountDiffersFromPrevious(prevValue, value)) {
-        td.classList.add('salary-plan-amount-changed');
-      }
-      td.addEventListener('dblclick', () => {
-        startCellEdit(td, vendor, month, fiscalPeriod);
-      });
-    } else {
-      td.classList.add('salary-plan-cell-disabled');
-      td.textContent = formatSalaryPlanYen(value);
-    }
-    tr.appendChild(td);
   }
 
   function canDeleteVendor(vendor) {
@@ -24859,7 +26471,6 @@ function renderOutsourcingSettings() {
       vendor.id,
       fiscalMonths,
     );
-    showStatus(`${vendor.subLabel} を削除しました。`);
     renderPlanSection();
     refreshPlanTableIfNeeded();
   }
@@ -24918,22 +26529,37 @@ function renderOutsourcingSettings() {
   function buildOutsourcingPlanTable(fiscalPeriod) {
     const vendors = getVendorsForPeriod(fiscalPeriod);
     const table = document.createElement('table');
-    table.className = 'expand-settings-table salary-plan-table';
-
-    const headerLabels = ['勘定科目', '補助科目', ...fiscalMonths, '合計', ''];
+    table.className = 'expand-settings-table salary-plan-table outsourcing-plan-table';
+    table.dataset.fiscalPeriod = String(fiscalPeriod);
 
     const thead = document.createElement('thead');
     const headerRow = document.createElement('tr');
-    for (const label of headerLabels) {
+
+    const accountTh = document.createElement('th');
+    accountTh.className = 'salary-plan-col-name';
+    accountTh.textContent = '勘定科目';
+    headerRow.appendChild(accountTh);
+
+    const subTh = document.createElement('th');
+    subTh.className = 'salary-plan-col-sub';
+    subTh.textContent = '補助科目';
+    headerRow.appendChild(subTh);
+
+    for (const month of fiscalMonths) {
       const th = document.createElement('th');
-      th.textContent = label;
-      if (label === '勘定科目') th.className = 'salary-plan-col-name';
-      else if (label === '補助科目') th.className = 'salary-plan-col-sub';
-      else if (label === '合計') th.className = 'salary-plan-col-total';
-      else if (label === '') th.className = 'col-out-actions';
-      else th.className = 'salary-plan-col-month';
+      monthDisplayUi.configureMonthHeaderTh(th, month, fiscalPeriod);
       headerRow.appendChild(th);
     }
+
+    const totalTh = document.createElement('th');
+    totalTh.className = 'salary-plan-col-total';
+    totalTh.textContent = '合計';
+    headerRow.appendChild(totalTh);
+
+    const actionsTh = document.createElement('th');
+    actionsTh.className = 'col-out-actions';
+    headerRow.appendChild(actionsTh);
+
     thead.appendChild(headerRow);
     table.appendChild(thead);
 
@@ -24942,7 +26568,7 @@ function renderOutsourcingSettings() {
     if (vendors.length === 0) {
       const emptyRow = document.createElement('tr');
       const emptyTd = document.createElement('td');
-      emptyTd.colSpan = headerLabels.length;
+      emptyTd.colSpan = fiscalMonths.length + 4;
       emptyTd.className = 'expand-settings-empty';
       emptyTd.textContent = '取引先が登録されていません。今期の仕訳に補助科目がある場合は自動追加されます。手動追加も可能です。';
       emptyRow.appendChild(emptyTd);
@@ -24954,6 +26580,7 @@ function renderOutsourcingSettings() {
     for (const vendor of vendors) {
       const tr = document.createElement('tr');
       tr.className = 'salary-plan-row-monthly';
+      tr.dataset.planRowKey = vendor.id;
       tagPlanEditableRow(tr, vendor.id);
       const displayMonthly = buildDisplayMonthly(vendor, fiscalPeriod);
 
@@ -24971,12 +26598,11 @@ function renderOutsourcingSettings() {
         const month = fiscalMonths[i];
         const editable = isMonthEditable(fiscalPeriod, month);
         const prevMonth = i > 0 ? fiscalMonths[i - 1] : null;
-        const prevValue = prevMonth != null && editable
-          ? displayMonthly[prevMonth]
-          : undefined;
+        const prevValue = prevMonth != null ? displayMonthly[prevMonth] : undefined;
         appendAmountCell(tr, {
           vendor,
           month,
+          monthIndex: i,
           fiscalPeriod,
           value: displayMonthly[month],
           prevValue,
@@ -24996,6 +26622,7 @@ function renderOutsourcingSettings() {
 
     const trTotal = document.createElement('tr');
     trTotal.className = 'salary-plan-total-row salary-plan-row-monthly';
+    trTotal.dataset.planRowKey = 'total';
     const totalLabel = document.createElement('td');
     totalLabel.colSpan = 2;
     totalLabel.className = 'salary-plan-total-label';
@@ -25011,13 +26638,19 @@ function renderOutsourcingSettings() {
     }
 
     let grand = 0;
-    for (const month of fiscalMonths) {
-      const td = document.createElement('td');
-      td.className = 'salary-plan-amount-cell';
+    for (let i = 0; i < fiscalMonths.length; i += 1) {
+      const month = fiscalMonths[i];
       const val = monthlyTotals[month] ?? 0;
       grand += val;
-      td.textContent = formatSalaryPlanYen(val);
-      trTotal.appendChild(td);
+      appendPlanAmountCell(trTotal, {
+        month,
+        monthIndex: i,
+        fiscalPeriod,
+        value: val,
+        prevValue: i > 0 ? (monthlyTotals[fiscalMonths[i - 1]] ?? 0) : undefined,
+        editable: false,
+        formatValue: formatSalaryPlanYen,
+      });
     }
 
     const grandTd = document.createElement('td');
@@ -25099,8 +26732,6 @@ function renderOutsourcingSettings() {
         fiscalMonths,
       );
       input.value = '';
-      const periodLabel = fiscalPeriod === currentPeriod ? '今期' : '来期';
-      showStatus(`${periodLabel}に ${subLabel} を追加しました。`);
       renderPlanSection();
       refreshPlanTableIfNeeded();
     });
@@ -25128,13 +26759,18 @@ function renderOutsourcingSettings() {
 
       const planHeader = document.createElement('div');
       planHeader.className = 'salary-plan-header';
-      planHeader.innerHTML = `
-        <h3 class="salary-plan-title">外注費支払い計画表</h3>
-        <p class="salary-plan-desc">
-          決算月 ${appSettings.fiscalEndMonth}月 を基準とした12か月分です。
-          今期の実績表示月は仕訳実績を表示します（編集不可）。予実表で計画表示に切り替えた月はダブルクリックで編集できます。Shift+Enter で入力した月以降の同額を後続月に反映します（0円も可）。Enter はその月のみ反映します。
-        </p>
-      `;
+      const planTitle = document.createElement('h3');
+      planTitle.className = 'salary-plan-title';
+      planTitle.dataset.sectionFilter = 'outsourcing';
+      planTitle.textContent = '外注費支払い計画表';
+      planHeader.appendChild(planTitle);
+      const planDesc = document.createElement('p');
+      planDesc.className = 'salary-plan-desc';
+      planDesc.textContent = `決算月 ${appSettings.fiscalEndMonth}月 を基準とした12か月分です。`
+        + '今期の実績表示月は仕訳実績を表示します（編集不可）。予実表で計画表示に切り替えた月はダブルクリックで編集できます。'
+        + 'Shift+Enter で入力した月以降の同額を後続月に反映します（0円も可）。Enter はその月のみ反映します。';
+      planHeader.appendChild(planDesc);
+      applySectionFilterTitleStyle(planTitle, 'outsourcing', getFilterButtonColors);
       section.appendChild(planHeader);
 
       periodsContainer = document.createElement('div');
@@ -25146,16 +26782,13 @@ function renderOutsourcingSettings() {
 
     periodsContainer.replaceChildren();
 
-    for (const { period, label } of [
-      { period: currentPeriod, label: '今期' },
-      { period: nextPeriod, label: '来期' },
-    ]) {
+    for (const period of [currentPeriod, nextPeriod]) {
       const block = document.createElement('div');
       block.className = 'salary-plan-period-block';
 
       const blockTitle = document.createElement('h4');
       blockTitle.className = 'salary-plan-period-title';
-      blockTitle.textContent = `${label}（${formatFiscalPeriodLabel(period)}）`;
+      blockTitle.textContent = formatFiscalPeriodLabel(period);
       block.appendChild(blockTitle);
 
       block.appendChild(buildPeriodAddForm(period));
@@ -25169,11 +26802,31 @@ function renderOutsourcingSettings() {
 
       periodsContainer.appendChild(block);
     }
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      layoutPlanSettingsScalableWrap(wrap, (rootWrap) => measurePlanSettingsPageNaturalWidth(
+        rootWrap,
+        fiscalMonths.length,
+        [{ subColumns: 1, actionsColumn: true }],
+      ));
+      refreshPlanSettingsColumnPlates(wrap, fiscalMonths, currentPeriod, appSettings);
+    }));
   }
 
   renderPlanSection();
 
+  outsourcingSettingsMonthDisplayApplier = () => applyOutsourcingMonthDisplayToWrap(wrap);
+  bindPlanSettingsScalableLayout(wrap, {
+    measureNaturalWidth: (rootWrap) => measurePlanSettingsPageNaturalWidth(
+      rootWrap,
+      fiscalMonths.length,
+      [{ subColumns: 1, actionsColumn: true }],
+    ),
+    fiscalMonths,
+    currentPeriod,
+    appSettings,
+  });
   replaceRootPanel(wrap);
+  refreshPlanKpi();
 }
 
 function renderOtherSettings() {
@@ -25296,6 +26949,9 @@ function renderOtherSettings() {
   const brandLogoOutlineColorField = form.querySelector('.other-settings-brand-logo-outline-color-field');
   const brandLogoShadowOptionFields = form.querySelectorAll('.other-settings-brand-logo-shadow-option-field');
 
+  // ロゴ設定の表示切替でフォームの自然幅が変わったときに自動ズームを再計算する
+  let refreshOtherSettingsAutoZoom = null;
+
   function populateBrandLogoImageForm() {
     const mode = getPlanColorMode();
     const img = getBrandLogoImageSettings(appSettings, mode);
@@ -25328,6 +26984,7 @@ function renderOtherSettings() {
     brandLogoShadowOptionFields.forEach((el) => {
       el.hidden = !logoActive || !shadowActive;
     });
+    refreshOtherSettingsAutoZoom?.();
   }
 
   function readBrandLogoImagePatchFromInputs() {
@@ -25573,6 +27230,16 @@ function renderOtherSettings() {
 
   refreshPreview();
   replaceRootPanel(wrap);
+  // 予実表と同様にブラウザ幅へフィットさせる。
+  // 自然幅 = 左右余白 2rem ＋ 各セクション（ブランド行・基本設定行・CSV名定義表）の 1 行自然幅の最大
+  refreshOtherSettingsAutoZoom = bindPlanSettingsAutoZoom(wrap, () => {
+    const sectionW = Math.max(
+      measureElementIntrinsicWidth(wrap.querySelector('.other-settings-brand-row')),
+      measureElementIntrinsicWidth(wrap.querySelector('.other-settings-general-row')),
+      measureElementIntrinsicWidth(wrap.querySelector('.csv-name-settings-table')),
+    );
+    return sectionW > 0 ? sectionW + planSettingsRemToPx(2) : 0;
+  });
 }
 
 function replaceRootPanel(el) {

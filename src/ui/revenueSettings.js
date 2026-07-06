@@ -47,6 +47,12 @@ import {
   getMonthDisplayClickHint,
   isMonthDisplayToggleTarget,
 } from '../config/monthDisplayConfig.js';
+import {
+  planAmountCellConfigs,
+  resetPlanSettingsUiScale,
+  applyPlanSettingsUiScale,
+  getPlanSettingsWrapAvailableWidth,
+} from './planSettingsTableUi.js';
 
 const REVENUE_ACCOUNT = '売上高';
 const ROW_MAN_MONTHS = '人月';
@@ -71,7 +77,6 @@ const REVENUE_COL_ACTIONS_PX = 104;
 const REVENUE_COL_CLIENT_MIN_PX = 64;
 const REVENUE_COL_CLIENT_MAX_PX = 120;
 const REVENUE_COL_MONTH_MIN_PX = 52;
-const REVENUE_FONT_SCALE_MAX = 1.45;
 
 function measureExtraDigitWidthBeforeYen(wrap) {
   const table = wrap.querySelector('.revenue-plan-table, .misc-income-plan-table');
@@ -126,19 +131,13 @@ function measureRevenueTableLayout(wrap, monthCount, availableW) {
 function layoutRevenueSettingsTables(wrap, monthCount) {
   if (!wrap?.isConnected || monthCount <= 0) return;
 
-  const refWrap = wrap.querySelector('.salary-plan-table-wrap') ?? wrap;
-  const availableW = refWrap.clientWidth;
+  const availableW = getPlanSettingsWrapAvailableWidth(wrap);
   if (availableW <= 0) return;
 
-  wrap.style.setProperty('--revenue-plan-font-scale', '1');
+  resetPlanSettingsUiScale(wrap);
   let layout = measureRevenueTableLayout(wrap, monthCount, availableW);
-
-  let fontScale = 1;
-  if (layout.naturalW < availableW * 0.97) {
-    fontScale = Math.min(REVENUE_FONT_SCALE_MAX, availableW / layout.naturalW);
-    wrap.style.setProperty('--revenue-plan-font-scale', String(Math.round(fontScale * 100) / 100));
-    layout = measureRevenueTableLayout(wrap, monthCount, availableW);
-  }
+  applyPlanSettingsUiScale(wrap, layout.naturalW, availableW);
+  layout = measureRevenueTableLayout(wrap, monthCount, availableW);
 
   wrap.style.setProperty('--revenue-col-client-w', `${layout.clientW}px`);
   wrap.style.setProperty('--revenue-col-kind-w', `${REVENUE_COL_KIND_PX}px`);
@@ -187,19 +186,16 @@ function applyRevenueColumnPlateRect(plate, monthRect, topY, bottomY, clipRect) 
 function syncRevenueTableColumnPlates(tableWrap, table, highlightMonth, fiscalMonths) {
   if (!tableWrap || !table?.isConnected) return;
 
-  const plateHost = tableWrap.parentElement ?? tableWrap;
+  const plateHost = tableWrap;
+  tableWrap.parentElement?.querySelectorAll(':scope > .revenue-column-plate-layer').forEach((el) => {
+    el.remove();
+  });
   let layer = plateHost.querySelector(':scope > .revenue-column-plate-layer');
   if (!layer) {
-    const legacyLayer = tableWrap.querySelector('.revenue-column-plate-layer');
-    if (legacyLayer) {
-      layer = legacyLayer;
-      plateHost.appendChild(layer);
-    } else {
-      layer = document.createElement('div');
-      layer.className = 'revenue-column-plate-layer plan-column-plate-layer';
-      layer.setAttribute('aria-hidden', 'true');
-      plateHost.appendChild(layer);
-    }
+    layer = document.createElement('div');
+    layer.className = 'revenue-column-plate-layer plan-column-plate-layer';
+    layer.setAttribute('aria-hidden', 'true');
+    plateHost.appendChild(layer);
   }
 
   let headerPlate = layer.querySelector('.revenue-column-plate--current-header');
@@ -281,25 +277,19 @@ function bindRevenueColumnPlateSync(wrap, fiscalMonths, currentPeriod, appSettin
   sync();
 }
 
-function applySectionFilterTitleStyle(titleEl, sectionId, getSectionFilterColors) {
-  if (!titleEl || !getSectionFilterColors) return;
-  titleEl.classList.add('salary-plan-title--section-filter');
-  titleEl.dataset.sectionFilter = sectionId;
-  const { background, color } = getSectionFilterColors(sectionId);
-  titleEl.style.setProperty('--filter-btn-bg', background);
-  titleEl.style.color = color;
-}
+import { applySectionFilterTitleStyle } from './planSettingsTableUi.js';
 
 function refreshRevenueSettingsSectionTitles(getSectionFilterColors) {
   if (!getSectionFilterColors) return;
-  document.querySelectorAll('.revenue-settings-wrap [data-section-filter]').forEach((el) => {
+  document.querySelectorAll(
+    '.revenue-settings-wrap [data-section-filter], .expense-plan-override-section [data-section-filter], .employee-settings-wrap [data-section-filter], .outsourcing-settings-wrap [data-section-filter], .tax-payment-settings-wrap [data-section-filter]',
+  ).forEach((el) => {
     applySectionFilterTitleStyle(el, el.dataset.sectionFilter, getSectionFilterColors);
   });
 }
 
 export { refreshRevenueSettingsSectionTitles };
 
-const planAmountCellConfigs = new WeakMap();
 let revenueSettingsMonthDisplayApplier = null;
 
 export function applyRevenueSettingsMonthDisplayDom() {
@@ -367,7 +357,7 @@ export function mountRevenueSettingsPanel({
   }
 
   const wrap = document.createElement('div');
-  wrap.className = 'expand-settings-wrap revenue-settings-wrap';
+  wrap.className = 'expand-settings-wrap revenue-settings-wrap plan-settings-scalable';
 
   const header = document.createElement('div');
   header.className = 'expand-settings-header tax-payment-settings-header';
@@ -594,6 +584,8 @@ export function mountRevenueSettingsPanel({
 
     for (const client of clients) {
       const displayRevenue = buildDisplayRevenueMonthly(client, fiscalPeriod);
+      const displayManMonths = buildDisplayManMonthsMonthly(client, fiscalPeriod);
+      const displayUnitPrice = buildDisplayUnitPriceMonthly(client, fiscalPeriod);
       const trMan = table.querySelector(
         `tr.revenue-plan-row--manMonths[data-revenue-client-group="${CSS.escape(client.id)}"]`,
       );
@@ -603,11 +595,11 @@ export function mountRevenueSettingsPanel({
           const td = trMan.querySelector(`td[data-plan-month="${CSS.escape(month)}"]`);
           if (!td) continue;
           const prevMonth = i > 0 ? fiscalMonths[i - 1] : null;
-          const prevValue = prevMonth != null ? client.manMonths[prevMonth] : undefined;
+          const prevValue = prevMonth != null ? displayManMonths[prevMonth] : undefined;
           setPlanAmountCellContent(td, {
             month,
             monthIndex: i,
-            value: client.manMonths[month],
+            value: displayManMonths[month],
             prevValue,
             editable: isMonthEditable(fiscalPeriod, month),
             fiscalPeriod,
@@ -632,6 +624,10 @@ export function mountRevenueSettingsPanel({
             },
           });
         }
+        const manMonthTotalTd = trMan.querySelector('td.salary-plan-col-total');
+        if (manMonthTotalTd) {
+          manMonthTotalTd.textContent = formatManMonths(sumMonthlyMap(displayManMonths, fiscalMonths));
+        }
       }
 
       const trUnit = table.querySelector(
@@ -643,14 +639,11 @@ export function mountRevenueSettingsPanel({
           const td = trUnit.querySelector(`td[data-plan-month="${CSS.escape(month)}"]`);
           if (!td) continue;
           const prevMonth = i > 0 ? fiscalMonths[i - 1] : null;
-          const unitPrice = getEffectiveUnitPrice(client, month);
-          const prevUnitPrice = prevMonth != null
-            ? getEffectiveUnitPrice(client, prevMonth)
-            : undefined;
+          const prevUnitPrice = prevMonth != null ? displayUnitPrice[prevMonth] : undefined;
           setPlanAmountCellContent(td, {
             month,
             monthIndex: i,
-            value: unitPrice,
+            value: displayUnitPrice[month],
             prevValue: prevUnitPrice,
             editable: isMonthEditable(fiscalPeriod, month),
             fiscalPeriod,
@@ -699,8 +692,9 @@ export function mountRevenueSettingsPanel({
     }
     for (const client of clients) {
       const displayRevenue = buildDisplayRevenueMonthly(client, fiscalPeriod);
+      const displayManMonths = buildDisplayManMonthsMonthly(client, fiscalPeriod);
       for (const month of fiscalMonths) {
-        manMonthMonthlyTotals[month] += client.manMonths[month] ?? 0;
+        manMonthMonthlyTotals[month] += displayManMonths[month] ?? 0;
         displayMonthlyTotals[month] = (displayMonthlyTotals[month] ?? 0) + (displayRevenue[month] ?? 0);
       }
     }
@@ -822,7 +816,9 @@ export function mountRevenueSettingsPanel({
       if (fiscalPeriod !== currentPeriod) return;
       syncMiscIncomeTableMonthDisplay(table, fiscalPeriod);
     });
-    syncAllRevenueTableColumnPlates(rootWrap, fiscalMonths, currentPeriod, appSettings);
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      syncAllRevenueTableColumnPlates(rootWrap, fiscalMonths, currentPeriod, appSettings);
+    }));
   }
 
   function getClientActualMonthly(client) {
@@ -865,6 +861,30 @@ export function mountRevenueSettingsPanel({
         display[month] = planned[month] ?? null;
       } else {
         display[month] = actual[month] ?? null;
+      }
+    }
+    return display;
+  }
+
+  function buildDisplayManMonthsMonthly(client, fiscalPeriod) {
+    const display = {};
+    for (const month of fiscalMonths) {
+      if (isMonthEditable(fiscalPeriod, month)) {
+        display[month] = client.manMonths[month] ?? null;
+      } else {
+        display[month] = null;
+      }
+    }
+    return display;
+  }
+
+  function buildDisplayUnitPriceMonthly(client, fiscalPeriod) {
+    const display = {};
+    for (const month of fiscalMonths) {
+      if (isMonthEditable(fiscalPeriod, month)) {
+        display[month] = getEffectiveUnitPrice(client, month);
+      } else {
+        display[month] = null;
       }
     }
     return display;
@@ -1212,6 +1232,8 @@ export function mountRevenueSettingsPanel({
 
   function appendClientRows(tbody, client, fiscalPeriod, clientIndex, clientCount) {
     const displayRevenue = buildDisplayRevenueMonthly(client, fiscalPeriod);
+    const displayManMonths = buildDisplayManMonthsMonthly(client, fiscalPeriod);
+    const displayUnitPrice = buildDisplayUnitPriceMonthly(client, fiscalPeriod);
     const rowKinds = [
       { kind: ROW_UNIT_PRICE, key: 'unitPrice' },
       { kind: ROW_MAN_MONTHS, key: 'manMonths' },
@@ -1240,11 +1262,11 @@ export function mountRevenueSettingsPanel({
         const prevMonth = i > 0 ? fiscalMonths[i - 1] : null;
 
         if (key === 'manMonths') {
-          const prevValue = prevMonth != null ? client.manMonths[prevMonth] : undefined;
+          const prevValue = prevMonth != null ? displayManMonths[prevMonth] : undefined;
           appendPlanAmountCell(tr, {
             month,
             monthIndex: i,
-            value: client.manMonths[month],
+            value: displayManMonths[month],
             prevValue,
             editable,
             fiscalPeriod,
@@ -1269,14 +1291,11 @@ export function mountRevenueSettingsPanel({
             },
           });
         } else if (key === 'unitPrice') {
-          const unitPrice = getEffectiveUnitPrice(client, month);
-          const prevUnitPrice = prevMonth != null
-            ? getEffectiveUnitPrice(client, prevMonth)
-            : undefined;
+          const prevUnitPrice = prevMonth != null ? displayUnitPrice[prevMonth] : undefined;
           appendPlanAmountCell(tr, {
             month,
             monthIndex: i,
-            value: unitPrice,
+            value: displayUnitPrice[month],
             prevValue: prevUnitPrice,
             editable,
             fiscalPeriod,
@@ -1309,7 +1328,7 @@ export function mountRevenueSettingsPanel({
       const totalTd = document.createElement('td');
       totalTd.className = 'salary-plan-col-total';
       if (key === 'manMonths') {
-        totalTd.textContent = formatManMonths(sumMonthlyMap(client.manMonths, fiscalMonths));
+        totalTd.textContent = formatManMonths(sumMonthlyMap(displayManMonths, fiscalMonths));
       } else if (key === 'unitPrice') {
         totalTd.textContent = '';
       } else if (key === 'revenue') {
@@ -1390,8 +1409,9 @@ export function mountRevenueSettingsPanel({
     }
     for (const client of clients) {
       const displayRevenue = buildDisplayRevenueMonthly(client, fiscalPeriod);
+      const displayManMonths = buildDisplayManMonthsMonthly(client, fiscalPeriod);
       for (const month of fiscalMonths) {
-        manMonthMonthlyTotals[month] += client.manMonths[month] ?? 0;
+        manMonthMonthlyTotals[month] += displayManMonths[month] ?? 0;
         displayMonthlyTotals[month] = (displayMonthlyTotals[month] ?? 0) + (displayRevenue[month] ?? 0);
       }
     }

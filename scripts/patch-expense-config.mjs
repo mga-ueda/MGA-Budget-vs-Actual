@@ -60,6 +60,11 @@ export function canonicalExpenseAccount(account) {
   return account;
 }
 
+/** ${jp(0x8af8, 0x7d4c, 0x8cbb, 0x30bb, 0x30af, 0x30b7, 0x30e7, 0x30f3, 0x306e, 0x5e38, 0x6642, 0x8868, 0x793a, 0x4e00, 0x89a7, 0x306b, 0x542b, 0x307e, 0x308c, 0x308b, 0x52d8, 0x5b9a, 0x304b)} */
+export function isKnownExpenseSectionAccount(account) {
+  return EXPENSE_SECTION_ACCOUNT_SET.has(canonicalExpenseAccount(account));
+}
+
 function combineExpenseJournalItems(items) {
   if (items.length === 1) return items[0];
   const combined = { ...items[0], sub: items[0].sub ?? '', values: { ...items[0].values } };

@@ -1,5 +1,6 @@
 import { collectEmployeeResidentTaxMunicipalityNames, getEmployeeResidentTaxMunicipality, employeeHasResidentTaxObligation } from './employeeConfig.js';
 import { normalizeAmount, emptyMonthly } from './planAmountUtils.js';
+import { formatFiscalPeriodLabel } from './appSettings.js';
 
 const TAX_PAYMENT_STORAGE_KEY = 'mga-tax-payment-plans';
 const TAX_PAYMENT_SETTINGS_STORAGE_KEY = 'mga-tax-payment-settings';
@@ -404,17 +405,16 @@ export function setPaymentPlanYears(settings, planYears) {
   });
 }
 
+/** 予実表の「その他支払」合計行ラベル */
+export const TAX_PAY_OTHER_PAY_TOTAL_LABEL = 'その他支払合計';
+
 /** 今期を起点に、計画対象の会計期リストを生成 */
 export function buildPaymentPlanPeriodEntries(currentPeriod, planYears) {
   const years = normalizePaymentPlanYears(planYears);
   const entries = [];
   for (let i = 0; i < years; i += 1) {
     const period = currentPeriod + i;
-    let label;
-    if (i === 0) label = '今期';
-    else if (i === 1) label = '来期';
-    else label = `第${i + 1}期`;
-    entries.push({ period, label });
+    entries.push({ period, label: formatFiscalPeriodLabel(period) });
   }
   return entries;
 }

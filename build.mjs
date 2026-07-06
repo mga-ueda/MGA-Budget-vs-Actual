@@ -50,6 +50,7 @@ const FILES = [
   'config/settingsExport.js',
   'csv/csvFolder.js',
   'csv/csvLoader.js',
+  'ui/planSettingsTableUi.js',
   'ui/revenueSettings.js',
   'ui/expensePlanOverrideSettings.js',
   'ui/uiColorPanel.js',

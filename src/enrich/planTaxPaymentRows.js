@@ -21,6 +21,7 @@ import {
   PAYMENT_PLAN_OTHER_PAY_SIMPLE_ACCOUNTS,
   RESIDENT_TAX_ACCOUNT,
   CORPORATE_TAX_ACCOUNT,
+  TAX_PAY_OTHER_PAY_TOTAL_LABEL,
 } from '../config/taxPaymentConfig.js';
 import { visibilityRowKey, rowTypeLabel } from '../config/visibilityConfig.js';
 import {
@@ -33,7 +34,6 @@ import {
 const TAX_PAY_OTHER_SECTION_LABEL = 'その他';
 const TAX_PAY_OTHER_TOTAL_LABEL = 'その他合計';
 const TAX_PAY_OTHER_PAY_SECTION_LABEL = 'その他支払';
-const TAX_PAY_OTHER_PAY_TOTAL_LABEL = 'その他支払合計';
 const TAX_PAY_TAX_SECTION_LABEL = '法人税';
 const NO_SUB_LABEL = '補助科目なし';
 
