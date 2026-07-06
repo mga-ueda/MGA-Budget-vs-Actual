@@ -111,6 +111,7 @@ export function mountUiColorPanel(container, {
   sectionColorConfig,
   onRefreshPlanView,
   onRefreshToolbar,
+  onRefreshDashboard,
   onReRender,
 }) {
   const panel = document.createElement('div');
@@ -124,9 +125,19 @@ export function mountUiColorPanel(container, {
   let saveTimer = null;
   let refreshToolbarTimer = null;
   let refreshViewTimer = null;
+  let refreshDashboardRaf = null;
 
   const applyLive = () => {
     applyUiColors(getConfig());
+  };
+
+  const scheduleRefreshDashboard = () => {
+    if (!onRefreshDashboard || !document.querySelector('.dashboard-wrap')) return;
+    if (refreshDashboardRaf != null) cancelAnimationFrame(refreshDashboardRaf);
+    refreshDashboardRaf = requestAnimationFrame(() => {
+      onRefreshDashboard();
+      refreshDashboardRaf = null;
+    });
   };
 
   const flushSave = () => {
@@ -164,6 +175,7 @@ export function mountUiColorPanel(container, {
     else scheduleSave();
     if (refreshToolbar) scheduleRefreshToolbar();
     if (refreshView) scheduleRefreshView();
+    scheduleRefreshDashboard();
   };
 
   const modeRow = document.createElement('div');
@@ -600,6 +612,7 @@ export function mountUiColorPanel(container, {
 
   const JOURNAL_OVERLAY_ALPHA = 0.65;
   const POPUP_SHADOW_ALPHA = 0.45;
+  const DASHBOARD_CHART_SHADOW_ALPHA = 0.22;
   const POPUP_ROW_HOVER_ALPHA = 0.08;
   const LOADING_OVERLAY_ALPHA = 0.38;
   const PLAN_EDITABLE_CELL_HOVER_ALPHA = 0.14;
@@ -674,6 +687,15 @@ export function mountUiColorPanel(container, {
   registerBorderRow('ヘッダーコントロール（選択時・枠線）', 'headerControlActiveBorder', 'headerControlBg', null, 'textColor', 'メニュー <kbd>F10</kbd>', true);
   registerNavBtnBgTextRow('ダッシュボードボタン（通常）', 'dashboardNavBg', 'dashboardNavText', 'ダッシュボードを表示');
   registerNavBtnBgTextRow('予実表表示ボタン（表示中）', 'dashboardNavActiveBg', 'dashboardNavActiveText', '予実表を表示');
+  registerBgTextRow('ダッシュボード・収益サイドバー（ヘッダー）', 'dashboardSidebarRevenueBg', 'dashboardSidebarRevenueText', '収益合計', false);
+  registerBgTextRow('ダッシュボード・支出サイドバー（ヘッダー）', 'dashboardSidebarExpenseBg', 'dashboardSidebarExpenseText', '支出合計', false);
+  registerBgRow('ダッシュボード・サイドバー（棒グラフ）', 'dashboardSidebarBarBg', '56.77%', '#ffffff');
+  registerBgRow('ダッシュボード・利益率推移（低）', 'dashboardProfitLineLow', '低');
+  registerBgRow('ダッシュボード・利益率推移（高）', 'dashboardProfitLineHigh', '高');
+  registerBgRow('ダッシュボード・預金残高推移（低）', 'dashboardCashLineLow', '低');
+  registerBgRow('ダッシュボード・預金残高推移（高）', 'dashboardCashLineHigh', '高');
+  registerJournalTintRow('ダッシュボード・グラフ（影）', 'dashboardChartShadowColor', DASHBOARD_CHART_SHADOW_ALPHA, 'サンプル', 'browserBg');
+
   registerBgTextRow('年行（ヘッダー）', 'yearRowBg', 'yearRowText', `${new Date().getFullYear()}年`, false);
   registerBgTextRow('ヘッダー行', 'monthRowBg', 'monthRowText', `${new Date().getMonth() + 1}月`, false);
   registerBorderRow('当月列（オーバーレイ）', 'currentMonthBorder', 'monthRowBg', `${new Date().getMonth() + 1}月`, 'monthRowText');

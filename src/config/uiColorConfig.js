@@ -19,6 +19,11 @@ const REMOVED_COLOR_KEYS = [
   'headerControlBorder',
 ];
 
+const MERGED_SIDEBAR_BAR_SOURCE_KEYS = [
+  'dashboardSidebarRevenueBarBg',
+  'dashboardSidebarExpenseBarBg',
+];
+
 const MERGED_SETTINGS_ACTIVE_KEYS = {
   settingsNavActiveBg: 'dashboardNavActiveBg',
   settingsNavActiveText: 'dashboardNavActiveText',
@@ -68,6 +73,7 @@ const SETTLEMENT_MONTH_OVERLAY_TOTAL_ALPHA = 0.32;
 const JOURNAL_OVERLAY_ALPHA = 0.65;
 
 const POPUP_SHADOW_ALPHA = 0.45;
+export const DASHBOARD_CHART_SHADOW_ALPHA = 0.22;
 const POPUP_ROW_HOVER_ALPHA = 0.08;
 const LOADING_OVERLAY_ALPHA = 0.38;
 const PLAN_EDITABLE_CELL_HOVER_ALPHA = 0.14;
@@ -105,6 +111,16 @@ export const DEFAULT_UI_COLORS_DARK = {
   dashboardNavText: '#ffffff',
   dashboardNavActiveBg: '#0891b2',
   dashboardNavActiveText: '#ffffff',
+  dashboardSidebarRevenueBg: '#2f7ed8',
+  dashboardSidebarRevenueText: '#ffffff',
+  dashboardSidebarExpenseBg: '#c42525',
+  dashboardSidebarExpenseText: '#ffffff',
+  dashboardSidebarBarBg: '#ff8800',
+  dashboardProfitLineLow: '#c45c5c',
+  dashboardProfitLineHigh: '#4a9fd4',
+  dashboardCashLineLow: '#c45c5c',
+  dashboardCashLineHigh: '#22c55e',
+  dashboardChartShadowColor: '#000000',
   kbdBg: '#373737',
   kbdTextColor: '#ffffff',
   kbdBorderColor: '#636363',
@@ -157,6 +173,16 @@ export const DEFAULT_UI_COLORS_LIGHT = {
   dashboardNavText: '#ffffff',
   dashboardNavActiveBg: '#0891b2',
   dashboardNavActiveText: '#ffffff',
+  dashboardSidebarRevenueBg: '#2f7ed8',
+  dashboardSidebarRevenueText: '#ffffff',
+  dashboardSidebarExpenseBg: '#c42525',
+  dashboardSidebarExpenseText: '#ffffff',
+  dashboardSidebarBarBg: '#ff8800',
+  dashboardProfitLineLow: '#c45c5c',
+  dashboardProfitLineHigh: '#4a9fd4',
+  dashboardCashLineLow: '#c45c5c',
+  dashboardCashLineHigh: '#22c55e',
+  dashboardChartShadowColor: '#000000',
   kbdBg: '#fafafa',
   kbdTextColor: '#000000',
   kbdBorderColor: '#636363',
@@ -377,6 +403,17 @@ function migrateUiColorBucket(bucket = {}) {
   for (const key of MERGED_HEADER_ROW_BG_SOURCE_KEYS) {
     delete next[key];
   }
+  if (next.dashboardSidebarBarBg == null) {
+    for (const key of MERGED_SIDEBAR_BAR_SOURCE_KEYS) {
+      if (next[key] != null) {
+        next.dashboardSidebarBarBg = next[key];
+        break;
+      }
+    }
+  }
+  for (const key of MERGED_SIDEBAR_BAR_SOURCE_KEYS) {
+    delete next[key];
+  }
   for (const key of REMOVED_HOVER_COLOR_KEYS) {
     delete next[key];
   }
@@ -571,6 +608,12 @@ export function applyUiColors(config = {}) {
     headerControlBg, headerControlActiveBorder,
     dashboardNavBg, dashboardNavText,
     dashboardNavActiveBg, dashboardNavActiveText,
+    dashboardSidebarRevenueBg, dashboardSidebarExpenseBg,
+    dashboardSidebarRevenueText, dashboardSidebarExpenseText,
+    dashboardSidebarBarBg,
+    dashboardProfitLineLow, dashboardProfitLineHigh,
+    dashboardCashLineLow, dashboardCashLineHigh,
+    dashboardChartShadowColor,
     kbdBg, kbdTextColor, kbdBorderColor,
     warningTextColor,
   } = colors;
@@ -657,6 +700,19 @@ export function applyUiColors(config = {}) {
   root.style.setProperty(
     '--plan-dashboard-nav-active-focus-ring',
     hexToRgba(dashboardNavActiveText, HEADER_CONTROL_FOCUS_RING_ALPHA),
+  );
+  root.style.setProperty('--dashboard-revenue-color', opaqueHex(dashboardSidebarRevenueBg));
+  root.style.setProperty('--dashboard-revenue-text-color', opaqueHex(dashboardSidebarRevenueText));
+  root.style.setProperty('--dashboard-expense-color', opaqueHex(dashboardSidebarExpenseBg));
+  root.style.setProperty('--dashboard-expense-text-color', opaqueHex(dashboardSidebarExpenseText));
+  root.style.setProperty('--dashboard-sidebar-bar-color', opaqueHex(dashboardSidebarBarBg));
+  root.style.setProperty('--dashboard-profit-line-low', opaqueHex(dashboardProfitLineLow));
+  root.style.setProperty('--dashboard-profit-line-high', opaqueHex(dashboardProfitLineHigh));
+  root.style.setProperty('--dashboard-cash-line-low', opaqueHex(dashboardCashLineLow));
+  root.style.setProperty('--dashboard-cash-line-high', opaqueHex(dashboardCashLineHigh));
+  root.style.setProperty(
+    '--dashboard-chart-drop-shadow',
+    `0 4px 12px ${hexToRgba(dashboardChartShadowColor, DASHBOARD_CHART_SHADOW_ALPHA)}`,
   );
   root.style.setProperty('--plan-kbd-bg', opaqueHex(kbdBg));
   root.style.setProperty('--plan-kbd-text', opaqueHex(kbdTextColor));

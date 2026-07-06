@@ -4085,7 +4085,9 @@ function refreshSectionColors() {
 function refreshColorDependentViews({ rebuildData = true } = {}) {
   if (rebuildData) refreshSectionColors();
   if (activeTab === 'plan') refreshPlanTable();
-  else if (activeTab === 'dashboard') renderDashboardView();
+  if (activeTab === 'dashboard' || document.querySelector('.dashboard-wrap')) {
+    renderDashboardView();
+  }
 }
 
 function refreshToolbarFilterStyles() {
@@ -4577,6 +4579,7 @@ function renderDashboardView() {
     appSettings,
     calcPlanKpiMetrics,
     buildPlanKpiOptions,
+    getSectionFilterColors: getFilterButtonColors,
     showJournalPopup,
     hasJournalDrilldown: (section, row, month) =>
       hasDrilldownEntries(getDrilldownIndex(), section, row, month)
@@ -5882,7 +5885,9 @@ function renderUiColorPanel(container) {
     setConfig: (next) => { uiColorConfig = next; },
     data,
     sectionColorConfig,
+    onRefreshPlanView: () => refreshColorDependentViews({ rebuildData: false }),
     onRefreshToolbar: refreshToolbarFilterStyles,
+    onRefreshDashboard: renderDashboardView,
     onReRender: refreshColorSettingsPanels,
   });
 }
@@ -5941,11 +5946,11 @@ function mountSectionColorPanel(sectionPanel) {
   };
 
   const scheduleSectionColorRefresh = () => {
-    if (sectionColorRefreshTimer != null) clearTimeout(sectionColorRefreshTimer);
-    sectionColorRefreshTimer = setTimeout(() => {
+    if (sectionColorRefreshTimer != null) cancelAnimationFrame(sectionColorRefreshTimer);
+    sectionColorRefreshTimer = requestAnimationFrame(() => {
       refreshColorDependentViews();
       sectionColorRefreshTimer = null;
-    }, 200);
+    });
   };
 
   for (const def of defs) {

@@ -41,8 +41,10 @@ const DASHBOARD_DEFAULT_SORT_MODE = 'amount';
 const DASHBOARD_EXPENSE_DEDUCTION_LABEL = '支出控除';
 const DASHBOARD_PIE_CENTER_REVENUE_LINES = ['収益', '内訳比率'];
 const DASHBOARD_PIE_CENTER_EXPENSE_LINES = ['支出', '内訳比率'];
-const DASH_COLOR_INCOME = '#548235';
-const DASH_COLOR_EXPENSE = '#c65911';
+const DASH_SIDEBAR_HEADER_COLOR_DEFAULTS = {
+  revenue: { background: '#2f7ed8', color: '#ffffff' },
+  expense: { background: '#c42525', color: '#ffffff' },
+};
 const DASH_COLOR_BAR = '#ff8800';
 const DASH_ITEM_COLORS = [
   '#4C78A8', '#F58518', '#54A24B', '#E45756', '#72B7B2', '#EECA3B', '#B279A2', '#FF6B45',
@@ -53,6 +55,152 @@ const DASH_ITEM_COLORS = [
 
 let dashboardMountCtx = null;
 let dashGradientSeq = 0;
+let dashChartContextMenuEl = null;
+let dashChartContextMenuCleanup = null;
+
+function dashCloseChartContextMenu() {
+  dashChartContextMenuCleanup?.();
+  dashChartContextMenuCleanup = null;
+  dashChartContextMenuEl?.remove();
+  dashChartContextMenuEl = null;
+}
+
+function dashPositionContextMenu(menu, clientX, clientY) {
+  menu.style.visibility = 'hidden';
+  menu.style.left = '0';
+  menu.style.top = '0';
+  document.body.appendChild(menu);
+  const rect = menu.getBoundingClientRect();
+  const maxX = window.innerWidth - rect.width - 8;
+  const maxY = window.innerHeight - rect.height - 8;
+  menu.style.left = `${Math.max(8, Math.min(clientX, maxX))}px`;
+  menu.style.top = `${Math.max(8, Math.min(clientY, maxY))}px`;
+  menu.style.visibility = '';
+}
+
+function dashAppendChartContextMenuItem(menu, { label, checked = false, disabled = false, onSelect }) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'plan-row-context-menu-item';
+  btn.disabled = disabled;
+  btn.setAttribute('role', 'menuitem');
+  const mark = checked ? '✓' : '';
+  btn.innerHTML =
+    `<span class="plan-row-context-menu-check" aria-hidden="true">${mark}</span>`
+    + `<span class="plan-row-context-menu-label">${dashEscapeHtml(label)}</span>`;
+  if (!disabled && onSelect) {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      onSelect();
+      dashCloseChartContextMenu();
+    });
+  }
+  menu.appendChild(btn);
+  return btn;
+}
+
+function dashShowChartSeriesContextMenu(clientX, clientY, {
+  title,
+  isSolo = false,
+  isShowAll = false,
+  canHide = true,
+  onSolo,
+  onShowAll,
+  onHide,
+}) {
+  dashCloseChartContextMenu();
+  const menu = document.createElement('div');
+  menu.className = 'plan-row-context-menu';
+  menu.setAttribute('role', 'menu');
+
+  const titleEl = document.createElement('div');
+  titleEl.className = 'plan-row-context-menu-title';
+  titleEl.textContent = title;
+  menu.appendChild(titleEl);
+
+  dashAppendChartContextMenuItem(menu, {
+    label: '単体表示',
+    checked: isSolo,
+    onSelect: onSolo,
+  });
+  dashAppendChartContextMenuItem(menu, {
+    label: '非表示',
+    disabled: !canHide,
+    onSelect: onHide,
+  });
+
+  const sep = document.createElement('div');
+  sep.className = 'plan-row-context-menu-sep';
+  menu.appendChild(sep);
+
+  dashAppendChartContextMenuItem(menu, {
+    label: '全てを表示',
+    checked: isShowAll,
+    onSelect: onShowAll,
+  });
+
+  dashPositionContextMenu(menu, clientX, clientY);
+  dashChartContextMenuEl = menu;
+
+  const onDismiss = () => dashCloseChartContextMenu();
+  const controller = new AbortController();
+  const { signal } = controller;
+  dashChartContextMenuCleanup = () => controller.abort();
+
+  document.addEventListener('pointerdown', (e) => {
+    if (!menu.contains(e.target)) onDismiss();
+  }, { signal, capture: true });
+  window.addEventListener('scroll', onDismiss, { signal, capture: true });
+  window.addEventListener('resize', onDismiss, { signal });
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') onDismiss();
+  }, { signal });
+}
+
+function dashOpenSeriesVisibilityContextMenu(clientX, clientY, {
+  title,
+  key,
+  checkedKeys,
+  itemKeys,
+  onSolo,
+  onShowAll,
+  onHide,
+}) {
+  if (!onSolo || !onShowAll || !onHide || !checkedKeys || !key) return false;
+  dashShowChartSeriesContextMenu(clientX, clientY, {
+    title,
+    isSolo: dashIsSoloCheckedKeys(checkedKeys, itemKeys, key),
+    isShowAll: itemKeys.length > 0 && itemKeys.every((k) => checkedKeys.has(k)),
+    canHide: checkedKeys.has(key),
+    onSolo: () => onSolo(key),
+    onShowAll,
+    onHide: () => onHide(key),
+  });
+  return true;
+}
+
+
+function dashApplySectionFilterChartTitleStyle(titleEl, sectionFilterId) {
+  const getColors = dashboardMountCtx?.getSectionFilterColors;
+  if (!titleEl || !getColors || !sectionFilterId) return;
+  const { background, color } = getColors(sectionFilterId);
+  titleEl.style.setProperty('--dashboard-chart-title-bg', background);
+  titleEl.style.color = color;
+}
+
+function dashGetSidebarHeaderColors(side) {
+  const defaults = DASH_SIDEBAR_HEADER_COLOR_DEFAULTS[side];
+  if (!defaults) return { background: '#888888', color: '#ffffff' };
+  const root = document.querySelector('.plan-app');
+  if (!root) return defaults;
+  const styles = getComputedStyle(root);
+  const bgVar = side === 'revenue' ? '--dashboard-revenue-color' : '--dashboard-expense-color';
+  const textVar = side === 'revenue' ? '--dashboard-revenue-text-color' : '--dashboard-expense-text-color';
+  return {
+    background: styles.getPropertyValue(bgVar).trim() || defaults.background,
+    color: styles.getPropertyValue(textVar).trim() || defaults.color,
+  };
+}
 
 function dashNextGradId(prefix) {
   dashGradientSeq += 1;
@@ -1071,8 +1219,15 @@ function dashPlaySidebarPieSweepAnimation(pieWrap, slices, cx, cy, outerR, inner
 function dashBindSidebarPieHover(pieWrap, {
   highlightWrap = null,
   highlightSidebarRoot = null,
+  items = [],
+  checkedKeys = null,
+  itemKeys = [],
+  onSolo = null,
+  onShowAll = null,
+  onHide = null,
 } = {}) {
   if (!pieWrap || !highlightWrap || !highlightSidebarRoot) return;
+  const itemByKey = new Map(items.map((item) => [item.key, item]));
   pieWrap.querySelectorAll('.dashboard-sidebar-pie-slice-group[data-series-key]').forEach((group) => {
     const key = group.getAttribute('data-series-key');
     if (!key) return;
@@ -1089,6 +1244,20 @@ function dashBindSidebarPieHover(pieWrap, {
       false,
       highlightSidebarRoot,
     ));
+    group.addEventListener('contextmenu', (ev) => {
+      const item = itemByKey.get(key);
+      if (!item) return;
+      ev.preventDefault();
+      dashOpenSeriesVisibilityContextMenu(ev.clientX, ev.clientY, {
+        title: item.name,
+        key,
+        checkedKeys,
+        itemKeys,
+        onSolo,
+        onShowAll,
+        onHide,
+      });
+    });
   });
 }
 
@@ -1096,6 +1265,10 @@ function dashRenderSidebarPieChart(pieHost, items, checkedKeys, colorMap, {
   highlightWrap = null,
   highlightSidebarRoot = null,
   centerTitleLines = null,
+  itemKeys = [],
+  onSolo = null,
+  onShowAll = null,
+  onHide = null,
   animate = false,
 } = {}) {
   const slices = dashBuildPieChartSlices(items, checkedKeys, colorMap);
@@ -1133,7 +1306,16 @@ function dashRenderSidebarPieChart(pieHost, items, checkedKeys, colorMap, {
       ${centerTitle}
     </svg>`;
   pieHost.append(pieWrap);
-  dashBindSidebarPieHover(pieWrap, { highlightWrap, highlightSidebarRoot });
+  dashBindSidebarPieHover(pieWrap, {
+    highlightWrap,
+    highlightSidebarRoot,
+    items,
+    checkedKeys,
+    itemKeys,
+    onSolo,
+    onShowAll,
+    onHide,
+  });
   dashPlaySidebarPieSweepAnimation(pieWrap, slices, cx, cy, outerR, innerR, { animate });
 }
 
@@ -1500,6 +1682,11 @@ function dashBindStackedBarChartHover(container, {
   highlightSidebarRoot,
   breakdownItems = [],
   drilldownCtx = null,
+  checkedKeys = null,
+  itemKeys = [],
+  onSolo = null,
+  onShowAll = null,
+  onHide = null,
 }) {
   const wrap = container.querySelector('.dashboard-bar-chart-wrap');
   const svg = container.querySelector('.dashboard-chart-svg');
@@ -1576,6 +1763,24 @@ function dashBindStackedBarChartHover(container, {
     });
   });
   hoverRect.addEventListener('mouseleave', hide);
+  hoverRect.addEventListener('contextmenu', (ev) => {
+    if (!onSolo || !onShowAll || !onHide || !checkedKeys) return;
+    const seg = dashPeekChartElementUnder(hoverRect, ev.clientX, ev.clientY, '.dashboard-chart-segment');
+    if (!seg || seg.closest('svg') !== svg) return;
+    const key = seg.getAttribute('data-series-key');
+    const item = itemByKey.get(key);
+    if (!item) return;
+    ev.preventDefault();
+    dashOpenSeriesVisibilityContextMenu(ev.clientX, ev.clientY, {
+      title: item.name,
+      key,
+      checkedKeys,
+      itemKeys,
+      onSolo,
+      onShowAll,
+      onHide,
+    });
+  });
   hoverRect.addEventListener('dblclick', (ev) => {
     const target = dashResolveStackedChartDrilldown(hoverRect, ev, svg, itemByKey, drilldownCtx);
     if (!target) return;
@@ -1591,6 +1796,11 @@ function dashRenderSvgStackedBarChart(container, series, labels, {
   highlightSidebarRoot = null,
   breakdownItems = null,
   drilldownCtx = null,
+  checkedKeys = null,
+  itemKeys = [],
+  onSolo = null,
+  onShowAll = null,
+  onHide = null,
   animate = false,
 }) {
   const viewportScale = getViewportScale();
@@ -1662,6 +1872,11 @@ function dashRenderSvgStackedBarChart(container, series, labels, {
       highlightSidebarRoot,
       breakdownItems: breakdownItems ?? [],
       drilldownCtx,
+      checkedKeys,
+      itemKeys,
+      onSolo,
+      onShowAll,
+      onHide,
     });
     dashBindChartSeriesHover(container, highlightWrap, highlightSidebarRoot);
   });
@@ -1671,8 +1886,9 @@ function dashRenderSvgStackedBarChart(container, series, labels, {
 function dashRenderSvgGradientLineChart(container, values, labels, {
   title,
   headerClass,
-  gradLow,
-  gradHigh,
+  sectionFilterId,
+  gradLow = 'var(--dashboard-line-grad-low)',
+  gradHigh = 'var(--dashboard-line-grad-high)',
   includeZero = false,
   negativeTicksRed = false,
   prevValues = null,
@@ -1760,6 +1976,10 @@ function dashRenderSvgGradientLineChart(container, values, labels, {
         <div class="dashboard-line-chart-tooltip-rows"></div>
       </div>
     </div>`;
+    dashApplySectionFilterChartTitleStyle(
+      container.querySelector('.dashboard-chart-title'),
+      sectionFilterId,
+    );
     dashBindLineChartHover(container, { values, labels, layout, xScale, yScale, prevValues, prevPrevValues });
   });
   dashPlayChartDrawAnimation(container, { animate });
@@ -1885,17 +2105,20 @@ function dashRenderSidebarList(container, items, checkedKeys, totalLabel, header
     ? `<div class="dashboard-sidebar-header-tabs">${breakdownTabsHtml}${sortTabsHtml}</div>`
     : '';
 
+  const allChecked = items.length > 0 && items.every((item) => checkedKeys.has(item.key));
+  const bulkActionsHtml = `<div class="dashboard-sidebar-bulk-actions">
+        <button type="button" class="dashboard-sidebar-breakdown-btn dashboard-sidebar-bulk-btn" data-action="check-all"${allChecked ? ' disabled' : ''}>すべてチェック</button>
+        <button type="button" class="dashboard-sidebar-breakdown-btn dashboard-sidebar-bulk-btn" data-action="uncheck-all">すべて外す</button>
+      </div>`;
+
   const header = document.createElement('div');
   header.className = `dashboard-sidebar-header ${headerClass}`;
   header.innerHTML = `
     <div class="dashboard-sidebar-header-top">
       <span class="dashboard-sidebar-total-label">${totalLabel}</span>
       <span class="dashboard-sidebar-total-value">${dashFormatSidebarYenHtml(total)}</span>
-      <span class="dashboard-sidebar-bulk-actions">
-        <button type="button" class="dashboard-sidebar-bulk-btn dashboard-sidebar-bulk-btn--check-all" data-action="check-all">すべてチェック</button>
-        <button type="button" class="dashboard-sidebar-bulk-btn dashboard-sidebar-bulk-btn--uncheck-all" data-action="uncheck-all">すべて外す</button>
-      </span>
     </div>
+    ${bulkActionsHtml}
     ${headerTabsHtml}`;
   header.querySelector('[data-action="check-all"]')?.addEventListener('click', (ev) => {
     ev.preventDefault();
@@ -1975,12 +2198,26 @@ function dashRenderSidebarList(container, items, checkedKeys, totalLabel, header
       highlightWrap,
       highlightSidebarRoot,
       centerTitleLines: pieCenterTitleLines,
+      itemKeys: items.map((item) => item.key),
+      onSolo: (key) => {
+        ensureChartMode?.();
+        onSolo?.(key);
+      },
+      onShowAll: () => {
+        ensureChartMode?.();
+        onCheckAll?.();
+      },
+      onHide: (key) => {
+        ensureChartMode?.();
+        onToggle(key, false);
+      },
       animate,
     });
   }
 }
 
 function dashRenderDashboardContent(wrap, ctx, { animate = false, animateMainChart = false } = {}) {
+  dashCloseChartContextMenu();
   dashGradientSeq = 0;
   const { data, prevData, prevPrevData, appSettings, state } = ctx;
   const mainChartAnimate = animate || animateMainChart;
@@ -2238,18 +2475,21 @@ function dashRenderDashboardContent(wrap, ctx, { animate = false, animateMainCha
   });
 
   if (state.chartMode === 'balance') {
+    const revenueColors = dashGetSidebarHeaderColors('revenue');
+    const expenseColors = dashGetSidebarHeaderColors('expense');
     dashRenderSvgGroupedBarChart(
       mainChartEl,
       [
-        { values: monthly.map((m) => m.inflow), color: DASH_COLOR_INCOME, label: '収入' },
-        { values: monthly.map((m) => m.outflow), color: DASH_COLOR_EXPENSE, label: '支出' },
+        { values: monthly.map((m) => m.inflow), color: revenueColors.background, label: '収入' },
+        { values: monthly.map((m) => m.outflow), color: expenseColors.background, label: '支出' },
       ],
       monthLabels,
       {
         title: '収支推移',
+        headerClass: 'dashboard-chart-title--month-row',
         legend: [
-          { label: '収入', color: DASH_COLOR_INCOME },
-          { label: '支出', color: DASH_COLOR_EXPENSE },
+          { label: '収入', color: revenueColors.background },
+          { label: '支出', color: expenseColors.background },
         ],
         drilldownCtx,
         animate: mainChartAnimate,
@@ -2264,6 +2504,11 @@ function dashRenderDashboardContent(wrap, ctx, { animate = false, animateMainCha
       highlightSidebarRoot: revenueEl,
       breakdownItems: revenueItems,
       drilldownCtx,
+      checkedKeys: state.checkedKeys,
+      itemKeys: revenueItems.map((item) => item.key),
+      onSolo: revenueBulk.onSolo,
+      onShowAll: revenueBulk.onCheckAll,
+      onHide: (key) => onToggle(key, false),
       animate: mainChartAnimate,
     });
   } else {
@@ -2275,6 +2520,11 @@ function dashRenderDashboardContent(wrap, ctx, { animate = false, animateMainCha
       highlightSidebarRoot: expenseEl,
       breakdownItems: expenseItems,
       drilldownCtx,
+      checkedKeys: state.checkedKeys,
+      itemKeys: expenseItems.map((item) => item.key),
+      onSolo: expenseBulk.onSolo,
+      onShowAll: expenseBulk.onCheckAll,
+      onHide: (key) => onToggle(key, false),
       animate: mainChartAnimate,
     });
   }
@@ -2286,8 +2536,7 @@ function dashRenderDashboardContent(wrap, ctx, { animate = false, animateMainCha
     {
       title: '利益率推移',
       headerClass: 'dashboard-chart-title--profit',
-      gradLow: '#c45c5c',
-      gradHigh: '#4a9fd4',
+      sectionFilterId: 'profit',
       includeZero: true,
       negativeTicksRed: true,
       prevValues: prevMonthly?.map((m) => m.profit) ?? null,
@@ -2303,8 +2552,7 @@ function dashRenderDashboardContent(wrap, ctx, { animate = false, animateMainCha
     {
       title: '預金残高推移',
       headerClass: 'dashboard-chart-title--cash',
-      gradLow: '#c45c5c',
-      gradHigh: '#22c55e',
+      sectionFilterId: 'cashBalance',
       includeZero: false,
       prevValues: prevMonthly?.map((m) => m.cash) ?? null,
       prevPrevValues: prevPrevMonthly?.map((m) => m.cash) ?? null,
@@ -2322,6 +2570,7 @@ export function mountDashboardPanel({
   appSettings,
   calcPlanKpiMetrics,
   buildPlanKpiOptions,
+  getSectionFilterColors = null,
   showJournalPopup = null,
   hasJournalDrilldown = null,
 }) {
@@ -2365,6 +2614,7 @@ export function mountDashboardPanel({
     data,
     prevData,
     prevPrevData,
+    getSectionFilterColors,
     showJournalPopup,
     hasJournalDrilldown,
     calcPlanKpiMetrics,

@@ -3567,8 +3567,6 @@ body.plan-journal-open {
   min-width: 0;
   width: 100%;
   --dashboard-frame-padding: 0.5rem;
-  --dashboard-revenue-color: #2f7ed8;
-  --dashboard-expense-color: #c42525;
   --dashboard-chart-title-row-height: 1.65rem;
   /* 高さが足りないときの下限（これ以下には潰さず plan-body スクロールに切替） */
   --dashboard-main-chart-min-height: calc(280px * var(--plan-viewport-scale, 1) + 3.4rem);
@@ -3619,11 +3617,95 @@ body.plan-journal-open {
   cursor: pointer;
 }
 
-.dashboard-mode-btn.is-active,
-.dashboard-mode-btn:hover {
-  background: color-mix(in srgb, var(--plan-text) 10%, transparent);
-  color: var(--plan-text);
-  border-color: color-mix(in srgb, var(--plan-text) 30%, transparent);
+.dashboard-mode-btn[data-mode="balance"]:not(.is-active) {
+  background: color-mix(in srgb, var(--plan-settings-button-bg) 50%, transparent);
+  color: color-mix(in srgb, var(--plan-settings-button-text) 50%, transparent);
+  border-color: color-mix(in srgb, var(--plan-button-border) 50%, transparent);
+}
+
+.dashboard-mode-btn[data-mode="balance"].is-active {
+  background: var(--plan-settings-button-bg);
+  color: var(--plan-settings-button-text);
+  border-color: var(--plan-button-border);
+}
+
+.dashboard-mode-btn[data-mode="balance"]:not(.is-active):hover {
+  background-color: color-mix(
+    in srgb,
+    color-mix(in srgb, var(--plan-settings-button-bg) 50%, transparent) calc(100% - var(--plan-hover-boost)),
+    white var(--plan-hover-boost)
+  );
+  border-color: color-mix(
+    in srgb,
+    color-mix(in srgb, var(--plan-button-border) 50%, transparent) calc(100% - var(--plan-hover-boost)),
+    white var(--plan-hover-boost)
+  );
+}
+
+.dashboard-mode-btn[data-mode="balance"].is-active:hover {
+  background-color: color-mix(in srgb, var(--plan-settings-button-bg) calc(100% - var(--plan-hover-boost)), white var(--plan-hover-boost));
+  color: var(--plan-settings-button-text);
+  border-color: color-mix(in srgb, var(--plan-button-border) calc(100% - var(--plan-hover-boost)), white var(--plan-hover-boost));
+}
+
+.dashboard-mode-btn[data-mode="revenue"]:not(.is-active) {
+  background: color-mix(in srgb, var(--dashboard-revenue-color) 50%, transparent);
+  color: color-mix(in srgb, var(--dashboard-revenue-text-color) 50%, transparent);
+  border-color: color-mix(in srgb, var(--dashboard-revenue-color) 50%, transparent);
+}
+
+.dashboard-mode-btn[data-mode="revenue"].is-active {
+  background: var(--dashboard-revenue-color);
+  color: var(--dashboard-revenue-text-color);
+  border-color: var(--dashboard-revenue-color);
+}
+
+.dashboard-mode-btn[data-mode="revenue"]:not(.is-active):hover {
+  background-color: color-mix(
+    in srgb,
+    color-mix(in srgb, var(--dashboard-revenue-color) 50%, transparent) calc(100% - var(--plan-hover-boost)),
+    white var(--plan-hover-boost)
+  );
+  border-color: color-mix(
+    in srgb,
+    color-mix(in srgb, var(--dashboard-revenue-color) 50%, transparent) calc(100% - var(--plan-hover-boost)),
+    white var(--plan-hover-boost)
+  );
+}
+
+.dashboard-mode-btn[data-mode="revenue"].is-active:hover {
+  background-color: color-mix(in srgb, var(--dashboard-revenue-color) calc(100% - var(--plan-hover-boost)), white var(--plan-hover-boost));
+  border-color: color-mix(in srgb, var(--dashboard-revenue-color) calc(100% - var(--plan-hover-boost)), white var(--plan-hover-boost));
+}
+
+.dashboard-mode-btn[data-mode="expense"]:not(.is-active) {
+  background: color-mix(in srgb, var(--dashboard-expense-color) 50%, transparent);
+  color: color-mix(in srgb, var(--dashboard-expense-text-color) 50%, transparent);
+  border-color: color-mix(in srgb, var(--dashboard-expense-color) 50%, transparent);
+}
+
+.dashboard-mode-btn[data-mode="expense"].is-active {
+  background: var(--dashboard-expense-color);
+  color: var(--dashboard-expense-text-color);
+  border-color: var(--dashboard-expense-color);
+}
+
+.dashboard-mode-btn[data-mode="expense"]:not(.is-active):hover {
+  background-color: color-mix(
+    in srgb,
+    color-mix(in srgb, var(--dashboard-expense-color) 50%, transparent) calc(100% - var(--plan-hover-boost)),
+    white var(--plan-hover-boost)
+  );
+  border-color: color-mix(
+    in srgb,
+    color-mix(in srgb, var(--dashboard-expense-color) 50%, transparent) calc(100% - var(--plan-hover-boost)),
+    white var(--plan-hover-boost)
+  );
+}
+
+.dashboard-mode-btn[data-mode="expense"].is-active:hover {
+  background-color: color-mix(in srgb, var(--dashboard-expense-color) calc(100% - var(--plan-hover-boost)), white var(--plan-hover-boost));
+  border-color: color-mix(in srgb, var(--dashboard-expense-color) calc(100% - var(--plan-hover-boost)), white var(--plan-hover-boost));
 }
 
 .dashboard-grid {
@@ -3667,7 +3749,13 @@ body.plan-journal-open {
 .dashboard-sidebar-header-top {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 0.35rem;
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
 }
 
 .dashboard-sidebar-header-tabs {
@@ -3688,76 +3776,60 @@ body.plan-journal-open {
 .dashboard-sidebar-breakdown-btn {
   flex: 1;
   padding: 0.12rem 0.25rem;
-  border: 1px solid color-mix(in srgb, #fff 28%, transparent);
+  border: 1px solid color-mix(in srgb, var(--dashboard-sidebar-tab-accent) 28%, transparent);
   border-radius: var(--plan-radius-sm);
   font-size: 0.58rem;
   font-weight: 600;
   line-height: 1.2;
   cursor: pointer;
-  background: color-mix(in srgb, #fff 6%, transparent);
+  background: color-mix(in srgb, var(--dashboard-sidebar-tab-accent) 6%, transparent);
   color: inherit;
   white-space: nowrap;
 }
 
 .dashboard-sidebar-breakdown-btn.is-active {
-  background: color-mix(in srgb, #fff 24%, transparent);
-  border-color: color-mix(in srgb, #fff 72%, transparent);
+  background: color-mix(in srgb, var(--dashboard-sidebar-tab-accent) 24%, transparent);
+  border-color: color-mix(in srgb, var(--dashboard-sidebar-tab-accent) 72%, transparent);
+}
+
+.dashboard-sidebar-breakdown-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 .dashboard-sidebar-total-label {
   flex-shrink: 0;
+  text-align: left;
 }
 
 .dashboard-sidebar-bulk-actions {
   display: flex;
   flex-direction: row;
-  align-items: center;
-  gap: 0.25rem;
-  flex-shrink: 0;
-  margin-left: auto;
+  align-items: stretch;
+  gap: 0.2rem;
 }
 
 .dashboard-sidebar-bulk-btn {
-  padding: 0.12rem 0.4rem;
-  border: none;
-  border-radius: var(--plan-radius-sm);
-  font-size: 0.58rem;
-  font-weight: 600;
-  line-height: 1.2;
-  cursor: pointer;
-  white-space: nowrap;
-  color: #fff;
-}
-
-.dashboard-sidebar-bulk-btn--check-all {
-  background: #007700;
-}
-
-.dashboard-sidebar-bulk-btn--check-all:hover {
-  background: #009900;
-}
-
-.dashboard-sidebar-bulk-btn--uncheck-all {
-  background: #666666;
-}
-
-.dashboard-sidebar-bulk-btn--uncheck-all:hover {
-  background: #888888;
+  flex: 1;
 }
 
 .dashboard-sidebar-header--revenue {
+  --dashboard-sidebar-tab-accent: var(--dashboard-revenue-text-color);
   background: var(--dashboard-revenue-color);
-  color: #fff;
+  color: var(--dashboard-revenue-text-color);
 }
 
 .dashboard-sidebar-header--expense {
+  --dashboard-sidebar-tab-accent: var(--dashboard-expense-text-color);
   background: var(--dashboard-expense-color);
-  color: #fff;
+  color: var(--dashboard-expense-text-color);
 }
 
 .dashboard-sidebar-total-value {
+  flex: 1 1 auto;
+  min-width: 0;
   white-space: nowrap;
-  text-align: left;
+  text-align: right;
 }
 
 .dashboard-sidebar-list {
@@ -3875,9 +3947,13 @@ body.plan-journal-open {
   left: 0;
   top: 0;
   bottom: 0;
-  background: #ff8800;
   pointer-events: none;
   z-index: 0;
+}
+
+.dashboard-sidebar-revenue .dashboard-sidebar-bar,
+.dashboard-sidebar-expense .dashboard-sidebar-bar {
+  background: var(--dashboard-sidebar-bar-color);
 }
 
 @keyframes dashboard-sidebar-bar-grow {
@@ -3938,6 +4014,7 @@ body.plan-journal-open {
   aspect-ratio: 1;
   /* 画面が低いときは円グラフを縮めてリスト側に高さを譲る */
   max-height: min(22rem, 36vh);
+  filter: drop-shadow(var(--dashboard-chart-drop-shadow));
 }
 
 .dashboard-sidebar-pie-slices {
@@ -4053,7 +4130,12 @@ body.plan-journal-open {
   width: 100%;
   height: 100%;
   min-height: 0;
-  overflow: hidden;
+  overflow: visible;
+}
+
+.dashboard-bar-chart-wrap > .dashboard-chart-svg,
+.dashboard-line-chart-wrap > .dashboard-chart-svg {
+  filter: drop-shadow(var(--dashboard-chart-drop-shadow));
 }
 
 .dashboard-chart-main > .dashboard-bar-chart-wrap .dashboard-chart-svg {
@@ -4125,6 +4207,16 @@ body.plan-journal-open {
   height: 100%;
 }
 
+.dashboard-chart-profit {
+  --dashboard-line-grad-low: var(--dashboard-profit-line-low);
+  --dashboard-line-grad-high: var(--dashboard-profit-line-high);
+}
+
+.dashboard-chart-cash {
+  --dashboard-line-grad-low: var(--dashboard-cash-line-low);
+  --dashboard-line-grad-high: var(--dashboard-cash-line-high);
+}
+
 .dashboard-chart-title {
   font-size: 0.78rem;
   font-weight: 700;
@@ -4135,20 +4227,23 @@ body.plan-journal-open {
 }
 
 .dashboard-chart-title--revenue {
-  background: color-mix(in srgb, var(--dashboard-revenue-color) 30%, transparent);
+  background: var(--dashboard-revenue-color);
+  color: var(--dashboard-revenue-text-color);
+}
+
+.dashboard-chart-title--month-row {
+  background: var(--plan-month-row-bg);
+  color: var(--plan-month-row-text);
 }
 
 .dashboard-chart-title--expense {
-  background: color-mix(in srgb, var(--dashboard-expense-color) 30%, transparent);
+  background: var(--dashboard-expense-color);
+  color: var(--dashboard-expense-text-color);
 }
 
-.dashboard-chart-title--profit {
-  background: color-mix(in srgb, #ffc000 25%, transparent);
-  color: #000;
-}
-
+.dashboard-chart-title--profit,
 .dashboard-chart-title--cash {
-  background: color-mix(in srgb, #203764 20%, transparent);
+  background: var(--dashboard-chart-title-bg, var(--plan-text));
 }
 
 .dashboard-chart-svg {
@@ -4243,7 +4338,7 @@ body.plan-journal-open {
   flex: 1 1 auto;
   min-height: 0;
   width: 100%;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .dashboard-line-chart-wrap .dashboard-chart-svg {
