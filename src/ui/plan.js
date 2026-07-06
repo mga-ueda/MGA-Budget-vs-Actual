@@ -309,7 +309,7 @@ import {
   formatManMonths,
   applyManMonthsFromMonthForward,
 } from '../config/revenuePlanConfig.js';
-import { mountRevenueSettingsPanel } from './revenueSettings.js';
+import { mountRevenueSettingsPanel, refreshRevenueSettingsSectionTitles, applyRevenueSettingsMonthDisplayDom } from './revenueSettings.js';
 import { mountUiColorPanel } from './uiColorPanel.js';
 import { createColorSettingsWindow } from './colorSettingsWindow.js';
 import { parseEmployeeCsv } from '../parse/parseEmployee.js';
@@ -663,6 +663,7 @@ let generalLedgerName = null;
 let sectionFilterConfig = {};
 let activeTab = 'plan';
 let colorSettingsWindow = null;
+let csvGateActive = false;
 let expandConfig = loadExpandConfig();
 let visibilityConfig = loadVisibilityConfig();
 let rowDisplayConfig = loadRowDisplayConfig();
@@ -744,6 +745,11 @@ function formatKpiRate(value) {
 function formatKpiMultiple(value) {
   if (value === null || value === undefined) return '—';
   return `${value.toFixed(2)}倍`;
+}
+
+function refreshPlanKpi() {
+  if (data) setPlanKpi(calcPlanKpiMetrics(data, buildPlanKpiOptions()));
+  else setPlanKpi(null);
 }
 
 function buildPlanKpiOptions() {
@@ -4109,6 +4115,7 @@ function refreshColorDependentViews({ rebuildData = true } = {}) {
 
 function refreshToolbarFilterStyles() {
   toolbar?.querySelectorAll('.plan-filter-btn').forEach(applyFilterButtonStyle);
+  refreshRevenueSettingsSectionTitles(getFilterButtonColors);
 }
 
 function refreshColorSettingsPanels() {
@@ -4268,7 +4275,18 @@ function closeMainMenu({ returnFocus = false } = {}) {
   if (returnFocus) trigger.focus();
 }
 
+function setCsvGateMode(active) {
+  csvGateActive = active;
+  document.querySelector('.plan-app')?.classList.toggle('plan-csv-gate', active);
+  if (active) {
+    closePeriodSelect();
+    closeMainMenu();
+    colorSettingsWindow?.close?.();
+  }
+}
+
 function openMainMenu({ focusFirst = false } = {}) {
+  if (csvGateActive) return;
   closePeriodSelect();
   const trigger = document.getElementById('plan-main-menu-trigger');
   const panel = document.getElementById('plan-main-menu-panel');
@@ -4358,6 +4376,7 @@ function handleEscapeKey() {
 }
 
 document.addEventListener('keydown', (ev) => {
+  if (csvGateActive) return;
   if (ev.key === 'F10' && !ev.shiftKey && !ev.altKey && !ev.ctrlKey && !ev.metaKey) {
     ev.preventDefault();
     openMainMenu({ focusFirst: true });
@@ -5055,8 +5074,11 @@ function togglePlanMonthDisplay(monthLabel) {
   saveMonthDisplayConfig(monthDisplayConfig);
   if (rawPlanData) {
     data = applyPlanColors(rawPlanData);
+    refreshPlanKpi();
     if (activeTab === 'dashboard') {
       renderDashboardView();
+    } else if (activeTab === 'orders') {
+      applyRevenueSettingsMonthDisplayDom();
     } else {
       applyPlanMonthDisplayDom(root.querySelector('.plan-table'));
     }
@@ -8248,18 +8270,22 @@ function renderEmployeeSettings() {
 function renderRevenueSettings() {
   mountRevenueSettingsPanel({
     replaceRootPanel,
-    setPlanKpi,
+    refreshPlanKpi,
     appSettings,
     rawPlanData,
     getMonthDisplayConfig: () => monthDisplayConfig,
+    onToggleMonthDisplay: togglePlanMonthDisplay,
     getRevenuePlans: () => revenuePlans,
     setRevenuePlans: (plans) => { revenuePlans = plans; },
     getRevenuePlanSettings: () => revenuePlanSettings,
     setRevenuePlanSettings: (settings) => { revenuePlanSettings = settings; },
     refreshPlanTableIfNeeded: () => {
       refreshSectionColors();
+      refreshRevenueSettingsSectionTitles(getFilterButtonColors);
+      refreshPlanKpi();
       if (activeTab === 'plan' && data) refreshPlanTable();
     },
+    getSectionFilterColors: getFilterButtonColors,
   });
 }
 
@@ -9571,6 +9597,7 @@ function bindSettingsImportExport() {
 }
 
 function loadPlanOnlyPeriodData({ measureColumnWidths = false } = {}) {
+  setCsvGateMode(false);
   journalEntriesCache = null;
   invalidateDrilldownIndex();
   closeJournalPopup();
@@ -9594,6 +9621,7 @@ function loadPlanOnlyPeriodData({ measureColumnWidths = false } = {}) {
 }
 
 function loadData(loaded, { measureColumnWidths = false } = {}) {
+  setCsvGateMode(false);
   journalText = loaded.journalText;
   bsText = loaded.bsText;
   generalLedgerText = loaded.generalLedgerText ?? null;
@@ -9614,6 +9642,7 @@ function loadData(loaded, { measureColumnWidths = false } = {}) {
 }
 
 async function init() {
+  setCsvGateMode(true);
   applyViewportScale(computeViewportScale());
   bindViewportScale(applyPlanViewportScaleChange);
   applyUiColors(uiColorConfig);

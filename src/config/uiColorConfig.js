@@ -84,8 +84,8 @@ export const UI_COLOR_MODE_SETTINGS = ['dark', 'light', 'system'];
 export const DEFAULT_UI_COLOR_MODE_SETTING = 'system';
 
 const SHARED_UI_COLORS = {
-  yearRowBg: '#ff8000',
-  yearRowText: '#ffffff',
+  periodHeaderBg: '#ff8000',
+  periodHeaderText: '#ffffff',
   amountVarianceColor: '#ff6600',
   negativeAmountColor: '#ff3838',
 };
@@ -211,8 +211,8 @@ export const DEFAULT_UI_COLORS_LIGHT = {
   primaryButtonBg: '#3b82f6',
   primaryButtonTextColor: '#ffffff',
   buttonBorderColor: '#919191',
-  yearRowBg: '#f09c47',
-  yearRowText: '#ffffff',
+  ...SHARED_UI_COLORS,
+  periodHeaderBg: '#f09c47',
   amountVarianceColor: '#ff6600',
   negativeAmountColor: '#ff0000',
 };
@@ -299,10 +299,18 @@ export function getDefaultUiColors(mode = 'dark') {
   return { ...DEFAULTS_BY_MODE[key] };
 }
 
-const UI_COLOR_LEGACY_KEYS = [...UI_COLOR_KEYS, 'textFaintColor', 'appBg', 'bonusMonthColumnBg', 'journalTextColor', 'journalModalBg', 'journalModalShadowBg', 'journalRowHoverBg', 'settingsRowHoverBg', 'settingsSurfaceBg', 'journalTableHeaderBg', 'journalCloseHoverBg', 'headerControlBorder'];
+const UI_COLOR_LEGACY_KEYS = [...UI_COLOR_KEYS, 'textFaintColor', 'appBg', 'bonusMonthColumnBg', 'journalTextColor', 'journalModalBg', 'journalModalShadowBg', 'journalRowHoverBg', 'settingsRowHoverBg', 'settingsSurfaceBg', 'journalTableHeaderBg', 'journalCloseHoverBg', 'headerControlBorder', 'yearRowBg', 'yearRowText'];
 
 function migrateUiColorBucket(bucket = {}) {
   const next = { ...bucket };
+  if (next.yearRowBg != null && next.periodHeaderBg == null) {
+    next.periodHeaderBg = next.yearRowBg;
+  }
+  if (next.yearRowText != null && next.periodHeaderText == null) {
+    next.periodHeaderText = next.yearRowText;
+  }
+  delete next.yearRowBg;
+  delete next.yearRowText;
   if (next.textFaintColor != null && next.textDimColor == null) {
     next.textDimColor = next.textFaintColor;
   }
@@ -596,7 +604,7 @@ export function applyUiColors(config = {}) {
     settingsButtonTextColor,
     cellBg, textColor, textDimColor,
     negativeAmountColor,
-    yearRowBg, yearRowText, monthRowBg, monthRowText,
+    periodHeaderBg, periodHeaderText, monthRowBg, monthRowText,
     currentMonthBorder, settlementMonthBg,
     rowHoverBorder, rowSelectionRing,
     expandableHighlight,
@@ -724,8 +732,8 @@ export function applyUiColors(config = {}) {
   root.style.setProperty('--plan-kbd-bg', opaqueHex(kbdBg));
   root.style.setProperty('--plan-kbd-text', opaqueHex(kbdTextColor));
   root.style.setProperty('--plan-kbd-border', opaqueHex(kbdBorderColor));
-  root.style.setProperty('--plan-year-row-bg', yearRowBg);
-  root.style.setProperty('--plan-year-row-text', yearRowText);
+  root.style.setProperty('--plan-period-header-bg', opaqueHex(periodHeaderBg));
+  root.style.setProperty('--plan-period-header-text', opaqueHex(periodHeaderText));
   root.style.setProperty('--plan-month-row-bg', monthRowBg);
   root.style.setProperty('--plan-month-row-text', monthRowText);
   root.style.setProperty('--current-month-ring', opaqueHex(currentMonthBorder));

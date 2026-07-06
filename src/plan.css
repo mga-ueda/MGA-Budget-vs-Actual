@@ -128,8 +128,8 @@ body {
   --plan-header-control-focus-ring: rgba(146, 146, 146, 0.22);
   --plan-header-control-height: calc(1.625rem * var(--plan-viewport-scale, 1));
   --plan-header-control-line-height: 1;
-  --plan-year-row-bg: #c65911;
-  --plan-year-row-text: #ffffff;
+  --plan-period-header-bg: #c65911;
+  --plan-period-header-text: #ffffff;
   --plan-month-row-bg: #595959;
   --plan-month-row-text: #ffffff;
   --current-month-ring: #ff0000;
@@ -694,6 +694,137 @@ body {
 
 .expand-settings-wrap {
   padding: 1rem 1rem 2rem;
+  width: 100%;
+  box-sizing: border-box;
+  --plan-settings-font-size: clamp(0.62rem, 0.38vw + 0.56rem, 0.88rem);
+}
+
+.expand-settings-wrap .expand-settings-desc,
+.expand-settings-wrap .salary-plan-desc {
+  font-size: clamp(0.68rem, 0.32vw + 0.62rem, 0.8rem);
+}
+
+.expand-settings-wrap .salary-plan-title {
+  font-size: clamp(0.82rem, 0.42vw + 0.72rem, 1rem);
+}
+
+.expand-settings-wrap .salary-plan-period-title {
+  font-size: clamp(0.72rem, 0.35vw + 0.64rem, 0.88rem);
+}
+
+.expand-settings-wrap table {
+  font-size: var(--plan-settings-font-size);
+}
+
+.expand-settings-wrap table th,
+.expand-settings-wrap table td {
+  white-space: nowrap;
+}
+
+.expand-settings-wrap .salary-plan-table-wrap {
+  width: 100%;
+}
+
+.expand-settings-wrap.revenue-settings-wrap .salary-plan-period-block {
+  position: relative;
+}
+
+.expand-settings-wrap.revenue-settings-wrap .salary-plan-table-wrap {
+  position: relative;
+  z-index: 1;
+}
+
+.expand-settings-wrap.revenue-settings-wrap .revenue-column-plate-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 25;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.expand-settings-wrap.revenue-settings-wrap .revenue-column-plate-layer .plan-column-plate {
+  z-index: 25;
+}
+
+.expand-settings-wrap.revenue-settings-wrap .expand-settings-table thead th {
+  z-index: 4;
+}
+
+.expand-settings-wrap.revenue-settings-wrap .salary-plan-table thead th.salary-plan-col-month.current-month {
+  border-top-width: 0 !important;
+  border-bottom-width: 0 !important;
+}
+
+.expand-settings-wrap.revenue-settings-wrap .salary-plan-table tbody tr:not(.salary-plan-total-row) td.salary-plan-amount-cell.current-month {
+  border-top-width: 0 !important;
+  border-bottom-width: 0 !important;
+}
+
+.expand-settings-wrap.revenue-settings-wrap .salary-plan-table thead th.salary-plan-col-month.month-display-plan.current-month {
+  color: var(--plan-amount-color);
+}
+
+.expand-settings-wrap .expand-settings-table,
+.expand-settings-wrap .salary-plan-table {
+  width: max-content;
+  min-width: 100%;
+  max-width: none;
+  table-layout: auto;
+}
+
+.expand-settings-wrap table th,
+.expand-settings-wrap table td {
+  overflow: visible;
+  text-overflow: clip;
+  max-width: none;
+}
+
+.expand-settings-wrap .salary-plan-table th.salary-plan-col-name,
+.expand-settings-wrap .salary-plan-table td.salary-plan-col-name,
+.expand-settings-wrap .salary-plan-table th.salary-plan-col-sub,
+.expand-settings-wrap .salary-plan-table td.salary-plan-col-sub,
+.expand-settings-wrap .revenue-plan-table th.revenue-plan-col-client,
+.expand-settings-wrap .revenue-plan-table td.revenue-plan-col-client,
+.expand-settings-wrap .employee-settings-table .col-emp-name,
+.expand-settings-wrap .employee-settings-table .col-emp-municipality {
+  width: auto;
+  max-width: none;
+}
+
+.expand-settings-wrap .salary-plan-table th.salary-plan-col-month,
+.expand-settings-wrap .salary-plan-table td.salary-plan-amount-cell {
+  width: auto;
+  min-width: 4.75rem;
+}
+
+.expand-settings-wrap .salary-plan-table th.salary-plan-col-total,
+.expand-settings-wrap .salary-plan-table td.salary-plan-col-total {
+  width: auto;
+  min-width: 5.5rem;
+}
+
+.expand-settings-wrap .revenue-client-name-label {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+
+/* 設定ページ内テーブル: ヘッダー行は中央、それ以外は右寄せ */
+.expand-settings-wrap table thead th {
+  text-align: center;
+}
+
+.expand-settings-wrap table tbody td,
+.expand-settings-wrap table tfoot td {
+  text-align: right;
+}
+
+.expand-settings-wrap table tbody td.col-out-actions,
+.expand-settings-wrap table tbody td.expense-plan-override-col-actions,
+.expand-settings-wrap table tbody td.col-toggle,
+.expand-settings-wrap table td.expand-settings-empty,
+.expand-settings-wrap table td.expense-plan-override-empty {
+  text-align: center;
 }
 
 .expand-settings-header {
@@ -1314,7 +1445,6 @@ select.app-settings-input {
 .expand-settings-table td {
   border-bottom: 1px solid var(--plan-border);
   padding: 0.35rem 0.45rem;
-  text-align: left;
   vertical-align: middle;
   white-space: nowrap;
 }
@@ -1340,7 +1470,6 @@ select.app-settings-input {
 
 .expand-settings-table .col-section-label {
   font-weight: 600;
-  text-align: center;
   vertical-align: middle;
 }
 
@@ -1601,22 +1730,16 @@ select.app-settings-input {
   font-size: 0.68rem;
 }
 
-.expand-settings-table tbody .col-settings-label,
-.expand-settings-table tbody .col-subs {
-  text-align: right;
-}
-
 .expand-settings-table .col-subs {
   color: var(--plan-text-dim);
   font-size: 0.68rem;
 }
 
-.expand-config-table tbody .col-subs {
-  text-align: left;
+.expand-settings-table.visibility-config-table th {
+  text-align: center;
 }
 
-.expand-settings-table.visibility-config-table th,
-.expand-settings-table.visibility-config-table td {
+.expand-settings-table.visibility-config-table tbody td.col-toggle {
   text-align: center;
 }
 
@@ -2063,9 +2186,9 @@ select.app-settings-input {
 
 .plan-table thead .year-row th.year-row-label {
   font-size: var(--plan-table-font-standard);
-  background: var(--plan-year-row-bg);
-  border-color: var(--plan-year-row-bg);
-  color: var(--plan-year-row-text);
+  background: var(--plan-period-header-bg);
+  border-color: var(--plan-period-header-bg);
+  color: var(--plan-period-header-text);
 }
 
 .plan-table thead .year-row th.year-row-label.col-amount {
@@ -2553,6 +2676,10 @@ tr.row-sub-variance .col-amount.has-variance {
   letter-spacing: 0.04em;
 }
 
+html[data-plan-color-mode="light"] .plan-loading-overlay-panel {
+  color: var(--plan-text-dim);
+}
+
 .plan-loading-overlay-dots {
   display: inline-flex;
   min-width: 1.5em;
@@ -2593,11 +2720,38 @@ tr.row-sub-variance .col-amount.has-variance {
   color: var(--plan-negative-amount);
 }
 
+.plan-app.plan-csv-gate .plan-header {
+  display: none;
+}
+
+.plan-app.plan-csv-gate .plan-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.plan-app.plan-csv-gate #plan-root {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 0;
+}
+
+.plan-app.plan-csv-gate .plan-footer {
+  flex-shrink: 0;
+}
+
 .plan-csv-load {
   max-width: 32rem;
   margin: 3rem auto;
   padding: 0 1.5rem;
   text-align: center;
+}
+
+.plan-app.plan-csv-gate .plan-csv-load {
+  margin: auto;
 }
 
 .plan-csv-load h2 {
@@ -2672,6 +2826,12 @@ tr.row-sub-variance .col-amount.has-variance {
 .plan-csv-btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+#csv-grant-btn.plan-csv-btn {
+  padding: calc(0.2rem * 1.5) calc(0.5rem * 1.5);
+  font-size: calc(0.68rem * 1.5);
+  border-radius: calc(var(--plan-radius-sm) * 1.5);
 }
 
 .plan-csv-link-btn {
@@ -2779,24 +2939,17 @@ tr.row-sub-variance .col-amount.has-variance {
 }
 
 .revenue-plan-table .revenue-plan-col-client {
-  width: auto;
-  min-width: 11rem;
-  max-width: none;
   overflow: visible;
   text-overflow: clip;
-  white-space: normal;
-  text-align: left;
+  white-space: nowrap;
   vertical-align: middle;
 }
 
 .revenue-plan-table th.revenue-plan-col-client,
 .revenue-plan-table td.revenue-plan-col-client {
-  width: auto;
-  max-width: none;
   overflow: visible;
   text-overflow: clip;
-  white-space: normal;
-  text-align: left;
+  white-space: nowrap;
 }
 
 .revenue-plan-table .revenue-plan-col-kind {
@@ -2809,13 +2962,205 @@ tr.row-sub-variance .col-amount.has-variance {
   opacity: 0.92;
 }
 
+.salary-plan-table td.salary-plan-amount-cell.salary-plan-month-plan,
+.salary-plan-table td.salary-plan-amount-cell.salary-plan-month-plan.salary-plan-cell-editable {
+  color: var(--plan-amount-color);
+}
+
+.revenue-plan-table thead th.salary-plan-col-month.month-display-toggle {
+  cursor: pointer;
+  user-select: none;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22);
+}
+
+.revenue-plan-table thead th.salary-plan-col-month.month-display-toggle.month-display-plan,
+.misc-income-plan-table thead th.salary-plan-col-month.month-display-toggle.month-display-plan {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--plan-amount-color) 45%, transparent);
+}
+
+.revenue-plan-table thead th.salary-plan-col-month.month-display-toggle:focus-visible,
+.misc-income-plan-table thead th.salary-plan-col-month.month-display-toggle:focus-visible {
+  outline: 1px solid color-mix(in srgb, var(--plan-amount-color) 70%, white);
+  outline-offset: -2px;
+}
+
+.revenue-plan-table thead th.salary-plan-col-month.month-display-actual,
+.misc-income-plan-table thead th.salary-plan-col-month.month-display-actual {
+  color: var(--plan-month-row-text);
+}
+
+.revenue-plan-table thead th.salary-plan-col-month.month-display-plan,
+.misc-income-plan-table thead th.salary-plan-col-month.month-display-plan {
+  color: var(--plan-amount-color);
+}
+
 .revenue-plan-table tbody tr.revenue-plan-total-row td.salary-plan-amount-cell.salary-plan-amount-changed,
 .revenue-plan-table tbody tr.revenue-plan-total-row td.salary-plan-amount-cell.salary-plan-amount-start-month {
   color: var(--plan-amount-variance-color) !important;
 }
 
+.expand-settings-wrap.revenue-settings-wrap .revenue-plan-table tbody tr.revenue-plan-total-row td {
+  background: var(--plan-month-row-bg);
+  color: var(--plan-month-row-text);
+  border-top-color: var(--plan-month-row-bg);
+}
+
+.expand-settings-wrap.revenue-settings-wrap .revenue-plan-table tbody tr.revenue-plan-total-row:hover td {
+  background: var(--plan-month-row-bg);
+}
+
+.expand-settings-wrap.revenue-settings-wrap .revenue-plan-table tbody tr.revenue-plan-total-row td.salary-plan-month-plan {
+  color: var(--plan-amount-color);
+}
+
 .revenue-period-add-form .outsourcing-add-form-row {
   flex-wrap: wrap;
+}
+
+.revenue-settings-wrap .tax-payment-plan-years-input {
+  width: calc((3ch + 1.25rem) * var(--revenue-plan-font-scale, 1));
+  min-width: 0;
+  max-width: calc((3ch + 1.25rem) * var(--revenue-plan-font-scale, 1));
+  padding-left: 0.35rem;
+  padding-right: 0.35rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.revenue-settings-wrap .salary-plan-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 1rem;
+}
+
+.revenue-settings-wrap .salary-plan-title {
+  margin: 0;
+  flex: 0 0 auto;
+}
+
+.revenue-settings-wrap .salary-plan-desc {
+  margin: 0;
+  flex: 1 1 auto;
+  min-width: 12rem;
+}
+
+.expand-settings-wrap.revenue-settings-wrap {
+  --revenue-col-client-w: 5rem;
+  --revenue-col-kind-w: 4.25rem;
+  --revenue-col-month-w: 4.75rem;
+  --revenue-col-total-w: 5.25rem;
+  --revenue-col-actions-w: 6.5rem;
+  --revenue-plan-font-scale: 1;
+  --revenue-desc-size: clamp(0.68rem, 0.32vw + 0.62rem, 0.8rem);
+  --revenue-title-size: clamp(0.82rem, 0.42vw + 0.72rem, 1rem);
+  --revenue-period-title-size: clamp(0.72rem, 0.35vw + 0.64rem, 0.88rem);
+  --revenue-hint-size: 0.7rem;
+  --revenue-label-size: 0.75rem;
+  --revenue-control-size: 0.75rem;
+  --revenue-btn-size: 0.68rem;
+  --revenue-plan-table-font-size: calc(var(--plan-settings-font-size) * var(--revenue-plan-font-scale));
+}
+
+.expand-settings-wrap.revenue-settings-wrap .expand-settings-desc {
+  font-size: calc(var(--revenue-desc-size) * var(--revenue-plan-font-scale));
+  white-space: normal;
+  width: 100%;
+  max-width: 100%;
+  line-height: 1.5;
+}
+
+.expand-settings-wrap.revenue-settings-wrap .salary-plan-desc {
+  font-size: calc(var(--revenue-desc-size) * var(--revenue-plan-font-scale));
+  white-space: normal;
+  line-height: 1.5;
+}
+
+.expand-settings-wrap.revenue-settings-wrap .salary-plan-title {
+  font-size: calc(var(--revenue-title-size) * var(--revenue-plan-font-scale));
+}
+
+.expand-settings-wrap.revenue-settings-wrap .salary-plan-title.salary-plan-title--section-filter {
+  display: inline-block;
+  box-sizing: border-box;
+  margin: 0;
+  border: 1px solid var(--plan-button-border);
+  border-radius: var(--plan-radius-sm);
+  padding: calc(0.28rem * var(--revenue-plan-font-scale, 1)) calc(0.55rem * var(--revenue-plan-font-scale, 1));
+  background: var(--filter-btn-bg, transparent);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.expand-settings-wrap.revenue-settings-wrap .salary-plan-period-title {
+  font-size: calc(var(--revenue-period-title-size) * var(--revenue-plan-font-scale));
+}
+
+.expand-settings-wrap.revenue-settings-wrap .tax-payment-plan-years-hint,
+.expand-settings-wrap.revenue-settings-wrap .tax-payment-plan-years-row .app-settings-label {
+  font-size: calc(var(--revenue-hint-size) * var(--revenue-plan-font-scale));
+}
+
+.expand-settings-wrap.revenue-settings-wrap .tax-payment-plan-years-input,
+.expand-settings-wrap.revenue-settings-wrap .outsourcing-add-input {
+  font-size: calc(var(--revenue-control-size) * var(--revenue-plan-font-scale));
+}
+
+.expand-settings-wrap.revenue-settings-wrap .outsourcing-add-label {
+  font-size: calc(var(--revenue-label-size) * var(--revenue-plan-font-scale));
+}
+
+.expand-settings-wrap.revenue-settings-wrap .employee-status-msg {
+  font-size: calc(var(--revenue-desc-size) * var(--revenue-plan-font-scale));
+}
+
+.expand-settings-wrap.revenue-settings-wrap .revenue-period-add-form .plan-csv-btn,
+.expand-settings-wrap.revenue-settings-wrap .revenue-period-add-form .expand-reset-btn,
+.expand-settings-wrap.revenue-settings-wrap .revenue-client-order-btn {
+  font-size: calc(var(--revenue-btn-size) * var(--revenue-plan-font-scale));
+}
+
+.expand-settings-wrap.revenue-settings-wrap .revenue-plan-table,
+.expand-settings-wrap.revenue-settings-wrap .misc-income-plan-table {
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  table-layout: fixed;
+  font-size: var(--revenue-plan-table-font-size);
+}
+
+.expand-settings-wrap.revenue-settings-wrap col.revenue-col-client {
+  width: var(--revenue-col-client-w);
+}
+
+.expand-settings-wrap.revenue-settings-wrap col.revenue-col-kind {
+  width: var(--revenue-col-kind-w);
+}
+
+.expand-settings-wrap.revenue-settings-wrap col.revenue-col-month {
+  width: var(--revenue-col-month-w);
+}
+
+.expand-settings-wrap.revenue-settings-wrap col.revenue-col-total {
+  width: var(--revenue-col-total-w);
+}
+
+.expand-settings-wrap.revenue-settings-wrap col.revenue-col-actions {
+  width: var(--revenue-col-actions-w);
+}
+
+.expand-settings-wrap.revenue-settings-wrap .revenue-plan-col-spacer {
+  padding-left: 0.2rem;
+  padding-right: 0.2rem;
+}
+
+.revenue-settings-wrap .revenue-period-add-form {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+  margin-bottom: 0.5rem;
 }
 
 .revenue-client-order-wrap {
@@ -2841,8 +3186,7 @@ tr.row-sub-variance .col-amount.has-variance {
 .revenue-client-name-label {
   display: block;
   overflow: visible;
-  white-space: normal;
-  word-break: break-word;
+  white-space: nowrap;
   line-height: 1.35;
 }
 
@@ -3152,9 +3496,12 @@ tr.row-sub-variance .col-amount.has-variance {
 
 .salary-plan-period-title {
   margin: 0 0 0.75rem;
+  padding: 0.35rem 0.65rem;
   font-size: 0.85rem;
   font-weight: 700;
-  color: var(--plan-text);
+  background: var(--plan-period-header-bg);
+  color: var(--plan-period-header-text);
+  border-radius: var(--plan-radius-sm);
 }
 
 .salary-plan-table-wrap {
@@ -3282,6 +3629,90 @@ tr.row-sub-variance .col-amount.has-variance {
   box-shadow: inset 0 0 0 1px var(--plan-editor-border-hover);
 }
 
+.expand-settings-table tbody tr:hover td.salary-plan-amount-cell.salary-plan-cell-editable:not(.salary-plan-cell-disabled) {
+  background-color: var(--plan-popup-row-hover);
+  box-shadow: inset 0 0 0 1px var(--plan-editor-border);
+}
+
+.expand-settings-table tbody tr:hover td.salary-plan-amount-cell.salary-plan-cell-editable:not(.salary-plan-cell-disabled):hover {
+  background-color: var(--plan-editor-bg-hover);
+  box-shadow: inset 0 0 0 1px var(--plan-editor-border-hover);
+}
+
+.revenue-plan-table tbody tr.is-revenue-client-group-hover td:not(.col-section-label),
+.revenue-plan-table tbody td.is-revenue-client-group-hover {
+  background: var(--plan-popup-row-hover);
+}
+
+.revenue-plan-table tbody tr.is-revenue-client-group-hover td.salary-plan-amount-cell.salary-plan-cell-editable:not(.salary-plan-cell-disabled),
+.revenue-plan-table tbody td.is-revenue-client-group-hover.salary-plan-amount-cell.salary-plan-cell-editable:not(.salary-plan-cell-disabled) {
+  background-color: var(--plan-popup-row-hover);
+  box-shadow: inset 0 0 0 1px var(--plan-editor-border);
+}
+
+.revenue-plan-table tbody tr.is-revenue-client-group-hover td.salary-plan-amount-cell.salary-plan-cell-editable:not(.salary-plan-cell-disabled):hover,
+.revenue-plan-table tbody td.is-revenue-client-group-hover.salary-plan-amount-cell.salary-plan-cell-editable:not(.salary-plan-cell-disabled):hover {
+  background-color: var(--plan-editor-bg-hover);
+  box-shadow: inset 0 0 0 1px var(--plan-editor-border-hover);
+}
+
+/* 設定表: セル編集時も行高を変えない（input をセル内に絶対配置） */
+.salary-plan-table tbody td.salary-plan-amount-cell:has(> .salary-plan-amount-input) {
+  position: relative;
+  overflow: hidden;
+}
+
+.salary-plan-table tbody td.salary-plan-amount-cell > .salary-plan-amount-input {
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 0 0.2rem;
+  border: none;
+  border-radius: 0;
+  background: var(--plan-editor-bg);
+  color: var(--plan-text);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  line-height: inherit;
+  box-shadow: inset 0 0 0 1px var(--plan-editor-border);
+}
+
+.salary-plan-table tbody td.salary-plan-amount-cell > .salary-plan-amount-input:focus {
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--plan-editor-border-hover);
+}
+
+.revenue-plan-table td.revenue-plan-col-client:has(.revenue-client-name-input) {
+  position: relative;
+  overflow: hidden;
+}
+
+.revenue-plan-table td.revenue-plan-col-client .revenue-client-name-label:has(.revenue-client-name-input) {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.revenue-plan-table td.revenue-plan-col-client .revenue-client-name-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: none;
+  height: 100%;
+  margin: 0;
+  padding: 0 0.35rem;
+  border-radius: 0;
+  font-size: inherit;
+}
+
 .salary-plan-cell-disabled {
   background: transparent;
   box-shadow: none;
@@ -3297,6 +3728,31 @@ tr.row-sub-variance .col-amount.has-variance {
 }
 
 .salary-plan-total-label {
+  text-align: center;
+}
+
+/* 設定ページ内は共通ルールを優先（ヘッダー中央・それ以外右寄せ） */
+.expand-settings-wrap .expand-settings-table,
+.expand-settings-wrap .salary-plan-table,
+.expand-settings-wrap .employee-settings-table {
+  font-size: var(--plan-settings-font-size);
+}
+
+.expand-settings-wrap .salary-plan-table tbody td:not(.col-out-actions),
+.expand-settings-wrap .salary-plan-table tfoot td,
+.expand-settings-wrap .employee-settings-table tbody td:not(.col-out-actions),
+.expand-settings-wrap .employee-settings-table tfoot td {
+  text-align: right;
+}
+
+.expand-settings-wrap .salary-plan-table thead th,
+.expand-settings-wrap .employee-settings-table thead th {
+  text-align: center;
+}
+
+.expand-settings-wrap .salary-plan-table tbody td.col-out-actions,
+.expand-settings-wrap .employee-settings-table tbody td.col-out-actions,
+.expand-settings-wrap .salary-plan-table td.expand-settings-empty {
   text-align: center;
 }
 
@@ -3570,6 +4026,7 @@ body.plan-journal-open {
   --dashboard-main-chart-min-height: calc(280px * var(--plan-viewport-scale, 1) + 3.4rem);
   --dashboard-bottom-charts-min-height: calc(200px * var(--plan-viewport-scale, 1) + 2.4rem);
   --dashboard-main-legend-slot-height: 4.5rem;
+  --dashboard-sidebar-width: 22rem;
   padding: var(--dashboard-frame-padding);
   box-sizing: border-box;
   padding-bottom: 0.75rem;
@@ -3708,7 +4165,7 @@ body.plan-journal-open {
 
 .dashboard-grid {
   display: grid;
-  grid-template-columns: minmax(12rem, max-content) minmax(0, 1fr) minmax(12rem, max-content);
+  grid-template-columns: var(--dashboard-sidebar-width) minmax(0, 1fr) var(--dashboard-sidebar-width);
   grid-template-rows: minmax(0, 1fr);
   gap: 0.5rem;
   flex: 1 1 auto;
@@ -3723,7 +4180,7 @@ body.plan-journal-open {
   flex-direction: column;
   width: 100%;
   min-width: 0;
-  max-width: 22rem;
+  max-width: 100%;
   min-height: 0;
   height: 100%;
   border: 1px solid var(--plan-border);
@@ -3834,6 +4291,7 @@ body.plan-journal-open {
   flex: 1 1 0;
   min-height: 0;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   padding: 0.12rem 0;
   text-align: left;
 }

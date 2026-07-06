@@ -57,6 +57,7 @@ let dashboardMountCtx = null;
 let dashGradientSeq = 0;
 let dashChartContextMenuEl = null;
 let dashChartContextMenuCleanup = null;
+let dashBalanceClickCleanup = null;
 
 function dashCloseChartContextMenu() {
   dashChartContextMenuCleanup?.();
@@ -2072,7 +2073,6 @@ function dashRenderSidebarList(container, items, checkedKeys, totalLabel, header
   onSortModeChange = null,
   drilldownCtx = null,
   ensureChartMode = null,
-  switchChartMode = null,
   deductionLabel = null,
   colorMap = null,
   pieCenterTitleLines = null,
@@ -2180,13 +2180,6 @@ function dashRenderSidebarList(container, items, checkedKeys, totalLabel, header
       });
     }
   }
-
-  container.addEventListener('click', (ev) => {
-    if (ev.target.closest('button, .dashboard-sidebar-check, .dashboard-sidebar-name, .dashboard-sidebar-amount')) {
-      return;
-    }
-    switchChartMode?.();
-  });
 
   const pieHost = document.createElement('div');
   pieHost.className = 'dashboard-sidebar-pie';
@@ -2430,11 +2423,6 @@ function dashRenderDashboardContent(wrap, ctx, { animate = false, animateMainCha
     ensureChartMode: () => {
       state.chartMode = mode;
     },
-    switchChartMode: () => {
-      if (state.chartMode === mode) return;
-      state.chartMode = mode;
-      dashRenderDashboardContent(wrap, ctx, { animateMainChart: true });
-    },
   });
 
   const revenueChartMode = makeSidebarChartModeHandlers('revenue');
@@ -2561,6 +2549,79 @@ function dashRenderDashboardContent(wrap, ctx, { animate = false, animateMainCha
   );
 }
 
+function dashSwitchToChartMode(wrap, mode) {
+  const ctx = dashboardMountCtx;
+  if (!ctx || !wrap?.isConnected) return;
+  if (ctx.state.chartMode === mode) return;
+  ctx.state.chartMode = mode;
+  dashRenderDashboardContent(wrap, {
+    data: ctx.data,
+    prevData: ctx.prevData,
+    prevPrevData: ctx.prevPrevData,
+    appSettings: ctx.appSettings,
+    state: ctx.state,
+    showJournalPopup: ctx.showJournalPopup,
+    hasJournalDrilldown: ctx.hasJournalDrilldown,
+  }, { animateMainChart: true });
+}
+
+const DASH_CLICK_ROUTE_INTERACTIVE =
+  'button, input, select, textarea, a,'
+  + ' .plan-row-context-menu, .plan-main-menu-panel, .plan-period-select-panel,'
+  + ' [role="menu"], [role="listbox"]';
+const DASH_SIDEBAR_ROW_CONTROLS =
+  '.dashboard-sidebar-check, .dashboard-sidebar-name, .dashboard-sidebar-amount';
+const DASH_MAIN_CHART = '.dashboard-chart-main';
+const DASH_SIDEBAR = '.dashboard-sidebar';
+
+function dashIsDashboardClickInteractive(ev) {
+  return Boolean(ev.target.closest(DASH_CLICK_ROUTE_INTERACTIVE));
+}
+
+function dashIsSidebarClick(ev) {
+  return Boolean(ev.target.closest(DASH_SIDEBAR));
+}
+
+function dashIsSidebarRowControlClick(ev) {
+  return Boolean(ev.target.closest(DASH_SIDEBAR_ROW_CONTROLS));
+}
+
+function dashIsMainChartClick(ev) {
+  return Boolean(ev.target.closest(DASH_MAIN_CHART));
+}
+
+function dashUnbindDashboardClickRouting() {
+  dashBalanceClickCleanup?.();
+  dashBalanceClickCleanup = null;
+}
+
+function dashBindDashboardClickRouting(wrap, { revenueEl, expenseEl }) {
+  dashUnbindDashboardClickRouting();
+  const planApp = document.querySelector('.plan-app');
+  if (!planApp) return;
+
+  const controller = new AbortController();
+  const { signal } = controller;
+  dashBalanceClickCleanup = () => controller.abort();
+
+  planApp.addEventListener('click', (ev) => {
+    if (!dashboardMountCtx || !wrap.isConnected) return;
+    if (dashIsDashboardClickInteractive(ev) || dashIsMainChartClick(ev) || dashIsSidebarClick(ev)) return;
+    dashSwitchToChartMode(wrap, 'balance');
+  }, { signal });
+
+  const bindSidebarOverride = (el, mode) => {
+    el?.addEventListener('click', (ev) => {
+      if (!dashboardMountCtx || !wrap.isConnected) return;
+      if (dashIsDashboardClickInteractive(ev) || dashIsSidebarRowControlClick(ev)) return;
+      ev.stopPropagation();
+      dashSwitchToChartMode(wrap, mode);
+    }, { signal });
+  };
+  bindSidebarOverride(revenueEl, 'revenue');
+  bindSidebarOverride(expenseEl, 'expense');
+}
+
 export function mountDashboardPanel({
   replaceRootPanel,
   setPlanKpi,
@@ -2652,6 +2713,11 @@ export function mountDashboardPanel({
   wrap.append(toolbar, grid);
   replaceRootPanel(wrap);
 
+  dashBindDashboardClickRouting(wrap, {
+    revenueEl: grid.querySelector('.dashboard-sidebar-revenue'),
+    expenseEl: grid.querySelector('.dashboard-sidebar-expense'),
+  });
+
   toolbar.querySelectorAll('.dashboard-mode-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
       state.chartMode = btn.dataset.mode;
@@ -2714,6 +2780,7 @@ export function mountDashboardPanel({
 }
 
 export function resetDashboardState({ fiscalPeriod = null } = {}) {
+  dashUnbindDashboardClickRouting();
   dashboardMountCtx = null;
   dashClearSidebarPreferences();
   if (fiscalPeriod != null) dashClearCheckedKeys(fiscalPeriod);

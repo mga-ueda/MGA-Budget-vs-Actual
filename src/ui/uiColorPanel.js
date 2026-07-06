@@ -697,7 +697,7 @@ export function mountUiColorPanel(container, {
   registerBgRow('ダッシュボード・預金残高推移（高）', 'dashboardCashLineHigh', '高');
   registerJournalTintRow('ダッシュボード・グラフ（影）', 'dashboardChartShadowColor', () => getDashboardChartShadowAlpha(getConfig()), 'サンプル', 'browserBg');
 
-  registerBgTextRow('年行（ヘッダー）', 'yearRowBg', 'yearRowText', `${new Date().getFullYear()}年`, false);
+  registerBgTextRow('期見出し', 'periodHeaderBg', 'periodHeaderText', `${new Date().getFullYear()}年10月期`, false);
   registerBgTextRow('ヘッダー行', 'monthRowBg', 'monthRowText', `${new Date().getMonth() + 1}月`, false);
   registerBorderRow('当月列（オーバーレイ）', 'currentMonthBorder', 'monthRowBg', `${new Date().getMonth() + 1}月`, 'monthRowText');
   registerJournalTintRow('決算整理列（オーバーレイ）', 'settlementMonthBg', SETTLEMENT_MONTH_OVERLAY_HEAD_ALPHA, '決算整理', 'monthRowBg', 'monthRowText', true, true);
