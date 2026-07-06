@@ -17,6 +17,7 @@ import {
   resetHoverBoostPercent,
   isHoverBoostPercentCustom,
   DEFAULT_HOVER_BOOST_PERCENT,
+  getDashboardChartShadowAlpha,
 } from '../config/uiColorConfig.js';
 import { getSectionBarColor } from '../config/sectionColorConfig.js';
 
@@ -244,7 +245,7 @@ export function mountUiColorPanel(container, {
 
   modeSelect.addEventListener('change', () => {
     setConfig(switchUiColorMode(getConfig(), modeSelect.value));
-    persist({ flush: true, refreshToolbar: true });
+    persist({ flush: true, refreshToolbar: true, refreshView: true });
     onReRender?.();
   });
 
@@ -612,7 +613,6 @@ export function mountUiColorPanel(container, {
 
   const JOURNAL_OVERLAY_ALPHA = 0.65;
   const POPUP_SHADOW_ALPHA = 0.45;
-  const DASHBOARD_CHART_SHADOW_ALPHA = 0.22;
   const POPUP_ROW_HOVER_ALPHA = 0.08;
   const LOADING_OVERLAY_ALPHA = 0.38;
   const PLAN_EDITABLE_CELL_HOVER_ALPHA = 0.14;
@@ -621,12 +621,13 @@ export function mountUiColorPanel(container, {
   const tintPreviewBackground = (hex, alpha, underHex) =>
     `linear-gradient(${hexToRgba(hex, alpha)}, ${hexToRgba(hex, alpha)}), ${opaqueHex(underHex)}`;
 
-  const registerJournalTintRow = (label, key, alpha, previewText, previewBgKey = 'contextMenuBg', previewTextKey = 'textColor', withPreviewBorder = true, layerOverlay = false) => {
+  const registerJournalTintRow = (label, key, alphaOrFn, previewText, previewBgKey = 'contextMenuBg', previewTextKey = 'textColor', withPreviewBorder = true, layerOverlay = false) => {
+    const resolveAlpha = () => (typeof alphaOrFn === 'function' ? alphaOrFn() : alphaOrFn);
     const colors = getUiColors(getConfig());
     const bg = colorInputTd(colors[key]);
     const under = colors[previewBgKey] ?? colors.cellBg;
     const preview = previewTd({
-      background: layerOverlay ? under : tintPreviewBackground(colors[key], alpha, under),
+      background: layerOverlay ? under : tintPreviewBackground(colors[key], resolveAlpha(), under),
       color: colors[previewTextKey] ?? colors.textColor,
       text: previewText,
     });
@@ -635,7 +636,7 @@ export function mountUiColorPanel(container, {
       preview.span.style.position = 'relative';
       overlayLayer = document.createElement('span');
       overlayLayer.className = 'ui-color-preview-overlay-layer';
-      overlayLayer.style.background = hexToRgba(colors[key], alpha);
+      overlayLayer.style.background = hexToRgba(colors[key], resolveAlpha());
       preview.span.appendChild(overlayLayer);
     }
     if (withPreviewBorder) {
@@ -649,9 +650,9 @@ export function mountUiColorPanel(container, {
       if (layerOverlay) {
         preview.span.style.background = merged[previewBgKey] ?? merged.cellBg;
         preview.span.style.color = merged[previewTextKey] ?? merged.textColor;
-        overlayLayer.style.background = hexToRgba(merged[key], alpha);
+        overlayLayer.style.background = hexToRgba(merged[key], resolveAlpha());
       } else {
-        preview.span.style.background = tintPreviewBackground(merged[key], alpha, merged[previewBgKey] ?? merged.cellBg);
+        preview.span.style.background = tintPreviewBackground(merged[key], resolveAlpha(), merged[previewBgKey] ?? merged.cellBg);
         preview.span.style.color = merged[previewTextKey] ?? merged.textColor;
       }
       preview.span.style.boxShadow = withPreviewBorder
@@ -694,7 +695,7 @@ export function mountUiColorPanel(container, {
   registerBgRow('ダッシュボード・利益率推移（高）', 'dashboardProfitLineHigh', '高');
   registerBgRow('ダッシュボード・預金残高推移（低）', 'dashboardCashLineLow', '低');
   registerBgRow('ダッシュボード・預金残高推移（高）', 'dashboardCashLineHigh', '高');
-  registerJournalTintRow('ダッシュボード・グラフ（影）', 'dashboardChartShadowColor', DASHBOARD_CHART_SHADOW_ALPHA, 'サンプル', 'browserBg');
+  registerJournalTintRow('ダッシュボード・グラフ（影）', 'dashboardChartShadowColor', () => getDashboardChartShadowAlpha(getConfig()), 'サンプル', 'browserBg');
 
   registerBgTextRow('年行（ヘッダー）', 'yearRowBg', 'yearRowText', `${new Date().getFullYear()}年`, false);
   registerBgTextRow('ヘッダー行', 'monthRowBg', 'monthRowText', `${new Date().getMonth() + 1}月`, false);

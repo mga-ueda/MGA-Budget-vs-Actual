@@ -1341,6 +1341,13 @@ function getUiColorMode(config = {}) {
   return setting;
 }
 
+/** ダッシュボードグラフ影の不透明度（ダークモードは倍） */
+function getDashboardChartShadowAlpha(config = {}) {
+  return getUiColorMode(config) === 'dark'
+    ? DASHBOARD_CHART_SHADOW_ALPHA * 2
+    : DASHBOARD_CHART_SHADOW_ALPHA;
+}
+
 /** OS の配色モード変更を監視（system 選択時に使用） */
 function subscribeSystemColorMode(onChange) {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
@@ -1781,7 +1788,7 @@ function applyUiColors(config = {}) {
   root.style.setProperty('--dashboard-cash-line-high', opaqueHex(dashboardCashLineHigh));
   root.style.setProperty(
     '--dashboard-chart-drop-shadow',
-    `0 4px 12px ${hexToRgba(dashboardChartShadowColor, DASHBOARD_CHART_SHADOW_ALPHA)}`,
+    `0 4px 12px ${hexToRgba(dashboardChartShadowColor, getDashboardChartShadowAlpha(config))}`,
   );
   root.style.setProperty('--plan-kbd-bg', opaqueHex(kbdBg));
   root.style.setProperty('--plan-kbd-text', opaqueHex(kbdTextColor));
@@ -9508,6 +9515,36 @@ const DEFAULT_COMPANY_NAME = 'MIYABI GAME AUDIO INC.';
 const DEFAULT_BRAND_ICON_TEXT = 'MGA';
 const DEFAULT_BRAND_FILL_COLOR = '#2563eb';
 const DEFAULT_BRAND_TEXT_COLOR = '#ffffff';
+const DEFAULT_BRAND_LOGO_OUTLINE_COLOR = '#a6a6a6';
+const DEFAULT_BRAND_LOGO_OUTLINE_WIDTH = 0;
+const MIN_BRAND_LOGO_OUTLINE_WIDTH = 0;
+const MAX_BRAND_LOGO_OUTLINE_WIDTH = 5;
+const DEFAULT_BRAND_LOGO_SHADOW_ENABLED = false;
+const DEFAULT_BRAND_LOGO_SHADOW_COLOR = '#000000';
+const DEFAULT_BRAND_LOGO_SHADOW_STRENGTH = 1;
+
+/** ダークモード用ロゴ画像スタイルの初期値 */
+const DEFAULT_BRAND_LOGO_IMAGE_DARK = {
+  outlineColor: '#a6a6a6',
+  outlineWidth: 0,
+  shadowEnabled: false,
+  shadowColor: '#000000',
+  shadowStrength: 1,
+};
+
+/** ライトモード用ロゴ画像スタイルの初期値 */
+const DEFAULT_BRAND_LOGO_IMAGE_LIGHT = {
+  outlineColor: '#a6a6a6',
+  outlineWidth: 0.4,
+  shadowEnabled: true,
+  shadowColor: '#000000',
+  shadowStrength: 1,
+};
+const MIN_BRAND_LOGO_SHADOW_STRENGTH = 0;
+const MAX_BRAND_LOGO_SHADOW_STRENGTH = 5;
+const BRAND_LOGO_SHADOW_ALPHA = 0.4;
+const BRAND_LOGO_SHADOW_OFFSET_PX = 2;
+const BRAND_LOGO_SHADOW_BLUR_PX = 3;
 
 /** ロゴ画像の最大サイズ（バイト） */
 const MAX_BRAND_LOGO_BYTES = 512 * 1024;
@@ -9546,6 +9583,243 @@ function hasBrandLogo(settings) {
   return normalizeBrandLogoDataUrl(settings?.brandLogoDataUrl) != null;
 }
 
+function normalizeBrandLogoOutlineWidth(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return DEFAULT_BRAND_LOGO_OUTLINE_WIDTH;
+  const clamped = Math.min(MAX_BRAND_LOGO_OUTLINE_WIDTH, Math.max(MIN_BRAND_LOGO_OUTLINE_WIDTH, n));
+  return Math.round(clamped * 10) / 10;
+}
+
+function formatBrandLogoOutlineWidth(value) {
+  return normalizeBrandLogoOutlineWidth(value).toFixed(1);
+}
+
+function normalizeBrandLogoShadowEnabled(value) {
+  return Boolean(value);
+}
+
+function normalizeBrandLogoShadowStrength(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return DEFAULT_BRAND_LOGO_SHADOW_STRENGTH;
+  const clamped = Math.min(
+    MAX_BRAND_LOGO_SHADOW_STRENGTH,
+    Math.max(MIN_BRAND_LOGO_SHADOW_STRENGTH, n),
+  );
+  return Math.round(clamped * 10) / 10;
+}
+
+function formatBrandLogoShadowStrength(value) {
+  return normalizeBrandLogoShadowStrength(value).toFixed(1);
+}
+
+function normalizeBrandLogoImageModeBucket(raw = {}) {
+  return {
+    outlineColor: normalizeBrandColor(raw.outlineColor, DEFAULT_BRAND_LOGO_OUTLINE_COLOR),
+    outlineWidth: normalizeBrandLogoOutlineWidth(raw.outlineWidth),
+    shadowEnabled: normalizeBrandLogoShadowEnabled(raw.shadowEnabled),
+    shadowColor: normalizeBrandColor(raw.shadowColor, DEFAULT_BRAND_LOGO_SHADOW_COLOR),
+    shadowStrength: normalizeBrandLogoShadowStrength(raw.shadowStrength),
+  };
+}
+
+function normalizeBrandLogoImageByMode(raw = {}) {
+  return {
+    dark: normalizeBrandLogoImageModeBucket(raw.dark ?? {}),
+    light: normalizeBrandLogoImageModeBucket(raw.light ?? {}),
+  };
+}
+
+function createDefaultBrandLogoImageByMode() {
+  return {
+    dark: normalizeBrandLogoImageModeBucket(DEFAULT_BRAND_LOGO_IMAGE_DARK),
+    light: normalizeBrandLogoImageModeBucket(DEFAULT_BRAND_LOGO_IMAGE_LIGHT),
+  };
+}
+
+function migrateBrandLogoImageFromParsed(parsed) {
+  if (parsed?.brandLogoImage && (parsed.brandLogoImage.dark || parsed.brandLogoImage.light)) {
+    return normalizeBrandLogoImageByMode(parsed.brandLogoImage);
+  }
+  const legacyBucket = normalizeBrandLogoImageModeBucket({
+    outlineColor: parsed?.brandLogoOutlineColor,
+    outlineWidth: parsed?.brandLogoOutlineWidth,
+    shadowEnabled: parsed?.brandLogoShadowEnabled,
+    shadowColor: parsed?.brandLogoShadowColor,
+    shadowStrength: parsed?.brandLogoShadowStrength,
+  });
+  return {
+    dark: { ...legacyBucket },
+    light: { ...legacyBucket },
+  };
+}
+
+function getBrandLogoImageSettings(settings, mode = 'dark') {
+  const normalized = normalizeBrandLogoImageByMode(settings?.brandLogoImage ?? {});
+  return normalized[mode === 'light' ? 'light' : 'dark'];
+}
+
+function setBrandLogoImageModeSettings(settings, mode, patch) {
+  const key = mode === 'light' ? 'light' : 'dark';
+  const normalized = normalizeBrandLogoImageByMode(settings?.brandLogoImage ?? {});
+  return {
+    ...settings,
+    brandLogoImage: {
+      ...normalized,
+      [key]: normalizeBrandLogoImageModeBucket({
+        ...normalized[key],
+        ...patch,
+      }),
+    },
+  };
+}
+
+function resolveBrandLogoVisualSettings(settings, mode = 'dark') {
+  const img = getBrandLogoImageSettings(settings, mode);
+  return {
+    brandLogoOutlineColor: img.outlineColor,
+    brandLogoOutlineWidth: img.outlineWidth,
+    brandLogoShadowEnabled: img.shadowEnabled,
+    brandLogoShadowColor: img.shadowColor,
+    brandLogoShadowStrength: img.shadowStrength,
+  };
+}
+
+function getBrandLogoImageModeLabel(mode = 'dark') {
+  return mode === 'light' ? 'ライトモード' : 'ダークモード';
+}
+
+function brandColorToRgba(hex, alpha) {
+  const normalized = normalizeBrandColor(hex, DEFAULT_BRAND_LOGO_SHADOW_COLOR);
+  const h = normalized.slice(1);
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function buildBrandLogoShadowFilter(settings, viewportScale = getViewportScale()) {
+  if (!normalizeBrandLogoShadowEnabled(settings?.brandLogoShadowEnabled)) return '';
+  const strength = normalizeBrandLogoShadowStrength(settings?.brandLogoShadowStrength);
+  if (strength <= 0) return '';
+  const color = brandColorToRgba(
+    settings?.brandLogoShadowColor,
+    Math.min(1, BRAND_LOGO_SHADOW_ALPHA * strength),
+  );
+  const offset = Math.round(BRAND_LOGO_SHADOW_OFFSET_PX * strength * viewportScale * 100) / 100;
+  const blur = Math.round(BRAND_LOGO_SHADOW_BLUR_PX * strength * viewportScale * 100) / 100;
+  return `drop-shadow(${offset}px ${offset}px ${blur}px ${color})`;
+}
+
+function buildBrandLogoImageFilter(settings, viewportScale = getViewportScale()) {
+  const parts = [];
+  const outline = buildBrandLogoOutlineFilter(settings, viewportScale);
+  if (outline !== 'none') parts.push(outline);
+  const shadow = buildBrandLogoShadowFilter(settings, viewportScale);
+  if (shadow) parts.push(shadow);
+  return parts.length ? parts.join(' ') : 'none';
+}
+
+const PLAN_LOGO_OUTLINE_FILTER_ID = 'plan-logo-outline-filter';
+const PLAN_LOGO_OUTLINE_MORPH_ID = 'plan-logo-outline-morph';
+const PLAN_LOGO_OUTLINE_FLOOD_ID = 'plan-logo-outline-flood';
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+function ensurePlanLogoOutlineSvgFilter() {
+  if (typeof document === 'undefined') return PLAN_LOGO_OUTLINE_FILTER_ID;
+  if (document.getElementById(PLAN_LOGO_OUTLINE_FILTER_ID)) {
+    return PLAN_LOGO_OUTLINE_FILTER_ID;
+  }
+
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('width', '0');
+  svg.setAttribute('height', '0');
+  svg.style.cssText = 'position:absolute;width:0;height:0;overflow:hidden;pointer-events:none;';
+
+  const defs = document.createElementNS(SVG_NS, 'defs');
+  const filter = document.createElementNS(SVG_NS, 'filter');
+  filter.id = PLAN_LOGO_OUTLINE_FILTER_ID;
+  filter.setAttribute('x', '-50%');
+  filter.setAttribute('y', '-50%');
+  filter.setAttribute('width', '200%');
+  filter.setAttribute('height', '200%');
+  filter.setAttribute('color-interpolation-filters', 'sRGB');
+  filter.setAttribute('primitiveUnits', 'userSpaceOnUse');
+
+  const morph = document.createElementNS(SVG_NS, 'feMorphology');
+  morph.id = PLAN_LOGO_OUTLINE_MORPH_ID;
+  morph.setAttribute('in', 'SourceAlpha');
+  morph.setAttribute('operator', 'dilate');
+  morph.setAttribute('radius', '1');
+  morph.setAttribute('result', 'dilated');
+
+  const flood = document.createElementNS(SVG_NS, 'feFlood');
+  flood.id = PLAN_LOGO_OUTLINE_FLOOD_ID;
+  flood.setAttribute('flood-color', DEFAULT_BRAND_LOGO_OUTLINE_COLOR);
+  flood.setAttribute('result', 'flood');
+
+  const composite = document.createElementNS(SVG_NS, 'feComposite');
+  composite.setAttribute('in', 'flood');
+  composite.setAttribute('in2', 'dilated');
+  composite.setAttribute('operator', 'in');
+  composite.setAttribute('result', 'outline');
+
+  const merge = document.createElementNS(SVG_NS, 'feMerge');
+  const outlineNode = document.createElementNS(SVG_NS, 'feMergeNode');
+  outlineNode.setAttribute('in', 'outline');
+  const sourceNode = document.createElementNS(SVG_NS, 'feMergeNode');
+  sourceNode.setAttribute('in', 'SourceGraphic');
+  merge.appendChild(outlineNode);
+  merge.appendChild(sourceNode);
+
+  filter.appendChild(morph);
+  filter.appendChild(flood);
+  filter.appendChild(composite);
+  filter.appendChild(merge);
+  defs.appendChild(filter);
+  svg.appendChild(defs);
+  document.body.appendChild(svg);
+  return PLAN_LOGO_OUTLINE_FILTER_ID;
+}
+
+function updatePlanLogoOutlineSvgFilter(radius, color) {
+  ensurePlanLogoOutlineSvgFilter();
+  document.getElementById(PLAN_LOGO_OUTLINE_MORPH_ID)?.setAttribute('radius', String(radius));
+  document.getElementById(PLAN_LOGO_OUTLINE_FLOOD_ID)?.setAttribute('flood-color', color);
+}
+
+function buildBrandLogoOutlineFilter(settings, viewportScale = getViewportScale()) {
+  const width = normalizeBrandLogoOutlineWidth(settings?.brandLogoOutlineWidth);
+  if (width <= 0) return 'none';
+  const color = normalizeBrandColor(
+    settings?.brandLogoOutlineColor,
+    DEFAULT_BRAND_LOGO_OUTLINE_COLOR,
+  );
+  const radius = Math.round(width * viewportScale * 100) / 100;
+  updatePlanLogoOutlineSvgFilter(radius, color);
+  return `url(#${PLAN_LOGO_OUTLINE_FILTER_ID})`;
+}
+
+function applyBrandLogoImageFilterToElement(img, filter) {
+  if (!img) return;
+  if (!filter || filter === 'none') {
+    img.style.filter = 'none';
+    return;
+  }
+  img.style.filter = 'none';
+  void img.offsetWidth;
+  img.style.filter = filter;
+}
+
+function applyBrandLogoImageFilters(settings, mode = 'dark') {
+  if (!hasBrandLogo(settings)) return;
+  const withVisual = { ...settings, ...resolveBrandLogoVisualSettings(settings, mode) };
+  const filter = buildBrandLogoImageFilter(withVisual);
+  document.querySelectorAll('.plan-logo-image img').forEach((img) => {
+    applyBrandLogoImageFilterToElement(img, filter);
+  });
+}
+
 function applyBrandToLogoElement(logoEl, settings) {
   if (!logoEl) return;
   const dataUrl = normalizeBrandLogoDataUrl(settings.brandLogoDataUrl);
@@ -9561,7 +9835,9 @@ function applyBrandToLogoElement(logoEl, settings) {
       img.alt = '';
       logoEl.appendChild(img);
     }
-    img.src = dataUrl;
+    if (img.src !== dataUrl) {
+      img.src = dataUrl;
+    }
     return;
   }
   logoEl.classList.remove('plan-logo-image');
@@ -9575,14 +9851,14 @@ function applyBrandToLogoElement(logoEl, settings) {
   logoEl.style.boxShadow = '';
 }
 
-function applyBrandSettings(settings) {
+function applyBrandSettings(settings, mode = 'dark') {
   document.querySelectorAll('.plan-logo').forEach((logo) => {
     applyBrandToLogoElement(logo, settings);
   });
-  const company = document.querySelector('.plan-company');
-  if (company) {
+  applyBrandLogoImageFilters(settings, mode);
+  document.querySelectorAll('.plan-company').forEach((company) => {
     company.textContent = normalizeCompanyName(settings.companyName);
-  }
+  });
 }
 
 const DEFAULT_APP_SETTINGS = {
@@ -9596,6 +9872,7 @@ const DEFAULT_APP_SETTINGS = {
   brandIconText: DEFAULT_BRAND_ICON_TEXT,
   brandFillColor: DEFAULT_BRAND_FILL_COLOR,
   brandTextColor: DEFAULT_BRAND_TEXT_COLOR,
+  brandLogoImage: createDefaultBrandLogoImageByMode(),
   consumptionTaxRates: DEFAULT_CONSUMPTION_TAX_RATES.map((r) => ({ ...r })),
   withholdingTaxRates: DEFAULT_WITHHOLDING_TAX_RATES.map((r) => ({ ...r })),
   legalWelfareRate: DEFAULT_LEGAL_WELFARE_RATE,
@@ -9885,6 +10162,7 @@ function loadBrandSettings(parsed) {
     brandIconText: normalizeBrandIconText(parsed?.brandIconText),
     brandFillColor: normalizeBrandColor(parsed?.brandFillColor, DEFAULT_BRAND_FILL_COLOR),
     brandTextColor: normalizeBrandColor(parsed?.brandTextColor, DEFAULT_BRAND_TEXT_COLOR),
+    brandLogoImage: migrateBrandLogoImageFromParsed(parsed),
     brandLogoDataUrl: normalizeBrandLogoDataUrl(parsed?.brandLogoDataUrl),
   };
 }
@@ -9959,6 +10237,7 @@ function resetOtherAppSettings(current) {
     brandIconText: DEFAULT_BRAND_ICON_TEXT,
     brandFillColor: DEFAULT_BRAND_FILL_COLOR,
     brandTextColor: DEFAULT_BRAND_TEXT_COLOR,
+    brandLogoImage: createDefaultBrandLogoImageByMode(),
     brandLogoDataUrl: null,
   };
 }
@@ -12166,7 +12445,7 @@ function mountUiColorPanel(container, {
 
   modeSelect.addEventListener('change', () => {
     setConfig(switchUiColorMode(getConfig(), modeSelect.value));
-    persist({ flush: true, refreshToolbar: true });
+    persist({ flush: true, refreshToolbar: true, refreshView: true });
     onReRender?.();
   });
 
@@ -12534,7 +12813,6 @@ function mountUiColorPanel(container, {
 
   const JOURNAL_OVERLAY_ALPHA = 0.65;
   const POPUP_SHADOW_ALPHA = 0.45;
-  const DASHBOARD_CHART_SHADOW_ALPHA = 0.22;
   const POPUP_ROW_HOVER_ALPHA = 0.08;
   const LOADING_OVERLAY_ALPHA = 0.38;
   const PLAN_EDITABLE_CELL_HOVER_ALPHA = 0.14;
@@ -12543,12 +12821,13 @@ function mountUiColorPanel(container, {
   const tintPreviewBackground = (hex, alpha, underHex) =>
     `linear-gradient(${hexToRgba(hex, alpha)}, ${hexToRgba(hex, alpha)}), ${opaqueHex(underHex)}`;
 
-  const registerJournalTintRow = (label, key, alpha, previewText, previewBgKey = 'contextMenuBg', previewTextKey = 'textColor', withPreviewBorder = true, layerOverlay = false) => {
+  const registerJournalTintRow = (label, key, alphaOrFn, previewText, previewBgKey = 'contextMenuBg', previewTextKey = 'textColor', withPreviewBorder = true, layerOverlay = false) => {
+    const resolveAlpha = () => (typeof alphaOrFn === 'function' ? alphaOrFn() : alphaOrFn);
     const colors = getUiColors(getConfig());
     const bg = colorInputTd(colors[key]);
     const under = colors[previewBgKey] ?? colors.cellBg;
     const preview = previewTd({
-      background: layerOverlay ? under : tintPreviewBackground(colors[key], alpha, under),
+      background: layerOverlay ? under : tintPreviewBackground(colors[key], resolveAlpha(), under),
       color: colors[previewTextKey] ?? colors.textColor,
       text: previewText,
     });
@@ -12557,7 +12836,7 @@ function mountUiColorPanel(container, {
       preview.span.style.position = 'relative';
       overlayLayer = document.createElement('span');
       overlayLayer.className = 'ui-color-preview-overlay-layer';
-      overlayLayer.style.background = hexToRgba(colors[key], alpha);
+      overlayLayer.style.background = hexToRgba(colors[key], resolveAlpha());
       preview.span.appendChild(overlayLayer);
     }
     if (withPreviewBorder) {
@@ -12571,9 +12850,9 @@ function mountUiColorPanel(container, {
       if (layerOverlay) {
         preview.span.style.background = merged[previewBgKey] ?? merged.cellBg;
         preview.span.style.color = merged[previewTextKey] ?? merged.textColor;
-        overlayLayer.style.background = hexToRgba(merged[key], alpha);
+        overlayLayer.style.background = hexToRgba(merged[key], resolveAlpha());
       } else {
-        preview.span.style.background = tintPreviewBackground(merged[key], alpha, merged[previewBgKey] ?? merged.cellBg);
+        preview.span.style.background = tintPreviewBackground(merged[key], resolveAlpha(), merged[previewBgKey] ?? merged.cellBg);
         preview.span.style.color = merged[previewTextKey] ?? merged.textColor;
       }
       preview.span.style.boxShadow = withPreviewBorder
@@ -12616,7 +12895,7 @@ function mountUiColorPanel(container, {
   registerBgRow('ダッシュボード・利益率推移（高）', 'dashboardProfitLineHigh', '高');
   registerBgRow('ダッシュボード・預金残高推移（低）', 'dashboardCashLineLow', '低');
   registerBgRow('ダッシュボード・預金残高推移（高）', 'dashboardCashLineHigh', '高');
-  registerJournalTintRow('ダッシュボード・グラフ（影）', 'dashboardChartShadowColor', DASHBOARD_CHART_SHADOW_ALPHA, 'サンプル', 'browserBg');
+  registerJournalTintRow('ダッシュボード・グラフ（影）', 'dashboardChartShadowColor', () => getDashboardChartShadowAlpha(getConfig()), 'サンプル', 'browserBg');
 
   registerBgTextRow('年行（ヘッダー）', 'yearRowBg', 'yearRowText', `${new Date().getFullYear()}年`, false);
   registerBgTextRow('ヘッダー行', 'monthRowBg', 'monthRowText', `${new Date().getMonth() + 1}月`, false);
@@ -19143,6 +19422,7 @@ let planViewportColumnWidthRaf = null;
 
 function applyPlanViewportScaleChange() {
   applyPlanDisplayScales();
+  applyBrandLogoImageFilters(appSettings, getPlanColorMode());
   invalidatePlanTableLayout();
   if (planViewportColumnWidthRaf !== null) {
     cancelAnimationFrame(planViewportColumnWidthRaf);
@@ -19428,6 +19708,8 @@ function refreshSectionColors() {
 }
 
 function refreshColorDependentViews({ rebuildData = true } = {}) {
+  applyBrandSettings(appSettings, getPlanColorMode());
+  if (activeTab === 'settings') renderOtherSettings();
   if (rebuildData) refreshSectionColors();
   if (activeTab === 'plan') refreshPlanTable();
   if (activeTab === 'dashboard' || document.querySelector('.dashboard-wrap')) {
@@ -21560,6 +21842,18 @@ function appendCsvNameSettingsPanel(wrap) {
   });
 
   wrap.appendChild(section);
+}
+
+function filterBrandLogoDecimalInput(value) {
+  const cleaned = String(value ?? '').replace(/[^\d.]/g, '');
+  const dotIndex = cleaned.indexOf('.');
+  if (dotIndex === -1) return cleaned;
+  const intPart = cleaned.slice(0, dotIndex);
+  const fracPart = cleaned.slice(dotIndex + 1).replace(/\./g, '').slice(0, 1);
+  if (fracPart.length > 0 || cleaned.endsWith('.')) {
+    return `${intPart}.${fracPart}`;
+  }
+  return `${intPart}.`;
 }
 
 function filterTaxRateIntegerInput(value) {
@@ -24132,6 +24426,7 @@ function renderOtherSettings() {
   form.innerHTML = `
     <div class="app-settings-section brand-settings-section other-settings-brand">
       <h2 class="ui-color-panel-title">ブランド表示</h2>
+      <p class="app-settings-hint brand-logo-image-mode-hint" id="brand-logo-image-mode-hint" hidden></p>
       <div class="other-settings-brand-row">
         <label class="app-settings-field other-settings-brand-field other-settings-brand-company-field">
           <span class="app-settings-label">会社名</span>
@@ -24147,6 +24442,30 @@ function renderOtherSettings() {
             <button type="button" class="settings-delete-btn brand-logo-clear-btn" id="brand-logo-clear-btn" hidden>削除</button>
           </div>
         </div>
+        <label class="app-settings-field other-settings-brand-color-field other-settings-brand-logo-image-field other-settings-brand-logo-outline-color-field" hidden>
+          <span class="app-settings-label">縁取り</span>
+          <input type="color" class="section-color-input" id="brand-logo-outline-color" />
+        </label>
+        <label class="app-settings-field other-settings-brand-field other-settings-brand-logo-image-field" hidden>
+          <span class="app-settings-label">縁取り太さ (px、0=なし)</span>
+          <input type="number" class="app-settings-input app-settings-input-outline-width" id="brand-logo-outline-width"
+            min="${MIN_BRAND_LOGO_OUTLINE_WIDTH}" max="${MAX_BRAND_LOGO_OUTLINE_WIDTH}" step="0.1"
+            inputmode="decimal" autocomplete="off" />
+        </label>
+        <label class="app-settings-field other-settings-brand-field other-settings-brand-logo-image-field" hidden>
+          <span class="app-settings-label">影</span>
+          <input type="checkbox" class="app-settings-checkbox" id="brand-logo-shadow-enabled" />
+        </label>
+        <label class="app-settings-field other-settings-brand-field other-settings-brand-logo-image-field other-settings-brand-logo-shadow-option-field" hidden>
+          <span class="app-settings-label">影の強さ (1.0=標準)</span>
+          <input type="number" class="app-settings-input app-settings-input-outline-width" id="brand-logo-shadow-strength"
+            min="${MIN_BRAND_LOGO_SHADOW_STRENGTH}" max="${MAX_BRAND_LOGO_SHADOW_STRENGTH}" step="0.1"
+            inputmode="decimal" autocomplete="off" />
+        </label>
+        <label class="app-settings-field other-settings-brand-color-field other-settings-brand-logo-image-field other-settings-brand-logo-shadow-option-field" hidden>
+          <span class="app-settings-label">影の色</span>
+          <input type="color" class="section-color-input" id="brand-logo-shadow-color" />
+        </label>
         <label class="app-settings-field other-settings-brand-field other-settings-brand-text-field">
           <span class="app-settings-label">アイコン表示</span>
           <input type="text" class="app-settings-input" id="brand-icon-text"
@@ -24160,10 +24479,6 @@ function renderOtherSettings() {
           <span class="app-settings-label">文字</span>
           <input type="color" class="section-color-input" id="brand-text-color" />
         </label>
-        <div class="brand-settings-preview" id="brand-settings-preview" aria-hidden="true">
-          <span class="plan-logo brand-settings-preview-logo" id="brand-preview-logo"></span>
-          <span class="plan-company brand-settings-preview-company" id="brand-preview-company"></span>
-        </div>
         <button type="button" class="expand-reset-btn other-settings-brand-reset-btn" id="app-settings-reset-btn">基本・ブランドをデフォルトに戻す</button>
       </div>
     </div>
@@ -24199,44 +24514,118 @@ function renderOtherSettings() {
   const brandIconTextInput = form.querySelector('#brand-icon-text');
   const brandFillColorInput = form.querySelector('#brand-fill-color');
   const brandTextColorInput = form.querySelector('#brand-text-color');
-  const brandPreviewLogo = form.querySelector('#brand-preview-logo');
-  const brandPreviewCompany = form.querySelector('#brand-preview-company');
+  const brandLogoOutlineColorInput = form.querySelector('#brand-logo-outline-color');
+  const brandLogoOutlineWidthInput = form.querySelector('#brand-logo-outline-width');
+  const brandLogoShadowEnabledInput = form.querySelector('#brand-logo-shadow-enabled');
+  const brandLogoShadowStrengthInput = form.querySelector('#brand-logo-shadow-strength');
+  const brandLogoShadowColorInput = form.querySelector('#brand-logo-shadow-color');
+  const brandLogoImageModeHint = form.querySelector('#brand-logo-image-mode-hint');
   const brandLogoFileInput = form.querySelector('#brand-logo-file');
   const brandLogoLoadBtn = form.querySelector('#brand-logo-load-btn');
   const brandLogoClearBtn = form.querySelector('#brand-logo-clear-btn');
   const brandTextFields = form.querySelectorAll('.other-settings-brand-text-field');
+  const brandLogoImageFields = form.querySelectorAll('.other-settings-brand-logo-image-field');
+  const brandLogoOutlineColorField = form.querySelector('.other-settings-brand-logo-outline-color-field');
+  const brandLogoShadowOptionFields = form.querySelectorAll('.other-settings-brand-logo-shadow-option-field');
 
-  function syncBrandTextFieldsVisibility() {
+  function populateBrandLogoImageForm() {
+    const mode = getPlanColorMode();
+    const img = getBrandLogoImageSettings(appSettings, mode);
+    if (brandLogoImageModeHint) {
+      brandLogoImageModeHint.hidden = !hasBrandLogo(appSettings);
+      brandLogoImageModeHint.textContent =
+        `ロゴの縁取り・影: ${getBrandLogoImageModeLabel(mode)}用の設定を編集中`;
+    }
+    brandLogoOutlineColorInput.value = img.outlineColor;
+    brandLogoOutlineWidthInput.value = formatBrandLogoOutlineWidth(img.outlineWidth);
+    brandLogoShadowEnabledInput.checked = img.shadowEnabled;
+    brandLogoShadowStrengthInput.value = formatBrandLogoShadowStrength(img.shadowStrength);
+    brandLogoShadowColorInput.value = img.shadowColor;
+  }
+
+  function syncBrandFieldsVisibility() {
     const logoActive = hasBrandLogo(appSettings);
+    const outlineActive = normalizeBrandLogoOutlineWidth(brandLogoOutlineWidthInput.value) > 0;
+    const shadowActive = brandLogoShadowEnabledInput.checked;
     brandTextFields.forEach((el) => {
       el.hidden = logoActive;
     });
+    brandLogoImageFields.forEach((el) => {
+      el.hidden = !logoActive;
+    });
     brandLogoClearBtn.hidden = !logoActive;
+    if (brandLogoOutlineColorField) {
+      brandLogoOutlineColorField.hidden = !logoActive || !outlineActive;
+    }
+    brandLogoShadowOptionFields.forEach((el) => {
+      el.hidden = !logoActive || !shadowActive;
+    });
   }
 
-  function refreshBrandPreview() {
-    brandPreviewCompany.textContent = appSettings.companyName;
-    applyBrandSettings(appSettings);
-    syncBrandTextFieldsVisibility();
+  function readBrandLogoImagePatchFromInputs() {
+    return {
+      outlineColor: normalizeBrandColor(
+        brandLogoOutlineColorInput.value,
+        DEFAULT_BRAND_LOGO_OUTLINE_COLOR,
+      ),
+      outlineWidth: normalizeBrandLogoOutlineWidth(brandLogoOutlineWidthInput.value),
+      shadowEnabled: brandLogoShadowEnabledInput.checked,
+      shadowStrength: normalizeBrandLogoShadowStrength(brandLogoShadowStrengthInput.value),
+      shadowColor: normalizeBrandColor(
+        brandLogoShadowColorInput.value,
+        DEFAULT_BRAND_LOGO_SHADOW_COLOR,
+      ),
+    };
   }
 
-  function saveBrandSettings() {
-    const next = {
+  function buildBrandSettingsDraftFromInputs() {
+    const mode = getPlanColorMode();
+    let draft = {
       ...appSettings,
       companyName: normalizeCompanyName(companyNameInput.value),
       brandFillColor: normalizeBrandColor(brandFillColorInput.value, DEFAULT_BRAND_FILL_COLOR),
       brandTextColor: normalizeBrandColor(brandTextColorInput.value, DEFAULT_BRAND_TEXT_COLOR),
     };
-    if (!hasBrandLogo(appSettings)) {
-      next.brandIconText = normalizeBrandIconText(brandIconTextInput.value);
+    if (hasBrandLogo(draft)) {
+      draft = setBrandLogoImageModeSettings(draft, mode, readBrandLogoImagePatchFromInputs());
+    } else {
+      draft.brandIconText = normalizeBrandIconText(brandIconTextInput.value);
     }
-    appSettings = next;
+    return draft;
+  }
+
+  function previewBrandSettingsFromInputs() {
+    applyBrandSettings(buildBrandSettingsDraftFromInputs(), getPlanColorMode());
+    syncBrandFieldsVisibility();
+  }
+
+  function refreshBrandSettings() {
+    applyBrandSettings(appSettings, getPlanColorMode());
+    syncBrandFieldsVisibility();
+  }
+
+  function saveBrandSettings() {
+    const mode = getPlanColorMode();
+    appSettings = buildBrandSettingsDraftFromInputs();
     saveAppSettings(appSettings);
     companyNameInput.value = appSettings.companyName;
     brandIconTextInput.value = appSettings.brandIconText;
     brandFillColorInput.value = appSettings.brandFillColor;
     brandTextColorInput.value = appSettings.brandTextColor;
-    refreshBrandPreview();
+    if (document.activeElement !== brandLogoOutlineWidthInput) {
+      brandLogoOutlineWidthInput.value = formatBrandLogoOutlineWidth(
+        getBrandLogoImageSettings(appSettings, mode).outlineWidth,
+      );
+    }
+    if (document.activeElement !== brandLogoShadowStrengthInput) {
+      brandLogoShadowStrengthInput.value = formatBrandLogoShadowStrength(
+        getBrandLogoImageSettings(appSettings, mode).shadowStrength,
+      );
+    }
+    brandLogoOutlineColorInput.value = getBrandLogoImageSettings(appSettings, mode).outlineColor;
+    brandLogoShadowEnabledInput.checked = getBrandLogoImageSettings(appSettings, mode).shadowEnabled;
+    brandLogoShadowColorInput.value = getBrandLogoImageSettings(appSettings, mode).shadowColor;
+    previewBrandSettingsFromInputs();
   }
 
   function readBrandLogoFile(file) {
@@ -24276,7 +24665,7 @@ function renderOtherSettings() {
         brandLogoDataUrl: normalized,
       };
       saveAppSettings(appSettings);
-      refreshBrandPreview();
+      refreshBrandSettings();
     } catch (err) {
       window.alert(err?.message ?? '画像の読み込みに失敗しました。');
     }
@@ -24288,7 +24677,7 @@ function renderOtherSettings() {
       brandLogoDataUrl: null,
     };
     saveAppSettings(appSettings);
-    refreshBrandPreview();
+    refreshBrandSettings();
   });
 
   for (let m = 1; m <= 12; m += 1) {
@@ -24311,12 +24700,54 @@ function renderOtherSettings() {
   brandIconTextInput.value = appSettings.brandIconText;
   brandFillColorInput.value = appSettings.brandFillColor;
   brandTextColorInput.value = appSettings.brandTextColor;
-  refreshBrandPreview();
+  populateBrandLogoImageForm();
+  refreshBrandSettings();
 
-  companyNameInput.addEventListener('change', saveBrandSettings);
-  brandIconTextInput.addEventListener('change', saveBrandSettings);
+  companyNameInput.addEventListener('input', saveBrandSettings);
+  brandIconTextInput.addEventListener('input', saveBrandSettings);
   brandFillColorInput.addEventListener('input', saveBrandSettings);
   brandTextColorInput.addEventListener('input', saveBrandSettings);
+  brandLogoOutlineColorInput.addEventListener('input', () => {
+    previewBrandSettingsFromInputs();
+    appSettings = buildBrandSettingsDraftFromInputs();
+    saveAppSettings(appSettings);
+  });
+  brandLogoShadowEnabledInput.addEventListener('input', saveBrandSettings);
+  brandLogoShadowColorInput.addEventListener('input', () => {
+    previewBrandSettingsFromInputs();
+    appSettings = buildBrandSettingsDraftFromInputs();
+    saveAppSettings(appSettings);
+  });
+  brandLogoOutlineWidthInput.addEventListener('input', () => {
+    const filtered = filterBrandLogoDecimalInput(brandLogoOutlineWidthInput.value);
+    if (filtered !== brandLogoOutlineWidthInput.value) {
+      brandLogoOutlineWidthInput.value = filtered;
+    }
+    previewBrandSettingsFromInputs();
+    appSettings = buildBrandSettingsDraftFromInputs();
+    saveAppSettings(appSettings);
+  });
+  brandLogoOutlineWidthInput.addEventListener('blur', () => {
+    const mode = getPlanColorMode();
+    brandLogoOutlineWidthInput.value = formatBrandLogoOutlineWidth(
+      getBrandLogoImageSettings(appSettings, mode).outlineWidth,
+    );
+  });
+  brandLogoShadowStrengthInput.addEventListener('input', () => {
+    const filtered = filterBrandLogoDecimalInput(brandLogoShadowStrengthInput.value);
+    if (filtered !== brandLogoShadowStrengthInput.value) {
+      brandLogoShadowStrengthInput.value = filtered;
+    }
+    previewBrandSettingsFromInputs();
+    appSettings = buildBrandSettingsDraftFromInputs();
+    saveAppSettings(appSettings);
+  });
+  brandLogoShadowStrengthInput.addEventListener('blur', () => {
+    const mode = getPlanColorMode();
+    brandLogoShadowStrengthInput.value = formatBrandLogoShadowStrength(
+      getBrandLogoImageSettings(appSettings, mode).shadowStrength,
+    );
+  });
 
   yearInput.addEventListener('input', () => {
     const filtered = filterTaxRateIntegerInput(yearInput.value);
@@ -24365,7 +24796,8 @@ function renderOtherSettings() {
     brandIconTextInput.value = appSettings.brandIconText;
     brandFillColorInput.value = appSettings.brandFillColor;
     brandTextColorInput.value = appSettings.brandTextColor;
-    refreshBrandPreview();
+    populateBrandLogoImageForm();
+    refreshBrandSettings();
     syncPeriodControls();
     refreshPreview();
     if (activeTab === 'plan' && data) refreshPlanTable();
@@ -24688,7 +25120,7 @@ function reloadAllSettingsFromStorage() {
   applyClosedPeriodPlanPurgeIfNeeded();
 
   applyUiColors(uiColorConfig);
-  applyBrandSettings(appSettings);
+  applyBrandSettings(appSettings, getPlanColorMode());
   applyFontScale(appSettings.fontScale);
   applyRowPaddingScale(appSettings.rowPaddingScale);
   refreshPlanRowPaddingScaleControl();
@@ -24803,7 +25235,7 @@ async function init() {
     refreshToolbarFilterStyles();
     renderToolbar();
   });
-  applyBrandSettings(appSettings);
+  applyBrandSettings(appSettings, getPlanColorMode());
   applyFontScale(appSettings.fontScale);
   applyRowPaddingScale(appSettings.rowPaddingScale);
   renderToolbar();

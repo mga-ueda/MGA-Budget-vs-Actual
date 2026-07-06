@@ -272,6 +272,13 @@ export function getUiColorMode(config = {}) {
   return setting;
 }
 
+/** ダッシュボードグラフ影の不透明度（ダークモードは倍） */
+export function getDashboardChartShadowAlpha(config = {}) {
+  return getUiColorMode(config) === 'dark'
+    ? DASHBOARD_CHART_SHADOW_ALPHA * 2
+    : DASHBOARD_CHART_SHADOW_ALPHA;
+}
+
 /** OS の配色モード変更を監視（system 選択時に使用） */
 export function subscribeSystemColorMode(onChange) {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
@@ -712,7 +719,7 @@ export function applyUiColors(config = {}) {
   root.style.setProperty('--dashboard-cash-line-high', opaqueHex(dashboardCashLineHigh));
   root.style.setProperty(
     '--dashboard-chart-drop-shadow',
-    `0 4px 12px ${hexToRgba(dashboardChartShadowColor, DASHBOARD_CHART_SHADOW_ALPHA)}`,
+    `0 4px 12px ${hexToRgba(dashboardChartShadowColor, getDashboardChartShadowAlpha(config))}`,
   );
   root.style.setProperty('--plan-kbd-bg', opaqueHex(kbdBg));
   root.style.setProperty('--plan-kbd-text', opaqueHex(kbdTextColor));

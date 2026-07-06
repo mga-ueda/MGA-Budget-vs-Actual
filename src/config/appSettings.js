@@ -40,6 +40,36 @@ export const DEFAULT_COMPANY_NAME = 'MIYABI GAME AUDIO INC.';
 export const DEFAULT_BRAND_ICON_TEXT = 'MGA';
 export const DEFAULT_BRAND_FILL_COLOR = '#2563eb';
 export const DEFAULT_BRAND_TEXT_COLOR = '#ffffff';
+export const DEFAULT_BRAND_LOGO_OUTLINE_COLOR = '#a6a6a6';
+export const DEFAULT_BRAND_LOGO_OUTLINE_WIDTH = 0;
+export const MIN_BRAND_LOGO_OUTLINE_WIDTH = 0;
+export const MAX_BRAND_LOGO_OUTLINE_WIDTH = 5;
+export const DEFAULT_BRAND_LOGO_SHADOW_ENABLED = false;
+export const DEFAULT_BRAND_LOGO_SHADOW_COLOR = '#000000';
+export const DEFAULT_BRAND_LOGO_SHADOW_STRENGTH = 1;
+
+/** ダークモード用ロゴ画像スタイルの初期値 */
+const DEFAULT_BRAND_LOGO_IMAGE_DARK = {
+  outlineColor: '#a6a6a6',
+  outlineWidth: 0,
+  shadowEnabled: false,
+  shadowColor: '#000000',
+  shadowStrength: 1,
+};
+
+/** ライトモード用ロゴ画像スタイルの初期値 */
+const DEFAULT_BRAND_LOGO_IMAGE_LIGHT = {
+  outlineColor: '#a6a6a6',
+  outlineWidth: 0.4,
+  shadowEnabled: true,
+  shadowColor: '#000000',
+  shadowStrength: 1,
+};
+export const MIN_BRAND_LOGO_SHADOW_STRENGTH = 0;
+export const MAX_BRAND_LOGO_SHADOW_STRENGTH = 5;
+const BRAND_LOGO_SHADOW_ALPHA = 0.4;
+const BRAND_LOGO_SHADOW_OFFSET_PX = 2;
+const BRAND_LOGO_SHADOW_BLUR_PX = 3;
 
 /** ロゴ画像の最大サイズ（バイト） */
 export const MAX_BRAND_LOGO_BYTES = 512 * 1024;
@@ -78,6 +108,243 @@ export function hasBrandLogo(settings) {
   return normalizeBrandLogoDataUrl(settings?.brandLogoDataUrl) != null;
 }
 
+export function normalizeBrandLogoOutlineWidth(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return DEFAULT_BRAND_LOGO_OUTLINE_WIDTH;
+  const clamped = Math.min(MAX_BRAND_LOGO_OUTLINE_WIDTH, Math.max(MIN_BRAND_LOGO_OUTLINE_WIDTH, n));
+  return Math.round(clamped * 10) / 10;
+}
+
+export function formatBrandLogoOutlineWidth(value) {
+  return normalizeBrandLogoOutlineWidth(value).toFixed(1);
+}
+
+export function normalizeBrandLogoShadowEnabled(value) {
+  return Boolean(value);
+}
+
+export function normalizeBrandLogoShadowStrength(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return DEFAULT_BRAND_LOGO_SHADOW_STRENGTH;
+  const clamped = Math.min(
+    MAX_BRAND_LOGO_SHADOW_STRENGTH,
+    Math.max(MIN_BRAND_LOGO_SHADOW_STRENGTH, n),
+  );
+  return Math.round(clamped * 10) / 10;
+}
+
+export function formatBrandLogoShadowStrength(value) {
+  return normalizeBrandLogoShadowStrength(value).toFixed(1);
+}
+
+function normalizeBrandLogoImageModeBucket(raw = {}) {
+  return {
+    outlineColor: normalizeBrandColor(raw.outlineColor, DEFAULT_BRAND_LOGO_OUTLINE_COLOR),
+    outlineWidth: normalizeBrandLogoOutlineWidth(raw.outlineWidth),
+    shadowEnabled: normalizeBrandLogoShadowEnabled(raw.shadowEnabled),
+    shadowColor: normalizeBrandColor(raw.shadowColor, DEFAULT_BRAND_LOGO_SHADOW_COLOR),
+    shadowStrength: normalizeBrandLogoShadowStrength(raw.shadowStrength),
+  };
+}
+
+function normalizeBrandLogoImageByMode(raw = {}) {
+  return {
+    dark: normalizeBrandLogoImageModeBucket(raw.dark ?? {}),
+    light: normalizeBrandLogoImageModeBucket(raw.light ?? {}),
+  };
+}
+
+export function createDefaultBrandLogoImageByMode() {
+  return {
+    dark: normalizeBrandLogoImageModeBucket(DEFAULT_BRAND_LOGO_IMAGE_DARK),
+    light: normalizeBrandLogoImageModeBucket(DEFAULT_BRAND_LOGO_IMAGE_LIGHT),
+  };
+}
+
+function migrateBrandLogoImageFromParsed(parsed) {
+  if (parsed?.brandLogoImage && (parsed.brandLogoImage.dark || parsed.brandLogoImage.light)) {
+    return normalizeBrandLogoImageByMode(parsed.brandLogoImage);
+  }
+  const legacyBucket = normalizeBrandLogoImageModeBucket({
+    outlineColor: parsed?.brandLogoOutlineColor,
+    outlineWidth: parsed?.brandLogoOutlineWidth,
+    shadowEnabled: parsed?.brandLogoShadowEnabled,
+    shadowColor: parsed?.brandLogoShadowColor,
+    shadowStrength: parsed?.brandLogoShadowStrength,
+  });
+  return {
+    dark: { ...legacyBucket },
+    light: { ...legacyBucket },
+  };
+}
+
+export function getBrandLogoImageSettings(settings, mode = 'dark') {
+  const normalized = normalizeBrandLogoImageByMode(settings?.brandLogoImage ?? {});
+  return normalized[mode === 'light' ? 'light' : 'dark'];
+}
+
+export function setBrandLogoImageModeSettings(settings, mode, patch) {
+  const key = mode === 'light' ? 'light' : 'dark';
+  const normalized = normalizeBrandLogoImageByMode(settings?.brandLogoImage ?? {});
+  return {
+    ...settings,
+    brandLogoImage: {
+      ...normalized,
+      [key]: normalizeBrandLogoImageModeBucket({
+        ...normalized[key],
+        ...patch,
+      }),
+    },
+  };
+}
+
+export function resolveBrandLogoVisualSettings(settings, mode = 'dark') {
+  const img = getBrandLogoImageSettings(settings, mode);
+  return {
+    brandLogoOutlineColor: img.outlineColor,
+    brandLogoOutlineWidth: img.outlineWidth,
+    brandLogoShadowEnabled: img.shadowEnabled,
+    brandLogoShadowColor: img.shadowColor,
+    brandLogoShadowStrength: img.shadowStrength,
+  };
+}
+
+export function getBrandLogoImageModeLabel(mode = 'dark') {
+  return mode === 'light' ? 'ライトモード' : 'ダークモード';
+}
+
+function brandColorToRgba(hex, alpha) {
+  const normalized = normalizeBrandColor(hex, DEFAULT_BRAND_LOGO_SHADOW_COLOR);
+  const h = normalized.slice(1);
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+export function buildBrandLogoShadowFilter(settings, viewportScale = getViewportScale()) {
+  if (!normalizeBrandLogoShadowEnabled(settings?.brandLogoShadowEnabled)) return '';
+  const strength = normalizeBrandLogoShadowStrength(settings?.brandLogoShadowStrength);
+  if (strength <= 0) return '';
+  const color = brandColorToRgba(
+    settings?.brandLogoShadowColor,
+    Math.min(1, BRAND_LOGO_SHADOW_ALPHA * strength),
+  );
+  const offset = Math.round(BRAND_LOGO_SHADOW_OFFSET_PX * strength * viewportScale * 100) / 100;
+  const blur = Math.round(BRAND_LOGO_SHADOW_BLUR_PX * strength * viewportScale * 100) / 100;
+  return `drop-shadow(${offset}px ${offset}px ${blur}px ${color})`;
+}
+
+export function buildBrandLogoImageFilter(settings, viewportScale = getViewportScale()) {
+  const parts = [];
+  const outline = buildBrandLogoOutlineFilter(settings, viewportScale);
+  if (outline !== 'none') parts.push(outline);
+  const shadow = buildBrandLogoShadowFilter(settings, viewportScale);
+  if (shadow) parts.push(shadow);
+  return parts.length ? parts.join(' ') : 'none';
+}
+
+const PLAN_LOGO_OUTLINE_FILTER_ID = 'plan-logo-outline-filter';
+const PLAN_LOGO_OUTLINE_MORPH_ID = 'plan-logo-outline-morph';
+const PLAN_LOGO_OUTLINE_FLOOD_ID = 'plan-logo-outline-flood';
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+function ensurePlanLogoOutlineSvgFilter() {
+  if (typeof document === 'undefined') return PLAN_LOGO_OUTLINE_FILTER_ID;
+  if (document.getElementById(PLAN_LOGO_OUTLINE_FILTER_ID)) {
+    return PLAN_LOGO_OUTLINE_FILTER_ID;
+  }
+
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('width', '0');
+  svg.setAttribute('height', '0');
+  svg.style.cssText = 'position:absolute;width:0;height:0;overflow:hidden;pointer-events:none;';
+
+  const defs = document.createElementNS(SVG_NS, 'defs');
+  const filter = document.createElementNS(SVG_NS, 'filter');
+  filter.id = PLAN_LOGO_OUTLINE_FILTER_ID;
+  filter.setAttribute('x', '-50%');
+  filter.setAttribute('y', '-50%');
+  filter.setAttribute('width', '200%');
+  filter.setAttribute('height', '200%');
+  filter.setAttribute('color-interpolation-filters', 'sRGB');
+  filter.setAttribute('primitiveUnits', 'userSpaceOnUse');
+
+  const morph = document.createElementNS(SVG_NS, 'feMorphology');
+  morph.id = PLAN_LOGO_OUTLINE_MORPH_ID;
+  morph.setAttribute('in', 'SourceAlpha');
+  morph.setAttribute('operator', 'dilate');
+  morph.setAttribute('radius', '1');
+  morph.setAttribute('result', 'dilated');
+
+  const flood = document.createElementNS(SVG_NS, 'feFlood');
+  flood.id = PLAN_LOGO_OUTLINE_FLOOD_ID;
+  flood.setAttribute('flood-color', DEFAULT_BRAND_LOGO_OUTLINE_COLOR);
+  flood.setAttribute('result', 'flood');
+
+  const composite = document.createElementNS(SVG_NS, 'feComposite');
+  composite.setAttribute('in', 'flood');
+  composite.setAttribute('in2', 'dilated');
+  composite.setAttribute('operator', 'in');
+  composite.setAttribute('result', 'outline');
+
+  const merge = document.createElementNS(SVG_NS, 'feMerge');
+  const outlineNode = document.createElementNS(SVG_NS, 'feMergeNode');
+  outlineNode.setAttribute('in', 'outline');
+  const sourceNode = document.createElementNS(SVG_NS, 'feMergeNode');
+  sourceNode.setAttribute('in', 'SourceGraphic');
+  merge.appendChild(outlineNode);
+  merge.appendChild(sourceNode);
+
+  filter.appendChild(morph);
+  filter.appendChild(flood);
+  filter.appendChild(composite);
+  filter.appendChild(merge);
+  defs.appendChild(filter);
+  svg.appendChild(defs);
+  document.body.appendChild(svg);
+  return PLAN_LOGO_OUTLINE_FILTER_ID;
+}
+
+function updatePlanLogoOutlineSvgFilter(radius, color) {
+  ensurePlanLogoOutlineSvgFilter();
+  document.getElementById(PLAN_LOGO_OUTLINE_MORPH_ID)?.setAttribute('radius', String(radius));
+  document.getElementById(PLAN_LOGO_OUTLINE_FLOOD_ID)?.setAttribute('flood-color', color);
+}
+
+export function buildBrandLogoOutlineFilter(settings, viewportScale = getViewportScale()) {
+  const width = normalizeBrandLogoOutlineWidth(settings?.brandLogoOutlineWidth);
+  if (width <= 0) return 'none';
+  const color = normalizeBrandColor(
+    settings?.brandLogoOutlineColor,
+    DEFAULT_BRAND_LOGO_OUTLINE_COLOR,
+  );
+  const radius = Math.round(width * viewportScale * 100) / 100;
+  updatePlanLogoOutlineSvgFilter(radius, color);
+  return `url(#${PLAN_LOGO_OUTLINE_FILTER_ID})`;
+}
+
+function applyBrandLogoImageFilterToElement(img, filter) {
+  if (!img) return;
+  if (!filter || filter === 'none') {
+    img.style.filter = 'none';
+    return;
+  }
+  img.style.filter = 'none';
+  void img.offsetWidth;
+  img.style.filter = filter;
+}
+
+export function applyBrandLogoImageFilters(settings, mode = 'dark') {
+  if (!hasBrandLogo(settings)) return;
+  const withVisual = { ...settings, ...resolveBrandLogoVisualSettings(settings, mode) };
+  const filter = buildBrandLogoImageFilter(withVisual);
+  document.querySelectorAll('.plan-logo-image img').forEach((img) => {
+    applyBrandLogoImageFilterToElement(img, filter);
+  });
+}
+
 function applyBrandToLogoElement(logoEl, settings) {
   if (!logoEl) return;
   const dataUrl = normalizeBrandLogoDataUrl(settings.brandLogoDataUrl);
@@ -93,7 +360,9 @@ function applyBrandToLogoElement(logoEl, settings) {
       img.alt = '';
       logoEl.appendChild(img);
     }
-    img.src = dataUrl;
+    if (img.src !== dataUrl) {
+      img.src = dataUrl;
+    }
     return;
   }
   logoEl.classList.remove('plan-logo-image');
@@ -107,14 +376,14 @@ function applyBrandToLogoElement(logoEl, settings) {
   logoEl.style.boxShadow = '';
 }
 
-export function applyBrandSettings(settings) {
+export function applyBrandSettings(settings, mode = 'dark') {
   document.querySelectorAll('.plan-logo').forEach((logo) => {
     applyBrandToLogoElement(logo, settings);
   });
-  const company = document.querySelector('.plan-company');
-  if (company) {
+  applyBrandLogoImageFilters(settings, mode);
+  document.querySelectorAll('.plan-company').forEach((company) => {
     company.textContent = normalizeCompanyName(settings.companyName);
-  }
+  });
 }
 
 export const DEFAULT_APP_SETTINGS = {
@@ -128,6 +397,7 @@ export const DEFAULT_APP_SETTINGS = {
   brandIconText: DEFAULT_BRAND_ICON_TEXT,
   brandFillColor: DEFAULT_BRAND_FILL_COLOR,
   brandTextColor: DEFAULT_BRAND_TEXT_COLOR,
+  brandLogoImage: createDefaultBrandLogoImageByMode(),
   consumptionTaxRates: DEFAULT_CONSUMPTION_TAX_RATES.map((r) => ({ ...r })),
   withholdingTaxRates: DEFAULT_WITHHOLDING_TAX_RATES.map((r) => ({ ...r })),
   legalWelfareRate: DEFAULT_LEGAL_WELFARE_RATE,
@@ -417,6 +687,7 @@ function loadBrandSettings(parsed) {
     brandIconText: normalizeBrandIconText(parsed?.brandIconText),
     brandFillColor: normalizeBrandColor(parsed?.brandFillColor, DEFAULT_BRAND_FILL_COLOR),
     brandTextColor: normalizeBrandColor(parsed?.brandTextColor, DEFAULT_BRAND_TEXT_COLOR),
+    brandLogoImage: migrateBrandLogoImageFromParsed(parsed),
     brandLogoDataUrl: normalizeBrandLogoDataUrl(parsed?.brandLogoDataUrl),
   };
 }
@@ -491,6 +762,7 @@ export function resetOtherAppSettings(current) {
     brandIconText: DEFAULT_BRAND_ICON_TEXT,
     brandFillColor: DEFAULT_BRAND_FILL_COLOR,
     brandTextColor: DEFAULT_BRAND_TEXT_COLOR,
+    brandLogoImage: createDefaultBrandLogoImageByMode(),
     brandLogoDataUrl: null,
   };
 }

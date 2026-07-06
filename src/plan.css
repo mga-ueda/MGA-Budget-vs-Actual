@@ -944,6 +944,11 @@ select.app-settings-input {
   text-align: center;
 }
 
+.app-settings-input-outline-width {
+  width: 4.5rem;
+  text-align: center;
+}
+
 .app-settings-input-fiscal-month {
   width: 6.75rem;
   text-align: center;
@@ -1041,6 +1046,15 @@ select.app-settings-input {
   gap: 1rem;
 }
 
+.other-settings-brand {
+  padding-top: 0;
+}
+
+.other-settings-brand .brand-logo-image-mode-hint {
+  margin: 0 0 0.5rem;
+  flex: 1 1 100%;
+}
+
 .other-settings-brand-row {
   display: flex;
   flex-wrap: wrap;
@@ -1073,16 +1087,18 @@ select.app-settings-input {
   flex: 0 0 auto;
 }
 
+.app-settings-checkbox {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  accent-color: var(--plan-primary-btn-bg);
+}
+
 .brand-logo-controls {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem;
-}
-
-.other-settings-brand .brand-settings-preview {
-  margin-top: 0;
-  flex: 0 0 auto;
 }
 
 .other-settings-brand-reset-btn {
@@ -1127,24 +1143,6 @@ select.app-settings-input {
 
 .brand-color-row {
   align-items: flex-end;
-}
-
-.brand-settings-preview {
-  display: flex;
-  align-items: center;
-  gap: 0.625rem;
-  margin-top: 0.35rem;
-  padding: 0.65rem 0.75rem;
-  border-radius: var(--plan-radius-md);
-  background: var(--plan-surface);
-  border: 1px solid var(--plan-border);
-  box-shadow: var(--plan-shadow-sm);
-  width: fit-content;
-  max-width: 100%;
-}
-
-.brand-settings-preview-company {
-  text-transform: uppercase;
 }
 
 .consumption-tax-rate-section,
