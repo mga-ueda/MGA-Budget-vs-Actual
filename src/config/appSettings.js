@@ -418,9 +418,8 @@ export function formatFontScaleMultiplier(uiScale) {
   return `×${normalizeFontScale(uiScale).toFixed(2).replace(/(\.\d)0$/, '$1')}`;
 }
 
-export function applyFontScale(uiScale) {
+export function applyFontScale(uiScale, contentFitScale = getContentFitScale()) {
   const viewportScale = getViewportScale();
-  const contentFitScale = getContentFitScale();
   const actual = Math.round(fontScaleUiToActual(uiScale) * viewportScale * contentFitScale * 100) / 100;
   document.documentElement.style.setProperty(
     '--plan-font-scale',
@@ -440,9 +439,8 @@ export function formatRowPaddingScaleMultiplier(uiScale) {
   return `行間 ×${n.toFixed(1)}`;
 }
 
-export function applyRowPaddingScale(uiScale) {
+export function applyRowPaddingScale(uiScale, contentFitScale = getContentFitScale()) {
   const viewportScale = getViewportScale();
-  const contentFitScale = getContentFitScale();
   const actual = Math.round(normalizeRowPaddingScale(uiScale) * viewportScale * contentFitScale * 100) / 100;
   document.documentElement.style.setProperty(
     '--plan-row-padding-scale',

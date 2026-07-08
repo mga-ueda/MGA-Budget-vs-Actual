@@ -87,7 +87,6 @@ import {
   bindViewportScale,
   applyViewportScale,
   computeViewportScale,
-  resetContentFitScale,
   setContentFitScale,
   getContentFitScale,
   getViewportScale,
@@ -686,7 +685,11 @@ function syncPeriodControls() {
   if (nextBtn) nextBtn.disabled = appSettings.fiscalPeriod >= maxPeriod;
 
   if (modeEl) {
-    modeEl.style.display = '';
+    // 予実表表示中のみ「予実表示」等のモードバッジを出す
+    const showMode = activeTab === 'plan';
+    modeEl.hidden = !showMode;
+    modeEl.style.display = showMode ? '' : 'none';
+    if (!showMode) return;
     const mode = getFiscalPeriodDisplayMode(
       appSettings.businessStartYear,
       appSettings.fiscalPeriod,
@@ -934,6 +937,21 @@ function capturePlanTableContentFitBaseline() {
   lastPlanTableContentFitScale = getContentFitScale();
   lastPlanTableFitViewportWidth = getLayoutViewportWidth();
   lastPlanTableFitViewportScale = getViewportScale() || 1;
+}
+
+/** 予実表初回レイアウト後の UI 倍率（ヘッダー行間含む）を復元する */
+function restoreLockedPlanUiDisplayScale() {
+  if (!planTableInitialLayoutDone || lastPlanTableFitViewportWidth == null) return;
+  setContentFitScale(lastPlanTableContentFitScale);
+  applyPlanDisplayScales();
+}
+
+/** ヘッダー等の UI 表示に使う content fit 倍率（予実表以外は固定） */
+function getPlanUiContentFitScale() {
+  if (planTableInitialLayoutDone && lastPlanTableFitViewportWidth != null && activeTab !== 'plan') {
+    return lastPlanTableContentFitScale;
+  }
+  return getContentFitScale();
 }
 
 const root = document.getElementById('plan-root');
@@ -1435,8 +1453,9 @@ function planTableOverflowsWrapContent(table) {
 }
 
 function applyPlanDisplayScales() {
-  applyFontScale(appSettings.fontScale);
-  applyRowPaddingScale(appSettings.rowPaddingScale);
+  const fit = getPlanUiContentFitScale();
+  applyFontScale(appSettings.fontScale, fit);
+  applyRowPaddingScale(appSettings.rowPaddingScale, fit);
 }
 
 /**
@@ -4067,24 +4086,29 @@ function applyDashboardContentFitEstimate() {
     * (lastPlanTableFitViewportScale / viewportScale);
   const prev = getContentFitScale();
   setContentFitScale(estimated);
-  return Math.abs(getContentFitScale() - prev) > 0.001;
+  const changed = Math.abs(getContentFitScale() - prev) > 0.001;
+  if (changed) capturePlanTableContentFitBaseline();
+  return changed;
 }
 
 /**
  * viewport 倍率が上下限で頭打ちになりリサイズ通知が来ない場合でも、
- * ダッシュボードのフォント倍率（content fit）をウィンドウ幅に追従させる
+ * 予実表以外の画面でも UI 倍率（content fit）をウィンドウ幅に追従させる
  */
-function scheduleDashboardViewportFitRefresh() {
+function schedulePlanUiViewportFitRefresh() {
   if (dashboardViewportFitRaf !== null) cancelAnimationFrame(dashboardViewportFitRaf);
   dashboardViewportFitRaf = requestAnimationFrame(() => {
     dashboardViewportFitRaf = null;
-    if (activeTab !== 'dashboard') return;
+    if (activeTab === 'plan') return;
+    if (!planTableInitialLayoutDone || lastPlanTableFitViewportWidth == null) return;
     if (applyDashboardContentFitEstimate()) applyPlanDisplayScales();
   });
 }
 
 function applyPlanViewportScaleChange() {
-  if (activeTab === 'dashboard') applyDashboardContentFitEstimate();
+  if (activeTab !== 'plan' && planTableInitialLayoutDone) {
+    setContentFitScale(lastPlanTableContentFitScale);
+  }
   applyPlanDisplayScales();
   applyBrandLogoImageFilters(appSettings, getPlanColorMode());
   invalidatePlanTableLayout();
@@ -4139,6 +4163,10 @@ function mountPlanRowPaddingScaleControl() {
 
 function refreshPlanRowPaddingScaleControl() {
   const el = ensurePlanRowPaddingScaleControl();
+  // 行間コントロールは予実表表示中のみ（CSS の display:flex があるので style も切替）
+  const show = activeTab === 'plan';
+  el.hidden = !show;
+  el.style.display = show ? '' : 'none';
   const scale = normalizeRowPaddingScale(appSettings.rowPaddingScale);
   el.querySelector('.plan-row-padding-scale-value').textContent = formatRowPaddingScaleMultiplier(scale);
   el.querySelector('[data-action="dec"]').disabled = scale <= MIN_ROW_PADDING_SCALE;
@@ -4149,7 +4177,7 @@ function applyPlanRowPaddingScaleSetting(scale) {
   appSettings = { ...appSettings, rowPaddingScale: normalizeRowPaddingScale(scale) };
   saveAppSettings(appSettings);
   // 行間は tbody の上下 padding のみ。列幅・content fit には影響しないので CSS 変数だけ更新する
-  applyRowPaddingScale(appSettings.rowPaddingScale);
+  applyRowPaddingScale(appSettings.rowPaddingScale, getPlanUiContentFitScale());
   refreshPlanRowPaddingScaleControl();
 }
 
@@ -4704,6 +4732,7 @@ function renderMainTabs() {
     menuTrigger.innerHTML = 'メニュー <kbd>F10</kbd>';
     menuTrigger.removeAttribute('title');
   }
+  if (planRowPaddingScaleEl) refreshPlanRowPaddingScaleControl();
   syncMainMenuChecks();
 }
 
@@ -4806,16 +4835,11 @@ function switchMainTab(nextTab) {
   if (prevTab === 'plan' && nextTab !== 'plan') {
     resetPlanBodyScroll();
     cachePlanTableColumnWidthsFromDom();
-    if (nextTab !== 'dashboard') resetContentFitScale();
-    applyPlanDisplayScales();
+    // content fit 倍率はリセットしない。設定画面でも予実表で確定した
+    // ヘッダー倍率を維持する（ウィンドウリサイズ時のみ追従して変わる）
   }
-  // ダッシュボードでは予実表と同じヘッダー倍率（content fit）を、
-  // どのタブから来ても現在のウィンドウ幅に合わせて適用する
   if (nextTab === 'dashboard' && prevTab !== 'dashboard') {
     resetDashboardPeriodRange();
-    setContentFitScale(lastPlanTableContentFitScale);
-    applyDashboardContentFitEstimate();
-    applyPlanDisplayScales();
   }
   if (prevTab === 'dashboard' && nextTab !== 'dashboard') {
     resetDashboardState({
@@ -4826,6 +4850,7 @@ function switchMainTab(nextTab) {
   }
   activeTab = nextTab;
   syncPeriodControls();
+  restoreLockedPlanUiDisplayScale();
   if (nextTab === 'plan' && prevTab !== 'plan') {
     resetPlanBodyScroll();
     const showLoading = shouldShowPlanLoadingOnTabReturn();
@@ -4865,6 +4890,7 @@ function renderView({ measureColumnWidths = false } = {}) {
   else if (activeTab === 'outsourcing') renderOutsourcingSettings();
   else if (activeTab === 'dashboard') renderDashboardView();
   else if (activeTab === 'settings') renderOtherSettings();
+  if (activeTab !== 'plan') restoreLockedPlanUiDisplayScale();
 }
 
 /** 複数期表示用に、指定期の範囲のデータを期の昇順で集める（取得できない期はスキップ） */
@@ -10758,8 +10784,7 @@ function reloadAllSettingsFromStorage() {
 
   applyUiColors(uiColorConfig);
   applyBrandSettings(appSettings, getPlanColorMode());
-  applyFontScale(appSettings.fontScale);
-  applyRowPaddingScale(appSettings.rowPaddingScale);
+  applyPlanDisplayScales();
   refreshPlanRowPaddingScaleControl();
   syncPeriodControls();
 
@@ -10866,7 +10891,7 @@ async function init() {
   setCsvGateMode(true);
   applyViewportScale(computeViewportScale());
   bindViewportScale(applyPlanViewportScaleChange);
-  window.addEventListener('resize', scheduleDashboardViewportFitRefresh);
+  window.addEventListener('resize', schedulePlanUiViewportFitRefresh);
   applyUiColors(uiColorConfig);
   subscribeSystemColorMode(() => {
     if (getUiColorModeSetting(uiColorConfig) !== 'system') return;
@@ -10877,8 +10902,7 @@ async function init() {
     renderToolbar();
   });
   applyBrandSettings(appSettings, getPlanColorMode());
-  applyFontScale(appSettings.fontScale);
-  applyRowPaddingScale(appSettings.rowPaddingScale);
+  applyPlanDisplayScales();
   renderToolbar();
   renderMainTabs();
   mountPlanRowPaddingScaleControl();
