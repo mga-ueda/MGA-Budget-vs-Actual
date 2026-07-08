@@ -16114,7 +16114,9 @@ function dashRenderSvgGroupedBarChart(container, series, labels, {
     const groupCount = labels.length;
     const barGroupW = plotW / Math.max(1, groupCount);
     const barGap = 4 * viewportScale;
-    const barW = Math.min(22 * viewportScale, Math.max(6, (barGroupW - barGap) / series.length - 4));
+    // 上限を固定 px でなく月枠幅にも追従させ、広い画面で棒間の隙間が開きすぎないようにする
+    const barWMax = Math.max(22 * viewportScale, (barGroupW * 0.62) / series.length);
+    const barW = Math.min(barWMax, Math.max(6, (barGroupW - barGap) / series.length - 4));
     const totalBarWidth = series.length * barW + (series.length - 1) * barGap;
 
     const gridLines = dashRenderYAxisGrid(yAxis, yScale, pad, width);
@@ -16588,7 +16590,8 @@ function dashRenderSvgStackedBarChart(container, series, labels, {
     const yScale = dashMakeYScale(yAxis, pad, plotH);
     const groupCount = labels.length;
     const barGroupW = plotW / Math.max(1, groupCount);
-    const barW = Math.min(38 * viewportScale, Math.max(8, barGroupW * 0.55));
+    // 固定 px の上限をやめ、月枠幅の一定割合で棒の太さを画面幅に追従させる
+    const barW = Math.max(8, barGroupW * 0.55);
 
     const gridLines = dashRenderYAxisGrid(yAxis, yScale, pad, width);
 
@@ -17977,8 +17980,19 @@ let planTableInitialLayoutDone = false;
 let lastPlanTableColumnWidths = null;
 /** 列幅キャッシュと対になるコンテンツフィット倍率（復帰時にフォントと列幅の整合を保つ） */
 let lastPlanTableContentFitScale = 1;
+/** 上記倍率を確定したときのレイアウト幅（ダッシュボード表示中のリサイズ追従の基準） */
+let lastPlanTableFitViewportWidth = null;
+/** 上記倍率を確定したときの viewport 倍率 */
+let lastPlanTableFitViewportScale = 1;
 /** フォント・余白変更など列幅の再計測が必要なとき true */
 let planTableLayoutInvalidated = false;
+
+/** content fit 倍率とその計測時のウィンドウ状態をまとめて記録する */
+function capturePlanTableContentFitBaseline() {
+  lastPlanTableContentFitScale = getContentFitScale();
+  lastPlanTableFitViewportWidth = getLayoutViewportWidth();
+  lastPlanTableFitViewportScale = getViewportScale() || 1;
+}
 
 const root = document.getElementById('plan-root');
 const planBody = () => document.querySelector('.plan-body');
@@ -18083,7 +18097,7 @@ function cachePlanTableColumnWidthsFromDom() {
   const table = root.querySelector('.plan-table');
   if (!table) return;
   lastPlanTableColumnWidths = readPlanTableColumnWidths(table);
-  lastPlanTableContentFitScale = getContentFitScale();
+  capturePlanTableContentFitBaseline();
 }
 
 function shouldShowPlanLoadingOnTabReturn() {
@@ -21072,8 +21086,43 @@ const PLAN_ROW_PADDING_BTN_ICON = {
 };
 let planRowPaddingScaleEl = null;
 let planViewportColumnWidthRaf = null;
+let dashboardViewportFitRaf = null;
+
+/**
+ * ダッシュボード表示中にウィンドウ幅が変わったとき、予実表を再レイアウトした場合の
+ * content fit 倍率を幅の比から見積もって適用する。
+ * これでリサイズ直後とリロード後の見た目が一致する。
+ */
+function applyDashboardContentFitEstimate() {
+  if (!lastPlanTableFitViewportWidth) return false;
+  const width = getLayoutViewportWidth();
+  if (!width) return false;
+  const viewportScale = computeViewportScale(width) || 1;
+  // 表の自然幅はフォント実寸（viewport 倍率 × content fit）にほぼ比例するため、
+  // 「レイアウト幅の比 ÷ viewport 倍率の比」で再レイアウト相当の fit 倍率が求まる
+  const estimated = lastPlanTableContentFitScale
+    * (width / lastPlanTableFitViewportWidth)
+    * (lastPlanTableFitViewportScale / viewportScale);
+  const prev = getContentFitScale();
+  setContentFitScale(estimated);
+  return Math.abs(getContentFitScale() - prev) > 0.001;
+}
+
+/**
+ * viewport 倍率が上下限で頭打ちになりリサイズ通知が来ない場合でも、
+ * ダッシュボードのフォント倍率（content fit）をウィンドウ幅に追従させる
+ */
+function scheduleDashboardViewportFitRefresh() {
+  if (dashboardViewportFitRaf !== null) cancelAnimationFrame(dashboardViewportFitRaf);
+  dashboardViewportFitRaf = requestAnimationFrame(() => {
+    dashboardViewportFitRaf = null;
+    if (activeTab !== 'dashboard') return;
+    if (applyDashboardContentFitEstimate()) applyPlanDisplayScales();
+  });
+}
 
 function applyPlanViewportScaleChange() {
+  if (activeTab === 'dashboard') applyDashboardContentFitEstimate();
   applyPlanDisplayScales();
   applyBrandLogoImageFilters(appSettings, getPlanColorMode());
   invalidatePlanTableLayout();
@@ -21795,12 +21844,14 @@ function switchMainTab(nextTab) {
   if (prevTab === 'plan' && nextTab !== 'plan') {
     resetPlanBodyScroll();
     cachePlanTableColumnWidthsFromDom();
-    // ダッシュボードでは予実表と同じヘッダー倍率（content fit）を維持する
-    if (nextTab === 'dashboard') {
-      setContentFitScale(lastPlanTableContentFitScale);
-    } else {
-      resetContentFitScale();
-    }
+    if (nextTab !== 'dashboard') resetContentFitScale();
+    applyPlanDisplayScales();
+  }
+  // ダッシュボードでは予実表と同じヘッダー倍率（content fit）を、
+  // どのタブから来ても現在のウィンドウ幅に合わせて適用する
+  if (nextTab === 'dashboard' && prevTab !== 'dashboard') {
+    setContentFitScale(lastPlanTableContentFitScale);
+    applyDashboardContentFitEstimate();
     applyPlanDisplayScales();
   }
   if (prevTab === 'dashboard' && nextTab !== 'dashboard') {
@@ -22838,7 +22889,7 @@ function renderTable({ measureColumnWidths = false } = {}) {
       onSettled: () => {
         planTableInitialLayoutDone = true;
         lastPlanTableColumnWidths = readPlanTableColumnWidths(table);
-        lastPlanTableContentFitScale = getContentFitScale();
+        capturePlanTableContentFitBaseline();
         planTableLayoutInvalidated = false;
         if (planLoadingAwaitLayout) finishPlanLoadingAfterLayout();
       },
@@ -22864,7 +22915,7 @@ function renderTable({ measureColumnWidths = false } = {}) {
       layoutPlanTableSinglePass(table);
     }
     lastPlanTableColumnWidths = readPlanTableColumnWidths(table);
-    lastPlanTableContentFitScale = getContentFitScale();
+    capturePlanTableContentFitBaseline();
     planTableLayoutInvalidated = false;
     if (planLoadingAwaitLayout) {
       finishPlanLoadingAfterLayout();
@@ -27664,6 +27715,7 @@ async function init() {
   setCsvGateMode(true);
   applyViewportScale(computeViewportScale());
   bindViewportScale(applyPlanViewportScaleChange);
+  window.addEventListener('resize', scheduleDashboardViewportFitRefresh);
   applyUiColors(uiColorConfig);
   subscribeSystemColorMode(() => {
     if (getUiColorModeSetting(uiColorConfig) !== 'system') return;

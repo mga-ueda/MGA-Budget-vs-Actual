@@ -89,6 +89,8 @@ import {
   resetContentFitScale,
   setContentFitScale,
   getContentFitScale,
+  getViewportScale,
+  getLayoutViewportWidth,
 } from '../config/viewportScale.js';
 import {
   downloadSettingsExport,
@@ -753,8 +755,19 @@ let planTableInitialLayoutDone = false;
 let lastPlanTableColumnWidths = null;
 /** 列幅キャッシュと対になるコンテンツフィット倍率（復帰時にフォントと列幅の整合を保つ） */
 let lastPlanTableContentFitScale = 1;
+/** 上記倍率を確定したときのレイアウト幅（ダッシュボード表示中のリサイズ追従の基準） */
+let lastPlanTableFitViewportWidth = null;
+/** 上記倍率を確定したときの viewport 倍率 */
+let lastPlanTableFitViewportScale = 1;
 /** フォント・余白変更など列幅の再計測が必要なとき true */
 let planTableLayoutInvalidated = false;
+
+/** content fit 倍率とその計測時のウィンドウ状態をまとめて記録する */
+function capturePlanTableContentFitBaseline() {
+  lastPlanTableContentFitScale = getContentFitScale();
+  lastPlanTableFitViewportWidth = getLayoutViewportWidth();
+  lastPlanTableFitViewportScale = getViewportScale() || 1;
+}
 
 const root = document.getElementById('plan-root');
 const planBody = () => document.querySelector('.plan-body');
@@ -859,7 +872,7 @@ function cachePlanTableColumnWidthsFromDom() {
   const table = root.querySelector('.plan-table');
   if (!table) return;
   lastPlanTableColumnWidths = readPlanTableColumnWidths(table);
-  lastPlanTableContentFitScale = getContentFitScale();
+  capturePlanTableContentFitBaseline();
 }
 
 function shouldShowPlanLoadingOnTabReturn() {
@@ -3848,8 +3861,43 @@ const PLAN_ROW_PADDING_BTN_ICON = {
 };
 let planRowPaddingScaleEl = null;
 let planViewportColumnWidthRaf = null;
+let dashboardViewportFitRaf = null;
+
+/**
+ * ダッシュボード表示中にウィンドウ幅が変わったとき、予実表を再レイアウトした場合の
+ * content fit 倍率を幅の比から見積もって適用する。
+ * これでリサイズ直後とリロード後の見た目が一致する。
+ */
+function applyDashboardContentFitEstimate() {
+  if (!lastPlanTableFitViewportWidth) return false;
+  const width = getLayoutViewportWidth();
+  if (!width) return false;
+  const viewportScale = computeViewportScale(width) || 1;
+  // 表の自然幅はフォント実寸（viewport 倍率 × content fit）にほぼ比例するため、
+  // 「レイアウト幅の比 ÷ viewport 倍率の比」で再レイアウト相当の fit 倍率が求まる
+  const estimated = lastPlanTableContentFitScale
+    * (width / lastPlanTableFitViewportWidth)
+    * (lastPlanTableFitViewportScale / viewportScale);
+  const prev = getContentFitScale();
+  setContentFitScale(estimated);
+  return Math.abs(getContentFitScale() - prev) > 0.001;
+}
+
+/**
+ * viewport 倍率が上下限で頭打ちになりリサイズ通知が来ない場合でも、
+ * ダッシュボードのフォント倍率（content fit）をウィンドウ幅に追従させる
+ */
+function scheduleDashboardViewportFitRefresh() {
+  if (dashboardViewportFitRaf !== null) cancelAnimationFrame(dashboardViewportFitRaf);
+  dashboardViewportFitRaf = requestAnimationFrame(() => {
+    dashboardViewportFitRaf = null;
+    if (activeTab !== 'dashboard') return;
+    if (applyDashboardContentFitEstimate()) applyPlanDisplayScales();
+  });
+}
 
 function applyPlanViewportScaleChange() {
+  if (activeTab === 'dashboard') applyDashboardContentFitEstimate();
   applyPlanDisplayScales();
   applyBrandLogoImageFilters(appSettings, getPlanColorMode());
   invalidatePlanTableLayout();
@@ -4571,12 +4619,14 @@ function switchMainTab(nextTab) {
   if (prevTab === 'plan' && nextTab !== 'plan') {
     resetPlanBodyScroll();
     cachePlanTableColumnWidthsFromDom();
-    // ダッシュボードでは予実表と同じヘッダー倍率（content fit）を維持する
-    if (nextTab === 'dashboard') {
-      setContentFitScale(lastPlanTableContentFitScale);
-    } else {
-      resetContentFitScale();
-    }
+    if (nextTab !== 'dashboard') resetContentFitScale();
+    applyPlanDisplayScales();
+  }
+  // ダッシュボードでは予実表と同じヘッダー倍率（content fit）を、
+  // どのタブから来ても現在のウィンドウ幅に合わせて適用する
+  if (nextTab === 'dashboard' && prevTab !== 'dashboard') {
+    setContentFitScale(lastPlanTableContentFitScale);
+    applyDashboardContentFitEstimate();
     applyPlanDisplayScales();
   }
   if (prevTab === 'dashboard' && nextTab !== 'dashboard') {
@@ -5614,7 +5664,7 @@ function renderTable({ measureColumnWidths = false } = {}) {
       onSettled: () => {
         planTableInitialLayoutDone = true;
         lastPlanTableColumnWidths = readPlanTableColumnWidths(table);
-        lastPlanTableContentFitScale = getContentFitScale();
+        capturePlanTableContentFitBaseline();
         planTableLayoutInvalidated = false;
         if (planLoadingAwaitLayout) finishPlanLoadingAfterLayout();
       },
@@ -5640,7 +5690,7 @@ function renderTable({ measureColumnWidths = false } = {}) {
       layoutPlanTableSinglePass(table);
     }
     lastPlanTableColumnWidths = readPlanTableColumnWidths(table);
-    lastPlanTableContentFitScale = getContentFitScale();
+    capturePlanTableContentFitBaseline();
     planTableLayoutInvalidated = false;
     if (planLoadingAwaitLayout) {
       finishPlanLoadingAfterLayout();
@@ -10440,6 +10490,7 @@ async function init() {
   setCsvGateMode(true);
   applyViewportScale(computeViewportScale());
   bindViewportScale(applyPlanViewportScaleChange);
+  window.addEventListener('resize', scheduleDashboardViewportFitRefresh);
   applyUiColors(uiColorConfig);
   subscribeSystemColorMode(() => {
     if (getUiColorModeSetting(uiColorConfig) !== 'system') return;

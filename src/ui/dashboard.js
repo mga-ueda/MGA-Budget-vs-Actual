@@ -1348,7 +1348,9 @@ function dashRenderSvgGroupedBarChart(container, series, labels, {
     const groupCount = labels.length;
     const barGroupW = plotW / Math.max(1, groupCount);
     const barGap = 4 * viewportScale;
-    const barW = Math.min(22 * viewportScale, Math.max(6, (barGroupW - barGap) / series.length - 4));
+    // 上限を固定 px でなく月枠幅にも追従させ、広い画面で棒間の隙間が開きすぎないようにする
+    const barWMax = Math.max(22 * viewportScale, (barGroupW * 0.62) / series.length);
+    const barW = Math.min(barWMax, Math.max(6, (barGroupW - barGap) / series.length - 4));
     const totalBarWidth = series.length * barW + (series.length - 1) * barGap;
 
     const gridLines = dashRenderYAxisGrid(yAxis, yScale, pad, width);
@@ -1822,7 +1824,8 @@ function dashRenderSvgStackedBarChart(container, series, labels, {
     const yScale = dashMakeYScale(yAxis, pad, plotH);
     const groupCount = labels.length;
     const barGroupW = plotW / Math.max(1, groupCount);
-    const barW = Math.min(38 * viewportScale, Math.max(8, barGroupW * 0.55));
+    // 固定 px の上限をやめ、月枠幅の一定割合で棒の太さを画面幅に追従させる
+    const barW = Math.max(8, barGroupW * 0.55);
 
     const gridLines = dashRenderYAxisGrid(yAxis, yScale, pad, width);
 
