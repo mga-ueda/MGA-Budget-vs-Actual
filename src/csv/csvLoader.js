@@ -8,8 +8,10 @@ import {
   resolveFolderDataFromCache,
 } from './csvFolder.js';
 
+/* classifyCsvFile の定義元は csvNameConfig（csvFolder 経由だと ES モジュールとして解決できない） */
+export { classifyCsvFile } from './csvNameConfig.js';
+
 export {
-  classifyCsvFile,
   isFolderPickerSupported,
   isFolderDropSupported,
   bindDirectoryDropZone,
@@ -25,7 +27,6 @@ export {
   loadCsvNameConfig,
   saveCsvNameConfig,
   resetCsvNameConfig,
-  validateCsvNameConfig,
   testCsvNameExample,
   getCsvNameExamples,
   formatCsvNameHintLines,

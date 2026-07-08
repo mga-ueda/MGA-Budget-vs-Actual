@@ -52,6 +52,11 @@ import {
   resetPlanSettingsUiScale,
   applyPlanSettingsUiScale,
   getPlanSettingsWrapAvailableWidth,
+  buildProbeFontFromStyle,
+  measureMaxCellTextWidth,
+  createPlanAmountCellEditor,
+  capturePlanSectionActiveEdit,
+  restorePlanSectionActiveEdit,
 } from './planSettingsTableUi.js';
 
 const REVENUE_ACCOUNT = '売上高';
@@ -75,8 +80,9 @@ const REVENUE_COL_KIND_PX = 68;
 const REVENUE_COL_TOTAL_PX = 84;
 const REVENUE_COL_ACTIONS_PX = 104;
 const REVENUE_COL_CLIENT_MIN_PX = 64;
-const REVENUE_COL_CLIENT_MAX_PX = 120;
 const REVENUE_COL_MONTH_MIN_PX = 52;
+/* box-sizing: border-box のセル内余白（0.45rem×2 ≒ 12px）と罫線ぶんの余裕 */
+const REVENUE_CELL_PADDING_PX = 14;
 
 function measureExtraDigitWidthBeforeYen(wrap) {
   const table = wrap.querySelector('.revenue-plan-table, .misc-income-plan-table');
@@ -84,7 +90,7 @@ function measureExtraDigitWidthBeforeYen(wrap) {
   const probe = document.createElement('span');
   probe.setAttribute('aria-hidden', 'true');
   probe.style.cssText = 'position:absolute;visibility:hidden;white-space:nowrap;font-variant-numeric:tabular-nums;';
-  probe.style.font = style.font;
+  probe.style.font = buildProbeFontFromStyle(style);
   probe.textContent = '9';
   wrap.appendChild(probe);
   const width = Math.ceil(probe.getBoundingClientRect().width);
@@ -109,26 +115,83 @@ function buildRevenueTableColgroup(monthCount) {
   return colgroup;
 }
 
-function measureRevenueClientColumnWidth(wrap) {
-  let width = REVENUE_COL_CLIENT_MIN_PX;
-  wrap.querySelectorAll('.revenue-client-name-label').forEach((el) => {
-    width = Math.max(width, Math.ceil(el.getBoundingClientRect().width) + 12);
+function measureRevenueClientColumnWidth(wrap, scale = 1) {
+  // ラベルは display: block でセル幅いっぱいに広がるため、矩形幅ではなく文字幅を実測する
+  // （矩形幅だと現在の列幅を測ってしまい、長い受注先名が見切れたままになる）。
+  // 名前の長さは可変なので上限キャップは設けず、超過分はページ全体の縮小で吸収する
+  const font = measureRevenueTableFont(wrap);
+  const contentW = measureMaxCellTextWidth(wrap, '.revenue-client-name-label', font);
+  return Math.max(
+    REVENUE_COL_CLIENT_MIN_PX * scale,
+    contentW + REVENUE_CELL_PADDING_PX * scale,
+  );
+}
+
+function measureRevenueTableFont(wrap) {
+  const table = wrap.querySelector('.revenue-plan-table, .misc-income-plan-table');
+  const style = table ? getComputedStyle(table) : getComputedStyle(wrap);
+  return buildProbeFontFromStyle(style);
+}
+
+/** アクション列の幅を実測する。ボタンの枠線などスケールに比例しない成分があるため固定値では収まらない */
+function measureRevenueActionsColumnWidth(wrap, scale = 1) {
+  let width = REVENUE_COL_ACTIONS_PX * scale;
+  wrap.querySelectorAll('.revenue-plan-table td.col-out-actions .revenue-client-actions-wrap').forEach((el) => {
+    width = Math.max(width, Math.ceil(el.getBoundingClientRect().width) + 8 * scale + 2);
   });
-  return Math.min(width, REVENUE_COL_CLIENT_MAX_PX);
+  return width;
 }
 
-function measureRevenueTableLayout(wrap, monthCount, availableW) {
+/**
+ * 受注テーブルの列幅を実測する。
+ * scale には適用中の UI スケールを渡す（px 定数もフォントと同率で縮小・拡大させ、
+ * 縮小時に最小幅が邪魔をして収まらない問題を防ぐ）。文字実測はフォント経由で自動追従する。
+ */
+function measureRevenueTableLayout(wrap, monthCount, availableW, scale = 1) {
+  const font = measureRevenueTableFont(wrap);
   const extraDigitW = measureExtraDigitWidthBeforeYen(wrap);
-  const monthMinW = REVENUE_COL_MONTH_MIN_PX + extraDigitW;
-  const totalW = REVENUE_COL_TOTAL_PX + extraDigitW;
-  const clientW = measureRevenueClientColumnWidth(wrap);
-  const fixedW = clientW + REVENUE_COL_KIND_PX + totalW + REVENUE_COL_ACTIONS_PX;
-  const naturalW = fixedW + monthCount * monthMinW;
-  const monthW = Math.max(monthMinW, (availableW - fixedW) / monthCount);
-  return { clientW, totalW, monthW, naturalW };
+
+  // 金額・種別は下限定数だけでなく実際のセル内容も測る（桁数が増えても見切れない）
+  const monthContentW = measureMaxCellTextWidth(
+    wrap,
+    '.revenue-plan-table td.salary-plan-amount-cell, .revenue-plan-table th.salary-plan-col-month,'
+      + ' .misc-income-plan-table td.salary-plan-amount-cell, .misc-income-plan-table th.salary-plan-col-month',
+    font,
+  );
+  const totalContentW = measureMaxCellTextWidth(
+    wrap,
+    '.revenue-plan-table td.salary-plan-col-total, .revenue-plan-table th.salary-plan-col-total,'
+      + ' .misc-income-plan-table td.salary-plan-col-total, .misc-income-plan-table th.salary-plan-col-total',
+    font,
+  );
+  const kindContentW = measureMaxCellTextWidth(
+    wrap,
+    '.revenue-plan-table .revenue-plan-col-kind, .misc-income-plan-table .revenue-plan-col-kind',
+    font,
+  );
+
+  const monthMinW = Math.max(
+    REVENUE_COL_MONTH_MIN_PX * scale + extraDigitW,
+    monthContentW + REVENUE_CELL_PADDING_PX * scale,
+  );
+  const totalW = Math.max(
+    REVENUE_COL_TOTAL_PX * scale + extraDigitW,
+    totalContentW + REVENUE_CELL_PADDING_PX * scale,
+  );
+  const kindW = Math.max(
+    REVENUE_COL_KIND_PX * scale,
+    kindContentW + REVENUE_CELL_PADDING_PX * scale,
+  );
+  const clientW = measureRevenueClientColumnWidth(wrap, scale);
+  const actionsW = measureRevenueActionsColumnWidth(wrap, scale);
+  const fixedW = clientW + kindW + totalW + actionsW;
+  // +2 は border-collapse の外周罫線ぶん（列幅の合計よりテーブルが僅かに広くなる）
+  const naturalW = fixedW + monthCount * monthMinW + 2;
+  const monthW = Math.max(monthMinW, (availableW - fixedW - 2) / monthCount);
+  return { clientW, kindW, totalW, monthW, actionsW, naturalW };
 }
 
-function layoutRevenueSettingsTables(wrap, monthCount) {
+export function layoutRevenueSettingsTables(wrap, monthCount) {
   if (!wrap?.isConnected || monthCount <= 0) return;
 
   const availableW = getPlanSettingsWrapAvailableWidth(wrap);
@@ -136,14 +199,19 @@ function layoutRevenueSettingsTables(wrap, monthCount) {
 
   resetPlanSettingsUiScale(wrap);
   let layout = measureRevenueTableLayout(wrap, monthCount, availableW);
-  applyPlanSettingsUiScale(wrap, layout.naturalW, availableW);
-  layout = measureRevenueTableLayout(wrap, monthCount, availableW);
+  let scale = applyPlanSettingsUiScale(wrap, layout.naturalW, availableW);
+  layout = measureRevenueTableLayout(wrap, monthCount, availableW, scale);
+  // フォントメトリクスは倍率に厳密比例しないため、適用後の実測でまだ収まらなければ数回補正する
+  for (let retry = 0; retry < 3 && layout.naturalW > availableW && scale > 0; retry += 1) {
+    scale = applyPlanSettingsUiScale(wrap, layout.naturalW / scale, availableW);
+    layout = measureRevenueTableLayout(wrap, monthCount, availableW, scale);
+  }
 
   wrap.style.setProperty('--revenue-col-client-w', `${layout.clientW}px`);
-  wrap.style.setProperty('--revenue-col-kind-w', `${REVENUE_COL_KIND_PX}px`);
+  wrap.style.setProperty('--revenue-col-kind-w', `${layout.kindW}px`);
   wrap.style.setProperty('--revenue-col-month-w', `${layout.monthW}px`);
   wrap.style.setProperty('--revenue-col-total-w', `${layout.totalW}px`);
-  wrap.style.setProperty('--revenue-col-actions-w', `${REVENUE_COL_ACTIONS_PX}px`);
+  wrap.style.setProperty('--revenue-col-actions-w', `${layout.actionsW}px`);
 }
 
 function bindRevenueSettingsLayout(wrap, monthCount, currentPeriod, appSettings, fiscalMonths) {
@@ -511,6 +579,8 @@ export function mountRevenueSettingsPanel({
     syncRevenueMonthHighlightClasses(th, month, fiscalPeriod);
   }
 
+  let startNumericCellEdit;
+
   function bindPlanAmountCellDblClick(td) {
     if (td.dataset.planAmountEditBound === '1') return;
     td.dataset.planAmountEditBound = '1';
@@ -649,7 +719,7 @@ export function mountRevenueSettingsPanel({
             fiscalPeriod,
             title: 'ダブルクリックで編集（人月単価）',
             formatValue: formatSalaryPlanYen,
-            rawValue: client.monthlyUnitPrice[month],
+            rawValue: getEffectiveUnitPrice(client, month),
             parseValue: parseSalaryPlanAmountInput,
             tabScopeId,
             onSave: (parsed) => {
@@ -888,62 +958,6 @@ export function mountRevenueSettingsPanel({
       }
     }
     return display;
-  }
-
-  function startNumericCellEdit(td, {
-    rawValue,
-    editable,
-    formatValue,
-    parseValue,
-    onSave,
-    allowShiftFillForward = false,
-    tabScopeId,
-    onEditClose,
-  }) {
-    if (!editable) return;
-    if (td.querySelector('input')) return;
-
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.inputMode = 'decimal';
-    input.className = 'salary-plan-amount-input';
-    input.autocomplete = 'off';
-    input.spellcheck = false;
-    input.value = rawValue != null && rawValue !== 0 ? String(rawValue) : '';
-
-    let editClosed = false;
-
-    const finish = (save, fillForward = false) => {
-      if (editClosed) return;
-      editClosed = true;
-      if (save) {
-        const parsed = allowShiftFillForward && fillForward
-          ? parseSalaryPlanAmountInputWithFillForward(input.value, true, rawValue)
-          : parseValue(input.value);
-        onSave(parsed, allowShiftFillForward && fillForward);
-      }
-      if (onEditClose) onEditClose();
-      else renderPlanSection();
-    };
-
-    input.addEventListener('keydown', (e) => {
-      handlePlanAmountCellKeydown(e, {
-        finish,
-        td,
-        scopeId: tabScopeId,
-        allowShiftFillForward,
-      });
-    });
-    input.addEventListener('blur', () => {
-      setTimeout(() => {
-        if (!editClosed) finish(true, false);
-      }, 0);
-    });
-
-    td.textContent = '';
-    td.appendChild(input);
-    input.focus();
-    input.select();
   }
 
   function applyPlanAmountVarianceClass(td, monthIndex, value, prevValue) {
@@ -1299,7 +1313,7 @@ export function mountRevenueSettingsPanel({
             prevValue: prevUnitPrice,
             editable,
             fiscalPeriod,
-            rawValue: client.monthlyUnitPrice[month],
+            rawValue: getEffectiveUnitPrice(client, month),
             tabScopeId: `revenue-settings-${fiscalPeriod}`,
             title: 'ダブルクリックで編集（人月単価）',
             formatValue: formatSalaryPlanYen,
@@ -1584,6 +1598,7 @@ export function mountRevenueSettingsPanel({
       );
     }
 
+    const activeEdit = capturePlanSectionActiveEdit(periodsContainer);
     periodsContainer.replaceChildren();
 
     for (const { period } of planPeriodEntries()) {
@@ -1607,6 +1622,7 @@ export function mountRevenueSettingsPanel({
       periodsContainer.appendChild(block);
     }
 
+    restorePlanSectionActiveEdit(periodsContainer, activeEdit);
     scheduleRevenueSettingsLayout(wrap, fiscalMonths.length, currentPeriod, appSettings, fiscalMonths);
   }
 
@@ -1739,7 +1755,9 @@ export function mountRevenueSettingsPanel({
       return table;
     }
 
-    wrap.querySelector('.misc-income-plan-section')?.remove();
+    const previousMiscSection = wrap.querySelector('.misc-income-plan-section');
+    const activeEdit = capturePlanSectionActiveEdit(previousMiscSection);
+    previousMiscSection?.remove();
 
     const section = document.createElement('div');
     section.className = 'salary-plan-section misc-income-plan-section';
@@ -1779,8 +1797,11 @@ export function mountRevenueSettingsPanel({
     section.appendChild(periodsContainer);
     wrap.appendChild(section);
 
+    restorePlanSectionActiveEdit(periodsContainer, activeEdit);
     scheduleRevenueSettingsLayout(wrap, fiscalMonths.length, currentPeriod, appSettings, fiscalMonths);
   }
+
+  startNumericCellEdit = createPlanAmountCellEditor({ onEditClose: () => renderPlanSection() });
 
   renderPlanSection();
   renderMiscIncomePlanSection();

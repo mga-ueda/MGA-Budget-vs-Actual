@@ -190,6 +190,13 @@ export function parseSalaryPlanAmountInputWithFillForward(raw, fillForward, exis
   return existingValue;
 }
 
+export function formatSalaryPlanAmount(value) {
+  if (value === null || value === undefined) return '';
+  const num = Number(value);
+  if (!Number.isFinite(num)) return '';
+  return num.toLocaleString('ja-JP');
+}
+
 export function formatSalaryPlanYen(value) {
   if (value === null || value === undefined || value === 0) return '';
   return `\u00a5${value.toLocaleString('ja-JP')}`;

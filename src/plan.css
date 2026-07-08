@@ -234,9 +234,12 @@ body {
 
 .plan-header-top .plan-logo {
   grid-area: logo;
-  align-self: stretch;
+  /* stretch + height:100% だと、狭い幅でタイトル行（rem 基準）が行高を押し広げたときに
+     ロゴが行高に追従して急に大きくなる。設計高さに固定し、下端を揃える */
+  align-self: end;
   justify-self: start;
-  height: 100%;
+  height: var(--plan-header-top-height);
+  max-height: var(--plan-header-top-height);
 }
 
 .plan-brand-center {
@@ -261,8 +264,10 @@ body {
 }
 
 .plan-header-top .plan-logo-image {
-  min-height: 100%;
-  height: 100%;
+  /* 行高が伸びてもロゴ画像は設計高さを維持する（100% だと行高に追従して肥大する） */
+  min-height: 0;
+  height: var(--plan-header-top-height);
+  max-height: var(--plan-header-top-height);
   display: flex;
   align-items: flex-end;
 }
@@ -771,9 +776,25 @@ body {
 .expand-settings-wrap.plan-settings-scalable .outsourcing-add-input,
 .expand-settings-wrap.plan-settings-scalable .app-settings-input,
 .expand-settings-wrap.plan-settings-scalable .expense-plan-override-select,
-.expand-settings-wrap.plan-settings-scalable .salary-plan-bonus-month-select,
-.expand-settings-wrap.plan-settings-scalable .salary-plan-travel-allowance-input {
+.expand-settings-wrap.plan-settings-scalable .salary-plan-bonus-month-select {
   font-size: calc(var(--plan-settings-ui-control-size) * var(--plan-settings-ui-scale));
+}
+
+/* 旅費交通費（一人あたり月額）は直上の説明文と同じ desc サイズに揃える */
+.expand-settings-wrap.plan-settings-scalable .salary-plan-travel-allowance-field-label,
+.expand-settings-wrap.plan-settings-scalable .salary-plan-travel-allowance-suffix,
+.expand-settings-wrap.plan-settings-scalable .salary-plan-travel-allowance-input {
+  font-size: calc(var(--plan-settings-ui-desc-size) * var(--plan-settings-ui-scale));
+}
+
+.expand-settings-wrap.plan-settings-scalable .salary-plan-travel-allowance-field {
+  gap: calc(0.45rem * var(--plan-settings-ui-scale));
+}
+
+.expand-settings-wrap.plan-settings-scalable .salary-plan-travel-allowance-input {
+  width: calc(9ch * var(--plan-settings-ui-scale));
+  min-width: calc(7ch * var(--plan-settings-ui-scale));
+  padding: calc(0.35rem * var(--plan-settings-ui-scale)) calc(0.55rem * var(--plan-settings-ui-scale));
 }
 
 .expand-settings-wrap.plan-settings-scalable .tax-payment-plan-years-input {
@@ -789,13 +810,8 @@ body {
 
 .expand-settings-wrap.plan-settings-scalable .outsourcing-add-label,
 .expand-settings-wrap.plan-settings-scalable .salary-plan-bonus-month-config-label,
-.expand-settings-wrap.plan-settings-scalable .salary-plan-bonus-month-field-label,
-.expand-settings-wrap.plan-settings-scalable .salary-plan-travel-allowance-field-label {
+.expand-settings-wrap.plan-settings-scalable .salary-plan-bonus-month-field-label {
   font-size: calc(var(--plan-settings-ui-label-size) * var(--plan-settings-ui-scale));
-}
-
-.expand-settings-wrap.plan-settings-scalable .salary-plan-travel-allowance-suffix {
-  font-size: calc(var(--plan-settings-ui-control-size) * var(--plan-settings-ui-scale));
 }
 
 .expand-settings-wrap.plan-settings-scalable .plan-csv-btn,
@@ -805,6 +821,12 @@ body {
 .expand-settings-wrap.plan-settings-scalable .expense-plan-override-add-btn,
 .expand-settings-wrap.plan-settings-scalable .tax-rate-add-btn {
   font-size: calc(var(--plan-settings-ui-btn-size) * var(--plan-settings-ui-scale));
+  /* 縮小時にボタンの固定余白が列幅からはみ出さないよう、余白もスケールに追従させる */
+  padding: calc(0.2rem * var(--plan-settings-ui-scale)) calc(0.5rem * var(--plan-settings-ui-scale));
+}
+
+.expand-settings-wrap.plan-settings-scalable .salary-plan-table .col-out-actions {
+  padding: calc(0.2rem * var(--plan-settings-ui-scale)) calc(0.25rem * var(--plan-settings-ui-scale));
 }
 
 .expand-settings-wrap.plan-settings-scalable .salary-plan-table,
@@ -950,6 +972,9 @@ body {
   overflow: visible;
   text-overflow: clip;
   max-width: none;
+  /* 列幅指定（col 変数・min-width）に余白を含め、指定値どおりの列幅にする。
+     content-box だと fixed レイアウトで列幅にセル余白が上乗せされ、縮小計算からはみ出す */
+  box-sizing: border-box;
 }
 
 .expand-settings-wrap .salary-plan-table th.salary-plan-col-name,
@@ -966,16 +991,48 @@ body {
   max-width: none;
 }
 
+/* 設定ページでは「…」省略を使わない（列幅は内容の実測で確保する） */
+.expand-settings-wrap .salary-plan-table th.salary-plan-col-name,
+.expand-settings-wrap .salary-plan-table td.salary-plan-col-name,
+.expand-settings-wrap .salary-plan-table th.salary-plan-col-sub,
+.expand-settings-wrap .salary-plan-table td.salary-plan-col-sub,
+.expand-settings-wrap .salary-plan-table th.salary-plan-col-kind,
+.expand-settings-wrap .salary-plan-table td.salary-plan-col-kind,
+.expand-settings-wrap .revenue-plan-table th.revenue-plan-col-client,
+.expand-settings-wrap .revenue-plan-table td.revenue-plan-col-client,
+.expand-settings-wrap .employee-settings-table .col-emp-name,
+.expand-settings-wrap .employee-settings-table .col-emp-municipality {
+  overflow: visible;
+  text-overflow: clip;
+}
+
+/* auto レイアウトの汎用テーブル用の下限。UI スケールに追従させ、縮小時に列が残らないようにする。
+   max-width のキャップと overflow: hidden は解除し、桁数が増えたら列が内容に合わせて広がる
+   （広がった分はページ全体の縮小スケールで吸収する） */
 .expand-settings-wrap .salary-plan-table th.salary-plan-col-month,
 .expand-settings-wrap .salary-plan-table td.salary-plan-amount-cell {
   width: auto;
-  min-width: 4.75rem;
+  min-width: calc(4.75rem * var(--plan-settings-ui-scale, 1));
+  max-width: none;
+  overflow: visible;
+}
+
+/* 支払い計画表・外注費支払い計画表: 月列は最大内容幅（JS 実測の --plan-month-col-uniform-w）で
+   統一し、桁数の多い月だけ列幅が広がってバラつかないようにする */
+.expand-settings-wrap .tax-payment-plan-table th.salary-plan-col-month,
+.expand-settings-wrap .tax-payment-plan-table td.salary-plan-amount-cell,
+.expand-settings-wrap .outsourcing-plan-table th.salary-plan-col-month,
+.expand-settings-wrap .outsourcing-plan-table td.salary-plan-amount-cell {
+  width: calc(max(4.75rem, var(--plan-month-col-uniform-w, 0px)) * var(--plan-settings-ui-scale, 1));
+  min-width: calc(max(4.75rem, var(--plan-month-col-uniform-w, 0px)) * var(--plan-settings-ui-scale, 1));
 }
 
 .expand-settings-wrap .salary-plan-table th.salary-plan-col-total,
 .expand-settings-wrap .salary-plan-table td.salary-plan-col-total {
   width: auto;
-  min-width: 5.5rem;
+  min-width: calc(5.5rem * var(--plan-settings-ui-scale, 1));
+  max-width: none;
+  overflow: visible;
 }
 
 .expand-settings-wrap .revenue-client-name-label {
@@ -1126,7 +1183,7 @@ body {
 }
 
 .expense-plan-override-select {
-  min-width: 12rem;
+  min-width: calc(12rem * var(--plan-settings-ui-scale, 1));
   max-width: 100%;
 }
 
@@ -1145,7 +1202,7 @@ body {
 }
 
 .expense-plan-override-col-actions {
-  width: 4.5rem;
+  width: calc(4.5rem * var(--plan-settings-ui-scale, 1));
   text-align: center;
   white-space: nowrap;
 }
@@ -1817,7 +1874,8 @@ select.app-settings-input {
 .expand-settings-table th,
 .expand-settings-table td {
   border-bottom: 1px solid var(--plan-border);
-  padding: 0.35rem 0.45rem;
+  /* セル余白も UI スケールに追従（縮小時に余白が文字幅を圧迫して見切れるのを防ぐ） */
+  padding: calc(0.35rem * var(--plan-settings-ui-scale, 1)) calc(0.45rem * var(--plan-settings-ui-scale, 1));
   vertical-align: middle;
   white-space: nowrap;
 }
@@ -3253,9 +3311,9 @@ html[data-plan-color-mode="light"] .plan-loading-overlay-panel {
 
 .outsourcing-settings-table .col-out-actions,
 .salary-plan-table .col-out-actions {
-  width: 3.5rem;
-  min-width: 3.5rem;
-  max-width: 3.5rem;
+  width: calc(3.5rem * var(--plan-settings-ui-scale, 1));
+  min-width: calc(3.5rem * var(--plan-settings-ui-scale, 1));
+  max-width: calc(3.5rem * var(--plan-settings-ui-scale, 1));
   padding: 0.2rem 0.25rem;
   text-align: center;
   vertical-align: middle;
@@ -3295,9 +3353,9 @@ html[data-plan-color-mode="light"] .plan-loading-overlay-panel {
 }
 
 .outsourcing-add-input {
-  width: 10rem;
-  min-width: 7rem;
-  max-width: 12rem;
+  width: calc(10rem * var(--plan-settings-ui-scale, 1));
+  min-width: calc(7rem * var(--plan-settings-ui-scale, 1));
+  max-width: calc(12rem * var(--plan-settings-ui-scale, 1));
   flex: 0 0 auto;
   padding: 0.28rem 0.45rem;
   font-size: 0.75rem;
@@ -3323,7 +3381,7 @@ html[data-plan-color-mode="light"] .plan-loading-overlay-panel {
 }
 
 .revenue-plan-table .revenue-plan-col-kind {
-  min-width: 4.5rem;
+  min-width: calc(4.5rem * var(--plan-settings-ui-scale, 1));
   white-space: nowrap;
 }
 
@@ -3710,7 +3768,7 @@ html[data-plan-color-mode="light"] .plan-loading-overlay-panel {
 
 .revenue-plan-table .col-out-actions {
   width: auto;
-  min-width: 6.75rem;
+  min-width: calc(6.75rem * var(--plan-settings-ui-scale, 1));
   max-width: none;
 }
 
@@ -3730,7 +3788,7 @@ html[data-plan-color-mode="light"] .plan-loading-overlay-panel {
 }
 
 .revenue-client-order-btn {
-  min-width: 1.35rem;
+  min-width: calc(1.35rem * var(--plan-settings-ui-scale, 1));
   background: var(--plan-settings-button-bg);
   color: var(--plan-settings-button-text);
 }
@@ -3876,6 +3934,10 @@ html[data-plan-color-mode="light"] .plan-loading-overlay-panel {
   padding: calc(0.35rem * var(--plan-settings-ui-scale)) calc(0.55rem * var(--plan-settings-ui-scale));
 }
 
+.expand-settings-wrap.employee-settings-wrap .employee-travel-header .salary-plan-travel-allowance-config {
+  gap: calc(0.55rem * var(--plan-settings-ui-scale));
+}
+
 .expand-settings-wrap.outsourcing-settings-wrap .employee-add-form.outsourcing-period-add-form {
   margin-bottom: 0.5rem;
   padding: 0;
@@ -3886,21 +3948,19 @@ html[data-plan-color-mode="light"] .plan-loading-overlay-panel {
 }
 
 .employee-settings-table .col-emp-no {
-  width: 3.5rem;
+  width: calc(3.5rem * var(--plan-settings-ui-scale, 1));
   white-space: nowrap;
 }
 
+/* 氏名・市区町村は内容に合わせて広げる（「…」省略は使わない）。
+   広がった分はページ全体の縮小スケールで吸収する */
 .employee-settings-table .col-emp-name {
-  max-width: 8rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  max-width: none;
   white-space: nowrap;
 }
 
 .employee-settings-table .col-emp-municipality {
-  max-width: 14rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  max-width: none;
   white-space: nowrap;
   text-align: left;
 }
@@ -3929,12 +3989,12 @@ html[data-plan-color-mode="light"] .plan-loading-overlay-panel {
 }
 
 .employee-settings-table .col-emp-actions {
-  width: 7.5rem;
+  width: calc(7.5rem * var(--plan-settings-ui-scale, 1));
   text-align: center;
 }
 
 .employee-settings-table .col-emp-exclude {
-  width: 2.75rem;
+  width: calc(2.75rem * var(--plan-settings-ui-scale, 1));
   text-align: center;
 }
 
@@ -4092,24 +4152,26 @@ html[data-plan-color-mode="light"] .plan-loading-overlay-panel {
 }
 
 .salary-plan-travel-allowance-field-label {
-  font-size: 0.78rem;
+  font-size: clamp(0.68rem, 0.32vw + 0.62rem, 0.8rem);
   font-weight: 700;
   color: var(--plan-text);
 }
 
 .salary-plan-travel-allowance-input {
-  width: 7rem;
-  padding: 0.25rem 0.4rem;
+  width: 9ch;
+  min-width: 7ch;
+  padding: 0.35rem 0.55rem;
   border: 1px solid var(--plan-border);
   border-radius: 4px;
   background: var(--plan-editor-bg);
   color: var(--plan-text);
-  font-size: 0.72rem;
+  font-size: clamp(0.68rem, 0.32vw + 0.62rem, 0.8rem);
+  font-variant-numeric: tabular-nums;
   text-align: right;
 }
 
 .salary-plan-travel-allowance-suffix {
-  font-size: 0.72rem;
+  font-size: clamp(0.68rem, 0.32vw + 0.62rem, 0.8rem);
   color: var(--plan-text-dim);
 }
 
@@ -4132,7 +4194,8 @@ html[data-plan-color-mode="light"] .plan-loading-overlay-panel {
 }
 
 .salary-plan-table-wrap {
-  overflow-x: auto;
+  /* 横スクロールバーは出さない（UI スケールで必ず収める。誤差 1px 程度はクリップ） */
+  overflow-x: hidden;
   max-width: 100%;
 }
 
@@ -4152,17 +4215,19 @@ html[data-plan-color-mode="light"] .plan-loading-overlay-panel {
   text-align: center;
 }
 
+/* 列幅は UI スケール（--plan-settings-ui-scale）に追従させ、
+   フォントだけ拡縮して文字が見切れる・表が収まらない問題を防ぐ */
 .salary-plan-table th.salary-plan-col-no,
 .salary-plan-table td.salary-plan-col-no {
-  width: 3rem;
-  max-width: 3rem;
+  width: calc(3rem * var(--plan-settings-ui-scale, 1));
+  max-width: calc(3rem * var(--plan-settings-ui-scale, 1));
   white-space: nowrap;
 }
 
 .salary-plan-table th.salary-plan-col-name,
 .salary-plan-table td.salary-plan-col-name {
-  width: 7rem;
-  max-width: 7rem;
+  width: calc(7rem * var(--plan-settings-ui-scale, 1));
+  max-width: calc(7rem * var(--plan-settings-ui-scale, 1));
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -4170,15 +4235,15 @@ html[data-plan-color-mode="light"] .plan-loading-overlay-panel {
 
 .salary-plan-table th.salary-plan-col-kind,
 .salary-plan-table td.salary-plan-col-kind {
-  width: 3rem;
-  max-width: 3rem;
+  width: calc(3rem * var(--plan-settings-ui-scale, 1));
+  max-width: calc(3rem * var(--plan-settings-ui-scale, 1));
   white-space: nowrap;
 }
 
 .salary-plan-table th.salary-plan-col-sub,
 .salary-plan-table td.salary-plan-col-sub {
-  width: 11rem;
-  max-width: 11rem;
+  width: calc(11rem * var(--plan-settings-ui-scale, 1));
+  max-width: calc(11rem * var(--plan-settings-ui-scale, 1));
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -4191,36 +4256,36 @@ html[data-plan-color-mode="light"] .plan-loading-overlay-panel {
 
 .salary-plan-table th.salary-plan-col-month,
 .salary-plan-table td.salary-plan-amount-cell {
-  width: 4.75rem;
-  max-width: 4.75rem;
+  width: calc(4.75rem * var(--plan-settings-ui-scale, 1));
+  max-width: calc(4.75rem * var(--plan-settings-ui-scale, 1));
   overflow: hidden;
   box-sizing: border-box;
-  padding-left: 0.2rem;
-  padding-right: 0.2rem;
+  padding-left: calc(0.2rem * var(--plan-settings-ui-scale, 1));
+  padding-right: calc(0.2rem * var(--plan-settings-ui-scale, 1));
 }
 
 .salary-plan-table th.salary-plan-col-total {
-  width: 5.5rem;
-  max-width: 5.5rem;
+  width: calc(5.5rem * var(--plan-settings-ui-scale, 1));
+  max-width: calc(5.5rem * var(--plan-settings-ui-scale, 1));
   white-space: nowrap;
 }
 
 .salary-plan-table td.salary-plan-col-total {
-  width: 5.5rem;
-  max-width: 5.5rem;
+  width: calc(5.5rem * var(--plan-settings-ui-scale, 1));
+  max-width: calc(5.5rem * var(--plan-settings-ui-scale, 1));
   text-align: right;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
   overflow: hidden;
   box-sizing: border-box;
-  padding-left: 0.2rem;
-  padding-right: 0.2rem;
+  padding-left: calc(0.2rem * var(--plan-settings-ui-scale, 1));
+  padding-right: calc(0.2rem * var(--plan-settings-ui-scale, 1));
 }
 
 .salary-plan-table th.salary-plan-col-increase,
 .salary-plan-table td.salary-plan-col-increase {
-  width: 4.25rem;
-  max-width: 4.25rem;
+  width: calc(4.25rem * var(--plan-settings-ui-scale, 1));
+  max-width: calc(4.25rem * var(--plan-settings-ui-scale, 1));
   text-align: center;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
@@ -4402,6 +4467,28 @@ html[data-plan-color-mode="light"] .plan-loading-overlay-panel {
 .expand-settings-wrap .salary-plan-table tbody td.col-out-actions,
 .expand-settings-wrap .employee-settings-table tbody td.col-out-actions,
 .expand-settings-wrap .salary-plan-table td.expand-settings-empty {
+  text-align: center;
+}
+
+/* 人件費設定: 残業手当表の種別列 */
+.expand-settings-wrap .salary-plan-table.salary-overtime-plan-table thead th.salary-plan-col-kind,
+.expand-settings-wrap .salary-plan-table.salary-overtime-plan-table tbody td.salary-plan-col-kind {
+  text-align: center;
+}
+
+/* 人件費設定: 給与支払い計画表の番号・市区町村・種別 */
+.expand-settings-wrap .salary-plan-table.employee-salary-plan-table thead th.salary-plan-col-no,
+.expand-settings-wrap .salary-plan-table.employee-salary-plan-table tbody td.salary-plan-col-no,
+.expand-settings-wrap .salary-plan-table.employee-salary-plan-table thead th.salary-plan-col-sub,
+.expand-settings-wrap .salary-plan-table.employee-salary-plan-table tbody td.salary-plan-col-sub,
+.expand-settings-wrap .salary-plan-table.employee-salary-plan-table thead th.salary-plan-col-kind,
+.expand-settings-wrap .salary-plan-table.employee-salary-plan-table tbody td.salary-plan-col-kind {
+  text-align: center;
+}
+
+/* 外注費支払い計画表: 勘定科目 */
+.expand-settings-wrap .salary-plan-table.outsourcing-plan-table thead th.salary-plan-col-name,
+.expand-settings-wrap .salary-plan-table.outsourcing-plan-table tbody td.salary-plan-col-name {
   text-align: center;
 }
 

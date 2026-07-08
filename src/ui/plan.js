@@ -233,6 +233,7 @@ import {
   getEmployeeSalaryPlan,
   parseSalaryPlanAmountInput,
   parseSalaryPlanAmountInputWithFillForward,
+  formatSalaryPlanAmount,
   formatSalaryPlanYen,
   computeSalaryPlanEmployeeTotal,
   computeSalaryPlanMonthlyTotals,
@@ -317,10 +318,13 @@ import { mountRevenueSettingsPanel, refreshRevenueSettingsSectionTitles, applyRe
 import {
   createPlanMonthDisplayUi,
   createPlanAmountCellEditor,
+  capturePlanSectionActiveEdit,
+  restorePlanSectionActiveEdit,
+  applyUniformPlanMonthColumnWidth,
   bindPlanSettingsScalableLayout,
   syncAllPlanSettingsTableColumnPlates,
   refreshPlanSettingsColumnPlates,
-  measurePlanSettingsPageNaturalWidth,
+  measurePlanSettingsTablesIntrinsicWidth,
   layoutPlanSettingsScalableWrap,
   buildEmployeePlanTableColgroup,
   layoutEmployeeSettingsTables,
@@ -7316,6 +7320,12 @@ function renderTaxPaymentSettings() {
     }
   }
 
+  function measureTaxSettingsNaturalWidth(rootWrap) {
+    // 月列を均等幅に揃えてから自然幅を測る（経費上書き表も同 class のため一緒に揃う）
+    applyUniformPlanMonthColumnWidth(rootWrap, '.tax-payment-plan-table');
+    return measurePlanSettingsTablesIntrinsicWidth(rootWrap);
+  }
+
   function applyTaxPaymentMonthDisplayToWrap(rootWrap) {
     if (!rootWrap?.isConnected) return;
     rootWrap.querySelectorAll('table.tax-payment-plan-table[data-fiscal-period]').forEach((table) => {
@@ -7324,6 +7334,8 @@ function renderTaxPaymentSettings() {
       syncTaxPaymentTableMonthDisplay(table, fiscalPeriod);
     });
     expenseOverrideMonthDisplaySync?.(currentPeriod);
+    // 表示切替で桁数が変わっても月列の均等幅を維持する
+    layoutPlanSettingsScalableWrap(rootWrap, measureTaxSettingsNaturalWidth);
     refreshPlanSettingsColumnPlates(rootWrap, fiscalMonths, currentPeriod, appSettings);
   }
 
@@ -7714,7 +7726,10 @@ function renderTaxPaymentSettings() {
   }
 
   function renderPlanSection() {
-    wrap.querySelector('.tax-payment-plan-section')?.remove();
+    const previousSection = wrap.querySelector('.tax-payment-plan-section');
+    // 再描画で編集中の入力欄が消えないよう、編集状態を退避しておく
+    const activeEdit = capturePlanSectionActiveEdit(previousSection);
+    previousSection?.remove();
 
     const section = document.createElement('div');
     section.className = 'salary-plan-section tax-payment-plan-section';
@@ -7749,15 +7764,9 @@ function renderTaxPaymentSettings() {
     }
 
     wrap.insertBefore(section, wrap.querySelector('.expense-plan-override-section'));
+    restorePlanSectionActiveEdit(section, activeEdit);
     requestAnimationFrame(() => requestAnimationFrame(() => {
-      layoutPlanSettingsScalableWrap(wrap, (rootWrap) => measurePlanSettingsPageNaturalWidth(
-        rootWrap,
-        fiscalMonths.length,
-        [
-          { subColumns: 1, actionsColumn: false },
-          { subColumns: 0, actionsColumn: true },
-        ],
-      ));
+      layoutPlanSettingsScalableWrap(wrap, measureTaxSettingsNaturalWidth);
       refreshPlanSettingsColumnPlates(wrap, fiscalMonths, currentPeriod, appSettings);
     }));
   }
@@ -7787,14 +7796,7 @@ function renderTaxPaymentSettings() {
   expenseOverrideMonthDisplaySync = overrideSection?.syncMonthDisplay ?? null;
   taxPaymentSettingsMonthDisplayApplier = () => applyTaxPaymentMonthDisplayToWrap(wrap);
   bindPlanSettingsScalableLayout(wrap, {
-    measureNaturalWidth: (rootWrap) => measurePlanSettingsPageNaturalWidth(
-      rootWrap,
-      fiscalMonths.length,
-      [
-        { subColumns: 1, actionsColumn: false },
-        { subColumns: 0, actionsColumn: true },
-      ],
-    ),
+    measureNaturalWidth: measureTaxSettingsNaturalWidth,
     fiscalMonths,
     currentPeriod,
     appSettings,
@@ -8230,7 +8232,7 @@ function renderEmployeeSettings() {
     input.className = 'salary-plan-travel-allowance-input';
     input.autocomplete = 'off';
     input.spellcheck = false;
-    input.value = String(getTravelAllowancePerPerson(salaryPlanSettings, fiscalPeriod));
+    input.value = formatSalaryPlanAmount(getTravelAllowancePerPerson(salaryPlanSettings, fiscalPeriod));
 
     const suffix = document.createElement('span');
     suffix.className = 'salary-plan-travel-allowance-suffix';
@@ -8243,9 +8245,13 @@ function renderEmployeeSettings() {
         fiscalPeriod,
         parsed ?? DEFAULT_TRAVEL_ALLOWANCE_PER_PERSON,
       );
-      input.value = String(getTravelAllowancePerPerson(salaryPlanSettings, fiscalPeriod));
+      input.value = formatSalaryPlanAmount(getTravelAllowancePerPerson(salaryPlanSettings, fiscalPeriod));
     };
 
+    input.addEventListener('focus', () => {
+      const parsed = parseSalaryPlanAmountInput(input.value);
+      if (parsed !== null) input.value = String(parsed);
+    });
     input.addEventListener('change', persist);
     input.addEventListener('blur', persist);
     input.addEventListener('keydown', (e) => {
@@ -9478,6 +9484,12 @@ function renderOutsourcingSettings() {
     }
   }
 
+  function measureOutsourcingSettingsNaturalWidth(rootWrap) {
+    // 月列を均等幅に揃えてから自然幅を測る（桁数の多い月だけ広がるのを防ぐ）
+    applyUniformPlanMonthColumnWidth(rootWrap, '.outsourcing-plan-table');
+    return measurePlanSettingsTablesIntrinsicWidth(rootWrap);
+  }
+
   function applyOutsourcingMonthDisplayToWrap(rootWrap) {
     if (!rootWrap?.isConnected) return;
     rootWrap.querySelectorAll('table.outsourcing-plan-table[data-fiscal-period]').forEach((table) => {
@@ -9485,6 +9497,8 @@ function renderOutsourcingSettings() {
       if (fiscalPeriod !== currentPeriod) return;
       syncOutsourcingPlanTableMonthDisplay(table, fiscalPeriod);
     });
+    // 表示切替で桁数が変わっても月列の均等幅を維持する
+    layoutPlanSettingsScalableWrap(rootWrap, measureOutsourcingSettingsNaturalWidth);
     refreshPlanSettingsColumnPlates(rootWrap, fiscalMonths, currentPeriod, appSettings);
   }
 
@@ -9895,6 +9909,8 @@ function renderOutsourcingSettings() {
       wrap.appendChild(section);
     }
 
+    // 再描画で編集中の入力欄が消えないよう、編集状態を退避しておく
+    const activeEdit = capturePlanSectionActiveEdit(periodsContainer);
     periodsContainer.replaceChildren();
 
     for (const period of [currentPeriod, nextPeriod]) {
@@ -9917,12 +9933,9 @@ function renderOutsourcingSettings() {
 
       periodsContainer.appendChild(block);
     }
+    restorePlanSectionActiveEdit(periodsContainer, activeEdit);
     requestAnimationFrame(() => requestAnimationFrame(() => {
-      layoutPlanSettingsScalableWrap(wrap, (rootWrap) => measurePlanSettingsPageNaturalWidth(
-        rootWrap,
-        fiscalMonths.length,
-        [{ subColumns: 1, actionsColumn: true }],
-      ));
+      layoutPlanSettingsScalableWrap(wrap, measureOutsourcingSettingsNaturalWidth);
       refreshPlanSettingsColumnPlates(wrap, fiscalMonths, currentPeriod, appSettings);
     }));
   }
@@ -9931,11 +9944,7 @@ function renderOutsourcingSettings() {
 
   outsourcingSettingsMonthDisplayApplier = () => applyOutsourcingMonthDisplayToWrap(wrap);
   bindPlanSettingsScalableLayout(wrap, {
-    measureNaturalWidth: (rootWrap) => measurePlanSettingsPageNaturalWidth(
-      rootWrap,
-      fiscalMonths.length,
-      [{ subColumns: 1, actionsColumn: true }],
-    ),
+    measureNaturalWidth: measureOutsourcingSettingsNaturalWidth,
     fiscalMonths,
     currentPeriod,
     appSettings,
