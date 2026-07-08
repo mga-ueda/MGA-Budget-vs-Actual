@@ -1027,17 +1027,54 @@ body {
 
 .visibility-settings-wrap .expand-settings-header {
   flex-direction: column;
-  align-items: stretch;
+  align-items: flex-start;
+  justify-content: flex-start;
 }
 
 .visibility-settings-wrap .expand-settings-desc {
   max-width: none;
-  flex: 1 1 auto;
+  flex: 0 1 auto;
+  width: 100%;
   min-width: 0;
 }
 
 .visibility-settings-wrap .expand-settings-header-actions {
-  justify-content: flex-end;
+  justify-content: flex-start;
+  align-self: flex-start;
+}
+
+.visibility-settings-wrap .visibility-config-table {
+  width: max-content;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.visibility-settings-wrap .visibility-config-table .col-row-type,
+.visibility-settings-wrap .visibility-config-table .col-subs {
+  font-size: inherit;
+}
+
+.visibility-settings-wrap .visibility-config-table thead .col-row-type,
+.visibility-settings-wrap .visibility-config-table thead .col-subs {
+  color: var(--plan-month-row-text);
+}
+
+.visibility-settings-wrap .visibility-config-table tbody .col-row-type,
+.visibility-settings-wrap .visibility-config-table tbody .col-subs {
+  color: var(--plan-text);
+}
+
+.visibility-settings-wrap .visibility-config-table thead th {
+  text-align: center;
+}
+
+.visibility-settings-wrap .visibility-config-table tbody td:first-child,
+.visibility-settings-wrap .visibility-config-table tbody .col-row-type {
+  text-align: center;
+}
+
+.visibility-settings-wrap .visibility-config-table tbody .col-subs {
+  text-align: left;
 }
 
 .tax-payment-settings-controls {
@@ -1351,27 +1388,113 @@ select.app-settings-input {
   flex: 1 1 100%;
 }
 
+.other-settings-brand-body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.65rem;
+  width: fit-content;
+  max-width: 100%;
+}
+
 .other-settings-brand-row {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
   gap: 0.65rem 1rem;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.other-settings-brand-row-actions {
+  align-items: center;
+  padding-top: 0.1rem;
+}
+
+.other-settings-brand-row-main,
+.other-settings-brand-row-logo,
+.other-settings-brand-row-logo-options {
+  flex-wrap: nowrap;
+  align-items: center;
+}
+
+.other-settings-brand-row-main > .app-settings-field,
+.other-settings-brand-row-main > .other-settings-brand-logo-field,
+.other-settings-brand-row-logo > .app-settings-field,
+.other-settings-brand-row-logo > .other-settings-brand-logo-field,
+.other-settings-brand-row-logo-options > .app-settings-field,
+.other-settings-general-row > .app-settings-field {
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 0.35rem 0.5rem;
+}
+
+.other-settings-brand-row-main > .app-settings-field > .app-settings-label,
+.other-settings-brand-row-logo > .app-settings-field > .app-settings-label,
+.other-settings-brand-row-logo-options > .app-settings-field > .app-settings-label,
+.other-settings-general-row > .app-settings-field > .app-settings-label,
+.other-settings-brand-logo-field > .app-settings-label {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  margin: 0;
+}
+
+.other-settings-brand-row-main > .app-settings-field,
+.other-settings-brand-row-main > .other-settings-brand-logo-field,
+.other-settings-brand-row-logo > .app-settings-field,
+.other-settings-brand-row-logo > .other-settings-brand-logo-field,
+.other-settings-brand-row-logo-options > .app-settings-field {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+.other-settings-brand-row-main .other-settings-brand-company-field .app-settings-input {
+  width: 12rem;
+}
+
+.other-settings-brand-row-logo-options .other-settings-brand-logo-image-field .app-settings-input-outline-width {
+  width: 4.5rem;
+}
+
+.other-settings-brand-row-logo-options .other-settings-brand-logo-image-field {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+.other-settings-brand-row-logo-options .other-settings-brand-logo-shadow-field {
+  flex: 0 0 auto;
+  min-width: 3.5rem;
+}
+
+.other-settings-brand-row-main .other-settings-brand-field.other-settings-brand-text-field .app-settings-input {
+  width: 8rem;
+}
+
+.other-settings-brand-row-main .other-settings-brand-text-field {
+  flex: 0 0 auto;
+  min-width: 0;
 }
 
 .other-settings-brand-field {
-  flex: 0 1 11rem;
-  min-width: 8rem;
+  flex: 0 0 auto;
+  min-width: 0;
 }
 
 .other-settings-brand-company-field {
-  flex: 0 1 16.5rem;
-  min-width: 12rem;
+  flex: 0 0 auto;
+  min-width: 0;
 }
 
 .other-settings-brand-field .app-settings-input,
 .other-settings-corp-field .app-settings-input {
   width: 100%;
   box-sizing: border-box;
+}
+
+.other-settings-brand-row-main .other-settings-brand-field .app-settings-input,
+.other-settings-brand-row-logo-options .other-settings-brand-field .app-settings-input {
+  width: auto;
 }
 
 .other-settings-brand-color-field {
@@ -1392,14 +1515,45 @@ select.app-settings-input {
 
 .brand-logo-controls {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 0.5rem;
 }
 
+.brand-logo-settings-preview {
+  --plan-brand-logo-preview-height: calc(var(--plan-logo-height) * 2.5);
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: auto;
+  min-width: var(--plan-brand-logo-preview-height);
+  height: var(--plan-brand-logo-preview-height);
+  padding: 0 20px;
+  background: transparent;
+  box-shadow: none;
+  border-radius: var(--plan-radius-sm);
+}
+
+.brand-logo-settings-preview--empty {
+  width: calc(var(--plan-brand-logo-preview-height) * 120 / 36 + 40px);
+  border: 1px dashed var(--plan-editor-border);
+  background: var(--plan-editor-bg);
+}
+
+.brand-logo-settings-preview img {
+  display: block;
+  height: 100%;
+  width: auto;
+  max-width: calc(var(--plan-brand-logo-preview-height) * 120 / 36);
+  object-fit: contain;
+  object-position: center;
+}
+
 .other-settings-brand-reset-btn {
   flex: 0 0 auto;
-  align-self: center;
+  align-self: flex-start;
 }
 
 .app-settings-wrap .expand-settings-header .expand-settings-desc {
@@ -1414,28 +1568,42 @@ select.app-settings-input {
 }
 
 .other-settings-general-row {
-  align-items: flex-end;
-  flex-wrap: wrap;
+  align-items: center;
+  flex-wrap: nowrap;
+  width: fit-content;
+  max-width: 100%;
+  gap: 0.65rem 1rem;
+}
+
+.other-settings-general-row .app-settings-field {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+.other-settings-general-row .other-settings-corp-field .app-settings-input {
+  width: 14rem;
 }
 
 .other-settings-corp-field {
-  flex: 0 1 14rem;
-  min-width: 12rem;
-  max-width: 18rem;
-}
-
-.other-settings-preview-hint {
-  flex: 1 1 auto;
-  margin: 0;
-  align-self: center;
-  white-space: nowrap;
+  flex: 0 0 auto;
   min-width: 0;
+  max-width: none;
 }
 
 .app-settings-wrap .csv-name-settings-wrap {
   margin-top: 0.85rem;
   padding-top: 0.85rem;
   border-top: 1px solid var(--plan-border);
+}
+
+.app-settings-wrap .csv-name-settings-wrap .expand-settings-header-actions {
+  margin: 0.5rem 0 0.65rem;
+}
+
+.app-settings-wrap .csv-name-settings-table {
+  width: max-content;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .brand-color-row {
@@ -1906,12 +2074,12 @@ select.app-settings-input {
 }
 
 .csvname-pattern-input {
-  width: 27rem;
+  width: 33.75rem;
   box-sizing: border-box;
 }
 
 .csvname-example-input {
-  width: 21rem;
+  width: 26.25rem;
   box-sizing: border-box;
 }
 
@@ -3596,25 +3764,12 @@ html[data-plan-color-mode="light"] .plan-loading-overlay-panel {
   margin-bottom: 0.65rem;
 }
 
-.employee-travel-title-row {
-  display: flex;
-  flex-wrap: nowrap;
-  align-items: center;
-  gap: 0.75rem 1rem;
-  width: 100%;
-  min-width: 0;
-}
-
-.employee-travel-title-row .salary-plan-title {
-  flex: 0 0 auto;
+.employee-travel-header .salary-plan-title {
   margin: 0;
 }
 
-.employee-travel-title-row .employee-travel-desc {
-  flex: 1 1 auto;
+.employee-travel-header .employee-travel-desc {
   margin: 0;
-  white-space: nowrap;
-  min-width: 0;
 }
 
 .employee-travel-header .salary-plan-travel-allowance-config {

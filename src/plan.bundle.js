@@ -26472,21 +26472,17 @@ function renderEmployeeSettings() {
     const travelHeader = document.createElement('div');
     travelHeader.className = 'salary-plan-header employee-travel-header';
 
-    const travelTitleRow = document.createElement('div');
-    travelTitleRow.className = 'employee-travel-title-row';
-
     const travelTitle = document.createElement('h3');
     travelTitle.className = 'salary-plan-title';
     travelTitle.dataset.sectionFilter = 'personnel';
     travelTitle.textContent = '旅費交通費';
     applySectionFilterTitleStyle(travelTitle, 'personnel', getFilterButtonColors);
-    travelTitleRow.appendChild(travelTitle);
+    travelHeader.appendChild(travelTitle);
 
     const travelDesc = document.createElement('p');
     travelDesc.className = 'salary-plan-desc employee-travel-desc';
     travelDesc.textContent = `一人あたりに支給する月額です。デフォルトは ${formatSalaryPlanYen(DEFAULT_TRAVEL_ALLOWANCE_PER_PERSON)} です。`;
-    travelTitleRow.appendChild(travelDesc);
-    travelHeader.appendChild(travelTitleRow);
+    travelHeader.appendChild(travelDesc);
     travelHeader.appendChild(buildTravelAllowanceConfig(currentPeriod, nextPeriod));
     travelColumnEl.appendChild(travelHeader);
   }
@@ -27388,59 +27384,71 @@ function renderOtherSettings() {
     <div class="app-settings-section brand-settings-section other-settings-brand">
       <h2 class="ui-color-panel-title">ブランド表示</h2>
       <p class="app-settings-hint brand-logo-image-mode-hint" id="brand-logo-image-mode-hint" hidden></p>
-      <div class="other-settings-brand-row">
-        <label class="app-settings-field other-settings-brand-field other-settings-brand-company-field">
-          <span class="app-settings-label">会社名</span>
-          <input type="text" class="app-settings-input" id="brand-company-name"
-            spellcheck="false" autocomplete="off" />
-        </label>
-        <div class="app-settings-field other-settings-brand-logo-field">
-          <span class="app-settings-label">ロゴ画像</span>
-          <div class="brand-logo-controls">
-            <input type="file" accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml"
-              id="brand-logo-file" hidden />
-            <button type="button" class="plan-csv-btn" id="brand-logo-load-btn">画像を読み込む</button>
-            <button type="button" class="settings-delete-btn brand-logo-clear-btn" id="brand-logo-clear-btn" hidden>削除</button>
+      <div class="other-settings-brand-body">
+        <div class="other-settings-brand-row other-settings-brand-row-main">
+          <label class="app-settings-field other-settings-brand-field other-settings-brand-company-field">
+            <span class="app-settings-label">会社名</span>
+            <input type="text" class="app-settings-input" id="brand-company-name"
+              spellcheck="false" autocomplete="off" />
+          </label>
+          <label class="app-settings-field other-settings-brand-field other-settings-brand-text-field">
+            <span class="app-settings-label">アイコン表示</span>
+            <input type="text" class="app-settings-input" id="brand-icon-text"
+              spellcheck="false" autocomplete="off" placeholder="MGA や ⚖️ など" />
+          </label>
+          <label class="app-settings-field other-settings-brand-color-field other-settings-brand-text-field">
+            <span class="app-settings-label">塗り</span>
+            <input type="color" class="section-color-input" id="brand-fill-color" />
+          </label>
+          <label class="app-settings-field other-settings-brand-color-field other-settings-brand-text-field">
+            <span class="app-settings-label">文字</span>
+            <input type="color" class="section-color-input" id="brand-text-color" />
+          </label>
+        </div>
+        <div class="other-settings-brand-row other-settings-brand-row-logo">
+          <div class="app-settings-field other-settings-brand-logo-field">
+            <span class="app-settings-label">ロゴ画像</span>
+            <div class="brand-logo-controls">
+              <div
+                class="brand-logo-settings-preview brand-logo-settings-preview--empty"
+                id="brand-logo-settings-preview"
+              ></div>
+              <input type="file" accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml"
+                id="brand-logo-file" hidden />
+              <button type="button" class="plan-csv-btn" id="brand-logo-load-btn">画像を読み込む</button>
+              <button type="button" class="settings-delete-btn brand-logo-clear-btn" id="brand-logo-clear-btn" hidden>削除</button>
+            </div>
           </div>
         </div>
-        <label class="app-settings-field other-settings-brand-color-field other-settings-brand-logo-image-field other-settings-brand-logo-outline-color-field" hidden>
-          <span class="app-settings-label">縁取り</span>
-          <input type="color" class="section-color-input" id="brand-logo-outline-color" />
-        </label>
-        <label class="app-settings-field other-settings-brand-field other-settings-brand-logo-image-field" hidden>
-          <span class="app-settings-label">縁取り太さ (px、0=なし)</span>
-          <input type="number" class="app-settings-input app-settings-input-outline-width" id="brand-logo-outline-width"
-            min="${MIN_BRAND_LOGO_OUTLINE_WIDTH}" max="${MAX_BRAND_LOGO_OUTLINE_WIDTH}" step="0.1"
-            inputmode="decimal" autocomplete="off" />
-        </label>
-        <label class="app-settings-field other-settings-brand-field other-settings-brand-logo-image-field" hidden>
-          <span class="app-settings-label">影</span>
-          <input type="checkbox" class="app-settings-checkbox" id="brand-logo-shadow-enabled" />
-        </label>
-        <label class="app-settings-field other-settings-brand-field other-settings-brand-logo-image-field other-settings-brand-logo-shadow-option-field" hidden>
-          <span class="app-settings-label">影の強さ (1.0=標準)</span>
-          <input type="number" class="app-settings-input app-settings-input-outline-width" id="brand-logo-shadow-strength"
-            min="${MIN_BRAND_LOGO_SHADOW_STRENGTH}" max="${MAX_BRAND_LOGO_SHADOW_STRENGTH}" step="0.1"
-            inputmode="decimal" autocomplete="off" />
-        </label>
-        <label class="app-settings-field other-settings-brand-color-field other-settings-brand-logo-image-field other-settings-brand-logo-shadow-option-field" hidden>
-          <span class="app-settings-label">影の色</span>
-          <input type="color" class="section-color-input" id="brand-logo-shadow-color" />
-        </label>
-        <label class="app-settings-field other-settings-brand-field other-settings-brand-text-field">
-          <span class="app-settings-label">アイコン表示</span>
-          <input type="text" class="app-settings-input" id="brand-icon-text"
-            spellcheck="false" autocomplete="off" placeholder="MGA や ⚖️ など" />
-        </label>
-        <label class="app-settings-field other-settings-brand-color-field other-settings-brand-text-field">
-          <span class="app-settings-label">塗り</span>
-          <input type="color" class="section-color-input" id="brand-fill-color" />
-        </label>
-        <label class="app-settings-field other-settings-brand-color-field other-settings-brand-text-field">
-          <span class="app-settings-label">文字</span>
-          <input type="color" class="section-color-input" id="brand-text-color" />
-        </label>
-        <button type="button" class="expand-reset-btn other-settings-brand-reset-btn" id="app-settings-reset-btn">基本・ブランドをデフォルトに戻す</button>
+        <div class="other-settings-brand-row other-settings-brand-row-logo-options" hidden>
+          <label class="app-settings-field other-settings-brand-color-field other-settings-brand-logo-image-field other-settings-brand-logo-outline-color-field" hidden>
+            <span class="app-settings-label">縁取り</span>
+            <input type="color" class="section-color-input" id="brand-logo-outline-color" />
+          </label>
+          <label class="app-settings-field other-settings-brand-field other-settings-brand-logo-image-field" hidden>
+            <span class="app-settings-label">縁取り太さ (px、0=なし)</span>
+            <input type="number" class="app-settings-input app-settings-input-outline-width" id="brand-logo-outline-width"
+              min="${MIN_BRAND_LOGO_OUTLINE_WIDTH}" max="${MAX_BRAND_LOGO_OUTLINE_WIDTH}" step="0.1"
+              inputmode="decimal" autocomplete="off" />
+          </label>
+          <label class="app-settings-field other-settings-brand-field other-settings-brand-logo-image-field other-settings-brand-logo-shadow-field" hidden>
+            <span class="app-settings-label">影</span>
+            <input type="checkbox" class="app-settings-checkbox" id="brand-logo-shadow-enabled" />
+          </label>
+          <label class="app-settings-field other-settings-brand-field other-settings-brand-logo-image-field other-settings-brand-logo-shadow-option-field" hidden>
+            <span class="app-settings-label">影の強さ (1.0=標準)</span>
+            <input type="number" class="app-settings-input app-settings-input-outline-width" id="brand-logo-shadow-strength"
+              min="${MIN_BRAND_LOGO_SHADOW_STRENGTH}" max="${MAX_BRAND_LOGO_SHADOW_STRENGTH}" step="0.1"
+              inputmode="decimal" autocomplete="off" />
+          </label>
+          <label class="app-settings-field other-settings-brand-color-field other-settings-brand-logo-image-field other-settings-brand-logo-shadow-option-field" hidden>
+            <span class="app-settings-label">影の色</span>
+            <input type="color" class="section-color-input" id="brand-logo-shadow-color" />
+          </label>
+        </div>
+        <div class="other-settings-brand-row other-settings-brand-row-actions">
+          <button type="button" class="expand-reset-btn other-settings-brand-reset-btn" id="app-settings-reset-btn">基本・ブランドをデフォルトに戻す</button>
+        </div>
       </div>
     </div>
     <div class="app-settings-section other-settings-general">
@@ -27459,7 +27467,6 @@ function renderOtherSettings() {
           <input type="text" class="app-settings-input" id="corp-entity-markers"
             spellcheck="false" autocomplete="off" placeholder="株式会社,（株） など" />
         </label>
-        <p class="app-settings-hint other-settings-preview-hint" id="app-settings-preview"></p>
       </div>
     </div>
   `;
@@ -27468,7 +27475,6 @@ function renderOtherSettings() {
   appendCsvNameSettingsPanel(wrap);
 
   const yearInput = form.querySelector('#business-start-year');
-  const preview = form.querySelector('#app-settings-preview');
   const fiscalEndMonthSelect = form.querySelector('#fiscal-end-month');
   const corpEntityMarkersInput = form.querySelector('#corp-entity-markers');
   const companyNameInput = form.querySelector('#brand-company-name');
@@ -27484,10 +27490,12 @@ function renderOtherSettings() {
   const brandLogoFileInput = form.querySelector('#brand-logo-file');
   const brandLogoLoadBtn = form.querySelector('#brand-logo-load-btn');
   const brandLogoClearBtn = form.querySelector('#brand-logo-clear-btn');
+  const brandLogoPreview = form.querySelector('#brand-logo-settings-preview');
   const brandTextFields = form.querySelectorAll('.other-settings-brand-text-field');
   const brandLogoImageFields = form.querySelectorAll('.other-settings-brand-logo-image-field');
   const brandLogoOutlineColorField = form.querySelector('.other-settings-brand-logo-outline-color-field');
   const brandLogoShadowOptionFields = form.querySelectorAll('.other-settings-brand-logo-shadow-option-field');
+  const brandLogoOptionsRow = form.querySelector('.other-settings-brand-row-logo-options');
 
   // ロゴ設定の表示切替でフォームの自然幅が変わったときに UI スケールを再計算する
   let refreshOtherSettingsLayout = null;
@@ -27507,13 +27515,40 @@ function renderOtherSettings() {
     brandLogoShadowColorInput.value = img.shadowColor;
   }
 
-  function syncBrandFieldsVisibility() {
-    const logoActive = hasBrandLogo(appSettings);
+  function syncBrandLogoSettingsPreview(settings = appSettings) {
+    if (!brandLogoPreview) return;
+    const dataUrl = normalizeBrandLogoDataUrl(settings.brandLogoDataUrl);
+    brandLogoPreview.classList.toggle('brand-logo-settings-preview--empty', !dataUrl);
+    brandLogoPreview.classList.toggle('plan-logo-image', !!dataUrl);
+    brandLogoPreview.textContent = '';
+    brandLogoPreview.style.background = '';
+    brandLogoPreview.style.color = '';
+    brandLogoPreview.style.boxShadow = 'none';
+
+    let img = brandLogoPreview.querySelector('img');
+    if (dataUrl) {
+      if (!img) {
+        img = document.createElement('img');
+        img.alt = '';
+        brandLogoPreview.appendChild(img);
+      }
+      if (img.src !== dataUrl) img.src = dataUrl;
+      applyBrandLogoImageFilters(settings, getPlanColorMode());
+      return;
+    }
+    if (img) img.remove();
+    brandLogoPreview.style.filter = 'none';
+  }
+
+  function syncBrandFieldsVisibility(settings = appSettings) {
+    const logoActive = hasBrandLogo(settings);
     const outlineActive = normalizeBrandLogoOutlineWidth(brandLogoOutlineWidthInput.value) > 0;
     const shadowActive = brandLogoShadowEnabledInput.checked;
+    syncBrandLogoSettingsPreview(settings);
     brandTextFields.forEach((el) => {
       el.hidden = logoActive;
     });
+    if (brandLogoOptionsRow) brandLogoOptionsRow.hidden = !logoActive;
     brandLogoImageFields.forEach((el) => {
       el.hidden = !logoActive;
     });
@@ -27560,8 +27595,9 @@ function renderOtherSettings() {
   }
 
   function previewBrandSettingsFromInputs() {
-    applyBrandSettings(buildBrandSettingsDraftFromInputs(), getPlanColorMode());
-    syncBrandFieldsVisibility();
+    const draft = buildBrandSettingsDraftFromInputs();
+    applyBrandSettings(draft, getPlanColorMode());
+    syncBrandFieldsVisibility(draft);
   }
 
   function refreshBrandSettings() {
@@ -27650,12 +27686,6 @@ function renderOtherSettings() {
     opt.value = String(m);
     opt.textContent = `${m}月`;
     fiscalEndMonthSelect.appendChild(opt);
-  }
-
-  function refreshPreview() {
-    const map = buildMonthYearMap(appSettings.businessStartYear, appSettings.fiscalPeriod);
-    preview.textContent =
-      `第${appSettings.fiscalPeriod}期の年表示: 12月=${map['12月']}年、1月〜11月=${map['1月']}年`;
   }
 
   yearInput.value = String(appSettings.businessStartYear);
@@ -27747,7 +27777,6 @@ function renderOtherSettings() {
     };
     saveAppSettings(appSettings);
     syncPeriodControls();
-    refreshPreview();
     if (activeTab === 'plan' && data) refreshPlanTable();
   });
 
@@ -27764,17 +27793,21 @@ function renderOtherSettings() {
     populateBrandLogoImageForm();
     refreshBrandSettings();
     syncPeriodControls();
-    refreshPreview();
     if (activeTab === 'plan' && data) refreshPlanTable();
   });
 
-  refreshPreview();
   replaceRootPanel(wrap);
   // ブラウザ幅へフィットさせる。
   // 自然幅 = 左右余白 2rem ＋ 各セクション（ブランド行・基本設定行・CSV名定義表）の 1 行自然幅の最大
   const measureOtherSettingsNaturalWidth = () => {
+    const brandRowW = Math.max(
+      0,
+      ...[...wrap.querySelectorAll('.other-settings-brand-row')].map((row) => (
+        row.hidden ? 0 : measureElementIntrinsicWidth(row)
+      )),
+    );
     const sectionW = Math.max(
-      measureElementIntrinsicWidth(wrap.querySelector('.other-settings-brand-row')),
+      brandRowW,
       measureElementIntrinsicWidth(wrap.querySelector('.other-settings-general-row')),
       measureElementIntrinsicWidth(wrap.querySelector('.csv-name-settings-table')),
     );
