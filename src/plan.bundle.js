@@ -3018,8 +3018,7 @@ function calcPayGapRatio(directorTotal, staffTotal, directorCount, staffCount) {
   return directorAvg / staffAvg;
 }
 
-/** 総利益率・労働分配率・格差倍率（ヘッダー KPI 用） */
-function calcPlanKpiMetrics(data, options = {}) {
+function extractPlanKpiComponents(data, options = {}) {
   if (!data?.sections) return null;
   const profitDenominator = getProfitMarginDenominator(data);
   const valueAdded = getLaborShareDenominator(data);
@@ -3041,6 +3040,28 @@ function calcPlanKpiMetrics(data, options = {}) {
     staffCount = staffCount ?? inferred.staffCount;
   }
 
+  return {
+    ordinary,
+    profitDenominator,
+    personnelTotal,
+    valueAdded,
+    directorTotal,
+    staffTotal,
+    directorCount,
+    staffCount,
+  };
+}
+
+function calcPlanKpiMetricsFromComponents({
+  ordinary,
+  profitDenominator,
+  personnelTotal,
+  valueAdded,
+  directorTotal,
+  staffTotal,
+  directorCount,
+  staffCount,
+}) {
   const nullLabor = {
     laborShareRate: null,
     directorLaborShareRate: null,
@@ -3061,6 +3082,45 @@ function calcPlanKpiMetrics(data, options = {}) {
       }
       : nullLabor),
   };
+}
+
+/** 総利益率・労働分配率・格差倍率（ヘッダー KPI 用） */
+function calcPlanKpiMetrics(data, options = {}) {
+  const components = extractPlanKpiComponents(data, options);
+  if (!components) return null;
+  return calcPlanKpiMetricsFromComponents(components);
+}
+
+/** 全期表示: 各期の分子・分母を合算して KPI を算出する */
+function calcPlanKpiMetricsAllPeriods(allPeriodDatas, buildOptionsForPeriod = () => ({})) {
+  if (!allPeriodDatas?.length) return null;
+
+  const summed = {
+    ordinary: 0,
+    profitDenominator: 0,
+    personnelTotal: 0,
+    valueAdded: 0,
+    directorTotal: 0,
+    staffTotal: 0,
+    directorCount: 0,
+    staffCount: 0,
+  };
+
+  for (const { fiscalPeriod, data } of allPeriodDatas) {
+    const options = buildOptionsForPeriod(fiscalPeriod) ?? {};
+    const components = extractPlanKpiComponents(data, options);
+    if (!components) continue;
+    summed.ordinary += components.ordinary;
+    summed.profitDenominator += components.profitDenominator;
+    summed.personnelTotal += components.personnelTotal;
+    summed.valueAdded += components.valueAdded;
+    summed.directorTotal += components.directorTotal;
+    summed.staffTotal += components.staffTotal;
+    summed.directorCount += components.directorCount ?? 0;
+    summed.staffCount += components.staffCount ?? 0;
+  }
+
+  return calcPlanKpiMetricsFromComponents(summed);
 }
 
 function calcTotalProfitMargin(data) {
@@ -5830,11 +5890,15 @@ function rawValuesFromRow(row) {
 
 function loadReferencePeriodPlanData(expandConfig, businessStartYear, fiscalPeriod) {
   if (fiscalPeriod < 1) return null;
-  const cached = planDataFromCache(expandConfig, {
-    businessStartYear,
-    fiscalPeriod,
-  });
-  return cached?.data ?? null;
+  try {
+    const cached = planDataFromCache(expandConfig, {
+      businessStartYear,
+      fiscalPeriod,
+    });
+    return cached?.data ?? null;
+  } catch {
+    return null;
+  }
 }
 
 function collectActualAmountsFromPlanData(
@@ -10790,9 +10854,14 @@ function toPlanData(folderData, expandConfig) {
 
 /** キャッシュから計画データを生成（期切替用・フォルダアクセス不要） */
 function planDataFromCache(expandConfig, periodOptions) {
-  const folderData = resolveFolderDataFromCache(periodOptions);
-  if (!folderData) return null;
-  return toPlanData(folderData, expandConfig);
+  try {
+    const folderData = resolveFolderDataFromCache(periodOptions);
+    if (!folderData) return null;
+    return toPlanData(folderData, expandConfig);
+  } catch {
+    // ダッシュボードの複数期参照など、未用意の期は null 扱いにする
+    return null;
+  }
 }
 
 /** @returns {Promise<{ status: 'loaded', data: ReturnType<typeof planDataFromFolder> } | { status: 'needs-permission', folderName: string, handle: FileSystemDirectoryHandle } | { status: 'none' }>} */
@@ -14779,6 +14848,76 @@ const DASHBOARD_INFLOW_MINUS_OUTFLOW = '収入−支出';
 const DASHBOARD_CURRENT_PERIOD = '今期';
 const DASHBOARD_PREV_PERIOD = '前期';
 const DASHBOARD_PREV_PREV_PERIOD = '前々期';
+const DASHBOARD_PERIOD_OVERRIDE_LABEL = '複数期オーバーライド指定';
+const DASHBOARD_ALL_PERIODS_BTN_LABEL = '全期表示';
+
+function dashMultiPeriodStorageKey(from, to) {
+  return `range:${from}-${to}`;
+}
+
+function dashFormatPeriodRangeLabel(from, to) {
+  if (from === to) return formatFiscalPeriodLabel(from);
+  return `${formatFiscalPeriodLabel(from)}〜${formatFiscalPeriodLabel(to)}`;
+}
+
+function dashPopulatePeriodRangeSelect(select, maxPeriod, selected) {
+  if (!select) return;
+  const prev = String(selected);
+  select.replaceChildren();
+  for (let p = 1; p <= maxPeriod; p += 1) {
+    const opt = document.createElement('option');
+    opt.value = String(p);
+    opt.textContent = formatFiscalPeriodLabel(p);
+    select.appendChild(opt);
+  }
+  select.value = prev;
+  if (select.value !== prev) select.value = String(selected);
+}
+
+function dashSyncPeriodRangeControls(toolbar, periodRange, maxFiscalPeriod) {
+  const fromSelect = toolbar?.querySelector('.dashboard-period-range-from');
+  const toSelect = toolbar?.querySelector('.dashboard-period-range-to');
+  const allBtn = toolbar?.querySelector('.dashboard-period-all-btn');
+  if (!fromSelect || !toSelect) return;
+
+  dashPopulatePeriodRangeSelect(fromSelect, maxFiscalPeriod, periodRange.from);
+  dashPopulatePeriodRangeSelect(toSelect, maxFiscalPeriod, periodRange.to);
+  if (allBtn) {
+    // 全期表示中はトーンを落とし、それ以外は強調色（通常の is-active と逆）
+    const isAllRange = periodRange.from === 1 && periodRange.to === maxFiscalPeriod;
+    allBtn.classList.toggle('is-active', !isAllRange);
+    allBtn.setAttribute('aria-pressed', isAllRange ? 'true' : 'false');
+    // すでに全期表示なら再クリック不要なので無効化する
+    allBtn.disabled = isAllRange;
+  }
+}
+
+function dashBindPeriodRangeControls(
+  toolbar,
+  {
+    periodRange,
+    maxFiscalPeriod,
+    onPeriodRangeChange,
+  },
+) {
+  const fromSelect = toolbar.querySelector('.dashboard-period-range-from');
+  const toSelect = toolbar.querySelector('.dashboard-period-range-to');
+  const allBtn = toolbar.querySelector('.dashboard-period-all-btn');
+  if (!fromSelect || !toSelect) return;
+
+  dashSyncPeriodRangeControls(toolbar, periodRange, maxFiscalPeriod);
+
+  fromSelect.addEventListener('change', () => {
+    onPeriodRangeChange?.(Number(fromSelect.value), Number(toSelect.value));
+  });
+  toSelect.addEventListener('change', () => {
+    onPeriodRangeChange?.(Number(fromSelect.value), Number(toSelect.value));
+  });
+  allBtn?.addEventListener('click', () => {
+    if (allBtn.disabled) return;
+    onPeriodRangeChange?.(1, maxFiscalPeriod);
+  });
+}
 
 const DASHBOARD_DISPLAY_MONTHS = FISCAL_MONTHS.filter((m) => m !== DASHBOARD_KESSAN);
 const REVENUE_SECTION_IDS = ['revenue', 'nonOperating', 'specialProfit'];
@@ -15154,6 +15293,49 @@ function dashCollectBreakdownItems(sections, sectionIds, mode = 'account') {
     : dashCollectBreakdownItemsByAccount(sections, sectionIds);
 }
 
+/** 全期モード: 期をまたいで安定な内訳キー（行 id は期ごとに変わるため科目＋補助科目で合成） */
+function dashAllPeriodItemKey(item, mode) {
+  if (mode === 'account') return item.key;
+  const sub = dashNormalizeSubLabel(item.row?.subLabel);
+  return `${item.sectionId}|all-sub|${item.accountLabel}\0${sub}`;
+}
+
+/** 全期モード: 全期分の内訳を合算し、全期連結の月次系列（seriesValues）を付与する */
+function dashCollectAllPeriodBreakdownItems(allPeriods, sectionIds, mode) {
+  const monthsPerPeriod = DASHBOARD_DISPLAY_MONTHS.length;
+  const totalMonths = allPeriods.length * monthsPerPeriod;
+  const byKey = new Map();
+  allPeriods.forEach(({ data }, periodIndex) => {
+    const items = dashCollectBreakdownItems(data?.sections ?? [], sectionIds, mode);
+    for (const item of items) {
+      const key = dashAllPeriodItemKey(item, mode);
+      let merged = byKey.get(key);
+      if (!merged) {
+        merged = {
+          ...item,
+          key,
+          total: 0,
+          values: {},
+          seriesValues: new Array(totalMonths).fill(0),
+        };
+        byKey.set(key, merged);
+      }
+      // 表示名・行参照は新しい期のものを優先する
+      merged.name = item.name;
+      merged.row = item.row;
+      dashAddRowValues(merged.values, item.values ?? {});
+      merged.total += item.total;
+      DASHBOARD_DISPLAY_MONTHS.forEach((month, mi) => {
+        merged.seriesValues[periodIndex * monthsPerPeriod + mi] += item.values?.[month] ?? 0;
+      });
+    }
+  });
+  const mergedItems = [...byKey.values()];
+  for (const item of mergedItems) dashFinalizeRowValues(item.values);
+  mergedItems.sort((a, b) => b.total - a.total);
+  return mergedItems;
+}
+
 function dashClearSidebarPreferences() {
   try {
     localStorage.removeItem(DASHBOARD_REVENUE_BREAKDOWN_KEY);
@@ -15305,7 +15487,10 @@ function dashBuildStackedSeries(items, checkedKeys, colorMap) {
       key: item.key,
       label: item.name,
       color: colorMap.get(item.key) ?? DASH_COLOR_BAR,
-      values: DASHBOARD_DISPLAY_MONTHS.map((month) => Math.abs(item.values[month] ?? 0)),
+      // 全期モードでは全期連結の系列（seriesValues）を使う
+      values: item.seriesValues
+        ? item.seriesValues.map((v) => Math.abs(v))
+        : DASHBOARD_DISPLAY_MONTHS.map((month) => Math.abs(item.values[month] ?? 0)),
     }));
 }
 
@@ -15337,6 +15522,8 @@ function dashResolveDrilldownTarget(sections, item) {
 
 function dashGetDrilldownCtx(ctx) {
   const { data, showJournalPopup, hasJournalDrilldown } = ctx;
+  // 全期モードでは仕訳が選択期分しか読み込まれていないためドリルダウンを無効化する
+  if (ctx.allPeriods) return null;
   if (!showJournalPopup || !hasJournalDrilldown) return null;
   return {
     sections: data?.sections ?? [],
@@ -15532,6 +15719,15 @@ function dashBuildMonthlySeries(data, appSettings) {
     profit: ordProfit[month] ?? 0,
     cash: cashValues[month] ?? 0,
   }));
+}
+
+/** 全期モード: 各期の月次系列を期の昇順に連結する */
+function dashBuildMonthlySeriesAllPeriods(allPeriods, appSettings) {
+  const result = [];
+  for (const { fiscalPeriod, data } of allPeriods) {
+    result.push(...dashBuildMonthlySeries(data, { ...appSettings, fiscalPeriod }));
+  }
+  return result;
 }
 
 function dashSplitMonthLabel(fullLabel) {
@@ -16113,11 +16309,19 @@ function dashRenderSvgGroupedBarChart(container, series, labels, {
     const yScale = dashMakeYScale(yAxis, pad, plotH);
     const groupCount = labels.length;
     const barGroupW = plotW / Math.max(1, groupCount);
-    const barGap = 4 * viewportScale;
+    let barGap = 4 * viewportScale;
     // 上限を固定 px でなく月枠幅にも追従させ、広い画面で棒間の隙間が開きすぎないようにする
     const barWMax = Math.max(22 * viewportScale, (barGroupW * 0.62) / series.length);
-    const barW = Math.min(barWMax, Math.max(6, (barGroupW - barGap) / series.length - 4));
-    const totalBarWidth = series.length * barW + (series.length - 1) * barGap;
+    let barW = Math.min(barWMax, Math.max(6, (barGroupW - barGap) / series.length - 4));
+    let totalBarWidth = series.length * barW + (series.length - 1) * barGap;
+    // 全期表示などで月枠に収まらない場合は隙間を詰めて棒を細くし、
+    // 隣の月の棒の裏に支出が隠れないよう必ず枠内に収める
+    if (totalBarWidth > barGroupW) {
+      barGap = Math.max(0, Math.min(barGap, barGroupW * 0.08));
+      barW = Math.max(1, (barGroupW - (series.length - 1) * barGap - 1) / series.length);
+      totalBarWidth = series.length * barW + (series.length - 1) * barGap;
+    }
+    const barRx = Math.min(2, barW / 2).toFixed(2);
 
     const gridLines = dashRenderYAxisGrid(yAxis, yScale, pad, width);
 
@@ -16129,7 +16333,7 @@ function dashRenderSvgGroupedBarChart(container, series, labels, {
         const val = Math.abs(s.values[gi] ?? 0);
         const x = cx - totalBarWidth / 2 + si * (barW + barGap);
         const y = yScale(val);
-        bars += `<rect class="dashboard-chart-bar" data-month-index="${gi}" data-series-index="${si}" x="${x}" y="${y}" width="${barW}" height="${Math.max(0, plotBottom - y)}" fill="${s.color}" rx="2"/>`;
+        bars += `<rect class="dashboard-chart-bar" data-month-index="${gi}" data-series-index="${si}" x="${x}" y="${y}" width="${barW}" height="${Math.max(0, plotBottom - y)}" fill="${s.color}" rx="${barRx}"/>`;
       });
     });
 
@@ -16591,7 +16795,8 @@ function dashRenderSvgStackedBarChart(container, series, labels, {
     const groupCount = labels.length;
     const barGroupW = plotW / Math.max(1, groupCount);
     // 固定 px の上限をやめ、月枠幅の一定割合で棒の太さを画面幅に追従させる
-    const barW = Math.max(8, barGroupW * 0.55);
+    // （全期表示など月数が多い場合は月枠からはみ出さないよう細くする）
+    const barW = Math.min(Math.max(8, barGroupW * 0.55), Math.max(1, barGroupW - 1));
 
     const gridLines = dashRenderYAxisGrid(yAxis, yScale, pad, width);
 
@@ -16982,6 +17187,11 @@ function dashRenderDashboardContent(wrap, ctx, { animate = false, animateMainCha
   dashCloseChartContextMenu();
   dashGradientSeq = 0;
   const { data, prevData, prevPrevData, appSettings, state } = ctx;
+  const allPeriods = ctx.allPeriods ?? null;
+  const periodRange = ctx.periodRange ?? { from: appSettings.fiscalPeriod, to: appSettings.fiscalPeriod };
+  const periodStorageKey = allPeriods?.length
+    ? dashMultiPeriodStorageKey(periodRange.from, periodRange.to)
+    : periodRange.from;
   const mainChartAnimate = animate || animateMainChart;
   const drilldownCtx = dashGetDrilldownCtx(ctx);
   const sections = data?.sections ?? [];
@@ -16997,12 +17207,16 @@ function dashRenderDashboardContent(wrap, ctx, { animate = false, animateMainCha
   const prevExpenseItems = state.lastExpenseItems ?? null;
   const prevRevenueMode = state.lastRevenueBreakdownMode ?? revenueBreakdownMode;
   const prevExpenseMode = state.lastExpenseBreakdownMode ?? expenseBreakdownMode;
+  // 全期モードでは全期分の内訳を合算して使う
+  const collectItems = (sectionIds, mode) => (allPeriods
+    ? dashCollectAllPeriodBreakdownItems(allPeriods, sectionIds, mode)
+    : dashCollectBreakdownItems(sections, sectionIds, mode));
   const revenueItems = dashSortBreakdownItems(
-    dashCollectBreakdownItems(sections, REVENUE_SECTION_IDS, revenueBreakdownMode),
+    collectItems(REVENUE_SECTION_IDS, revenueBreakdownMode),
     revenueSortMode,
   );
   const expenseItems = dashSortBreakdownItems(
-    dashCollectBreakdownItems(sections, EXPENSE_SECTION_IDS, expenseBreakdownMode),
+    collectItems(EXPENSE_SECTION_IDS, expenseBreakdownMode),
     expenseSortMode,
   );
   const allItems = [...revenueItems, ...expenseItems];
@@ -17029,9 +17243,9 @@ function dashRenderDashboardContent(wrap, ctx, { animate = false, animateMainCha
     );
     state.seenKeys = new Set(allKeys);
     state.pendingPeriodRemap = false;
-    dashSaveCheckedKeys(appSettings.fiscalPeriod, state.checkedKeys);
+    dashSaveCheckedKeys(periodStorageKey, state.checkedKeys);
   } else if (!state.initialized) {
-    state.checkedKeys = dashLoadCheckedKeys(appSettings.fiscalPeriod, allKeys);
+    state.checkedKeys = dashLoadCheckedKeys(periodStorageKey, allKeys);
     state.seenKeys = new Set(allKeys);
     state.initialized = true;
     dashSyncSideCheckAllFlags(state, revenueItems, expenseItems);
@@ -17046,7 +17260,7 @@ function dashRenderDashboardContent(wrap, ctx, { animate = false, animateMainCha
         revenueBreakdownMode,
       );
       state.seenKeys = new Set(allKeys);
-      dashSaveCheckedKeys(appSettings.fiscalPeriod, state.checkedKeys);
+      dashSaveCheckedKeys(periodStorageKey, state.checkedKeys);
     }
     if (prevExpenseMode !== expenseBreakdownMode && prevExpenseItems) {
       state.checkedKeys = dashRemapPeriodSideCheckedKeys(
@@ -17058,7 +17272,7 @@ function dashRenderDashboardContent(wrap, ctx, { animate = false, animateMainCha
         expenseBreakdownMode,
       );
       state.seenKeys = new Set(allKeys);
-      dashSaveCheckedKeys(appSettings.fiscalPeriod, state.checkedKeys);
+      dashSaveCheckedKeys(periodStorageKey, state.checkedKeys);
     }
     const revenueKeySet = new Set(revenueItems.map((i) => i.key));
     let keysAdded = false;
@@ -17072,35 +17286,47 @@ function dashRenderDashboardContent(wrap, ctx, { animate = false, animateMainCha
         }
       }
     }
-    if (keysAdded) dashSaveCheckedKeys(appSettings.fiscalPeriod, state.checkedKeys);
+    if (keysAdded) dashSaveCheckedKeys(periodStorageKey, state.checkedKeys);
   }
   state.lastRevenueItems = revenueItems;
   state.lastExpenseItems = expenseItems;
   state.lastRevenueBreakdownMode = revenueBreakdownMode;
   state.lastExpenseBreakdownMode = expenseBreakdownMode;
 
-  const monthly = dashBuildMonthlySeries(data, appSettings);
+  const viewPeriod = periodRange.from;
+  const chartAppSettings = allPeriods?.length
+    ? appSettings
+    : { ...appSettings, fiscalPeriod: viewPeriod };
+
+  // 複数期モードでは各期の月次系列を連結し、前期・前々期の比較線は表示しない
+  const monthly = allPeriods
+    ? dashBuildMonthlySeriesAllPeriods(allPeriods, appSettings)
+    : dashBuildMonthlySeries(data, chartAppSettings);
   const monthLabels = monthly.map((m) => m.label);
-  const prevMonthly = prevData && appSettings.fiscalPeriod > 1
+  const prevMonthly = !allPeriods && prevData && viewPeriod > 1
     ? dashBuildMonthlySeries(prevData, {
-      ...appSettings,
-      fiscalPeriod: appSettings.fiscalPeriod - 1,
+      ...chartAppSettings,
+      fiscalPeriod: viewPeriod - 1,
     })
     : null;
-  const prevPrevMonthly = prevPrevData && appSettings.fiscalPeriod > 2
+  const prevPrevMonthly = !allPeriods && prevPrevData && viewPeriod > 2
     ? dashBuildMonthlySeries(prevPrevData, {
-      ...appSettings,
-      fiscalPeriod: appSettings.fiscalPeriod - 2,
+      ...chartAppSettings,
+      fiscalPeriod: viewPeriod - 2,
     })
     : null;
 
   const toolbar = wrap.querySelector('.dashboard-toolbar');
   if (toolbar) {
+    const periodLabel = allPeriods?.length
+      ? dashFormatPeriodRangeLabel(periodRange.from, periodRange.to)
+      : formatFiscalPeriodLabel(periodRange.from);
     toolbar.querySelector('.dashboard-title').textContent =
-      `${formatFiscalPeriodLabel(appSettings.fiscalPeriod)} ダッシュードボード`;
+      `${periodLabel} ダッシュボード`;
     toolbar.querySelectorAll('.dashboard-mode-btn').forEach((btn) => {
       btn.classList.toggle('is-active', btn.dataset.mode === state.chartMode);
     });
+    dashSyncPeriodRangeControls(toolbar, periodRange, ctx.maxFiscalPeriod ?? 1);
   }
 
   const revenueEl = wrap.querySelector('.dashboard-sidebar-revenue');
@@ -17110,7 +17336,7 @@ function dashRenderDashboardContent(wrap, ctx, { animate = false, animateMainCha
   const cashChartEl = wrap.querySelector('.dashboard-chart-cash');
 
   const persistCheckedKeys = () => {
-    dashSaveCheckedKeys(appSettings.fiscalPeriod, state.checkedKeys);
+    dashSaveCheckedKeys(periodStorageKey, state.checkedKeys);
   };
 
   const revenueKeySet = new Set(revenueItems.map((i) => i.key));
@@ -17318,20 +17544,38 @@ function dashRenderDashboardContent(wrap, ctx, { animate = false, animateMainCha
   );
 }
 
+function dashMakeDashboardRenderCtx({
+  data,
+  prevData,
+  prevPrevData,
+  allPeriods,
+  periodRange,
+  maxFiscalPeriod,
+  appSettings,
+  state,
+  showJournalPopup,
+  hasJournalDrilldown,
+}) {
+  return {
+    data,
+    prevData,
+    prevPrevData,
+    allPeriods,
+    periodRange,
+    maxFiscalPeriod,
+    appSettings,
+    state,
+    showJournalPopup,
+    hasJournalDrilldown,
+  };
+}
+
 function dashSwitchToChartMode(wrap, mode) {
   const ctx = dashboardMountCtx;
   if (!ctx || !wrap?.isConnected) return;
   if (ctx.state.chartMode === mode) return;
   ctx.state.chartMode = mode;
-  dashRenderDashboardContent(wrap, {
-    data: ctx.data,
-    prevData: ctx.prevData,
-    prevPrevData: ctx.prevPrevData,
-    appSettings: ctx.appSettings,
-    state: ctx.state,
-    showJournalPopup: ctx.showJournalPopup,
-    hasJournalDrilldown: ctx.hasJournalDrilldown,
-  }, { animateMainChart: true });
+  dashRenderDashboardContent(wrap, dashMakeDashboardRenderCtx(ctx), { animateMainChart: true });
 }
 
 const DASH_CLICK_ROUTE_INTERACTIVE =
@@ -17393,24 +17637,30 @@ function dashBindDashboardClickRouting(wrap, { revenueEl, expenseEl }) {
 
 function mountDashboardPanel({
   replaceRootPanel,
-  setPlanKpi,
   data,
   prevData = null,
   prevPrevData = null,
+  allPeriods = null,
+  periodRange = { from: 1, to: 1 },
+  maxFiscalPeriod = 1,
+  onPeriodRangeChange = null,
   appSettings,
-  calcPlanKpiMetrics,
-  buildPlanKpiOptions,
   getSectionFilterColors = null,
   showJournalPopup = null,
   hasJournalDrilldown = null,
 }) {
   if (!data) return;
 
-  setPlanKpi(calcPlanKpiMetrics(data, buildPlanKpiOptions()));
-
   const prevCtx = dashboardMountCtx;
-  const periodChanged = prevCtx != null
-    && prevCtx.appSettings?.fiscalPeriod !== appSettings.fiscalPeriod;
+  const periodKey = allPeriods?.length
+    ? dashMultiPeriodStorageKey(periodRange.from, periodRange.to)
+    : periodRange.from;
+  const prevPeriodKey = prevCtx == null
+    ? null
+    : (prevCtx.allPeriods?.length
+      ? dashMultiPeriodStorageKey(prevCtx.periodRange.from, prevCtx.periodRange.to)
+      : prevCtx.periodRange?.from ?? prevCtx.appSettings?.fiscalPeriod);
+  const periodChanged = prevCtx != null && prevPeriodKey !== periodKey;
 
   const state = prevCtx?.state ?? {
     chartMode: 'balance',
@@ -17433,9 +17683,9 @@ function mountDashboardPanel({
     state.pendingPeriodRemap = true;
   }
 
-  const shouldAnimate = state.lastAnimatedPeriod !== appSettings.fiscalPeriod;
+  const shouldAnimate = state.lastAnimatedPeriod !== periodKey;
   if (shouldAnimate) {
-    state.lastAnimatedPeriod = appSettings.fiscalPeriod;
+    state.lastAnimatedPeriod = periodKey;
   }
 
   dashboardMountCtx = {
@@ -17444,12 +17694,26 @@ function mountDashboardPanel({
     data,
     prevData,
     prevPrevData,
+    allPeriods,
+    periodRange,
+    maxFiscalPeriod,
     getSectionFilterColors,
     showJournalPopup,
     hasJournalDrilldown,
-    calcPlanKpiMetrics,
-    buildPlanKpiOptions,
   };
+
+  const renderCtx = dashMakeDashboardRenderCtx({
+    data,
+    prevData,
+    prevPrevData,
+    allPeriods,
+    periodRange,
+    maxFiscalPeriod,
+    appSettings,
+    state,
+    showJournalPopup,
+    hasJournalDrilldown,
+  });
 
   const wrap = document.createElement('div');
   wrap.className = 'dashboard-wrap';
@@ -17459,10 +17723,31 @@ function mountDashboardPanel({
   toolbar.innerHTML = `
     <div class="dashboard-toolbar-left">
       <h2 class="dashboard-title"></h2>
-      <div class="dashboard-mode-tabs" role="tablist">
-        ${DASHBOARD_CHART_MODES.map(
+      <div class="dashboard-toolbar-controls">
+        <div class="dashboard-mode-tabs" role="tablist">
+          ${DASHBOARD_CHART_MODES.map(
     (mode) => `<button type="button" class="dashboard-mode-btn" data-mode="${mode.id}" role="tab">${mode.label}</button>`,
   ).join('')}
+        </div>
+        <div class="dashboard-period-override-group">
+          <span class="dashboard-period-override-label">${DASHBOARD_PERIOD_OVERRIDE_LABEL}</span>
+          <div class="dashboard-period-range-controls">
+            <select
+              class="app-settings-input dashboard-period-range-select dashboard-period-range-from"
+              aria-label="開始期"
+            ></select>
+            <span class="dashboard-period-range-sep" aria-hidden="true">〜</span>
+            <select
+              class="app-settings-input dashboard-period-range-select dashboard-period-range-to"
+              aria-label="終了期"
+            ></select>
+            <button
+              type="button"
+              class="dashboard-mode-btn dashboard-period-all-btn"
+              data-mode="balance"
+            >${DASHBOARD_ALL_PERIODS_BTN_LABEL}</button>
+          </div>
+        </div>
       </div>
     </div>`;
 
@@ -17487,30 +17772,20 @@ function mountDashboardPanel({
     expenseEl: grid.querySelector('.dashboard-sidebar-expense'),
   });
 
+  dashBindPeriodRangeControls(toolbar, {
+    periodRange,
+    maxFiscalPeriod,
+    onPeriodRangeChange,
+  });
+
   toolbar.querySelectorAll('.dashboard-mode-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
       state.chartMode = btn.dataset.mode;
-      dashRenderDashboardContent(wrap, {
-        data,
-        prevData,
-        prevPrevData,
-        appSettings,
-        state,
-        showJournalPopup,
-        hasJournalDrilldown,
-      }, { animateMainChart: true });
+      dashRenderDashboardContent(wrap, renderCtx, { animateMainChart: true });
     });
   });
 
-  dashRenderDashboardContent(wrap, {
-    data,
-    prevData,
-    prevPrevData,
-    appSettings,
-    state,
-    showJournalPopup,
-    hasJournalDrilldown,
-  }, { animate: shouldAnimate });
+  dashRenderDashboardContent(wrap, renderCtx, { animate: shouldAnimate });
 
   // 主エリアの寸法が変わったらチャートを実測サイズで再描画（余白の無駄・引き伸ばしを防ぐ）
   const mainEl = grid.querySelector('.dashboard-main');
@@ -17534,25 +17809,20 @@ function mountDashboardPanel({
       if (!wrap.isConnected) return;
       lastMainWidth = mainEl.clientWidth;
       lastMainHeight = mainEl.clientHeight;
-      dashRenderDashboardContent(wrap, {
-        data,
-        prevData,
-        prevPrevData,
-        appSettings,
-        state,
-        showJournalPopup,
-        hasJournalDrilldown,
-      });
+      dashRenderDashboardContent(wrap, dashMakeDashboardRenderCtx(dashboardMountCtx));
     });
   });
   resizeObserver.observe(mainEl);
 }
 
-function resetDashboardState({ fiscalPeriod = null } = {}) {
+function resetDashboardState({ fiscalPeriod = null, multiPeriodRange = null } = {}) {
   dashUnbindDashboardClickRouting();
   dashboardMountCtx = null;
   dashClearSidebarPreferences();
   if (fiscalPeriod != null) dashClearCheckedKeys(fiscalPeriod);
+  if (multiPeriodRange) {
+    dashClearCheckedKeys(dashMultiPeriodStorageKey(multiPeriodRange.from, multiPeriodRange.to));
+  }
 }
 
 /* ui/plan.js */
@@ -17580,6 +17850,18 @@ function getPeriodOptions() {
     businessStartYear: appSettings.businessStartYear,
     fiscalPeriod: appSettings.fiscalPeriod,
   };
+}
+
+/** CSV が存在する期向けの読み込みオプション（来期・計画のみの期は今期にフォールバック） */
+function getCsvLoadPeriodOptions() {
+  const { businessStartYear, fiscalPeriod } = appSettings;
+  if (isPlanOnlyPeriod(businessStartYear, fiscalPeriod)) {
+    return {
+      businessStartYear,
+      fiscalPeriod: getFiscalPeriodForDate(businessStartYear),
+    };
+  }
+  return getPeriodOptions();
 }
 
 function getMonthYear() {
@@ -17630,6 +17912,102 @@ function syncPlanTableHeaderMonthHighlights(table, highlightFiscalMonth) {
   }
 }
 
+/** ダッシュボードの表示期間（from === to のとき単期表示） */
+let dashboardPeriodRange = {
+  from: 1,
+  to: 1,
+};
+/** 複数期オーバーライド中はヘッダー期表示を一時的に差し替える */
+const PLAN_PERIOD_OVERRIDE_LABEL = '－';
+
+function isDashboardMultiPeriodView() {
+  return dashboardPeriodRange.from !== dashboardPeriodRange.to;
+}
+
+function resetDashboardPeriodRange() {
+  const period = appSettings.fiscalPeriod;
+  dashboardPeriodRange.from = period;
+  dashboardPeriodRange.to = period;
+}
+
+function getDashboardPeriodData(period) {
+  if (period === appSettings.fiscalPeriod && data) return data;
+  try {
+    const cached = planDataFromCache(expandConfig, {
+      businessStartYear: appSettings.businessStartYear,
+      fiscalPeriod: period,
+    });
+    if (cached?.data) return applyPlanColors(cached.data, period);
+  } catch {
+    /* ignore */
+  }
+  // 来期など CSV 未用意の計画期は、テンプレートから計画データを組み立てる
+  if (isPlanOnlyPeriod(appSettings.businessStartYear, period)) {
+    return buildPlanOnlyPeriodDashboardData(period);
+  }
+  return null;
+}
+
+/** ダッシュボード用に、CSV なしの計画期データを生成する（グローバル状態は変更しない） */
+function buildPlanOnlyPeriodDashboardData(period) {
+  const template = rawPlanData
+    ? zeroOutPlanData(rawPlanData)
+    : buildFullPlan('', null, expandConfig);
+  return applyPlanColors(template, period);
+}
+
+function getDashboardCachedPeriodData(period) {
+  if (period < 1) return null;
+  if (period === appSettings.fiscalPeriod) return data;
+  try {
+    const cached = planDataFromCache(expandConfig, {
+      businessStartYear: appSettings.businessStartYear,
+      fiscalPeriod: period,
+    });
+    return cached?.data ? applyPlanColors(cached.data, period) : null;
+  } catch {
+    return null;
+  }
+}
+
+function setDashboardPeriodRange(from, to) {
+  const max = getDashboardMaxPeriod();
+  let rangeFrom = Math.min(max, Math.max(1, from));
+  let rangeTo = Math.min(max, Math.max(1, to));
+  if (rangeFrom > rangeTo) {
+    const swap = rangeFrom;
+    rangeFrom = rangeTo;
+    rangeTo = swap;
+  }
+  if (
+    dashboardPeriodRange.from === rangeFrom
+    && dashboardPeriodRange.to === rangeTo
+  ) {
+    return;
+  }
+  dashboardPeriodRange.from = rangeFrom;
+  dashboardPeriodRange.to = rangeTo;
+
+  const singlePeriod = rangeFrom === rangeTo;
+  if (
+    activeTab === 'dashboard'
+    && singlePeriod
+    && rangeFrom !== appSettings.fiscalPeriod
+  ) {
+    setFiscalPeriod(rangeFrom);
+    return;
+  }
+
+  syncPeriodControls();
+  if (activeTab === 'dashboard') renderDashboardView();
+  else refreshPlanKpi();
+}
+
+function getDashboardMaxPeriod() {
+  // ヘッダーと同じく計画期（来期）も含める。CSV が無くても計画データで表示する
+  return getMaxSelectablePeriod(appSettings.businessStartYear);
+}
+
 function getPeriodSelectElements() {
   return {
     menu: document.getElementById('plan-period-menu'),
@@ -17674,6 +18052,15 @@ function buildPeriodSelectPanel() {
   if (!panel) return;
 
   const maxPeriod = getMaxSelectablePeriod(appSettings.businessStartYear);
+  const existing = getPeriodSelectItems();
+  if (
+    existing.length === maxPeriod
+    && existing.every((btn) => btn.dataset.period)
+  ) {
+    refreshPeriodSelectPanelSelection();
+    return;
+  }
+
   panel.replaceChildren();
 
   for (let p = 1; p <= maxPeriod; p += 1) {
@@ -17682,19 +18069,40 @@ function buildPeriodSelectPanel() {
     btn.type = 'button';
     btn.className = 'plan-main-menu-item plan-period-select-item';
     btn.role = 'option';
-    btn.setAttribute('aria-selected', p === appSettings.fiscalPeriod ? 'true' : 'false');
+    btn.dataset.period = String(p);
+    btn.setAttribute(
+      'aria-selected',
+      p === appSettings.fiscalPeriod ? 'true' : 'false',
+    );
 
     const labelSpan = document.createElement('span');
     labelSpan.className = 'plan-main-menu-item-label';
     labelSpan.textContent = label;
     btn.appendChild(labelSpan);
 
-    btn.addEventListener('click', () => {
-      setFiscalPeriod(p);
+    btn.addEventListener('mousedown', (e) => {
+      // フォーカス移動によるパネル閉鎖を防ぎ、クリックで確実に選択させる
+      e.preventDefault();
+    });
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
       closePeriodSelect({ returnFocus: true });
+      setFiscalPeriod(p);
     });
 
     panel.appendChild(btn);
+  }
+}
+
+function refreshPeriodSelectPanelSelection() {
+  for (const btn of getPeriodSelectItems()) {
+    const period = Number(btn.dataset.period);
+    if (!period) continue;
+    btn.setAttribute(
+      'aria-selected',
+      period === appSettings.fiscalPeriod ? 'true' : 'false',
+    );
   }
 }
 
@@ -17754,15 +18162,22 @@ function syncPeriodControls() {
   if (!trigger) return;
 
   const maxPeriod = getMaxSelectablePeriod(appSettings.businessStartYear);
-  const currentValue = formatFiscalPeriodLabel(appSettings.fiscalPeriod);
+  const showPeriodOverride = activeTab === 'dashboard' && isDashboardMultiPeriodView();
+  trigger.textContent = showPeriodOverride
+    ? PLAN_PERIOD_OVERRIDE_LABEL
+    : formatFiscalPeriodLabel(appSettings.fiscalPeriod);
 
-  trigger.textContent = currentValue;
-  buildPeriodSelectPanel();
+  if (isPeriodSelectOpen()) {
+    refreshPeriodSelectPanelSelection();
+  } else {
+    buildPeriodSelectPanel();
+  }
 
   if (prevBtn) prevBtn.disabled = appSettings.fiscalPeriod <= 1;
   if (nextBtn) nextBtn.disabled = appSettings.fiscalPeriod >= maxPeriod;
 
   if (modeEl) {
+    modeEl.style.display = '';
     const mode = getFiscalPeriodDisplayMode(
       appSettings.businessStartYear,
       appSettings.fiscalPeriod,
@@ -17775,12 +18190,30 @@ function syncPeriodControls() {
 async function setFiscalPeriod(nextPeriod) {
   const maxPeriod = getMaxSelectablePeriod(appSettings.businessStartYear);
   const clamped = Math.min(maxPeriod, Math.max(1, nextPeriod));
+  const wasMultiPeriod = activeTab === 'dashboard' && isDashboardMultiPeriodView();
   if (clamped === appSettings.fiscalPeriod) {
+    // 複数期オーバーライド中に同一期を選んだら、単期表示へ戻す
+    if (wasMultiPeriod) {
+      const dashboardMax = getDashboardMaxPeriod();
+      const rangePeriod = Math.min(dashboardMax, clamped);
+      dashboardPeriodRange.from = rangePeriod;
+      dashboardPeriodRange.to = rangePeriod;
+      syncPeriodControls();
+      renderDashboardView();
+      return;
+    }
     syncPeriodControls();
     return;
   }
 
   appSettings = { ...appSettings, fiscalPeriod: clamped };
+  // ダッシュボード表示中にヘッダーで期を選んだら、期間プルダウンもその単期に合わせる
+  if (activeTab === 'dashboard') {
+    const dashboardMax = getDashboardMaxPeriod();
+    const rangePeriod = Math.min(dashboardMax, clamped);
+    dashboardPeriodRange.from = rangePeriod;
+    dashboardPeriodRange.to = rangePeriod;
+  }
   saveAppSettings(appSettings);
   syncPeriodControls();
 
@@ -18018,12 +18451,32 @@ function formatKpiMultiple(value) {
   return `${value.toFixed(2)}倍`;
 }
 
+function resolveDashboardKpiMetrics() {
+  if (isDashboardMultiPeriodView()) {
+    const allPeriodDatas = buildDashboardPeriodRangeDatas(
+      dashboardPeriodRange.from,
+      dashboardPeriodRange.to,
+    );
+    if (allPeriodDatas.length) {
+      return calcPlanKpiMetricsAllPeriods(allPeriodDatas, buildPlanKpiOptions);
+    }
+  }
+  const viewPeriod = dashboardPeriodRange.from;
+  const viewData = getDashboardPeriodData(viewPeriod);
+  if (!viewData) return null;
+  return calcPlanKpiMetrics(viewData, buildPlanKpiOptions(viewPeriod));
+}
+
 function refreshPlanKpi() {
+  if (activeTab === 'dashboard') {
+    setPlanKpi(resolveDashboardKpiMetrics());
+    return;
+  }
   if (data) setPlanKpi(calcPlanKpiMetrics(data, buildPlanKpiOptions()));
   else setPlanKpi(null);
 }
 
-function buildPlanKpiOptions() {
+function buildPlanKpiOptions(fiscalPeriod = appSettings.fiscalPeriod) {
   const active = employees.filter(isSalaryPlanEmployee);
   if (active.length === 0) return {};
   const fiscalMonths = buildFiscalYearMonths(appSettings.fiscalEndMonth);
@@ -18032,7 +18485,7 @@ function buildPlanKpiOptions() {
     .filter((emp) => {
       const plan = getEmployeeSalaryPlan(
         salaryPlans,
-        appSettings.fiscalPeriod,
+        fiscalPeriod,
         emp.id,
         emp,
         fiscalMonths,
@@ -21312,18 +21765,18 @@ function buildPlanTablePastMonthSet(displayMode) {
   return new Set();
 }
 
-function applyPlanColors(planData) {
+function applyPlanColors(planData, fiscalPeriod = appSettings.fiscalPeriod) {
   if (!planData) return null;
   const displayMode = getFiscalPeriodDisplayMode(
     appSettings.businessStartYear,
-    appSettings.fiscalPeriod,
+    fiscalPeriod,
   );
   const enriched = enrichPlanDataWithEmployeeSalaryRows(planData, {
     employees,
     salaryPlans,
     salaryPlanSettings,
     businessStartYear: appSettings.businessStartYear,
-    fiscalPeriod: appSettings.fiscalPeriod,
+    fiscalPeriod,
     fiscalEndMonth: appSettings.fiscalEndMonth,
     displayMode,
     legalWelfareRate: appSettings.legalWelfareRate,
@@ -21333,7 +21786,7 @@ function applyPlanColors(planData) {
     taxPaymentPlans,
     employees,
     businessStartYear: appSettings.businessStartYear,
-    fiscalPeriod: appSettings.fiscalPeriod,
+    fiscalPeriod,
     fiscalEndMonth: appSettings.fiscalEndMonth,
     displayMode,
     actualSourcePlanData: enriched,
@@ -21342,7 +21795,7 @@ function applyPlanColors(planData) {
   const withOutsourcing = enrichPlanDataWithOutsourcingRows(withTaxPayments, {
     outsourcingPlans,
     businessStartYear: appSettings.businessStartYear,
-    fiscalPeriod: appSettings.fiscalPeriod,
+    fiscalPeriod,
     fiscalEndMonth: appSettings.fiscalEndMonth,
     displayMode,
     corpEntityMarkers: appSettings.corpEntityMarkers,
@@ -21353,7 +21806,7 @@ function applyPlanColors(planData) {
   const withRevenue = enrichPlanDataWithRevenueRows(withOutsourcing, {
     revenuePlans,
     businessStartYear: appSettings.businessStartYear,
-    fiscalPeriod: appSettings.fiscalPeriod,
+    fiscalPeriod,
     fiscalEndMonth: appSettings.fiscalEndMonth,
     displayMode,
     consumptionTaxRates: appSettings.consumptionTaxRates,
@@ -21362,7 +21815,7 @@ function applyPlanColors(planData) {
   const withMiscIncome = enrichPlanDataWithMiscIncomeRows(withRevenue, {
     revenuePlans,
     businessStartYear: appSettings.businessStartYear,
-    fiscalPeriod: appSettings.fiscalPeriod,
+    fiscalPeriod,
     fiscalEndMonth: appSettings.fiscalEndMonth,
     displayMode,
     monthDisplayConfig,
@@ -21370,7 +21823,7 @@ function applyPlanColors(planData) {
   const withAverages = enrichPlanDataWithPeriodAverageFills(withMiscIncome, {
     expandConfig,
     businessStartYear: appSettings.businessStartYear,
-    fiscalPeriod: appSettings.fiscalPeriod,
+    fiscalPeriod,
     fiscalEndMonth: appSettings.fiscalEndMonth,
     displayMode,
     expensePlanOverrides,
@@ -21379,7 +21832,7 @@ function applyPlanColors(planData) {
   const withCashOpening = enrichPlanDataWithCashFlowOpeningInflow(withAverages, {
     expandConfig,
     businessStartYear: appSettings.businessStartYear,
-    fiscalPeriod: appSettings.fiscalPeriod,
+    fiscalPeriod,
     fiscalEndMonth: appSettings.fiscalEndMonth,
     displayMode,
     monthDisplayConfig,
@@ -21387,7 +21840,7 @@ function applyPlanColors(planData) {
   const withCashForecast = enrichPlanDataWithCashFlowForecast(withCashOpening, {
     expandConfig,
     businessStartYear: appSettings.businessStartYear,
-    fiscalPeriod: appSettings.fiscalPeriod,
+    fiscalPeriod,
     fiscalEndMonth: appSettings.fiscalEndMonth,
     displayMode,
     monthDisplayConfig,
@@ -21850,14 +22303,20 @@ function switchMainTab(nextTab) {
   // ダッシュボードでは予実表と同じヘッダー倍率（content fit）を、
   // どのタブから来ても現在のウィンドウ幅に合わせて適用する
   if (nextTab === 'dashboard' && prevTab !== 'dashboard') {
+    resetDashboardPeriodRange();
     setContentFitScale(lastPlanTableContentFitScale);
     applyDashboardContentFitEstimate();
     applyPlanDisplayScales();
   }
   if (prevTab === 'dashboard' && nextTab !== 'dashboard') {
-    resetDashboardState({ fiscalPeriod: appSettings.fiscalPeriod });
+    resetDashboardState({
+      fiscalPeriod: appSettings.fiscalPeriod,
+      multiPeriodRange: isDashboardMultiPeriodView() ? { ...dashboardPeriodRange } : null,
+    });
+    resetDashboardPeriodRange();
   }
   activeTab = nextTab;
+  syncPeriodControls();
   if (nextTab === 'plan' && prevTab !== 'plan') {
     resetPlanBodyScroll();
     const showLoading = shouldShowPlanLoadingOnTabReturn();
@@ -21899,36 +22358,71 @@ function renderView({ measureColumnWidths = false } = {}) {
   else if (activeTab === 'settings') renderOtherSettings();
 }
 
+/** 複数期表示用に、指定期の範囲のデータを期の昇順で集める（取得できない期はスキップ） */
+function buildDashboardPeriodRangeDatas(from, to) {
+  const maxPeriod = getDashboardMaxPeriod();
+  const rangeFrom = Math.min(from, to);
+  const rangeTo = Math.max(from, to);
+  const list = [];
+  for (let p = rangeFrom; p <= rangeTo; p += 1) {
+    if (p > maxPeriod) continue;
+    const periodData = getDashboardPeriodData(p);
+    if (periodData) list.push({ fiscalPeriod: p, data: periodData });
+  }
+  return list;
+}
+
+function ensureDashboardPeriodRangeInBounds() {
+  const max = getDashboardMaxPeriod();
+  let from = Math.min(max, Math.max(1, dashboardPeriodRange.from));
+  let to = Math.min(max, Math.max(1, dashboardPeriodRange.to));
+  if (from > to) {
+    const swap = from;
+    from = to;
+    to = swap;
+  }
+  dashboardPeriodRange.from = from;
+  dashboardPeriodRange.to = to;
+}
+
 function renderDashboardView() {
-  const prevPeriod = appSettings.fiscalPeriod - 1;
-  const prevPrevPeriod = appSettings.fiscalPeriod - 2;
-  const prevCached = prevPeriod >= 1
-    ? planDataFromCache(expandConfig, {
-      businessStartYear: appSettings.businessStartYear,
-      fiscalPeriod: prevPeriod,
-    })
+  // ダッシュボード再描画中に期メニューが開いたままだと操作が不安定になるため閉じる
+  closePeriodSelect();
+  ensureDashboardPeriodRangeInBounds();
+  const multiPeriodView = isDashboardMultiPeriodView();
+  const allPeriodDatas = multiPeriodView
+    ? buildDashboardPeriodRangeDatas(dashboardPeriodRange.from, dashboardPeriodRange.to)
     : null;
-  const prevPrevCached = prevPrevPeriod >= 1
-    ? planDataFromCache(expandConfig, {
-      businessStartYear: appSettings.businessStartYear,
-      fiscalPeriod: prevPrevPeriod,
-    })
+  const viewPeriod = dashboardPeriodRange.from;
+  const viewData = multiPeriodView
+    ? data
+    : (getDashboardPeriodData(viewPeriod) ?? data);
+  const prevPeriod = viewPeriod - 1;
+  const prevPrevPeriod = viewPeriod - 2;
+  const prevDataForView = !multiPeriodView && prevPeriod >= 1
+    ? getDashboardCachedPeriodData(prevPeriod)
+    : null;
+  const prevPrevDataForView = !multiPeriodView && prevPrevPeriod >= 1
+    ? getDashboardCachedPeriodData(prevPrevPeriod)
     : null;
   mountDashboardPanel({
     replaceRootPanel,
-    setPlanKpi,
-    data,
-    prevData: prevCached?.data ?? null,
-    prevPrevData: prevPrevCached?.data ?? null,
+    data: viewData,
+    prevData: prevDataForView,
+    prevPrevData: prevPrevDataForView,
+    allPeriods: allPeriodDatas?.length ? allPeriodDatas : null,
+    periodRange: { ...dashboardPeriodRange },
+    maxFiscalPeriod: getDashboardMaxPeriod(),
+    onPeriodRangeChange: setDashboardPeriodRange,
     appSettings,
-    calcPlanKpiMetrics,
-    buildPlanKpiOptions,
     getSectionFilterColors: getFilterButtonColors,
     showJournalPopup,
     hasJournalDrilldown: (section, row, month) =>
       hasDrilldownEntries(getDrilldownIndex(), section, row, month)
       || findRelatedJournalEntries(getCachedJournalEntries(), section, row, month).length > 0,
   });
+  syncPeriodControls();
+  refreshPlanKpi();
 }
 
 function getPlanTableAmountContext() {
@@ -27317,7 +27811,21 @@ function bindCsvFolderDropZone(panel, onInvalid) {
 async function handleDropCsvFolder(handle) {
   showPlanLoadingOverlay({ awaitLayout: true });
   try {
-    const loaded = await loadPlanDataFromDroppedFolder(expandConfig, getPeriodOptions(), handle);
+    const loadOptions = getCsvLoadPeriodOptions();
+    const loaded = await loadPlanDataFromDroppedFolder(
+      expandConfig,
+      loadOptions,
+      handle,
+    );
+    if (isPlanOnlyPeriod(appSettings.businessStartYear, appSettings.fiscalPeriod)) {
+      journalText = loaded.journalText;
+      bsText = loaded.bsText;
+      generalLedgerText = loaded.generalLedgerText ?? null;
+      generalLedgerName = loaded.generalLedgerName ?? null;
+      rawPlanData = loaded.data;
+      loadPlanOnlyPeriodData();
+      return;
+    }
     loadData(loaded);
   } catch (err) {
     cancelPlanLoadingOverlay();
@@ -27368,7 +27876,18 @@ async function handleGrantFolderAccess(handle) {
   showPlanLoadingOverlay({ awaitLayout: true });
 
   try {
-    const loaded = await loadPlanDataWithFolderAccess(handle, expandConfig, getPeriodOptions());
+    const loadOptions = getCsvLoadPeriodOptions();
+    const loaded = await loadPlanDataWithFolderAccess(handle, expandConfig, loadOptions);
+    // 来期表示中はテンプレート用に今期の CSV を読み、選択中の期は計画表示のままにする
+    if (isPlanOnlyPeriod(appSettings.businessStartYear, appSettings.fiscalPeriod)) {
+      journalText = loaded.journalText;
+      bsText = loaded.bsText;
+      generalLedgerText = loaded.generalLedgerText ?? null;
+      generalLedgerName = loaded.generalLedgerName ?? null;
+      rawPlanData = loaded.data;
+      loadPlanOnlyPeriodData();
+      return;
+    }
     loadData(loaded);
   } catch (err) {
     cancelPlanLoadingOverlay();
@@ -27426,7 +27945,17 @@ async function handlePickCsvFolder() {
   showPlanLoadingOverlay({ awaitLayout: true });
 
   try {
-    const loaded = await loadPlanDataFromPickedFolder(expandConfig, getPeriodOptions());
+    const loadOptions = getCsvLoadPeriodOptions();
+    const loaded = await loadPlanDataFromPickedFolder(expandConfig, loadOptions);
+    if (isPlanOnlyPeriod(appSettings.businessStartYear, appSettings.fiscalPeriod)) {
+      journalText = loaded.journalText;
+      bsText = loaded.bsText;
+      generalLedgerText = loaded.generalLedgerText ?? null;
+      generalLedgerName = loaded.generalLedgerName ?? null;
+      rawPlanData = loaded.data;
+      loadPlanOnlyPeriodData();
+      return;
+    }
     loadData(loaded);
   } catch (err) {
     cancelPlanLoadingOverlay();
@@ -27769,10 +28298,19 @@ async function init() {
       return;
     }
 
-    const result = await resolvePlanStartup(expandConfig, getPeriodOptions());
+    const result = await resolvePlanStartup(expandConfig, getCsvLoadPeriodOptions());
     if (result.status === 'loaded') {
       root.innerHTML = '';
       showPlanLoadingOverlay({ awaitLayout: true });
+      if (isPlanOnlyPeriod(appSettings.businessStartYear, appSettings.fiscalPeriod)) {
+        journalText = result.data.journalText;
+        bsText = result.data.bsText;
+        generalLedgerText = result.data.generalLedgerText ?? null;
+        generalLedgerName = result.data.generalLedgerName ?? null;
+        rawPlanData = result.data.data;
+        loadPlanOnlyPeriodData();
+        return;
+      }
       loadData(result.data);
       return;
     }

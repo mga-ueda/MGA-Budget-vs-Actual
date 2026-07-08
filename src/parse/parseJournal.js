@@ -1210,8 +1210,7 @@ function calcPayGapRatio(directorTotal, staffTotal, directorCount, staffCount) {
   return directorAvg / staffAvg;
 }
 
-/** 総利益率・労働分配率・格差倍率（ヘッダー KPI 用） */
-export function calcPlanKpiMetrics(data, options = {}) {
+function extractPlanKpiComponents(data, options = {}) {
   if (!data?.sections) return null;
   const profitDenominator = getProfitMarginDenominator(data);
   const valueAdded = getLaborShareDenominator(data);
@@ -1233,6 +1232,28 @@ export function calcPlanKpiMetrics(data, options = {}) {
     staffCount = staffCount ?? inferred.staffCount;
   }
 
+  return {
+    ordinary,
+    profitDenominator,
+    personnelTotal,
+    valueAdded,
+    directorTotal,
+    staffTotal,
+    directorCount,
+    staffCount,
+  };
+}
+
+function calcPlanKpiMetricsFromComponents({
+  ordinary,
+  profitDenominator,
+  personnelTotal,
+  valueAdded,
+  directorTotal,
+  staffTotal,
+  directorCount,
+  staffCount,
+}) {
   const nullLabor = {
     laborShareRate: null,
     directorLaborShareRate: null,
@@ -1253,6 +1274,45 @@ export function calcPlanKpiMetrics(data, options = {}) {
       }
       : nullLabor),
   };
+}
+
+/** 総利益率・労働分配率・格差倍率（ヘッダー KPI 用） */
+export function calcPlanKpiMetrics(data, options = {}) {
+  const components = extractPlanKpiComponents(data, options);
+  if (!components) return null;
+  return calcPlanKpiMetricsFromComponents(components);
+}
+
+/** 全期表示: 各期の分子・分母を合算して KPI を算出する */
+export function calcPlanKpiMetricsAllPeriods(allPeriodDatas, buildOptionsForPeriod = () => ({})) {
+  if (!allPeriodDatas?.length) return null;
+
+  const summed = {
+    ordinary: 0,
+    profitDenominator: 0,
+    personnelTotal: 0,
+    valueAdded: 0,
+    directorTotal: 0,
+    staffTotal: 0,
+    directorCount: 0,
+    staffCount: 0,
+  };
+
+  for (const { fiscalPeriod, data } of allPeriodDatas) {
+    const options = buildOptionsForPeriod(fiscalPeriod) ?? {};
+    const components = extractPlanKpiComponents(data, options);
+    if (!components) continue;
+    summed.ordinary += components.ordinary;
+    summed.profitDenominator += components.profitDenominator;
+    summed.personnelTotal += components.personnelTotal;
+    summed.valueAdded += components.valueAdded;
+    summed.directorTotal += components.directorTotal;
+    summed.staffTotal += components.staffTotal;
+    summed.directorCount += components.directorCount ?? 0;
+    summed.staffCount += components.staffCount ?? 0;
+  }
+
+  return calcPlanKpiMetricsFromComponents(summed);
 }
 
 export function calcTotalProfitMargin(data) {

@@ -25,11 +25,15 @@ export function rawValuesFromRow(row) {
 
 export function loadReferencePeriodPlanData(expandConfig, businessStartYear, fiscalPeriod) {
   if (fiscalPeriod < 1) return null;
-  const cached = planDataFromCache(expandConfig, {
-    businessStartYear,
-    fiscalPeriod,
-  });
-  return cached?.data ?? null;
+  try {
+    const cached = planDataFromCache(expandConfig, {
+      businessStartYear,
+      fiscalPeriod,
+    });
+    return cached?.data ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export function collectActualAmountsFromPlanData(

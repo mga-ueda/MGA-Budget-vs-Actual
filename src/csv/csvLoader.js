@@ -61,9 +61,14 @@ function toPlanData(folderData, expandConfig) {
 
 /** キャッシュから計画データを生成（期切替用・フォルダアクセス不要） */
 export function planDataFromCache(expandConfig, periodOptions) {
-  const folderData = resolveFolderDataFromCache(periodOptions);
-  if (!folderData) return null;
-  return toPlanData(folderData, expandConfig);
+  try {
+    const folderData = resolveFolderDataFromCache(periodOptions);
+    if (!folderData) return null;
+    return toPlanData(folderData, expandConfig);
+  } catch {
+    // ダッシュボードの複数期参照など、未用意の期は null 扱いにする
+    return null;
+  }
 }
 
 /** @returns {Promise<{ status: 'loaded', data: ReturnType<typeof planDataFromFolder> } | { status: 'needs-permission', folderName: string, handle: FileSystemDirectoryHandle } | { status: 'none' }>} */

@@ -8,6 +8,7 @@ import {
 import {
   formatYen,
   calcPlanKpiMetrics,
+  calcPlanKpiMetricsAllPeriods,
   buildFullPlan,
   zeroOutPlanData,
   FISCAL_MONTHS,
@@ -357,6 +358,18 @@ function getPeriodOptions() {
   };
 }
 
+/** CSV が存在する期向けの読み込みオプション（来期・計画のみの期は今期にフォールバック） */
+function getCsvLoadPeriodOptions() {
+  const { businessStartYear, fiscalPeriod } = appSettings;
+  if (isPlanOnlyPeriod(businessStartYear, fiscalPeriod)) {
+    return {
+      businessStartYear,
+      fiscalPeriod: getFiscalPeriodForDate(businessStartYear),
+    };
+  }
+  return getPeriodOptions();
+}
+
 function getMonthYear() {
   return buildMonthYearMap(appSettings.businessStartYear, appSettings.fiscalPeriod);
 }
@@ -405,6 +418,102 @@ function syncPlanTableHeaderMonthHighlights(table, highlightFiscalMonth) {
   }
 }
 
+/** ダッシュボードの表示期間（from === to のとき単期表示） */
+let dashboardPeriodRange = {
+  from: 1,
+  to: 1,
+};
+/** 複数期オーバーライド中はヘッダー期表示を一時的に差し替える */
+const PLAN_PERIOD_OVERRIDE_LABEL = '－';
+
+function isDashboardMultiPeriodView() {
+  return dashboardPeriodRange.from !== dashboardPeriodRange.to;
+}
+
+function resetDashboardPeriodRange() {
+  const period = appSettings.fiscalPeriod;
+  dashboardPeriodRange.from = period;
+  dashboardPeriodRange.to = period;
+}
+
+function getDashboardPeriodData(period) {
+  if (period === appSettings.fiscalPeriod && data) return data;
+  try {
+    const cached = planDataFromCache(expandConfig, {
+      businessStartYear: appSettings.businessStartYear,
+      fiscalPeriod: period,
+    });
+    if (cached?.data) return applyPlanColors(cached.data, period);
+  } catch {
+    /* ignore */
+  }
+  // 来期など CSV 未用意の計画期は、テンプレートから計画データを組み立てる
+  if (isPlanOnlyPeriod(appSettings.businessStartYear, period)) {
+    return buildPlanOnlyPeriodDashboardData(period);
+  }
+  return null;
+}
+
+/** ダッシュボード用に、CSV なしの計画期データを生成する（グローバル状態は変更しない） */
+function buildPlanOnlyPeriodDashboardData(period) {
+  const template = rawPlanData
+    ? zeroOutPlanData(rawPlanData)
+    : buildFullPlan('', null, expandConfig);
+  return applyPlanColors(template, period);
+}
+
+function getDashboardCachedPeriodData(period) {
+  if (period < 1) return null;
+  if (period === appSettings.fiscalPeriod) return data;
+  try {
+    const cached = planDataFromCache(expandConfig, {
+      businessStartYear: appSettings.businessStartYear,
+      fiscalPeriod: period,
+    });
+    return cached?.data ? applyPlanColors(cached.data, period) : null;
+  } catch {
+    return null;
+  }
+}
+
+function setDashboardPeriodRange(from, to) {
+  const max = getDashboardMaxPeriod();
+  let rangeFrom = Math.min(max, Math.max(1, from));
+  let rangeTo = Math.min(max, Math.max(1, to));
+  if (rangeFrom > rangeTo) {
+    const swap = rangeFrom;
+    rangeFrom = rangeTo;
+    rangeTo = swap;
+  }
+  if (
+    dashboardPeriodRange.from === rangeFrom
+    && dashboardPeriodRange.to === rangeTo
+  ) {
+    return;
+  }
+  dashboardPeriodRange.from = rangeFrom;
+  dashboardPeriodRange.to = rangeTo;
+
+  const singlePeriod = rangeFrom === rangeTo;
+  if (
+    activeTab === 'dashboard'
+    && singlePeriod
+    && rangeFrom !== appSettings.fiscalPeriod
+  ) {
+    setFiscalPeriod(rangeFrom);
+    return;
+  }
+
+  syncPeriodControls();
+  if (activeTab === 'dashboard') renderDashboardView();
+  else refreshPlanKpi();
+}
+
+function getDashboardMaxPeriod() {
+  // ヘッダーと同じく計画期（来期）も含める。CSV が無くても計画データで表示する
+  return getMaxSelectablePeriod(appSettings.businessStartYear);
+}
+
 function getPeriodSelectElements() {
   return {
     menu: document.getElementById('plan-period-menu'),
@@ -449,6 +558,15 @@ function buildPeriodSelectPanel() {
   if (!panel) return;
 
   const maxPeriod = getMaxSelectablePeriod(appSettings.businessStartYear);
+  const existing = getPeriodSelectItems();
+  if (
+    existing.length === maxPeriod
+    && existing.every((btn) => btn.dataset.period)
+  ) {
+    refreshPeriodSelectPanelSelection();
+    return;
+  }
+
   panel.replaceChildren();
 
   for (let p = 1; p <= maxPeriod; p += 1) {
@@ -457,19 +575,40 @@ function buildPeriodSelectPanel() {
     btn.type = 'button';
     btn.className = 'plan-main-menu-item plan-period-select-item';
     btn.role = 'option';
-    btn.setAttribute('aria-selected', p === appSettings.fiscalPeriod ? 'true' : 'false');
+    btn.dataset.period = String(p);
+    btn.setAttribute(
+      'aria-selected',
+      p === appSettings.fiscalPeriod ? 'true' : 'false',
+    );
 
     const labelSpan = document.createElement('span');
     labelSpan.className = 'plan-main-menu-item-label';
     labelSpan.textContent = label;
     btn.appendChild(labelSpan);
 
-    btn.addEventListener('click', () => {
-      setFiscalPeriod(p);
+    btn.addEventListener('mousedown', (e) => {
+      // フォーカス移動によるパネル閉鎖を防ぎ、クリックで確実に選択させる
+      e.preventDefault();
+    });
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
       closePeriodSelect({ returnFocus: true });
+      setFiscalPeriod(p);
     });
 
     panel.appendChild(btn);
+  }
+}
+
+function refreshPeriodSelectPanelSelection() {
+  for (const btn of getPeriodSelectItems()) {
+    const period = Number(btn.dataset.period);
+    if (!period) continue;
+    btn.setAttribute(
+      'aria-selected',
+      period === appSettings.fiscalPeriod ? 'true' : 'false',
+    );
   }
 }
 
@@ -529,15 +668,22 @@ function syncPeriodControls() {
   if (!trigger) return;
 
   const maxPeriod = getMaxSelectablePeriod(appSettings.businessStartYear);
-  const currentValue = formatFiscalPeriodLabel(appSettings.fiscalPeriod);
+  const showPeriodOverride = activeTab === 'dashboard' && isDashboardMultiPeriodView();
+  trigger.textContent = showPeriodOverride
+    ? PLAN_PERIOD_OVERRIDE_LABEL
+    : formatFiscalPeriodLabel(appSettings.fiscalPeriod);
 
-  trigger.textContent = currentValue;
-  buildPeriodSelectPanel();
+  if (isPeriodSelectOpen()) {
+    refreshPeriodSelectPanelSelection();
+  } else {
+    buildPeriodSelectPanel();
+  }
 
   if (prevBtn) prevBtn.disabled = appSettings.fiscalPeriod <= 1;
   if (nextBtn) nextBtn.disabled = appSettings.fiscalPeriod >= maxPeriod;
 
   if (modeEl) {
+    modeEl.style.display = '';
     const mode = getFiscalPeriodDisplayMode(
       appSettings.businessStartYear,
       appSettings.fiscalPeriod,
@@ -550,12 +696,30 @@ function syncPeriodControls() {
 async function setFiscalPeriod(nextPeriod) {
   const maxPeriod = getMaxSelectablePeriod(appSettings.businessStartYear);
   const clamped = Math.min(maxPeriod, Math.max(1, nextPeriod));
+  const wasMultiPeriod = activeTab === 'dashboard' && isDashboardMultiPeriodView();
   if (clamped === appSettings.fiscalPeriod) {
+    // 複数期オーバーライド中に同一期を選んだら、単期表示へ戻す
+    if (wasMultiPeriod) {
+      const dashboardMax = getDashboardMaxPeriod();
+      const rangePeriod = Math.min(dashboardMax, clamped);
+      dashboardPeriodRange.from = rangePeriod;
+      dashboardPeriodRange.to = rangePeriod;
+      syncPeriodControls();
+      renderDashboardView();
+      return;
+    }
     syncPeriodControls();
     return;
   }
 
   appSettings = { ...appSettings, fiscalPeriod: clamped };
+  // ダッシュボード表示中にヘッダーで期を選んだら、期間プルダウンもその単期に合わせる
+  if (activeTab === 'dashboard') {
+    const dashboardMax = getDashboardMaxPeriod();
+    const rangePeriod = Math.min(dashboardMax, clamped);
+    dashboardPeriodRange.from = rangePeriod;
+    dashboardPeriodRange.to = rangePeriod;
+  }
   saveAppSettings(appSettings);
   syncPeriodControls();
 
@@ -793,12 +957,32 @@ function formatKpiMultiple(value) {
   return `${value.toFixed(2)}倍`;
 }
 
+function resolveDashboardKpiMetrics() {
+  if (isDashboardMultiPeriodView()) {
+    const allPeriodDatas = buildDashboardPeriodRangeDatas(
+      dashboardPeriodRange.from,
+      dashboardPeriodRange.to,
+    );
+    if (allPeriodDatas.length) {
+      return calcPlanKpiMetricsAllPeriods(allPeriodDatas, buildPlanKpiOptions);
+    }
+  }
+  const viewPeriod = dashboardPeriodRange.from;
+  const viewData = getDashboardPeriodData(viewPeriod);
+  if (!viewData) return null;
+  return calcPlanKpiMetrics(viewData, buildPlanKpiOptions(viewPeriod));
+}
+
 function refreshPlanKpi() {
+  if (activeTab === 'dashboard') {
+    setPlanKpi(resolveDashboardKpiMetrics());
+    return;
+  }
   if (data) setPlanKpi(calcPlanKpiMetrics(data, buildPlanKpiOptions()));
   else setPlanKpi(null);
 }
 
-function buildPlanKpiOptions() {
+function buildPlanKpiOptions(fiscalPeriod = appSettings.fiscalPeriod) {
   const active = employees.filter(isSalaryPlanEmployee);
   if (active.length === 0) return {};
   const fiscalMonths = buildFiscalYearMonths(appSettings.fiscalEndMonth);
@@ -807,7 +991,7 @@ function buildPlanKpiOptions() {
     .filter((emp) => {
       const plan = getEmployeeSalaryPlan(
         salaryPlans,
-        appSettings.fiscalPeriod,
+        fiscalPeriod,
         emp.id,
         emp,
         fiscalMonths,
@@ -4087,18 +4271,18 @@ function buildPlanTablePastMonthSet(displayMode) {
   return new Set();
 }
 
-function applyPlanColors(planData) {
+function applyPlanColors(planData, fiscalPeriod = appSettings.fiscalPeriod) {
   if (!planData) return null;
   const displayMode = getFiscalPeriodDisplayMode(
     appSettings.businessStartYear,
-    appSettings.fiscalPeriod,
+    fiscalPeriod,
   );
   const enriched = enrichPlanDataWithEmployeeSalaryRows(planData, {
     employees,
     salaryPlans,
     salaryPlanSettings,
     businessStartYear: appSettings.businessStartYear,
-    fiscalPeriod: appSettings.fiscalPeriod,
+    fiscalPeriod,
     fiscalEndMonth: appSettings.fiscalEndMonth,
     displayMode,
     legalWelfareRate: appSettings.legalWelfareRate,
@@ -4108,7 +4292,7 @@ function applyPlanColors(planData) {
     taxPaymentPlans,
     employees,
     businessStartYear: appSettings.businessStartYear,
-    fiscalPeriod: appSettings.fiscalPeriod,
+    fiscalPeriod,
     fiscalEndMonth: appSettings.fiscalEndMonth,
     displayMode,
     actualSourcePlanData: enriched,
@@ -4117,7 +4301,7 @@ function applyPlanColors(planData) {
   const withOutsourcing = enrichPlanDataWithOutsourcingRows(withTaxPayments, {
     outsourcingPlans,
     businessStartYear: appSettings.businessStartYear,
-    fiscalPeriod: appSettings.fiscalPeriod,
+    fiscalPeriod,
     fiscalEndMonth: appSettings.fiscalEndMonth,
     displayMode,
     corpEntityMarkers: appSettings.corpEntityMarkers,
@@ -4128,7 +4312,7 @@ function applyPlanColors(planData) {
   const withRevenue = enrichPlanDataWithRevenueRows(withOutsourcing, {
     revenuePlans,
     businessStartYear: appSettings.businessStartYear,
-    fiscalPeriod: appSettings.fiscalPeriod,
+    fiscalPeriod,
     fiscalEndMonth: appSettings.fiscalEndMonth,
     displayMode,
     consumptionTaxRates: appSettings.consumptionTaxRates,
@@ -4137,7 +4321,7 @@ function applyPlanColors(planData) {
   const withMiscIncome = enrichPlanDataWithMiscIncomeRows(withRevenue, {
     revenuePlans,
     businessStartYear: appSettings.businessStartYear,
-    fiscalPeriod: appSettings.fiscalPeriod,
+    fiscalPeriod,
     fiscalEndMonth: appSettings.fiscalEndMonth,
     displayMode,
     monthDisplayConfig,
@@ -4145,7 +4329,7 @@ function applyPlanColors(planData) {
   const withAverages = enrichPlanDataWithPeriodAverageFills(withMiscIncome, {
     expandConfig,
     businessStartYear: appSettings.businessStartYear,
-    fiscalPeriod: appSettings.fiscalPeriod,
+    fiscalPeriod,
     fiscalEndMonth: appSettings.fiscalEndMonth,
     displayMode,
     expensePlanOverrides,
@@ -4154,7 +4338,7 @@ function applyPlanColors(planData) {
   const withCashOpening = enrichPlanDataWithCashFlowOpeningInflow(withAverages, {
     expandConfig,
     businessStartYear: appSettings.businessStartYear,
-    fiscalPeriod: appSettings.fiscalPeriod,
+    fiscalPeriod,
     fiscalEndMonth: appSettings.fiscalEndMonth,
     displayMode,
     monthDisplayConfig,
@@ -4162,7 +4346,7 @@ function applyPlanColors(planData) {
   const withCashForecast = enrichPlanDataWithCashFlowForecast(withCashOpening, {
     expandConfig,
     businessStartYear: appSettings.businessStartYear,
-    fiscalPeriod: appSettings.fiscalPeriod,
+    fiscalPeriod,
     fiscalEndMonth: appSettings.fiscalEndMonth,
     displayMode,
     monthDisplayConfig,
@@ -4625,14 +4809,20 @@ function switchMainTab(nextTab) {
   // ダッシュボードでは予実表と同じヘッダー倍率（content fit）を、
   // どのタブから来ても現在のウィンドウ幅に合わせて適用する
   if (nextTab === 'dashboard' && prevTab !== 'dashboard') {
+    resetDashboardPeriodRange();
     setContentFitScale(lastPlanTableContentFitScale);
     applyDashboardContentFitEstimate();
     applyPlanDisplayScales();
   }
   if (prevTab === 'dashboard' && nextTab !== 'dashboard') {
-    resetDashboardState({ fiscalPeriod: appSettings.fiscalPeriod });
+    resetDashboardState({
+      fiscalPeriod: appSettings.fiscalPeriod,
+      multiPeriodRange: isDashboardMultiPeriodView() ? { ...dashboardPeriodRange } : null,
+    });
+    resetDashboardPeriodRange();
   }
   activeTab = nextTab;
+  syncPeriodControls();
   if (nextTab === 'plan' && prevTab !== 'plan') {
     resetPlanBodyScroll();
     const showLoading = shouldShowPlanLoadingOnTabReturn();
@@ -4674,36 +4864,71 @@ function renderView({ measureColumnWidths = false } = {}) {
   else if (activeTab === 'settings') renderOtherSettings();
 }
 
+/** 複数期表示用に、指定期の範囲のデータを期の昇順で集める（取得できない期はスキップ） */
+function buildDashboardPeriodRangeDatas(from, to) {
+  const maxPeriod = getDashboardMaxPeriod();
+  const rangeFrom = Math.min(from, to);
+  const rangeTo = Math.max(from, to);
+  const list = [];
+  for (let p = rangeFrom; p <= rangeTo; p += 1) {
+    if (p > maxPeriod) continue;
+    const periodData = getDashboardPeriodData(p);
+    if (periodData) list.push({ fiscalPeriod: p, data: periodData });
+  }
+  return list;
+}
+
+function ensureDashboardPeriodRangeInBounds() {
+  const max = getDashboardMaxPeriod();
+  let from = Math.min(max, Math.max(1, dashboardPeriodRange.from));
+  let to = Math.min(max, Math.max(1, dashboardPeriodRange.to));
+  if (from > to) {
+    const swap = from;
+    from = to;
+    to = swap;
+  }
+  dashboardPeriodRange.from = from;
+  dashboardPeriodRange.to = to;
+}
+
 function renderDashboardView() {
-  const prevPeriod = appSettings.fiscalPeriod - 1;
-  const prevPrevPeriod = appSettings.fiscalPeriod - 2;
-  const prevCached = prevPeriod >= 1
-    ? planDataFromCache(expandConfig, {
-      businessStartYear: appSettings.businessStartYear,
-      fiscalPeriod: prevPeriod,
-    })
+  // ダッシュボード再描画中に期メニューが開いたままだと操作が不安定になるため閉じる
+  closePeriodSelect();
+  ensureDashboardPeriodRangeInBounds();
+  const multiPeriodView = isDashboardMultiPeriodView();
+  const allPeriodDatas = multiPeriodView
+    ? buildDashboardPeriodRangeDatas(dashboardPeriodRange.from, dashboardPeriodRange.to)
     : null;
-  const prevPrevCached = prevPrevPeriod >= 1
-    ? planDataFromCache(expandConfig, {
-      businessStartYear: appSettings.businessStartYear,
-      fiscalPeriod: prevPrevPeriod,
-    })
+  const viewPeriod = dashboardPeriodRange.from;
+  const viewData = multiPeriodView
+    ? data
+    : (getDashboardPeriodData(viewPeriod) ?? data);
+  const prevPeriod = viewPeriod - 1;
+  const prevPrevPeriod = viewPeriod - 2;
+  const prevDataForView = !multiPeriodView && prevPeriod >= 1
+    ? getDashboardCachedPeriodData(prevPeriod)
+    : null;
+  const prevPrevDataForView = !multiPeriodView && prevPrevPeriod >= 1
+    ? getDashboardCachedPeriodData(prevPrevPeriod)
     : null;
   mountDashboardPanel({
     replaceRootPanel,
-    setPlanKpi,
-    data,
-    prevData: prevCached?.data ?? null,
-    prevPrevData: prevPrevCached?.data ?? null,
+    data: viewData,
+    prevData: prevDataForView,
+    prevPrevData: prevPrevDataForView,
+    allPeriods: allPeriodDatas?.length ? allPeriodDatas : null,
+    periodRange: { ...dashboardPeriodRange },
+    maxFiscalPeriod: getDashboardMaxPeriod(),
+    onPeriodRangeChange: setDashboardPeriodRange,
     appSettings,
-    calcPlanKpiMetrics,
-    buildPlanKpiOptions,
     getSectionFilterColors: getFilterButtonColors,
     showJournalPopup,
     hasJournalDrilldown: (section, row, month) =>
       hasDrilldownEntries(getDrilldownIndex(), section, row, month)
       || findRelatedJournalEntries(getCachedJournalEntries(), section, row, month).length > 0,
   });
+  syncPeriodControls();
+  refreshPlanKpi();
 }
 
 function getPlanTableAmountContext() {
@@ -10092,7 +10317,21 @@ function bindCsvFolderDropZone(panel, onInvalid) {
 async function handleDropCsvFolder(handle) {
   showPlanLoadingOverlay({ awaitLayout: true });
   try {
-    const loaded = await loadPlanDataFromDroppedFolder(expandConfig, getPeriodOptions(), handle);
+    const loadOptions = getCsvLoadPeriodOptions();
+    const loaded = await loadPlanDataFromDroppedFolder(
+      expandConfig,
+      loadOptions,
+      handle,
+    );
+    if (isPlanOnlyPeriod(appSettings.businessStartYear, appSettings.fiscalPeriod)) {
+      journalText = loaded.journalText;
+      bsText = loaded.bsText;
+      generalLedgerText = loaded.generalLedgerText ?? null;
+      generalLedgerName = loaded.generalLedgerName ?? null;
+      rawPlanData = loaded.data;
+      loadPlanOnlyPeriodData();
+      return;
+    }
     loadData(loaded);
   } catch (err) {
     cancelPlanLoadingOverlay();
@@ -10143,7 +10382,18 @@ async function handleGrantFolderAccess(handle) {
   showPlanLoadingOverlay({ awaitLayout: true });
 
   try {
-    const loaded = await loadPlanDataWithFolderAccess(handle, expandConfig, getPeriodOptions());
+    const loadOptions = getCsvLoadPeriodOptions();
+    const loaded = await loadPlanDataWithFolderAccess(handle, expandConfig, loadOptions);
+    // 来期表示中はテンプレート用に今期の CSV を読み、選択中の期は計画表示のままにする
+    if (isPlanOnlyPeriod(appSettings.businessStartYear, appSettings.fiscalPeriod)) {
+      journalText = loaded.journalText;
+      bsText = loaded.bsText;
+      generalLedgerText = loaded.generalLedgerText ?? null;
+      generalLedgerName = loaded.generalLedgerName ?? null;
+      rawPlanData = loaded.data;
+      loadPlanOnlyPeriodData();
+      return;
+    }
     loadData(loaded);
   } catch (err) {
     cancelPlanLoadingOverlay();
@@ -10201,7 +10451,17 @@ async function handlePickCsvFolder() {
   showPlanLoadingOverlay({ awaitLayout: true });
 
   try {
-    const loaded = await loadPlanDataFromPickedFolder(expandConfig, getPeriodOptions());
+    const loadOptions = getCsvLoadPeriodOptions();
+    const loaded = await loadPlanDataFromPickedFolder(expandConfig, loadOptions);
+    if (isPlanOnlyPeriod(appSettings.businessStartYear, appSettings.fiscalPeriod)) {
+      journalText = loaded.journalText;
+      bsText = loaded.bsText;
+      generalLedgerText = loaded.generalLedgerText ?? null;
+      generalLedgerName = loaded.generalLedgerName ?? null;
+      rawPlanData = loaded.data;
+      loadPlanOnlyPeriodData();
+      return;
+    }
     loadData(loaded);
   } catch (err) {
     cancelPlanLoadingOverlay();
@@ -10544,10 +10804,19 @@ async function init() {
       return;
     }
 
-    const result = await resolvePlanStartup(expandConfig, getPeriodOptions());
+    const result = await resolvePlanStartup(expandConfig, getCsvLoadPeriodOptions());
     if (result.status === 'loaded') {
       root.innerHTML = '';
       showPlanLoadingOverlay({ awaitLayout: true });
+      if (isPlanOnlyPeriod(appSettings.businessStartYear, appSettings.fiscalPeriod)) {
+        journalText = result.data.journalText;
+        bsText = result.data.bsText;
+        generalLedgerText = result.data.generalLedgerText ?? null;
+        generalLedgerName = result.data.generalLedgerName ?? null;
+        rawPlanData = result.data.data;
+        loadPlanOnlyPeriodData();
+        return;
+      }
       loadData(result.data);
       return;
     }

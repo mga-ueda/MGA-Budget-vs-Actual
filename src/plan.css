@@ -4568,6 +4568,58 @@ body.plan-journal-open {
   border-color: color-mix(in srgb, var(--dashboard-expense-color) calc(100% - var(--plan-hover-boost)), white var(--plan-hover-boost));
 }
 
+.dashboard-toolbar-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.dashboard-period-override-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: 0.85rem;
+}
+
+.dashboard-period-override-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--plan-muted, var(--plan-text-dim));
+  white-space: nowrap;
+}
+
+.dashboard-period-range-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.dashboard-period-all-btn {
+  margin-left: 0.15rem;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.dashboard-period-all-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.dashboard-period-range-select {
+  width: 5.5rem;
+  padding: 0.3rem 0.45rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.dashboard-period-range-sep {
+  color: var(--plan-muted, var(--plan-text-dim));
+  font-size: 0.78rem;
+  font-weight: 600;
+  user-select: none;
+}
+
 .dashboard-grid {
   display: grid;
   grid-template-columns: var(--dashboard-sidebar-width) minmax(0, 1fr) var(--dashboard-sidebar-width);
