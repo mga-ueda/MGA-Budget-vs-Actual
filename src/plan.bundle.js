@@ -11228,7 +11228,7 @@ function syncPlanSettingsTableColumnPlates(tableWrap, table, highlightMonth, fis
 }
 
 function syncAllPlanSettingsTableColumnPlates(wrap, fiscalMonths, currentPeriod, appSettings) {
-  if (!wrap?.isConnected) return;
+  if (!wrap?.isConnected || !appSettings || !fiscalMonths) return;
   const highlightMonth = getFiscalPeriodDisplayMode(
     appSettings.businessStartYear,
     currentPeriod,
@@ -11350,11 +11350,7 @@ function measureTableIntrinsicWidth(table) {
   return width;
 }
 
-/** 設定ページ自動ズームの下限・上限（予実表の content-fit・設定 UI スケールと同等のレンジ） */
-const PLAN_SETTINGS_AUTO_ZOOM_MIN = 0.72;
-const PLAN_SETTINGS_AUTO_ZOOM_MAX = 1.45;
-
-/** rem を px に変換する（ズーム前の CSS px 基準で自然幅を見積もるため） */
+/** rem を px に変換する（自然幅見積もりの CSS px 基準） */
 function planSettingsRemToPx(rem) {
   const base = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
   return rem * base;
@@ -11376,78 +11372,6 @@ function measureElementIntrinsicWidth(el) {
   el.style.minWidth = prev.minWidth;
   el.style.maxWidth = prev.maxWidth;
   return width;
-}
-
-/**
- * フォーム中心の設定ページ（税率定義・表示・その他）をブラウザ幅に合わせて丸ごと拡縮する。
- * rem 固定幅の入力欄やチェックボックスも含めて一括追従できるよう CSS zoom を使う。
- * 予実表と同じく「自然幅 : 使える幅」の比率で一発確定し、再計測ループは行わない。
- */
-function layoutPlanSettingsAutoZoom(wrap, measureNaturalWidth) {
-  if (!wrap?.isConnected) return;
-  const host = wrap.parentElement;
-  if (!host) return;
-
-  const prevZoom = wrap.style.zoom || '';
-  wrap.style.zoom = '1';
-  const naturalW = measureNaturalWidth(wrap);
-  const availableW = host.clientWidth;
-  if (!(naturalW > 0) || !(availableW > 0)) {
-    wrap.style.zoom = prevZoom;
-    return;
-  }
-
-  // 1% は丸め・サブピクセル誤差の安全マージン（予実表の content-fit と同じ）
-  const raw = (availableW / naturalW) * 0.99;
-  const scale = Math.round(
-    Math.min(PLAN_SETTINGS_AUTO_ZOOM_MAX, Math.max(PLAN_SETTINGS_AUTO_ZOOM_MIN, raw)) * 100,
-  ) / 100;
-  wrap.style.zoom = scale === 1 ? '' : String(scale);
-}
-
-/**
- * 自動ズームをページ表示中ずっと追従させる（途中でのウィンドウ最大化・リサイズ対応）。
- * zoom は wrap 自身の計測系を変えるため、影響を受けない親（#plan-root）の幅を監視する。
- */
-function bindPlanSettingsAutoZoom(wrap, measureNaturalWidth) {
-  const host = wrap.parentElement;
-  if (!host) return;
-  host.__planSettingsAutoZoomObserver?.disconnect();
-
-  if (host.__planSettingsAutoZoomDispose) {
-    host.__planSettingsAutoZoomDispose();
-    host.__planSettingsAutoZoomDispose = null;
-  }
-
-  let lastHostW = 0;
-  const dispose = () => {
-    observer.disconnect();
-    window.removeEventListener('resize', onWindowResize);
-    if (host.__planSettingsAutoZoomDispose === dispose) {
-      host.__planSettingsAutoZoomDispose = null;
-    }
-  };
-  const run = (force = false) => {
-    if (!wrap.isConnected) {
-      dispose();
-      return;
-    }
-    // 高さだけの変化（行の増減など）では再計測しない
-    if (!force && host.clientWidth === lastHostW) return;
-    lastHostW = host.clientWidth;
-    layoutPlanSettingsAutoZoom(wrap, measureNaturalWidth);
-  };
-
-  const observer = new ResizeObserver(() => run(false));
-  // ブラウザ最大化などウィンドウ由来の変化は resize イベントでも拾う（RO の取りこぼし対策）
-  const onWindowResize = () => run(false);
-  window.addEventListener('resize', onWindowResize);
-
-  requestAnimationFrame(() => requestAnimationFrame(() => run(true)));
-  document.fonts?.ready?.then(() => run(true)).catch(() => {});
-  observer.observe(host);
-  host.__planSettingsAutoZoomDispose = dispose;
-  return () => run(true);
 }
 
 function measurePlanSettingsPageNaturalWidth(wrap, monthCount, variants = []) {
@@ -11707,6 +11631,8 @@ function layoutPlanSettingsScalableWrap(wrap, measureNaturalWidth) {
   if (!wrap?.isConnected) return 1;
   const availableW = getPlanSettingsWrapAvailableWidth(wrap);
   if (availableW <= 0) return 1;
+  // 計測前にスケールを戻し、拡大後のフォント幅が自然幅に乗らないようにする
+  resetPlanSettingsUiScale(wrap);
   const naturalW = typeof measureNaturalWidth === 'function'
     ? measureNaturalWidth(wrap, availableW)
     : measurePlanSettingsTablesNaturalWidth(wrap);
@@ -23417,13 +23343,15 @@ function renderTable({ measureColumnWidths = false } = {}) {
   }
 }
 
-function appendExpandSettingsCheckbox(cell, { checked, labelText, disabled, onChange }) {
+function appendExpandSettingsCheckbox(cell, { checked, labelText, disabled, onChange, toggle }) {
   const label = document.createElement('label');
   label.className = 'expand-toggle-label';
+  if (toggle) label.dataset.toggle = toggle;
   const checkbox = document.createElement('input');
   checkbox.type = 'checkbox';
   checkbox.checked = checked;
   checkbox.disabled = disabled;
+  if (toggle) checkbox.dataset.toggle = toggle;
   label.appendChild(checkbox);
   label.append(` ${labelText}`);
   checkbox.addEventListener('change', onChange);
@@ -23437,7 +23365,7 @@ function renderVisibilitySettings() {
   setPlanKpi(null);
 
   const wrap = document.createElement('div');
-  wrap.className = 'expand-settings-wrap visibility-settings-wrap';
+  wrap.className = 'expand-settings-wrap visibility-settings-wrap plan-settings-scalable';
 
   const header = document.createElement('div');
   header.className = 'expand-settings-header';
@@ -23514,14 +23442,16 @@ function renderVisibilitySettings() {
     if (activeTab === 'plan') refreshPlanTable();
   }
 
-  function appendDisplayCheckbox(cell, { checked, ariaLabel, disabled, onChange }) {
+  function appendDisplayCheckbox(cell, { checked, ariaLabel, disabled, onChange, toggle }) {
     const label = document.createElement('label');
     label.className = 'expand-toggle-label';
+    if (toggle) label.dataset.toggle = toggle;
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.checked = checked;
     checkbox.disabled = disabled;
     checkbox.setAttribute('aria-label', ariaLabel);
+    if (toggle) checkbox.dataset.toggle = toggle;
     label.appendChild(checkbox);
     checkbox.addEventListener('change', onChange);
     cell.appendChild(label);
@@ -23530,6 +23460,11 @@ function renderVisibilitySettings() {
 
   for (const c of candidates) {
     const tr = document.createElement('tr');
+    tr.dataset.rowKey = c.key;
+    tr.dataset.sectionId = c.sectionId;
+    tr.dataset.rowType = c.rowType;
+    tr.dataset.account = c.account;
+    if (c.subLabel) tr.dataset.subLabel = c.subLabel;
     if (c.sectionLabel !== lastSection) {
       tr.className = 'expand-section-row';
       lastSection = c.sectionLabel;
@@ -23611,6 +23546,7 @@ function renderVisibilitySettings() {
         checked: entry.collapsible,
         labelText: '折りたたむ',
         disabled: forceExpanded,
+        toggle: 'collapsible',
         onChange: () => {
           expandConfig = setExpandEntry(expandConfig, c.sectionId, c.account, {
             collapsible: collapsibleCheckbox.checked,
@@ -23625,6 +23561,7 @@ function renderVisibilitySettings() {
         checked: entry.hideTotalWhenExpanded,
         labelText: '展開時に合計非表示',
         disabled: forceExpanded || !entry.collapsible,
+        toggle: 'hideTotal',
         onChange: () => {
           expandConfig = setExpandEntry(expandConfig, c.sectionId, c.account, {
             hideTotalWhenExpanded: hideTotalCheckbox.checked,
@@ -23644,9 +23581,11 @@ function renderVisibilitySettings() {
     const toggleCell = toggleCells[2];
     const label = document.createElement('label');
     label.className = 'expand-toggle-label';
+    label.dataset.toggle = 'visible';
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.checked = visible;
+    checkbox.dataset.toggle = 'visible';
     label.appendChild(checkbox);
     label.append(' 表示');
     toggleCell.appendChild(label);
@@ -23667,6 +23606,7 @@ function renderVisibilitySettings() {
       checked: hasFixedDisplayStyle ? false : displayEntry.largeDisplay,
       ariaLabel: '大きく表示',
       disabled: hasFixedDisplayStyle,
+      toggle: 'large',
       onChange: (ev) => {
         rowDisplayConfig = setRowDisplayEntry(
           rowDisplayConfig,
@@ -23684,6 +23624,7 @@ function renderVisibilitySettings() {
       checked: hasFixedDisplayStyle ? false : displayEntry.fillColor1,
       ariaLabel: '塗り色１（注目）',
       disabled: hasFixedDisplayStyle,
+      toggle: 'fill1',
       onChange: (ev) => {
         rowDisplayConfig = setRowDisplayEntry(
           rowDisplayConfig,
@@ -23701,6 +23642,7 @@ function renderVisibilitySettings() {
       checked: hasFixedDisplayStyle ? false : displayEntry.fillColor2,
       ariaLabel: '塗り色２（注意）',
       disabled: hasFixedDisplayStyle,
+      toggle: 'fill2',
       onChange: (ev) => {
         rowDisplayConfig = setRowDisplayEntry(
           rowDisplayConfig,
@@ -23724,10 +23666,12 @@ function renderVisibilitySettings() {
   bindVisibilitySettingsHeaderActions();
 
   replaceRootPanel(wrap);
-  // 予実表と同様にブラウザ幅へフィットさせる（表の自然幅 ＋ 左右余白 2rem を基準に拡縮）
-  bindPlanSettingsAutoZoom(wrap, () => {
-    const tableW = measureElementIntrinsicWidth(wrap.querySelector('.visibility-config-table'));
-    return tableW > 0 ? tableW + planSettingsRemToPx(2) : 0;
+  // ブラウザ幅へフィットさせる（表の自然幅 ＋ 左右余白 2rem を基準に UI スケール）
+  bindPlanSettingsScalableLayout(wrap, {
+    measureNaturalWidth: () => {
+      const tableW = measureElementIntrinsicWidth(wrap.querySelector('.visibility-config-table'));
+      return tableW > 0 ? tableW + planSettingsRemToPx(2) : 0;
+    },
   });
 }
 
@@ -24006,6 +23950,7 @@ function appendCsvNameSettingsPanel(wrap) {
   for (const kind of CSV_KINDS) {
     const entry = csvNameConfig[kind.id];
     const tr = document.createElement('tr');
+    tr.dataset.csvKind = kind.id;
 
     const labelTd = document.createElement('td');
     labelTd.textContent = kind.required ? kind.label : `${kind.label}（任意）`;
@@ -24094,6 +24039,45 @@ function filterTaxRateDecimalInput(value) {
   return `${intPart}.${fracPart}`;
 }
 
+function formatTaxRateThresholdYen(value) {
+  const digits = String(value ?? '').replace(/[^\d]/g, '');
+  if (!digits) return '';
+  const num = parseInt(digits, 10);
+  if (!Number.isFinite(num)) return '';
+  return `\u00a5${num.toLocaleString('ja-JP')}`;
+}
+
+function parseTaxRateThresholdYen(raw) {
+  return String(raw ?? '').replace(/[^\d]/g, '');
+}
+
+function createTaxRateThresholdInput({ field, value, className }) {
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.inputMode = 'numeric';
+  input.autocomplete = 'off';
+  input.spellcheck = false;
+  input.className = className;
+  input.dataset.field = field;
+  input.value = formatTaxRateThresholdYen(value);
+
+  input.addEventListener('focus', () => {
+    input.value = parseTaxRateThresholdYen(input.value);
+  });
+
+  input.addEventListener('input', () => {
+    const filtered = filterTaxRateIntegerInput(input.value);
+    if (filtered !== input.value) input.value = filtered;
+  });
+
+  input.addEventListener('blur', () => {
+    input.value = formatTaxRateThresholdYen(input.value);
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+
+  return input;
+}
+
 function createTaxRateInput({ field, value, className, numericKind }) {
   const input = document.createElement('input');
   input.type = 'text';
@@ -24133,8 +24117,10 @@ function bindTaxRateTable({ tbody, addBtn, getRates, normalizeRates, onUpdate })
 
   function renderRows() {
     tbody.replaceChildren();
-    for (const row of getRates()) {
+    getRates().forEach((row, index) => {
       const tr = document.createElement('tr');
+      tr.dataset.rateKind = 'consumption';
+      tr.dataset.index = String(index);
 
       const yearTd = document.createElement('td');
       yearTd.appendChild(createTaxRateInput({
@@ -24177,7 +24163,7 @@ function bindTaxRateTable({ tbody, addBtn, getRates, normalizeRates, onUpdate })
         input.addEventListener('change', saveFromTable);
       });
       tbody.appendChild(tr);
-    }
+    });
   }
 
   addBtn.addEventListener('click', () => {
@@ -24200,7 +24186,7 @@ function bindWithholdingTaxTable({ tbody, addBtn, getRates, onUpdate }) {
       rows.push({
         year: tr.querySelector('[data-field="year"]')?.value,
         month: tr.querySelector('[data-field="month"]')?.value,
-        thresholdYen: tr.querySelector('[data-field="threshold"]')?.value,
+        thresholdYen: parseTaxRateThresholdYen(tr.querySelector('[data-field="threshold"]')?.value),
         baseRatePercent: tr.querySelector('[data-field="base-rate"]')?.value,
         excessRatePercent: tr.querySelector('[data-field="excess-rate"]')?.value,
       });
@@ -24214,8 +24200,10 @@ function bindWithholdingTaxTable({ tbody, addBtn, getRates, onUpdate }) {
 
   function renderRows() {
     tbody.replaceChildren();
-    for (const row of getRates()) {
+    getRates().forEach((row, index) => {
       const tr = document.createElement('tr');
+      tr.dataset.rateKind = 'withholding';
+      tr.dataset.index = String(index);
 
       const fields = [
         { name: 'year', value: row.year, className: 'tax-rate-input', numericKind: 'integer' },
@@ -24242,12 +24230,20 @@ function bindWithholdingTaxTable({ tbody, addBtn, getRates, onUpdate }) {
 
       for (const field of fields) {
         const td = document.createElement('td');
-        td.appendChild(createTaxRateInput({
-          field: field.name,
-          value: field.value,
-          className: field.className,
-          numericKind: field.numericKind,
-        }));
+        if (field.name === 'threshold') {
+          td.appendChild(createTaxRateThresholdInput({
+            field: field.name,
+            value: field.value,
+            className: field.className,
+          }));
+        } else {
+          td.appendChild(createTaxRateInput({
+            field: field.name,
+            value: field.value,
+            className: field.className,
+            numericKind: field.numericKind,
+          }));
+        }
         tr.appendChild(td);
       }
 
@@ -24268,7 +24264,7 @@ function bindWithholdingTaxTable({ tbody, addBtn, getRates, onUpdate }) {
         input.addEventListener('change', saveFromTable);
       });
       tbody.appendChild(tr);
-    }
+    });
   }
 
   addBtn.addEventListener('click', () => {
@@ -24294,7 +24290,7 @@ function renderTaxRateSettings() {
   setPlanKpi(null);
 
   const wrap = document.createElement('div');
-  wrap.className = 'expand-settings-wrap tax-rate-settings-wrap';
+  wrap.className = 'expand-settings-wrap tax-rate-settings-wrap plan-settings-scalable';
 
   const header = document.createElement('div');
   header.className = 'expand-settings-header';
@@ -24311,13 +24307,13 @@ function renderTaxRateSettings() {
   const form = document.createElement('div');
   form.className = 'app-settings-form tax-rate-settings-form';
   form.innerHTML = `
-    <div class="tax-rate-settings-column tax-rate-settings-column-left">
-      <div class="app-settings-section tax-rate-section">
+    <div class="tax-rate-settings-stack">
+      <div class="app-settings-section tax-rate-section tax-rate-section--consumption">
         <div class="tax-rate-section-head">
           <span class="app-settings-label">消費税税率</span>
           <span class="app-settings-hint tax-rate-section-hint">適用開始年月以降に有効な消費税税率（％）</span>
         </div>
-        <table class="expand-settings-table tax-rate-table">
+        <table class="expand-settings-table tax-rate-table consumption-tax-rate-table">
           <thead>
             <tr>
               <th>年</th>
@@ -24329,6 +24325,26 @@ function renderTaxRateSettings() {
           <tbody id="consumption-tax-rate-tbody"></tbody>
         </table>
         <button type="button" class="expand-reset-btn tax-rate-add-btn" id="consumption-tax-rate-add">行を追加</button>
+      </div>
+      <div class="app-settings-section tax-rate-section tax-rate-section--withholding">
+        <div class="tax-rate-section-head">
+          <span class="app-settings-label">源泉所得税（個人事業主・報酬・料金等）</span>
+          <span class="app-settings-hint tax-rate-section-hint">閾値以下は基準税率、超過分は超過税率。税額 = 閾値以下 × 基準 ＋ 超過 × 超過（1円未満切捨て）。例: 150万・10.21%／20.42% → 204,200円</span>
+        </div>
+        <table class="expand-settings-table tax-rate-table withholding-tax-rate-table">
+          <thead>
+            <tr>
+              <th>年</th>
+              <th>月</th>
+              <th>閾値（円）</th>
+              <th>基準税率（%）</th>
+              <th>超過税率（%）</th>
+              <th class="col-tax-rate-actions"></th>
+            </tr>
+          </thead>
+          <tbody id="withholding-tax-rate-tbody"></tbody>
+        </table>
+        <button type="button" class="expand-reset-btn tax-rate-add-btn" id="withholding-tax-rate-add">行を追加</button>
       </div>
       <div class="app-settings-section tax-rate-section tax-rate-section--legal-welfare">
         <div class="tax-rate-section-head">
@@ -24350,28 +24366,6 @@ function renderTaxRateSettings() {
           </label>
           <span class="app-settings-hint tax-rate-section-hint" id="legal-welfare-rate-note"></span>
         </div>
-      </div>
-    </div>
-    <div class="tax-rate-settings-column tax-rate-settings-column-withholding">
-      <div class="app-settings-section tax-rate-section">
-        <div class="tax-rate-section-head">
-          <span class="app-settings-label">源泉所得税（個人事業主・報酬・料金等）</span>
-          <span class="app-settings-hint tax-rate-section-hint">閾値以下は基準税率、超過分は超過税率。税額 = 閾値以下 × 基準 ＋ 超過 × 超過（1円未満切捨て）。例: 150万・10.21%／20.42% → 204,200円</span>
-        </div>
-        <table class="expand-settings-table tax-rate-table withholding-tax-rate-table">
-          <thead>
-            <tr>
-              <th>年</th>
-              <th>月</th>
-              <th>閾値（円）</th>
-              <th>基準税率（%）</th>
-              <th>超過税率（%）</th>
-              <th class="col-tax-rate-actions"></th>
-            </tr>
-          </thead>
-          <tbody id="withholding-tax-rate-tbody"></tbody>
-        </table>
-        <button type="button" class="expand-reset-btn tax-rate-add-btn" id="withholding-tax-rate-add">行を追加</button>
       </div>
     </div>
   `;
@@ -24444,14 +24438,15 @@ function renderTaxRateSettings() {
   consumptionTable.renderRows();
   withholdingTable.renderRows();
   replaceRootPanel(wrap);
-  // 予実表と同様にブラウザ幅へフィットさせる。
-  // 自然幅 = 左右余白 2rem ＋ 左カラム 22rem ＋ カラム間 2rem ＋ 源泉所得税表の自然幅（下限 28rem）
-  bindPlanSettingsAutoZoom(wrap, () => {
-    const withholdingW = Math.max(
-      measureElementIntrinsicWidth(wrap.querySelector('.withholding-tax-rate-table')),
-      planSettingsRemToPx(28),
-    );
-    return planSettingsRemToPx(2 + 22 + 2) + withholdingW;
+  // ブラウザ幅へフィットさせる（源泉所得税表の自然幅 ＋ 左右余白 2rem、下限 28rem）
+  bindPlanSettingsScalableLayout(wrap, {
+    measureNaturalWidth: () => {
+      const withholdingW = Math.max(
+        measureElementIntrinsicWidth(wrap.querySelector('.withholding-tax-rate-table')),
+        planSettingsRemToPx(28),
+      );
+      return withholdingW + planSettingsRemToPx(2);
+    },
   });
 }
 
@@ -27378,7 +27373,7 @@ function renderOtherSettings() {
   setPlanKpi(null);
 
   const wrap = document.createElement('div');
-  wrap.className = 'expand-settings-wrap app-settings-wrap';
+  wrap.className = 'expand-settings-wrap app-settings-wrap plan-settings-scalable';
 
   const header = document.createElement('div');
   header.className = 'expand-settings-header';
@@ -27494,8 +27489,8 @@ function renderOtherSettings() {
   const brandLogoOutlineColorField = form.querySelector('.other-settings-brand-logo-outline-color-field');
   const brandLogoShadowOptionFields = form.querySelectorAll('.other-settings-brand-logo-shadow-option-field');
 
-  // ロゴ設定の表示切替でフォームの自然幅が変わったときに自動ズームを再計算する
-  let refreshOtherSettingsAutoZoom = null;
+  // ロゴ設定の表示切替でフォームの自然幅が変わったときに UI スケールを再計算する
+  let refreshOtherSettingsLayout = null;
 
   function populateBrandLogoImageForm() {
     const mode = getPlanColorMode();
@@ -27529,7 +27524,7 @@ function renderOtherSettings() {
     brandLogoShadowOptionFields.forEach((el) => {
       el.hidden = !logoActive || !shadowActive;
     });
-    refreshOtherSettingsAutoZoom?.();
+    refreshOtherSettingsLayout?.();
   }
 
   function readBrandLogoImagePatchFromInputs() {
@@ -27775,16 +27770,22 @@ function renderOtherSettings() {
 
   refreshPreview();
   replaceRootPanel(wrap);
-  // 予実表と同様にブラウザ幅へフィットさせる。
+  // ブラウザ幅へフィットさせる。
   // 自然幅 = 左右余白 2rem ＋ 各セクション（ブランド行・基本設定行・CSV名定義表）の 1 行自然幅の最大
-  refreshOtherSettingsAutoZoom = bindPlanSettingsAutoZoom(wrap, () => {
+  const measureOtherSettingsNaturalWidth = () => {
     const sectionW = Math.max(
       measureElementIntrinsicWidth(wrap.querySelector('.other-settings-brand-row')),
       measureElementIntrinsicWidth(wrap.querySelector('.other-settings-general-row')),
       measureElementIntrinsicWidth(wrap.querySelector('.csv-name-settings-table')),
     );
     return sectionW > 0 ? sectionW + planSettingsRemToPx(2) : 0;
+  };
+  bindPlanSettingsScalableLayout(wrap, {
+    measureNaturalWidth: measureOtherSettingsNaturalWidth,
   });
+  refreshOtherSettingsLayout = () => {
+    layoutPlanSettingsScalableWrap(wrap, measureOtherSettingsNaturalWidth);
+  };
 }
 
 function replaceRootPanel(el) {

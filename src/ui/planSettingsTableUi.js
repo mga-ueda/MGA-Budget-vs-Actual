@@ -324,7 +324,7 @@ export function syncPlanSettingsTableColumnPlates(tableWrap, table, highlightMon
 }
 
 export function syncAllPlanSettingsTableColumnPlates(wrap, fiscalMonths, currentPeriod, appSettings) {
-  if (!wrap?.isConnected) return;
+  if (!wrap?.isConnected || !appSettings || !fiscalMonths) return;
   const highlightMonth = getFiscalPeriodDisplayMode(
     appSettings.businessStartYear,
     currentPeriod,
@@ -446,11 +446,7 @@ export function measureTableIntrinsicWidth(table) {
   return width;
 }
 
-/** 設定ページ自動ズームの下限・上限（予実表の content-fit・設定 UI スケールと同等のレンジ） */
-const PLAN_SETTINGS_AUTO_ZOOM_MIN = 0.72;
-const PLAN_SETTINGS_AUTO_ZOOM_MAX = 1.45;
-
-/** rem を px に変換する（ズーム前の CSS px 基準で自然幅を見積もるため） */
+/** rem を px に変換する（自然幅見積もりの CSS px 基準） */
 export function planSettingsRemToPx(rem) {
   const base = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
   return rem * base;
@@ -472,78 +468,6 @@ export function measureElementIntrinsicWidth(el) {
   el.style.minWidth = prev.minWidth;
   el.style.maxWidth = prev.maxWidth;
   return width;
-}
-
-/**
- * フォーム中心の設定ページ（税率定義・表示・その他）をブラウザ幅に合わせて丸ごと拡縮する。
- * rem 固定幅の入力欄やチェックボックスも含めて一括追従できるよう CSS zoom を使う。
- * 予実表と同じく「自然幅 : 使える幅」の比率で一発確定し、再計測ループは行わない。
- */
-export function layoutPlanSettingsAutoZoom(wrap, measureNaturalWidth) {
-  if (!wrap?.isConnected) return;
-  const host = wrap.parentElement;
-  if (!host) return;
-
-  const prevZoom = wrap.style.zoom || '';
-  wrap.style.zoom = '1';
-  const naturalW = measureNaturalWidth(wrap);
-  const availableW = host.clientWidth;
-  if (!(naturalW > 0) || !(availableW > 0)) {
-    wrap.style.zoom = prevZoom;
-    return;
-  }
-
-  // 1% は丸め・サブピクセル誤差の安全マージン（予実表の content-fit と同じ）
-  const raw = (availableW / naturalW) * 0.99;
-  const scale = Math.round(
-    Math.min(PLAN_SETTINGS_AUTO_ZOOM_MAX, Math.max(PLAN_SETTINGS_AUTO_ZOOM_MIN, raw)) * 100,
-  ) / 100;
-  wrap.style.zoom = scale === 1 ? '' : String(scale);
-}
-
-/**
- * 自動ズームをページ表示中ずっと追従させる（途中でのウィンドウ最大化・リサイズ対応）。
- * zoom は wrap 自身の計測系を変えるため、影響を受けない親（#plan-root）の幅を監視する。
- */
-export function bindPlanSettingsAutoZoom(wrap, measureNaturalWidth) {
-  const host = wrap.parentElement;
-  if (!host) return;
-  host.__planSettingsAutoZoomObserver?.disconnect();
-
-  if (host.__planSettingsAutoZoomDispose) {
-    host.__planSettingsAutoZoomDispose();
-    host.__planSettingsAutoZoomDispose = null;
-  }
-
-  let lastHostW = 0;
-  const dispose = () => {
-    observer.disconnect();
-    window.removeEventListener('resize', onWindowResize);
-    if (host.__planSettingsAutoZoomDispose === dispose) {
-      host.__planSettingsAutoZoomDispose = null;
-    }
-  };
-  const run = (force = false) => {
-    if (!wrap.isConnected) {
-      dispose();
-      return;
-    }
-    // 高さだけの変化（行の増減など）では再計測しない
-    if (!force && host.clientWidth === lastHostW) return;
-    lastHostW = host.clientWidth;
-    layoutPlanSettingsAutoZoom(wrap, measureNaturalWidth);
-  };
-
-  const observer = new ResizeObserver(() => run(false));
-  // ブラウザ最大化などウィンドウ由来の変化は resize イベントでも拾う（RO の取りこぼし対策）
-  const onWindowResize = () => run(false);
-  window.addEventListener('resize', onWindowResize);
-
-  requestAnimationFrame(() => requestAnimationFrame(() => run(true)));
-  document.fonts?.ready?.then(() => run(true)).catch(() => {});
-  observer.observe(host);
-  host.__planSettingsAutoZoomDispose = dispose;
-  return () => run(true);
 }
 
 export function measurePlanSettingsPageNaturalWidth(wrap, monthCount, variants = []) {
@@ -803,6 +727,8 @@ export function layoutPlanSettingsScalableWrap(wrap, measureNaturalWidth) {
   if (!wrap?.isConnected) return 1;
   const availableW = getPlanSettingsWrapAvailableWidth(wrap);
   if (availableW <= 0) return 1;
+  // 計測前にスケールを戻し、拡大後のフォント幅が自然幅に乗らないようにする
+  resetPlanSettingsUiScale(wrap);
   const naturalW = typeof measureNaturalWidth === 'function'
     ? measureNaturalWidth(wrap, availableW)
     : measurePlanSettingsTablesNaturalWidth(wrap);

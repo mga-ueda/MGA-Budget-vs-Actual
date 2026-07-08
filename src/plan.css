@@ -802,7 +802,8 @@ body {
 .expand-settings-wrap.plan-settings-scalable .expand-reset-btn,
 .expand-settings-wrap.plan-settings-scalable .revenue-client-order-btn,
 .expand-settings-wrap.plan-settings-scalable .settings-delete-btn,
-.expand-settings-wrap.plan-settings-scalable .expense-plan-override-add-btn {
+.expand-settings-wrap.plan-settings-scalable .expense-plan-override-add-btn,
+.expand-settings-wrap.plan-settings-scalable .tax-rate-add-btn {
   font-size: calc(var(--plan-settings-ui-btn-size) * var(--plan-settings-ui-scale));
 }
 
@@ -812,8 +813,57 @@ body {
 .expand-settings-wrap.plan-settings-scalable .tax-payment-plan-table,
 .expand-settings-wrap.plan-settings-scalable .expense-plan-override-table,
 .expand-settings-wrap.plan-settings-scalable .outsourcing-plan-table,
-.expand-settings-wrap.plan-settings-scalable .employee-settings-table {
+.expand-settings-wrap.plan-settings-scalable .employee-settings-table,
+.expand-settings-wrap.plan-settings-scalable .visibility-config-table,
+.expand-settings-wrap.plan-settings-scalable .tax-rate-table,
+.expand-settings-wrap.plan-settings-scalable .withholding-tax-rate-table,
+.expand-settings-wrap.plan-settings-scalable .csv-name-settings-table,
+.expand-settings-wrap.plan-settings-scalable .expand-settings-table {
   font-size: var(--plan-settings-ui-table-font-size);
+}
+
+/* 税率定義・表示・その他: フォーム文言・入力も UI スケールに追従 */
+.expand-settings-wrap.plan-settings-scalable .app-settings-label,
+.expand-settings-wrap.plan-settings-scalable .ui-color-panel-title {
+  font-size: calc(var(--plan-settings-ui-label-size) * var(--plan-settings-ui-scale));
+}
+
+.expand-settings-wrap.plan-settings-scalable .app-settings-hint,
+.expand-settings-wrap.plan-settings-scalable .tax-rate-section-hint,
+.expand-settings-wrap.plan-settings-scalable .expand-default-hint {
+  font-size: calc(var(--plan-settings-ui-hint-size) * var(--plan-settings-ui-scale));
+}
+
+.expand-settings-wrap.plan-settings-scalable .app-settings-input,
+.expand-settings-wrap.plan-settings-scalable .tax-rate-input,
+.expand-settings-wrap.plan-settings-scalable .csvname-pattern-input,
+.expand-settings-wrap.plan-settings-scalable .csvname-example-input,
+.expand-settings-wrap.plan-settings-scalable .expense-sort-order-input {
+  font-size: calc(var(--plan-settings-ui-control-size) * var(--plan-settings-ui-scale));
+}
+
+.expand-settings-wrap.plan-settings-scalable .expand-toggle-label {
+  font-size: calc(var(--plan-settings-ui-control-size) * var(--plan-settings-ui-scale));
+}
+
+.expand-settings-wrap.plan-settings-scalable .expense-sort-order-input {
+  width: calc(3.25rem * var(--plan-settings-ui-scale));
+}
+
+.expand-settings-wrap.plan-settings-scalable .tax-rate-input {
+  width: calc(4.5rem * var(--plan-settings-ui-scale));
+}
+
+.expand-settings-wrap.plan-settings-scalable .tax-rate-input-rate {
+  width: calc(4rem * var(--plan-settings-ui-scale));
+}
+
+.expand-settings-wrap.plan-settings-scalable .tax-rate-input-threshold {
+  width: calc(8.75rem * var(--plan-settings-ui-scale));
+}
+
+.expand-settings-wrap.plan-settings-scalable .legal-welfare-rate-input {
+  width: calc(5.5rem * var(--plan-settings-ui-scale));
 }
 
 .expand-settings-wrap table {
@@ -1353,7 +1403,7 @@ select.app-settings-input {
 }
 
 .app-settings-wrap .expand-settings-header .expand-settings-desc {
-  /* 自動ズームで全幅にフィットさせるため、説明文は折り返して幅を支配しない */
+  /* UI スケールで全幅にフィットさせるため、説明文は折り返して幅を支配しない */
   max-width: none;
   white-space: normal;
 }
@@ -1397,45 +1447,41 @@ select.app-settings-input {
   margin-top: 0.25rem;
 }
 
-.tax-rate-settings-wrap .app-settings-form {
-  max-width: none;
-  width: 100%;
-  flex-direction: row;
-  flex-wrap: wrap;
+.tax-rate-settings-wrap .expand-settings-header {
+  flex-direction: column;
   align-items: flex-start;
-  gap: 0.85rem 2rem;
+  justify-content: flex-start;
 }
 
 .tax-rate-settings-wrap .expand-settings-desc {
   max-width: none;
-  flex: 1 1 36rem;
+  flex: 0 1 auto;
+  width: 100%;
 }
 
-.tax-rate-settings-column-left {
-  flex: 0 0 22rem;
-  max-width: 22rem;
-  display: flex;
+.tax-rate-settings-wrap .expand-settings-header-actions {
+  align-self: flex-start;
+}
+
+.tax-rate-settings-wrap .app-settings-form {
+  max-width: none;
+  width: 100%;
   flex-direction: column;
+  align-items: stretch;
   gap: 0.85rem;
 }
 
-.tax-rate-settings-column-withholding {
-  flex: 1 1 32rem;
-  min-width: 28rem;
+.tax-rate-settings-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  width: 100%;
   max-width: 100%;
+  min-width: 0;
 }
 
-@media (max-width: 720px) {
-  .tax-rate-settings-wrap .app-settings-form {
-    flex-direction: column;
-  }
-
-  .tax-rate-settings-column-left,
-  .tax-rate-settings-column-withholding {
-    flex: 1 1 100%;
-    max-width: 100%;
-    min-width: 0;
-  }
+.tax-rate-settings-stack .withholding-tax-rate-table {
+  min-width: 28rem;
 }
 
 .tax-rate-section-head {
@@ -1486,11 +1532,54 @@ select.app-settings-input {
   margin: 0;
 }
 
+.tax-rate-settings-stack .tax-rate-section--consumption {
+  width: fit-content;
+  max-width: 100%;
+  align-self: flex-start;
+  align-items: flex-start;
+}
+
+.tax-rate-section--consumption .tax-rate-section-head,
+.tax-rate-section--withholding .tax-rate-section-head {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+}
+
+.tax-rate-section--consumption .tax-rate-section-hint,
+.tax-rate-section--withholding .tax-rate-section-hint {
+  flex: 0 1 auto;
+}
+
+.tax-rate-settings-wrap .consumption-tax-rate-table {
+  width: max-content;
+  min-width: 0;
+  max-width: 100%;
+  align-self: flex-start;
+  table-layout: auto;
+}
+
+.tax-rate-settings-wrap .consumption-tax-rate-table thead th,
+.tax-rate-settings-wrap .consumption-tax-rate-table tbody td {
+  text-align: center;
+}
+
+.tax-rate-settings-wrap .withholding-tax-rate-table thead th,
+.tax-rate-settings-wrap .withholding-tax-rate-table tbody td {
+  text-align: center;
+  vertical-align: middle;
+}
+
 .consumption-tax-rate-table th,
 .tax-rate-table th,
 .consumption-tax-rate-table td,
 .tax-rate-table td {
   text-align: center;
+}
+
+.consumption-tax-rate-table th,
+.consumption-tax-rate-table td {
+  vertical-align: middle;
 }
 
 .consumption-tax-rate-input,
@@ -1519,7 +1608,7 @@ select.app-settings-input {
 }
 
 .tax-rate-input-threshold {
-  width: 6.5rem;
+  width: 8.75rem;
 }
 
 .withholding-tax-rate-table {
