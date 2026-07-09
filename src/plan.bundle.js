@@ -4297,6 +4297,240 @@ function formatLegalWelfareRatePercent(rate) {
   return `${Math.round(normalizeLegalWelfareRate(rate) * 1000) / 10}%`;
 }
 
+/* config/taxSimulationConfig.js */
+/** 大阪・中小法人の検算用税率（参考資料ベース） */
+const DEFAULT_ITEMIZED_TAX_PARAMS = {
+  isSmallCorporation: true,
+  corporateTaxThreshold: 8_000_000,
+  corporateTaxRateLowPercent: 15,
+  corporateTaxRateHighPercent: 23.2,
+  localCorporateTaxRatePercent: 10.3,
+  prefecturalIncomeTaxRatePercent: 1,
+  prefecturalPerCapita: 20_000,
+  enterpriseTaxTiers: [
+    { limit: 4_000_000, ratePercent: 3.5 },
+    { limit: 8_000_000, ratePercent: 5.3 },
+    { limit: Infinity, ratePercent: 7 },
+  ],
+  specialLocalEnterpriseTaxRatePercent: 37,
+  municipalIncomeTaxRatePercent: 6,
+  municipalPerCapita: 50_000,
+};
+
+/** 地域別法人税・消費税のシミュレーション設定（年度ごとでは不要） */
+const DEFAULT_TAX_SIMULATION = {
+  regionPreset: 'custom',
+  corporateTaxMethod: 'itemized',
+  effectiveCorporateTaxRatePercent: 34,
+  itemizedPrefecturalPerCapita: null,
+  itemizedMunicipalPerCapita: null,
+  profitEstimateMethod: 'fullYear',
+  provisionalTaxEnabled: true,
+  provisionalTaxInstallments: 2,
+  corporateTaxSettlementMonthIndex: 1,
+  provisionalTaxMonthIndices: [7, 10],
+  consumptionTaxMethod: 'general',
+  simplifiedDeemedPurchaseRatePercent: 50,
+  consumptionTaxInterimEnabled: true,
+  consumptionTaxSettlementMonthIndex: 1,
+  consumptionTaxInterimMonthIndex: 7,
+  lossCarryforwardDeduction: 0,
+};
+
+const TAX_REGION_PRESETS = {
+  custom: {
+    label: 'カスタム',
+    effectiveCorporateTaxRatePercent: null,
+  },
+  tokyo_standard: {
+    label: '東京（標準税率）',
+    effectiveCorporateTaxRatePercent: 30.62,
+    itemized: { ...DEFAULT_ITEMIZED_TAX_PARAMS, isSmallCorporation: false },
+  },
+  tokyo_small: {
+    label: '東京（中小法人）',
+    effectiveCorporateTaxRatePercent: 34.59,
+    itemized: { ...DEFAULT_ITEMIZED_TAX_PARAMS, isSmallCorporation: true },
+  },
+  osaka_standard: {
+    label: '大阪（標準税率）',
+    effectiveCorporateTaxRatePercent: 30.62,
+    itemized: { ...DEFAULT_ITEMIZED_TAX_PARAMS, isSmallCorporation: false },
+  },
+  osaka_small: {
+    label: '大阪（中小法人）',
+    effectiveCorporateTaxRatePercent: 34.59,
+    itemized: { ...DEFAULT_ITEMIZED_TAX_PARAMS, isSmallCorporation: true },
+  },
+  nagoya_standard: {
+    label: '名古屋（標準税率）',
+    effectiveCorporateTaxRatePercent: 30.62,
+  },
+  fukuoka_standard: {
+    label: '福岡（標準税率）',
+    effectiveCorporateTaxRatePercent: 30.62,
+  },
+};
+
+const VALID_REGION_PRESETS = new Set(Object.keys(TAX_REGION_PRESETS));
+const VALID_PROFIT_METHODS = new Set(['annualize', 'fullYear']);
+const VALID_CONSUMPTION_METHODS = new Set(['general', 'simplified']);
+const VALID_CORPORATE_TAX_METHODS = new Set(['effectiveRate', 'itemized']);
+
+function clampPercent(value, fallback) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0 || n > 100) return fallback;
+  return Math.round(n * 100) / 100;
+}
+
+function clampNonNegativeInt(value, fallback) {
+  const n = Math.floor(Number(value));
+  if (!Number.isFinite(n) || n < 0) return fallback;
+  return n;
+}
+
+function normalizeMonthIndex(value, fallback, fiscalMonths) {
+  const n = Math.floor(Number(value));
+  const max = Math.max(0, fiscalMonths.length - 1);
+  if (!Number.isFinite(n) || n < 0 || n > max) return fallback;
+  return n;
+}
+
+function normalizeMonthIndexList(values, fallback, fiscalMonths) {
+  if (!Array.isArray(values) || values.length === 0) return [...fallback];
+  const max = Math.max(0, fiscalMonths.length - 1);
+  const result = [];
+  for (const raw of values) {
+    const n = Math.floor(Number(raw));
+    if (!Number.isFinite(n) || n < 0 || n > max) continue;
+    if (!result.includes(n)) result.push(n);
+  }
+  return result.length > 0 ? result : [...fallback];
+}
+
+/** 会計月から納税の支払月インデックスを導出する */
+function resolveDefaultTaxPaymentMonthIndices(fiscalEndMonth) {
+  const fiscalMonths = buildFiscalYearMonths(fiscalEndMonth);
+  return {
+    fiscalMonths,
+    corporateTaxSettlementMonthIndex: 1,
+    provisionalTaxMonthIndices: [7, 10],
+    consumptionTaxSettlementMonthIndex: 1,
+    consumptionTaxInterimMonthIndex: 7,
+  };
+}
+
+function monthLabelFromIndex(fiscalMonths, index) {
+  if (!Array.isArray(fiscalMonths) || index == null) return '';
+  return fiscalMonths[index] ?? '';
+}
+
+/** 検算モード用の税率パラメータを解決する */
+function resolveItemizedTaxParams(simulation) {
+  const preset = TAX_REGION_PRESETS[simulation.regionPreset];
+  const base = preset?.itemized
+    ? { ...DEFAULT_ITEMIZED_TAX_PARAMS, ...preset.itemized }
+    : { ...DEFAULT_ITEMIZED_TAX_PARAMS };
+  if (simulation.itemizedPrefecturalPerCapita != null) {
+    base.prefecturalPerCapita = clampNonNegativeInt(
+      simulation.itemizedPrefecturalPerCapita,
+      base.prefecturalPerCapita,
+    );
+  }
+  if (simulation.itemizedMunicipalPerCapita != null) {
+    base.municipalPerCapita = clampNonNegativeInt(
+      simulation.itemizedMunicipalPerCapita,
+      base.municipalPerCapita,
+    );
+  }
+  return base;
+}
+
+function normalizeTaxSimulation(raw, fiscalEndMonth = 12) {
+  const defaults = resolveDefaultTaxPaymentMonthIndices(fiscalEndMonth);
+  const fiscalMonths = defaults.fiscalMonths;
+  const base = { ...DEFAULT_TAX_SIMULATION, ...defaults };
+  const source = raw && typeof raw === 'object' ? raw : {};
+  const regionPreset = VALID_REGION_PRESETS.has(source.regionPreset)
+    ? source.regionPreset
+    : base.regionPreset;
+  const presetRate = TAX_REGION_PRESETS[regionPreset]?.effectiveCorporateTaxRatePercent;
+  const effectiveCorporateTaxRatePercent = regionPreset === 'custom'
+    ? clampPercent(source.effectiveCorporateTaxRatePercent, base.effectiveCorporateTaxRatePercent)
+    : clampPercent(presetRate, base.effectiveCorporateTaxRatePercent);
+  const profitEstimateMethod = VALID_PROFIT_METHODS.has(source.profitEstimateMethod)
+    ? source.profitEstimateMethod
+    : base.profitEstimateMethod;
+  const consumptionTaxMethod = VALID_CONSUMPTION_METHODS.has(source.consumptionTaxMethod)
+    ? source.consumptionTaxMethod
+    : base.consumptionTaxMethod;
+  const corporateTaxMethod = VALID_CORPORATE_TAX_METHODS.has(source.corporateTaxMethod)
+    ? source.corporateTaxMethod
+    : base.corporateTaxMethod;
+  const provisionalTaxInstallments = source.provisionalTaxInstallments === 1 ? 1 : 2;
+  const provisionalTaxMonthIndices = normalizeMonthIndexList(
+    source.provisionalTaxMonthIndices,
+    defaults.provisionalTaxMonthIndices,
+    fiscalMonths,
+  ).slice(0, provisionalTaxInstallments);
+  return {
+    regionPreset,
+    corporateTaxMethod,
+    effectiveCorporateTaxRatePercent,
+    itemizedPrefecturalPerCapita: source.itemizedPrefecturalPerCapita == null
+      || source.itemizedPrefecturalPerCapita === ''
+      ? null
+      : clampNonNegativeInt(source.itemizedPrefecturalPerCapita, 0),
+    itemizedMunicipalPerCapita: source.itemizedMunicipalPerCapita == null
+      || source.itemizedMunicipalPerCapita === ''
+      ? null
+      : clampNonNegativeInt(source.itemizedMunicipalPerCapita, 0),
+    profitEstimateMethod,
+    provisionalTaxEnabled: source.provisionalTaxEnabled !== false,
+    provisionalTaxInstallments,
+    corporateTaxSettlementMonthIndex: normalizeMonthIndex(
+      source.corporateTaxSettlementMonthIndex,
+      defaults.corporateTaxSettlementMonthIndex,
+      fiscalMonths,
+    ),
+    provisionalTaxMonthIndices,
+    consumptionTaxMethod,
+    simplifiedDeemedPurchaseRatePercent: clampPercent(
+      source.simplifiedDeemedPurchaseRatePercent,
+      base.simplifiedDeemedPurchaseRatePercent,
+    ),
+    consumptionTaxInterimEnabled: source.consumptionTaxInterimEnabled !== false,
+    consumptionTaxSettlementMonthIndex: normalizeMonthIndex(
+      source.consumptionTaxSettlementMonthIndex,
+      defaults.consumptionTaxSettlementMonthIndex,
+      fiscalMonths,
+    ),
+    consumptionTaxInterimMonthIndex: normalizeMonthIndex(
+      source.consumptionTaxInterimMonthIndex,
+      defaults.consumptionTaxInterimMonthIndex,
+      fiscalMonths,
+    ),
+    lossCarryforwardDeduction: clampNonNegativeInt(
+      source.lossCarryforwardDeduction,
+      base.lossCarryforwardDeduction,
+    ),
+  };
+}
+
+function formatTaxSimulationRatePercent(rate) {
+  const n = Number(rate);
+  if (!Number.isFinite(n)) return '—';
+  return `${Math.round(n * 100) / 100}%`;
+}
+
+/** 前年度法人税等の額から予定納税回数を決定する（48万円超は2回） */
+function resolveProvisionalTaxInstallments(corporateTaxAmount) {
+  const amount = Math.max(0, Math.floor(Number(corporateTaxAmount) || 0));
+  return amount > 480_000 ? 2 : 1;
+}
+
+const TAX_REGION_PRESET_TOOLTIP = '標準税率: 資本金1億円超など一定規模以上の法人向け。中小法人: 資本金1億円以下などの中小法人向け（軽減税率・均等割等が異なります）。';
+
 /* config/employeeConfig.js */
 const EMPLOYEE_STORAGE_KEY = 'mga-employees';
 
@@ -9202,6 +9436,422 @@ function enrichPlanDataWithPeriodAverageFills(planData, {
   return { ...planData, sections };
 }
 
+/* enrich/corporateTaxItemized.js */
+/** Round down to the nearest unit (e.g. 1000 yen). */
+function roundDownToUnit(value, unit) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || unit <= 0) return 0;
+  return Math.floor(n / unit) * unit;
+}
+
+/** Tiered tax: each tier applies rate to the slice within [prevLimit, limit). */
+function computeTieredTax(amount, tiers) {
+  let remaining = Math.max(0, Number(amount) || 0);
+  let prevLimit = 0;
+  let total = 0;
+  for (const tier of tiers) {
+    const limit = tier.limit ?? Infinity;
+    const slice = Math.min(remaining, limit - prevLimit);
+    if (slice <= 0) break;
+    total += slice * (Number(tier.ratePercent) || 0) / 100;
+    remaining -= slice;
+    prevLimit = limit;
+    if (remaining <= 0) break;
+  }
+  return total;
+}
+
+/**
+ * Itemized corporate tax (Osaka-style verification sheet).
+ * Rounding: taxable income -> 1000 yen; most taxes -> 100 yen.
+ * Dependent taxes use corporate tax rounded down to 1000 yen.
+ */
+function computeItemizedCorporateTax(preTaxProfitAfterLossDeduction, params) {
+  const taxableIncome = roundDownToUnit(Math.max(0, preTaxProfitAfterLossDeduction), 1000);
+
+  let corporateTaxRaw;
+  if (params.isSmallCorporation) {
+    const threshold = Number(params.corporateTaxThreshold) || 8_000_000;
+    const lowRate = Number(params.corporateTaxRateLowPercent) || 15;
+    const highRate = Number(params.corporateTaxRateHighPercent) || 23.2;
+    const tier1 = Math.min(taxableIncome, threshold);
+    const tier2 = Math.max(0, taxableIncome - threshold);
+    corporateTaxRaw = tier1 * lowRate / 100 + tier2 * highRate / 100;
+  } else {
+    const rate = Number(params.corporateTaxRateHighPercent) || 23.2;
+    corporateTaxRaw = taxableIncome * rate / 100;
+  }
+  const corporateTax = roundDownToUnit(corporateTaxRaw, 100);
+  const corporateTaxBase = roundDownToUnit(corporateTax, 1000);
+
+  const localCorporateTax = roundDownToUnit(
+    corporateTaxBase * (Number(params.localCorporateTaxRatePercent) || 10.3) / 100,
+    100,
+  );
+  const prefecturalIncomeTax = roundDownToUnit(
+    corporateTaxBase * (Number(params.prefecturalIncomeTaxRatePercent) || 1) / 100,
+    100,
+  );
+  const prefecturalPerCapita = Math.max(0, Math.floor(Number(params.prefecturalPerCapita) || 0));
+  const enterpriseTax = roundDownToUnit(
+    computeTieredTax(taxableIncome, params.enterpriseTaxTiers),
+    100,
+  );
+  const specialLocalEnterpriseTax = roundDownToUnit(
+    enterpriseTax * (Number(params.specialLocalEnterpriseTaxRatePercent) || 37) / 100,
+    100,
+  );
+  const municipalIncomeTax = roundDownToUnit(
+    corporateTaxBase * (Number(params.municipalIncomeTaxRatePercent) || 6) / 100,
+    100,
+  );
+  const municipalPerCapita = Math.max(0, Math.floor(Number(params.municipalPerCapita) || 0));
+
+  const total = corporateTax
+    + localCorporateTax
+    + prefecturalIncomeTax
+    + prefecturalPerCapita
+    + enterpriseTax
+    + specialLocalEnterpriseTax
+    + municipalIncomeTax
+    + municipalPerCapita;
+
+  const effectiveRatePercent = taxableIncome > 0
+    ? Math.round((total / taxableIncome) * 10000) / 100
+    : 0;
+
+  return {
+    taxableIncome,
+    total,
+    effectiveRatePercent,
+    breakdown: [
+      { id: 'corporateTax', amount: corporateTax },
+      { id: 'localCorporateTax', amount: localCorporateTax },
+      { id: 'prefecturalIncomeTax', amount: prefecturalIncomeTax },
+      { id: 'prefecturalPerCapita', amount: prefecturalPerCapita },
+      { id: 'enterpriseTax', amount: enterpriseTax },
+      { id: 'specialLocalEnterpriseTax', amount: specialLocalEnterpriseTax },
+      { id: 'municipalIncomeTax', amount: municipalIncomeTax },
+      { id: 'municipalPerCapita', amount: municipalPerCapita },
+    ],
+    corporateTaxBase,
+  };
+}
+
+const ITEMIZED_TAX_LINE_LABELS = {
+  taxableIncome: '課税所得',
+  corporateTax: '法人税',
+  localCorporateTax: '地方法人税',
+  prefecturalIncomeTax: '道府県民税（所得分）',
+  prefecturalPerCapita: '道府県民税（均等割）',
+  enterpriseTax: '事業税',
+  specialLocalEnterpriseTax: '特別法人事業税',
+  municipalIncomeTax: '市町村民税（所得分）',
+  municipalPerCapita: '市町村民税（均等割）',
+  total: '法人税等合計',
+};
+
+/* enrich/nextPeriodTaxForecast.js */
+function sumRegularMonths(values, fiscalMonths) {
+  let total = 0;
+  for (const month of fiscalMonths) {
+    if (month === '決算整理') continue;
+    total += Number(values?.[month]) || 0;
+  }
+  return total;
+}
+
+function getSectionTotalValues(planData, sectionId) {
+  const section = planData?.sections?.find((s) => s.id === sectionId);
+  if (!section) return null;
+  const totalRow = section.rows?.find((row) => row.type === 'total');
+  return totalRow?.values ?? null;
+}
+
+function getProfitRowValues(planData, aggregateFormula) {
+  const section = planData?.sections?.find((s) => s.id === 'profit');
+  if (!section) return null;
+  const row = section.rows?.find((r) => r.aggregateFormula === aggregateFormula);
+  return row?.values ?? null;
+}
+
+/** 税引前利益の年間見込を計算する */
+function estimateAnnualPreTaxProfit(values, fiscalMonths, pastMonths, method) {
+  if (!values) return { amount: 0, basis: '税引前利益データがありません' };
+  const regularMonths = fiscalMonths.filter((m) => m !== '決算整理');
+  if (method === 'fullYear') {
+    const amount = Number(values.合計) || sumRegularMonths(values, fiscalMonths);
+    return {
+      amount,
+      basis: '当期通期見込税引前利益の合計をそのまま使用',
+      detail: '合計を年間利益として扱います',
+    };
+  }
+  let ytd = 0;
+  let pastCount = 0;
+  for (const month of regularMonths) {
+    if (!pastMonths.has(month)) continue;
+    ytd += Number(values[month]) || 0;
+    pastCount += 1;
+  }
+  if (pastCount === 0) {
+    const amount = Number(values.合計) || sumRegularMonths(values, fiscalMonths);
+    return {
+      amount,
+      basis: '実績月がないため合計を使用',
+      detail: '実績がないため、通期合計を利用します',
+    };
+  }
+  const amount = Math.round((ytd / pastCount) * 12);
+  return {
+    amount,
+    basis: '実績月の税引前利益から年間換算',
+    detail: `${pastCount}ヶ月分の実績合計で年間換算（合計÷月数×12）`,
+    ytd,
+    pastCount,
+  };
+}
+
+function estimateAnnualConsumptionTax({
+  revenueValues,
+  sgaTaxableValues,
+  fiscalMonths,
+  pastMonths,
+  method,
+  simplifiedDeemedPurchaseRatePercent,
+  monthYearMap,
+  consumptionTaxRates,
+}) {
+  const regularMonths = fiscalMonths.filter((m) => m !== '決算整理');
+  let outputTax = 0;
+  let inputTax = 0;
+  let taxableSales = 0;
+  let taxablePurchases = 0;
+  for (const month of regularMonths) {
+    const revenue = Number(revenueValues?.[month]) || 0;
+    const purchases = Number(sgaTaxableValues?.[month]) || 0;
+    const year = monthYearMap?.[month];
+    const monthNum = parseInt(String(month).replace(/[^0-9]/g, ''), 10);
+    const ratePercent = year && monthNum
+      ? getConsumptionTaxRatePercent(year, monthNum, consumptionTaxRates)
+      : 10;
+    const rate = Number.isFinite(ratePercent) && ratePercent > 0 ? ratePercent : 10;
+    if (pastMonths.has(month) || pastMonths.size === 0) {
+      taxableSales += revenue;
+      taxablePurchases += purchases;
+      outputTax += Math.round(revenue * rate / (100 + rate));
+      inputTax += Math.round(purchases * rate / (100 + rate));
+    }
+  }
+  if (pastMonths.size > 0) {
+    const pastCount = regularMonths.filter((m) => pastMonths.has(m)).length;
+    if (pastCount > 0 && pastCount < regularMonths.length) {
+      const factor = 12 / pastCount;
+      taxableSales = Math.round(taxableSales * factor);
+      taxablePurchases = Math.round(taxablePurchases * factor);
+      outputTax = Math.round(outputTax * factor);
+      inputTax = Math.round(inputTax * factor);
+    }
+  } else {
+    taxableSales = sumRegularMonths(revenueValues, fiscalMonths);
+    taxablePurchases = sumRegularMonths(sgaTaxableValues, fiscalMonths);
+  }
+  if (method === 'simplified') {
+    const deemedRate = Number(simplifiedDeemedPurchaseRatePercent) || 0;
+    const taxableBase = Math.max(0, Math.round(taxableSales / 1.1));
+    const netTax = Math.round(taxableBase * 0.1 * (1 - deemedRate / 100));
+    return {
+      amount: Math.max(0, netTax),
+      basis: '簡易課税（みなし仕入率）',
+      detail: `課税売上×10%×（1-みなし仕入率）、年間換算して扱います`,
+      taxableSales,
+      deemedRate,
+    };
+  }
+  const amount = Math.max(0, outputTax - inputTax);
+  return {
+    amount,
+    basis: '本則課税（仮受消費税-仮払消費税）',
+    detail: '売上は税込み、仕入は消費税対象仕入として概算、年間換算して扱います',
+    taxableSales,
+    taxablePurchases,
+    outputTax,
+    inputTax,
+  };
+}
+
+function buildCorporateTaxSchedule(corporateTaxAmount, simulation, fiscalMonths) {
+  const schedule = [];
+  schedule.push({
+    kind: 'settlement',
+    label: '当期分　確定納付',
+    monthLabel: monthLabelFromIndex(fiscalMonths, simulation.corporateTaxSettlementMonthIndex),
+    amount: corporateTaxAmount,
+  });
+  if (simulation.provisionalTaxEnabled && simulation.provisionalTaxMonthIndices.length > 0) {
+    const installments = resolveProvisionalTaxInstallments(corporateTaxAmount);
+    const indices = simulation.provisionalTaxMonthIndices.slice(0, installments);
+    let assigned = 0;
+    indices.forEach((index, idx) => {
+      const isLast = idx === indices.length - 1;
+      const amount = isLast
+        ? corporateTaxAmount - assigned
+        : Math.round(corporateTaxAmount / indices.length);
+      assigned += amount;
+      schedule.push({
+        kind: 'provisional',
+        label: `来期　予定納税 ${idx + 1}`,
+        monthLabel: monthLabelFromIndex(fiscalMonths, index),
+        amount,
+      });
+    });
+  }
+  return schedule;
+}
+
+function buildConsumptionTaxSchedule(consumptionTaxAmount, simulation, fiscalMonths) {
+  const schedule = [];
+  schedule.push({
+    kind: 'settlement',
+    label: '当期分　確定納付',
+    monthLabel: monthLabelFromIndex(fiscalMonths, simulation.consumptionTaxSettlementMonthIndex),
+    amount: consumptionTaxAmount,
+  });
+  if (simulation.consumptionTaxInterimEnabled) {
+    schedule.push({
+      kind: 'interim',
+      label: '来期　中間納税',
+      monthLabel: monthLabelFromIndex(fiscalMonths, simulation.consumptionTaxInterimMonthIndex),
+      amount: Math.round(consumptionTaxAmount / 2),
+    });
+  }
+  return schedule;
+}
+
+/** 当期のリザルトから来期に支払予定の納税見込を計算する */
+function computeNextPeriodTaxForecast({
+  currentPeriodPlanData,
+  currentPeriod,
+  nextPeriod,
+  businessStartYear,
+  fiscalEndMonth,
+  taxSimulation,
+  consumptionTaxRates,
+  monthYearMap,
+  pastMonths,
+  date = new Date(),
+}) {
+  const simulation = normalizeTaxSimulation(taxSimulation, fiscalEndMonth);
+  const fiscalMonths = buildFiscalMonths(fiscalEndMonth);
+  const nextFiscalMonths = resolveDefaultTaxPaymentMonthIndices(fiscalEndMonth).fiscalMonths;
+  const warnings = [];
+  if (!currentPeriodPlanData) {
+    warnings.push('当期の予実データがありません。CSVを読み込んでください');
+  }
+  const preTaxValues = getProfitRowValues(currentPeriodPlanData, 'profitPreTax');
+  const profitEstimate = estimateAnnualPreTaxProfit(
+    preTaxValues,
+    fiscalMonths,
+    pastMonths ?? new Set(),
+    simulation.profitEstimateMethod,
+  );
+  const taxableProfit = Math.max(
+    0,
+    profitEstimate.amount - simulation.lossCarryforwardDeduction,
+  );
+  let corporateTaxAmount;
+  let corporateTaxRatePercent;
+  let corporateTaxRateLabel;
+  let itemizedResult = null;
+  if (simulation.corporateTaxMethod === 'itemized') {
+    const itemizedParams = resolveItemizedTaxParams(simulation);
+    itemizedResult = computeItemizedCorporateTax(taxableProfit, itemizedParams);
+    corporateTaxAmount = itemizedResult.total;
+    corporateTaxRatePercent = itemizedResult.effectiveRatePercent;
+    corporateTaxRateLabel = `${formatTaxSimulationRatePercent(corporateTaxRatePercent)}（検算）`;
+    if (simulation.regionPreset === 'custom') {
+      warnings.push('カスタム地域は大阪・中小法人の検算税率を使用しています');
+    }
+    if (!TAX_REGION_PRESETS[simulation.regionPreset]?.itemized) {
+      warnings.push('選択地域に検算プリセットがないため、大阪・中小法人の税率を使用しています');
+    }
+  } else {
+    corporateTaxAmount = Math.round(
+      taxableProfit * simulation.effectiveCorporateTaxRatePercent / 100,
+    );
+    corporateTaxRatePercent = simulation.effectiveCorporateTaxRatePercent;
+    corporateTaxRateLabel = formatTaxSimulationRatePercent(simulation.effectiveCorporateTaxRatePercent);
+  }
+  const revenueValues = getSectionTotalValues(currentPeriodPlanData, 'revenue');
+  const sgaTaxableValues = getSectionTotalValues(currentPeriodPlanData, 'sgaTaxable');
+  if (!sgaTaxableValues) {
+    warnings.push('消費税対象仕入がないため、本則課税は概算精度が低くなります');
+  }
+  const consumptionEstimate = estimateAnnualConsumptionTax({
+    revenueValues,
+    sgaTaxableValues,
+    fiscalMonths,
+    pastMonths: pastMonths ?? new Set(),
+    method: simulation.consumptionTaxMethod,
+    simplifiedDeemedPurchaseRatePercent: simulation.simplifiedDeemedPurchaseRatePercent,
+    monthYearMap,
+    consumptionTaxRates,
+  });
+  const corporateProvisionalSchedule = buildCorporateTaxSchedule(
+    corporateTaxAmount,
+    simulation,
+    nextFiscalMonths,
+  );
+  const consumptionSchedule = buildConsumptionTaxSchedule(
+    consumptionEstimate.amount,
+    simulation,
+    nextFiscalMonths,
+  );
+  const corporateTotal = corporateProvisionalSchedule.reduce((sum, row) => sum + (row.amount || 0), 0);
+  const consumptionTotal = consumptionSchedule.reduce((sum, row) => sum + (row.amount || 0), 0);
+  const regionLabel = TAX_REGION_PRESETS[simulation.regionPreset]?.label
+    ?? TAX_REGION_PRESETS.custom.label;
+  return {
+    currentPeriod,
+    nextPeriod,
+    currentPeriodLabel: formatFiscalPeriodLabel(currentPeriod),
+    nextPeriodLabel: formatFiscalPeriodLabel(nextPeriod),
+    warnings,
+    simulation,
+    regionLabel,
+    profitEstimate,
+    taxableProfit,
+    corporateTax: {
+      annualAmount: corporateTaxAmount,
+      ratePercent: corporateTaxRatePercent,
+      rateLabel: corporateTaxRateLabel,
+      method: simulation.corporateTaxMethod,
+      lossDeduction: simulation.lossCarryforwardDeduction,
+      itemized: itemizedResult
+        ? {
+            taxableIncome: itemizedResult.taxableIncome,
+            breakdown: itemizedResult.breakdown.map((row) => ({
+              ...row,
+              label: ITEMIZED_TAX_LINE_LABELS[row.id] ?? row.id,
+            })),
+            total: itemizedResult.total,
+            effectiveRatePercent: itemizedResult.effectiveRatePercent,
+          }
+        : null,
+      schedule: corporateProvisionalSchedule,
+      totalPaymentInNextPeriod: corporateTotal,
+    },
+    consumptionTax: {
+      annualAmount: consumptionEstimate.amount,
+      estimate: consumptionEstimate,
+      schedule: consumptionSchedule,
+      totalPaymentInNextPeriod: consumptionTotal,
+    },
+    grandTotalPaymentInNextPeriod: corporateTotal + consumptionTotal,
+    computedAt: date.toISOString(),
+  };
+}
+
 /* enrich/planCashFlowOpening.js */
 const CF_IN_SECTION_ID = 'cfIn';
 const CF_OUT_SECTION_ID = 'cfOut';
@@ -10458,6 +11108,7 @@ const DEFAULT_APP_SETTINGS = {
   consumptionTaxRates: DEFAULT_CONSUMPTION_TAX_RATES.map((r) => ({ ...r })),
   withholdingTaxRates: DEFAULT_WITHHOLDING_TAX_RATES.map((r) => ({ ...r })),
   legalWelfareRate: DEFAULT_LEGAL_WELFARE_RATE,
+  taxSimulation: normalizeTaxSimulation(DEFAULT_TAX_SIMULATION),
 };
 
 function normalizeFontScale(value) {
@@ -10876,6 +11527,7 @@ function loadAppSettings() {
         consumptionTaxRates: DEFAULT_CONSUMPTION_TAX_RATES.map((r) => ({ ...r })),
         withholdingTaxRates: DEFAULT_WITHHOLDING_TAX_RATES.map((r) => ({ ...r })),
         legalWelfareRate: DEFAULT_LEGAL_WELFARE_RATE,
+        taxSimulation: normalizeTaxSimulation(DEFAULT_TAX_SIMULATION),
       };
     }
     const parsed = JSON.parse(raw);
@@ -10888,6 +11540,7 @@ function loadAppSettings() {
       consumptionTaxRates: normalizeConsumptionTaxRates(parsed?.consumptionTaxRates),
       withholdingTaxRates: normalizeWithholdingTaxRates(parsed?.withholdingTaxRates),
       legalWelfareRate: normalizeLegalWelfareRate(parsed?.legalWelfareRate),
+      taxSimulation: normalizeTaxSimulation(parsed?.taxSimulation),
     };
   } catch {
     return {
@@ -10899,6 +11552,7 @@ function loadAppSettings() {
       consumptionTaxRates: DEFAULT_CONSUMPTION_TAX_RATES.map((r) => ({ ...r })),
       withholdingTaxRates: DEFAULT_WITHHOLDING_TAX_RATES.map((r) => ({ ...r })),
       legalWelfareRate: DEFAULT_LEGAL_WELFARE_RATE,
+      taxSimulation: normalizeTaxSimulation(DEFAULT_TAX_SIMULATION),
     };
   }
 }
@@ -18844,6 +19498,987 @@ function resetDashboardState({ fiscalPeriod = null, multiPeriodRange = null } = 
   }
 }
 
+/* ui/taxForecastSettingsUi.js */
+function formatYenInputValue(value) {
+  const digits = String(value ?? '').replace(/[^\d]/g, '');
+  if (!digits) return '';
+  const num = parseInt(digits, 10);
+  if (!Number.isFinite(num)) return '';
+  return `\u00a5${num.toLocaleString('ja-JP')}`;
+}
+
+function parseYenInputValue(raw) {
+  return String(raw ?? '').replace(/[^\d]/g, '');
+}
+
+function filterIntegerInput(value) {
+  return String(value ?? '').replace(/[^\d]/g, '');
+}
+
+function bindYenInput(input, { onChange } = {}) {
+  if (!input) return;
+  input.type = 'text';
+  input.inputMode = 'numeric';
+  input.autocomplete = 'off';
+  input.spellcheck = false;
+  input.classList.add('tax-forecast-input--currency');
+
+  input.addEventListener('focus', () => {
+    input.value = parseYenInputValue(input.value);
+  });
+
+  input.addEventListener('input', () => {
+    const filtered = filterIntegerInput(input.value);
+    if (filtered !== input.value) input.value = filtered;
+  });
+
+  input.addEventListener('blur', () => {
+    input.value = formatYenInputValue(input.value);
+    onChange?.();
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+}
+
+function setYenInputValue(input, value) {
+  if (!input) return;
+  input.value = formatYenInputValue(value);
+}
+
+function readYenInputValue(input) {
+  if (!input) return '';
+  if (input.dataset.masked === '1' && input.dataset.storedValue != null) {
+    return String(input.dataset.storedValue);
+  }
+  return parseYenInputValue(input?.value);
+}
+
+const TAX_FORECAST_MASK_DISPLAY = '—';
+const TAX_FORECAST_MASK_SELECT_VALUE = '__tax_forecast_masked__';
+
+function ensureSelectMaskOption(select) {
+  let opt = select.querySelector('option[data-mask-placeholder]');
+  if (!opt) {
+    opt = document.createElement('option');
+    opt.value = TAX_FORECAST_MASK_SELECT_VALUE;
+    opt.textContent = TAX_FORECAST_MASK_DISPLAY;
+    opt.dataset.maskPlaceholder = '1';
+    select.insertBefore(opt, select.firstChild);
+  }
+  return opt;
+}
+
+function maskControl(el) {
+  if (!el || el.dataset.masked === '1') return;
+  if (el.tagName === 'SELECT') {
+    el.dataset.storedValue = el.value;
+    ensureSelectMaskOption(el);
+    el.value = TAX_FORECAST_MASK_SELECT_VALUE;
+  } else if (el.classList.contains('tax-forecast-input--currency')) {
+    el.dataset.storedValue = parseYenInputValue(el.value);
+    el.value = TAX_FORECAST_MASK_DISPLAY;
+  } else {
+    el.dataset.storedValue = el.value;
+    el.value = TAX_FORECAST_MASK_DISPLAY;
+  }
+  el.dataset.masked = '1';
+  el.disabled = true;
+}
+
+function unmaskControl(el) {
+  if (!el) return;
+  if (el.tagName === 'SELECT') {
+    el.querySelector('option[data-mask-placeholder]')?.remove();
+    if (el.dataset.masked === '1') {
+      if (el.dataset.storedValue != null) {
+        el.value = el.dataset.storedValue;
+      }
+      delete el.dataset.storedValue;
+      delete el.dataset.masked;
+    }
+    el.disabled = false;
+    return;
+  }
+  if (el.dataset.masked === '1') {
+    const raw = el.dataset.storedValue ?? '';
+    if (el.classList.contains('tax-forecast-input--currency')) {
+      el.value = raw === '' ? '' : formatYenInputValue(raw);
+    } else {
+      el.value = raw;
+    }
+    delete el.dataset.storedValue;
+    delete el.dataset.masked;
+  }
+  el.disabled = false;
+}
+
+function readControlValue(el) {
+  if (!el) return '';
+  if (el.dataset.masked === '1' && el.dataset.storedValue != null) {
+    return el.dataset.storedValue;
+  }
+  if (el.type === 'checkbox') return el.checked;
+  return el.value;
+}
+
+function yen(value, formatYen) {
+  if (value == null || !Number.isFinite(value)) return '—';
+  return `¥${formatYen(value)}`;
+}
+
+function renderScheduleTable(schedule, formatYen) {
+  if (!schedule?.length) {
+    return `<p class="app-settings-hint tax-forecast-empty">支払予定はありません</p>`;
+  }
+  const rows = schedule.map((row) => `
+    <tr>
+      <td>${row.label ?? ''}</td>
+      <td>${row.monthLabel ?? ''}</td>
+      <td class="tax-forecast-amount tax-forecast-cell--amount">${yen(row.amount, formatYen)}</td>
+    </tr>
+  `).join('');
+  return `
+    <table class="expand-settings-table tax-forecast-schedule-table">
+      <thead>
+        <tr>
+          <th>区分</th>
+          <th>支払月</th>
+          <th>金額</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+}
+
+function renderBasisList(items) {
+  if (!items?.length) return '';
+  const rows = items.filter(Boolean).map((item) => `
+    <li><span class="tax-forecast-basis-label">${item.label}</span><span class="tax-forecast-basis-value">${item.value}</span></li>
+  `).join('');
+  return `<ul class="tax-forecast-basis-list">${rows}</ul>`;
+}
+
+function renderItemizedBreakdownTable(itemized, formatYen) {
+  if (!itemized?.breakdown?.length) return '';
+  const rows = [
+    {
+      label: '課税所得（1,000円未満切捨）',
+      amount: itemized.taxableIncome,
+      emphasis: false,
+    },
+    ...itemized.breakdown.map((row) => ({
+      label: row.label,
+      amount: row.amount,
+      emphasis: false,
+    })),
+    {
+      label: '法人税等合計',
+      amount: itemized.total,
+      emphasis: true,
+    },
+  ].map((row) => `
+    <tr${row.emphasis ? ' class="tax-forecast-breakdown-total"' : ''}>
+      <td>${row.label}</td>
+      <td class="tax-forecast-amount tax-forecast-cell--amount">${yen(row.amount, formatYen)}</td>
+    </tr>
+  `).join('');
+  return `
+    <table class="expand-settings-table tax-forecast-breakdown-table">
+      <thead>
+        <tr>
+          <th>税目</th>
+          <th>金額</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+}
+
+/** 来期納税見込みパネルの HTML を生成する */
+function buildTaxForecastPanelHtml(forecast, formatYen, { compact = false } = {}) {
+  if (!forecast) {
+    return `<p class="app-settings-hint tax-forecast-empty">見込みを計算できません</p>`;
+  }
+  const warnings = (forecast.warnings ?? []).map((w) => `<p class="tax-forecast-warning">${w}</p>`).join('');
+  const isItemized = forecast.corporateTax?.method === 'itemized';
+  const methodLabel = isItemized ? '検算（税目別）' : '簡易（実効税率）';
+  const profitBasis = [
+    { label: '参照期', value: forecast.currentPeriodLabel },
+    { label: '年間見込税引前利益', value: yen(forecast.profitEstimate?.amount, formatYen) },
+    { label: '計算方法', value: forecast.profitEstimate?.basis ?? '' },
+    { label: '補足説明', value: forecast.profitEstimate?.detail ?? '' },
+    { label: '繰越欠損控除', value: yen(forecast.corporateTax?.lossDeduction, formatYen) },
+    { label: '課税対象利益', value: yen(forecast.taxableProfit, formatYen) },
+    { label: '法人税計算', value: methodLabel },
+    { label: '地域・税率', value: `${forecast.regionLabel} / ${forecast.corporateTax?.rateLabel ?? ''}` },
+    { label: '参照期見込法人税等', value: yen(forecast.corporateTax?.annualAmount, formatYen) },
+  ];
+  const itemizedBreakdownHtml = isItemized
+    ? renderItemizedBreakdownTable(forecast.corporateTax?.itemized, formatYen)
+    : '';
+  const consumptionBasis = [
+    { label: '課税計算方法', value: forecast.consumptionTax?.estimate?.basis ?? '' },
+    { label: '補足説明', value: forecast.consumptionTax?.estimate?.detail ?? '' },
+    { label: '参照期見込納税額', value: yen(forecast.consumptionTax?.annualAmount, formatYen) },
+  ];
+  const summaryHtml = `
+    <div class="tax-forecast-summary-grid${compact ? ' tax-forecast-summary-grid--compact' : ''}">
+      <div class="tax-forecast-summary-card" data-section-id="tax">
+        <span class="tax-forecast-summary-label">${compact ? '法人税等' : '来期支払合計（法人税等）'}</span>
+        <span class="tax-forecast-summary-value">${yen(forecast.corporateTax?.totalPaymentInNextPeriod, formatYen)}</span>
+      </div>
+      <div class="tax-forecast-summary-card" data-section-id="otherPay">
+        <span class="tax-forecast-summary-label">${compact ? '消費税' : '来期支払合計（消費税）'}</span>
+        <span class="tax-forecast-summary-value">${yen(forecast.consumptionTax?.totalPaymentInNextPeriod, formatYen)}</span>
+      </div>
+      <div class="tax-forecast-summary-card tax-forecast-summary-card--total" data-section-id="cfOut">
+        <span class="tax-forecast-summary-label">${compact ? '総計' : '来期支払合計（総計）'}</span>
+        <span class="tax-forecast-summary-value">${yen(forecast.grandTotalPaymentInNextPeriod, formatYen)}</span>
+      </div>
+    </div>
+    <p class="app-settings-hint tax-forecast-target-period">${forecast.currentPeriodLabel}の見込をもとに、${forecast.nextPeriodLabel}に支払予定した金額です。</p>
+  `;
+  if (compact) {
+    return `
+      ${warnings}
+      ${summaryHtml}
+      <div class="tax-forecast-detail-grid tax-forecast-detail-grid--compact${itemizedBreakdownHtml ? ' tax-forecast-detail-grid--three' : ''}">
+        <div class="tax-forecast-detail-block">
+          <h4 class="tax-forecast-detail-title">来期の法人税支払スケジュール</h4>
+          ${renderScheduleTable(forecast.corporateTax?.schedule, formatYen)}
+          <h4 class="tax-forecast-detail-title">法人税の計算根拠</h4>
+          ${renderBasisList(profitBasis)}
+        </div>
+        <div class="tax-forecast-detail-block">
+          <h4 class="tax-forecast-detail-title">来期の消費税支払スケジュール</h4>
+          ${renderScheduleTable(forecast.consumptionTax?.schedule, formatYen)}
+          <h4 class="tax-forecast-detail-title">消費税の計算根拠</h4>
+          ${renderBasisList(consumptionBasis)}
+        </div>
+        ${itemizedBreakdownHtml ? `
+        <div class="tax-forecast-detail-block">
+          <h4 class="tax-forecast-detail-title">法人税等の内訳（検算）</h4>
+          ${itemizedBreakdownHtml}
+        </div>
+        ` : ''}
+      </div>
+      <p class="app-settings-hint tax-forecast-note">※　計算用の概算です。税務申告の代替にはなりません。</p>
+    `;
+  }
+  return `
+    ${warnings}
+    ${summaryHtml}
+    <div class="tax-forecast-detail-grid">
+      <div class="tax-forecast-detail-block">
+        <h4 class="tax-forecast-detail-title">来期の法人税支払スケジュール</h4>
+        ${renderScheduleTable(forecast.corporateTax?.schedule, formatYen)}
+        <h4 class="tax-forecast-detail-title">法人税の計算根拠</h4>
+        ${renderBasisList(profitBasis)}
+        ${itemizedBreakdownHtml ? `<h4 class="tax-forecast-detail-title">法人税等の内訳（検算）</h4>${itemizedBreakdownHtml}` : ''}
+      </div>
+      <div class="tax-forecast-detail-block">
+        <h4 class="tax-forecast-detail-title">来期の消費税支払スケジュール</h4>
+        ${renderScheduleTable(forecast.consumptionTax?.schedule, formatYen)}
+        <h4 class="tax-forecast-detail-title">消費税の計算根拠</h4>
+        ${renderBasisList(consumptionBasis)}
+      </div>
+    </div>
+    <p class="app-settings-hint tax-forecast-note">※　計算用の概算です。税務申告の代替にはなりません。</p>
+  `;
+}
+
+function computeTaxForecastForDisplay({
+  getForecastContext,
+  appSettings,
+  getAppSettings,
+}) {
+  const settings = getAppSettings?.() ?? appSettings;
+  const ctx = getForecastContext?.();
+  if (!ctx) return null;
+  const fiscalEndMonth = ctx.fiscalEndMonth ?? 12;
+  return computeNextPeriodTaxForecast({
+    ...ctx,
+    taxSimulation: normalizeTaxSimulation(settings?.taxSimulation, fiscalEndMonth),
+    consumptionTaxRates: settings?.consumptionTaxRates,
+  });
+}
+
+function buildMonthSelectOptions(fiscalMonths, selectedIndex) {
+  return fiscalMonths.map((label, index) => {
+    const selected = index === selectedIndex ? ' selected' : '';
+    return `<option value="${index}"${selected}>${label}</option>`;
+  }).join('');
+}
+
+/** 来期納税見込みのシミュレーション設定フォームをマウントする */
+function mountTaxForecastSettingsForm(container, {
+  appSettings,
+  getAppSettings,
+  onSaveSettings,
+  fiscalEndMonth,
+  onSettingsChange,
+  compact = false,
+}) {
+  if (!container) return;
+
+  const resolveAppSettings = () => getAppSettings?.() ?? appSettings;
+
+  const fiscalMonths = resolveDefaultTaxPaymentMonthIndices(fiscalEndMonth).fiscalMonths;
+  const simulation = normalizeTaxSimulation(resolveAppSettings()?.taxSimulation, fiscalEndMonth);
+
+  const section = document.createElement('div');
+  section.className = compact
+    ? 'app-settings-section tax-forecast-settings-section tax-forecast-settings-section--compact'
+    : 'app-settings-section tax-forecast-settings-section';
+  section.innerHTML = `
+    <div class="tax-forecast-settings-groups">
+      <section class="tax-forecast-settings-group">
+        <h4 class="tax-forecast-settings-group-title">利益見込</h4>
+        <div class="tax-forecast-settings-grid">
+          <label class="tax-forecast-field">
+            <span class="app-settings-label">利益見込方法</span>
+            <select class="app-settings-input tax-forecast-select" data-field="profitEstimateMethod">
+              <option value="fullYear">通期合計を使用</option>
+              <option value="annualize">実績から年間換算</option>
+            </select>
+          </label>
+          <label class="tax-forecast-field">
+            <span class="app-settings-label">繰越欠損控除（円）</span>
+            <input type="text" class="app-settings-input tax-forecast-input" data-field="lossCarryforwardDeduction" inputmode="numeric" />
+          </label>
+        </div>
+      </section>
+
+      <section class="tax-forecast-settings-group">
+        <h4 class="tax-forecast-settings-group-title">法人税</h4>
+        <div class="tax-forecast-settings-grid">
+          <label class="tax-forecast-field">
+            <span class="app-settings-label">法人税計算</span>
+            <select class="app-settings-input tax-forecast-select" data-field="corporateTaxMethod">
+              <option value="itemized">検算（税目別）</option>
+              <option value="effectiveRate">簡易（実効税率）</option>
+            </select>
+          </label>
+          <label class="tax-forecast-field" title="${TAX_REGION_PRESET_TOOLTIP}">
+            <span class="app-settings-label tax-forecast-label-with-tip" title="${TAX_REGION_PRESET_TOOLTIP}">地域プリセット</span>
+            <select class="app-settings-input tax-forecast-select" data-field="regionPreset" title="${TAX_REGION_PRESET_TOOLTIP}"></select>
+          </label>
+          <label class="tax-forecast-field" data-role="effective-rate-field">
+            <span class="app-settings-label">実効法人税率（%）</span>
+            <input type="number" class="app-settings-input tax-forecast-input tax-forecast-input--percent" data-field="effectiveCorporateTaxRatePercent" min="0" max="100" step="0.01" />
+          </label>
+          <label class="tax-forecast-field tax-forecast-field--itemized" data-role="itemized-field">
+            <span class="app-settings-label">道府県民税・均等割（円）</span>
+            <input type="text" class="app-settings-input tax-forecast-input" data-field="itemizedPrefecturalPerCapita" inputmode="numeric" placeholder="プリセット既定" />
+          </label>
+          <label class="tax-forecast-field tax-forecast-field--itemized" data-role="itemized-field">
+            <span class="app-settings-label">市町村民税・均等割（円）</span>
+            <input type="text" class="app-settings-input tax-forecast-input" data-field="itemizedMunicipalPerCapita" inputmode="numeric" placeholder="プリセット既定" />
+          </label>
+        </div>
+        <p class="tax-forecast-settings-subgroup-title">来期の支払月</p>
+        <div class="tax-forecast-settings-grid tax-forecast-settings-grid--schedule">
+          <label class="tax-forecast-field tax-forecast-field--checkbox tax-forecast-field--row-full">
+            <input type="checkbox" data-field="provisionalTaxEnabled" />
+            <span class="app-settings-label">来期の予定納税を含める</span>
+          </label>
+          <label class="tax-forecast-field">
+            <span class="app-settings-label">確定月</span>
+            <select class="app-settings-input tax-forecast-select" data-field="corporateTaxSettlementMonthIndex"></select>
+          </label>
+          <label class="tax-forecast-field tax-forecast-field--schedule-break" data-role="provisional-tax-month-field">
+            <span class="app-settings-label">予定納税月1</span>
+            <select class="app-settings-input tax-forecast-select" data-field="provisionalTaxMonthIndices.0"></select>
+          </label>
+          <label class="tax-forecast-field" data-role="provisional-tax-month-field">
+            <span class="app-settings-label">予定納税月2</span>
+            <select class="app-settings-input tax-forecast-select" data-field="provisionalTaxMonthIndices.1"></select>
+          </label>
+        </div>
+      </section>
+
+      <section class="tax-forecast-settings-group">
+        <h4 class="tax-forecast-settings-group-title">消費税</h4>
+        <div class="tax-forecast-settings-grid">
+          <label class="tax-forecast-field">
+            <span class="app-settings-label">消費税計算</span>
+            <select class="app-settings-input tax-forecast-select" data-field="consumptionTaxMethod">
+              <option value="general">本則課税</option>
+              <option value="simplified">簡易課税</option>
+            </select>
+          </label>
+          <label class="tax-forecast-field">
+            <span class="app-settings-label">みなし仕入率（%）</span>
+            <input type="number" class="app-settings-input tax-forecast-input" data-field="simplifiedDeemedPurchaseRatePercent" min="0" max="100" step="1" data-role="simplified-field" />
+          </label>
+        </div>
+        <p class="tax-forecast-settings-subgroup-title">来期の支払月</p>
+        <div class="tax-forecast-settings-grid tax-forecast-settings-grid--schedule">
+          <label class="tax-forecast-field tax-forecast-field--checkbox tax-forecast-field--row-full">
+            <input type="checkbox" data-field="consumptionTaxInterimEnabled" />
+            <span class="app-settings-label">来期の消費税中間納税を含める</span>
+          </label>
+          <label class="tax-forecast-field">
+            <span class="app-settings-label">確定月</span>
+            <select class="app-settings-input tax-forecast-select" data-field="consumptionTaxSettlementMonthIndex"></select>
+          </label>
+          <label class="tax-forecast-field" data-role="consumption-interim-month-field">
+            <span class="app-settings-label">中間月</span>
+            <select class="app-settings-input tax-forecast-select" data-field="consumptionTaxInterimMonthIndex"></select>
+          </label>
+        </div>
+      </section>
+    </div>
+  `;
+  container.appendChild(section);
+
+  const regionSelect = section.querySelector('[data-field="regionPreset"]');
+  regionSelect.innerHTML = Object.entries(TAX_REGION_PRESETS).map(([key, preset]) => {
+    const selected = key === simulation.regionPreset ? ' selected' : '';
+    return `<option value="${key}"${selected} title="${TAX_REGION_PRESET_TOOLTIP}">${preset.label}</option>`;
+  }).join('');
+
+  const monthFields = [
+    'corporateTaxSettlementMonthIndex',
+    'provisionalTaxMonthIndices.0',
+    'provisionalTaxMonthIndices.1',
+    'consumptionTaxSettlementMonthIndex',
+    'consumptionTaxInterimMonthIndex',
+  ];
+  const monthIndexMap = {
+    'provisionalTaxMonthIndices.0': simulation.provisionalTaxMonthIndices[0],
+    'provisionalTaxMonthIndices.1': simulation.provisionalTaxMonthIndices[1],
+    corporateTaxSettlementMonthIndex: simulation.corporateTaxSettlementMonthIndex,
+    consumptionTaxSettlementMonthIndex: simulation.consumptionTaxSettlementMonthIndex,
+    consumptionTaxInterimMonthIndex: simulation.consumptionTaxInterimMonthIndex,
+  };
+  for (const field of monthFields) {
+    const el = section.querySelector(`[data-field="${field}"]`);
+    if (!el) continue;
+    el.innerHTML = buildMonthSelectOptions(fiscalMonths, monthIndexMap[field] ?? 0);
+  }
+
+  const setFieldValue = (field, value) => {
+    const el = section.querySelector(`[data-field="${field}"]`);
+    if (!el) return;
+    if (el.type === 'checkbox') el.checked = Boolean(value);
+    else el.value = String(value ?? '');
+  };
+
+  setFieldValue('corporateTaxMethod', simulation.corporateTaxMethod);
+  setFieldValue('effectiveCorporateTaxRatePercent', simulation.effectiveCorporateTaxRatePercent);
+  setYenInputValue(
+    section.querySelector('[data-field="itemizedPrefecturalPerCapita"]'),
+    simulation.itemizedPrefecturalPerCapita ?? '',
+  );
+  setYenInputValue(
+    section.querySelector('[data-field="itemizedMunicipalPerCapita"]'),
+    simulation.itemizedMunicipalPerCapita ?? '',
+  );
+  setFieldValue('profitEstimateMethod', simulation.profitEstimateMethod);
+  setYenInputValue(
+    section.querySelector('[data-field="lossCarryforwardDeduction"]'),
+    simulation.lossCarryforwardDeduction,
+  );
+  setFieldValue('provisionalTaxEnabled', simulation.provisionalTaxEnabled);
+  setFieldValue('consumptionTaxMethod', simulation.consumptionTaxMethod);
+  setFieldValue('simplifiedDeemedPurchaseRatePercent', simulation.simplifiedDeemedPurchaseRatePercent);
+  setFieldValue('consumptionTaxInterimEnabled', simulation.consumptionTaxInterimEnabled);
+
+  const rateInput = section.querySelector('[data-field="effectiveCorporateTaxRatePercent"]');
+  const methodSelect = section.querySelector('[data-field="corporateTaxMethod"]');
+  const effectiveRateField = section.querySelector('[data-role="effective-rate-field"]');
+  const itemizedFields = section.querySelectorAll('[data-role="itemized-field"]');
+  const yenFields = [
+    'lossCarryforwardDeduction',
+    'itemizedPrefecturalPerCapita',
+    'itemizedMunicipalPerCapita',
+  ].map((field) => section.querySelector(`[data-field="${field}"]`));
+
+  yenFields.forEach((input) => bindYenInput(input));
+
+  const consumptionMethodSelect = section.querySelector('[data-field="consumptionTaxMethod"]');
+  const provisionalTaxEnabledCheckbox = section.querySelector('[data-field="provisionalTaxEnabled"]');
+  const consumptionInterimEnabledCheckbox = section.querySelector('[data-field="consumptionTaxInterimEnabled"]');
+  const simplifiedField = section.querySelector('[data-role="simplified-field"]');
+  const provisionalTaxMonthFields = section.querySelectorAll('[data-role="provisional-tax-month-field"]');
+  const consumptionInterimMonthField = section.querySelector('[data-role="consumption-interim-month-field"]');
+
+  const setFieldGroupInactive = (rootEl, inactive) => {
+    if (!rootEl) return;
+    rootEl.classList.toggle('tax-forecast-field--disabled', inactive);
+    rootEl.querySelectorAll('input, select').forEach((el) => {
+      if (inactive) maskControl(el);
+      else unmaskControl(el);
+    });
+  };
+
+  const syncFieldStates = () => {
+    const isItemized = methodSelect?.value === 'itemized';
+    const isCustom = regionSelect.value === 'custom';
+    const isSimplifiedConsumption = consumptionMethodSelect?.value === 'simplified';
+    const provisionalTaxEnabled = provisionalTaxEnabledCheckbox?.checked ?? false;
+    const consumptionInterimEnabled = consumptionInterimEnabledCheckbox?.checked ?? false;
+
+    setFieldGroupInactive(effectiveRateField, isItemized);
+    if (!isItemized && !isCustom && document.activeElement !== rateInput) {
+      const presetRate = TAX_REGION_PRESETS[regionSelect.value]?.effectiveCorporateTaxRatePercent;
+      if (presetRate != null) rateInput.value = String(presetRate);
+    }
+
+    itemizedFields.forEach((el) => setFieldGroupInactive(el, !isItemized));
+
+    if (simplifiedField) {
+      const simplifiedLabel = simplifiedField.closest('.tax-forecast-field');
+      simplifiedLabel?.classList.toggle('tax-forecast-field--disabled', !isSimplifiedConsumption);
+      if (!isSimplifiedConsumption) maskControl(simplifiedField);
+      else unmaskControl(simplifiedField);
+    }
+
+    provisionalTaxMonthFields.forEach((el) => {
+      setFieldGroupInactive(el, !provisionalTaxEnabled);
+    });
+    setFieldGroupInactive(consumptionInterimMonthField, !consumptionInterimEnabled);
+  };
+
+  const syncRateInputState = () => {
+    syncFieldStates();
+  };
+  syncRateInputState();
+
+  const readSimulationFromForm = () => {
+    const raw = { ...simulation, ...resolveAppSettings()?.taxSimulation };
+    raw.regionPreset = regionSelect.value;
+    raw.corporateTaxMethod = methodSelect.value;
+    raw.effectiveCorporateTaxRatePercent = readControlValue(rateInput);
+    const prefPerCapitaEl = section.querySelector('[data-field="itemizedPrefecturalPerCapita"]');
+    const muniPerCapitaEl = section.querySelector('[data-field="itemizedMunicipalPerCapita"]');
+    const prefPerCapita = readYenInputValue(prefPerCapitaEl);
+    const muniPerCapita = readYenInputValue(muniPerCapitaEl);
+    raw.itemizedPrefecturalPerCapita = prefPerCapita === '' ? null : prefPerCapita;
+    raw.itemizedMunicipalPerCapita = muniPerCapita === '' ? null : muniPerCapita;
+    raw.profitEstimateMethod = section.querySelector('[data-field="profitEstimateMethod"]').value;
+    raw.lossCarryforwardDeduction = readYenInputValue(
+      section.querySelector('[data-field="lossCarryforwardDeduction"]'),
+    );
+    raw.provisionalTaxEnabled = section.querySelector('[data-field="provisionalTaxEnabled"]').checked;
+    raw.corporateTaxSettlementMonthIndex = Number(section.querySelector('[data-field="corporateTaxSettlementMonthIndex"]').value);
+    raw.provisionalTaxMonthIndices = [
+      Number(readControlValue(section.querySelector('[data-field="provisionalTaxMonthIndices.0"]'))),
+      Number(readControlValue(section.querySelector('[data-field="provisionalTaxMonthIndices.1"]'))),
+    ];
+    raw.consumptionTaxMethod = section.querySelector('[data-field="consumptionTaxMethod"]').value;
+    raw.simplifiedDeemedPurchaseRatePercent = readControlValue(simplifiedField);
+    raw.consumptionTaxInterimEnabled = section.querySelector('[data-field="consumptionTaxInterimEnabled"]').checked;
+    raw.consumptionTaxSettlementMonthIndex = Number(section.querySelector('[data-field="consumptionTaxSettlementMonthIndex"]').value);
+    raw.consumptionTaxInterimMonthIndex = Number(readControlValue(
+      section.querySelector('[data-field="consumptionTaxInterimMonthIndex"]'),
+    ));
+    return normalizeTaxSimulation(raw, fiscalEndMonth);
+  };
+
+  const saveSimulation = () => {
+    const nextSimulation = readSimulationFromForm();
+    onSaveSettings?.({ taxSimulation: nextSimulation });
+    onSettingsChange?.();
+  };
+
+  section.querySelectorAll('input, select').forEach((el) => {
+    el.addEventListener('change', () => {
+      syncRateInputState();
+      saveSimulation();
+    });
+  });
+}
+
+/** 来期納税見込みサマリーカードに大項目色を適用する */
+function applyTaxForecastSectionColors(container, getSectionFilterColors) {
+  if (!container || !getSectionFilterColors) return;
+  container.querySelectorAll('.tax-forecast-summary-card[data-section-id]').forEach((el) => {
+    const sectionId = el.dataset.sectionId;
+    if (!sectionId) return;
+    const { background, color } = getSectionFilterColors(sectionId);
+    el.style.background = background;
+    el.style.borderColor = background;
+    el.style.color = color;
+  });
+}
+
+/** @deprecated applyTaxForecastSectionColors を使用 */
+const applyTaxForecastSummaryCardColors = applyTaxForecastSectionColors;
+
+/** 設定と見込み結果を同一ウィンドウ内にマウントする */
+function mountTaxForecastWindowContent(container, {
+  appSettings,
+  getAppSettings,
+  onSaveSettings,
+  fiscalEndMonth,
+  getForecastContext,
+  formatYen,
+  onReset,
+  getSourcePeriodOptions,
+  getSourcePeriod,
+  onSourcePeriodChange,
+  onLayoutChange,
+  getSectionFilterColors = null,
+}) {
+  if (!container) return { refreshForecast: () => {}, syncSourcePeriodSelect: () => {} };
+
+  const resolveAppSettings = () => getAppSettings?.() ?? appSettings;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'tax-forecast-window-content';
+  wrap.innerHTML = `
+    <div class="tax-forecast-window-toolbar">
+      <label class="tax-forecast-window-source-period">
+        <span class="app-settings-label">計算元の期</span>
+        <select class="app-settings-input tax-forecast-source-period-select"></select>
+      </label>
+      <div class="tax-forecast-window-toolbar-actions">
+        <button type="button" class="expand-reset-btn tax-forecast-window-reset-btn">デフォルトに戻す</button>
+      </div>
+    </div>
+    <div class="tax-forecast-window-settings">
+      <div class="tax-forecast-window-settings-head">試算ルール</div>
+      <div class="tax-forecast-window-settings-host"></div>
+    </div>
+    <div class="tax-forecast-window-result">
+      <div class="tax-forecast-window-result-head">見込み結果</div>
+      <div class="tax-forecast-window-result-body" data-role="forecast-result"></div>
+    </div>
+  `;
+  container.appendChild(wrap);
+
+  const settingsHost = wrap.querySelector('.tax-forecast-window-settings-host');
+  const resultEl = wrap.querySelector('[data-role="forecast-result"]');
+  const sourcePeriodSelect = wrap.querySelector('.tax-forecast-source-period-select');
+
+  const syncSourcePeriodSelect = () => {
+    if (!sourcePeriodSelect) return;
+    const options = getSourcePeriodOptions?.() ?? [];
+    const selected = getSourcePeriod?.() ?? options[0]?.period;
+    sourcePeriodSelect.innerHTML = options.map(({ period, label }) => {
+      const isSelected = period === selected ? ' selected' : '';
+      return `<option value="${period}"${isSelected}>${label}</option>`;
+    }).join('');
+    if (selected != null) sourcePeriodSelect.value = String(selected);
+  };
+
+  const applySectionColors = () => {
+    applyTaxForecastSectionColors(wrap, getSectionFilterColors);
+  };
+
+  const refreshForecast = () => {
+    const forecast = computeTaxForecastForDisplay({
+      getForecastContext,
+      getAppSettings: resolveAppSettings,
+    });
+    resultEl.innerHTML = buildTaxForecastPanelHtml(forecast, formatYen, { compact: true });
+    applySectionColors();
+    onLayoutChange?.();
+  };
+
+  syncSourcePeriodSelect();
+  sourcePeriodSelect?.addEventListener('change', () => {
+    const period = Number(sourcePeriodSelect.value);
+    if (!Number.isFinite(period)) return;
+    onSourcePeriodChange?.(period);
+    refreshForecast();
+  });
+
+  mountTaxForecastSettingsForm(settingsHost, {
+    appSettings: resolveAppSettings(),
+    getAppSettings: resolveAppSettings,
+    fiscalEndMonth,
+    compact: true,
+    onSaveSettings,
+    onSettingsChange: refreshForecast,
+  });
+  applySectionColors();
+
+  wrap.querySelector('.tax-forecast-window-reset-btn')?.addEventListener('click', () => {
+    onReset?.();
+  });
+
+  refreshForecast();
+  return {
+    refreshForecast,
+    syncSourcePeriodSelect,
+  };
+}
+
+/* ui/taxForecastWindow.js */
+const TAX_FORECAST_POS_STORAGE_KEY = 'mga-tax-forecast-window-pos';
+const TAX_FORECAST_WINDOW_WIDTH_REM = 76;
+const TAX_FORECAST_DEFAULT_TOP = 96;
+const TAX_FORECAST_DEFAULT_RIGHT = 16;
+const TAX_FORECAST_MIN_WINDOW_WIDTH = 880;
+const TAX_FORECAST_MIN_WINDOW_HEIGHT = 160;
+const TAX_FORECAST_VIEWPORT_EDGE_MARGIN = 16;
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function getMaxWindowWidth() {
+  return Math.max(TAX_FORECAST_MIN_WINDOW_WIDTH, getLayoutViewportWidth() - TAX_FORECAST_VIEWPORT_EDGE_MARGIN);
+}
+
+function getMaxWindowHeight() {
+  return Math.max(
+    TAX_FORECAST_MIN_WINDOW_HEIGHT,
+    window.innerHeight - TAX_FORECAST_VIEWPORT_EDGE_MARGIN,
+  );
+}
+
+function loadWindowPosition() {
+  try {
+    const raw = localStorage.getItem(TAX_FORECAST_POS_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!Number.isFinite(parsed.left) || !Number.isFinite(parsed.top)) return null;
+    return { left: parsed.left, top: parsed.top };
+  } catch {
+    return null;
+  }
+}
+
+function saveWindowPosition(left, top) {
+  localStorage.setItem(TAX_FORECAST_POS_STORAGE_KEY, JSON.stringify({ left, top }));
+}
+
+function applyDefaultPosition(el) {
+  const saved = loadWindowPosition();
+  if (saved) {
+    el.style.left = `${saved.left}px`;
+    el.style.top = `${saved.top}px`;
+    return;
+  }
+  el.style.top = `${TAX_FORECAST_DEFAULT_TOP}px`;
+  el.style.right = `${TAX_FORECAST_DEFAULT_RIGHT}px`;
+  el.style.left = 'auto';
+}
+
+function clampWindowPosition(el) {
+  const rect = el.getBoundingClientRect();
+  const left = clamp(rect.left, 8, getLayoutViewportWidth() - rect.width - 8);
+  const top = clamp(rect.top, 8, window.innerHeight - rect.height - 8);
+  el.style.left = `${left}px`;
+  el.style.top = `${top}px`;
+  el.style.right = 'auto';
+  saveWindowPosition(left, top);
+}
+
+function getRootFontSizePx() {
+  const size = parseFloat(getComputedStyle(document.documentElement).fontSize);
+  return Number.isFinite(size) && size > 0 ? size : 16;
+}
+
+function resolveWindowWidth() {
+  return clamp(
+    Math.round(TAX_FORECAST_WINDOW_WIDTH_REM * getRootFontSizePx()),
+    TAX_FORECAST_MIN_WINDOW_WIDTH,
+    getMaxWindowWidth(),
+  );
+}
+
+function measureWindowContentHeight(shell, body) {
+  const header = shell.querySelector('.tax-forecast-window-header');
+  const headerHeight = header?.offsetHeight ?? 0;
+  const bodyStyle = getComputedStyle(body);
+  const paddingTop = parseFloat(bodyStyle.paddingTop) || 0;
+  const paddingBottom = parseFloat(bodyStyle.paddingBottom) || 0;
+  const content = body.firstElementChild;
+  const contentHeight = content?.scrollHeight ?? body.scrollHeight;
+  const chromeHeight = shell.offsetHeight - body.offsetHeight;
+  const total = chromeHeight + paddingTop + paddingBottom + contentHeight;
+  return clamp(total, TAX_FORECAST_MIN_WINDOW_HEIGHT, getMaxWindowHeight());
+}
+
+/** 来期納税見込みを予実表上にドラッグ可能な小ウィンドウで表示する */
+function createTaxForecastWindow({
+  mountContent,
+  onOpenChange = null,
+}) {
+  let open = false;
+  let mounted = false;
+  let layoutLocked = false;
+  let lockedShellWidth = null;
+  let lockedShellHeight = null;
+
+  const shell = document.createElement('div');
+  shell.className = 'tax-forecast-window';
+  shell.hidden = true;
+  shell.style.width = `${TAX_FORECAST_WINDOW_WIDTH_REM}rem`;
+  shell.setAttribute('role', 'dialog');
+  shell.setAttribute('aria-modal', 'false');
+  shell.setAttribute('aria-labelledby', 'tax-forecast-window-title');
+
+  const header = document.createElement('header');
+  header.className = 'tax-forecast-window-header';
+
+  const title = document.createElement('h2');
+  title.className = 'tax-forecast-window-title';
+  title.id = 'tax-forecast-window-title';
+  title.textContent = '来期納税見込み';
+
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.className = 'tax-forecast-window-close';
+  closeBtn.setAttribute('aria-label', '閉じる');
+  closeBtn.textContent = '×';
+
+  header.append(title, closeBtn);
+
+  const body = document.createElement('div');
+  body.className = 'tax-forecast-window-body';
+
+  shell.append(header, body);
+  const mountTarget = document.querySelector('.plan-app') ?? document.body;
+  mountTarget.appendChild(shell);
+
+  applyDefaultPosition(shell);
+  bindWindowDrag(header, shell);
+
+  const applyLockedShellSize = () => {
+    if (lockedShellWidth != null) {
+      shell.style.width = `${lockedShellWidth}px`;
+      shell.style.maxWidth = `${getMaxWindowWidth()}px`;
+    }
+    if (lockedShellHeight != null) {
+      shell.style.height = `${lockedShellHeight}px`;
+      shell.style.maxHeight = `${getMaxWindowHeight()}px`;
+    }
+  };
+
+  const lockWindowLayout = () => {
+    const maxWidth = getMaxWindowWidth();
+    lockedShellWidth = resolveWindowWidth();
+    shell.style.width = `${lockedShellWidth}px`;
+    shell.style.maxWidth = `${maxWidth}px`;
+
+    const nextHeight = measureWindowContentHeight(shell, body);
+    lockedShellHeight = nextHeight;
+    shell.style.height = `${nextHeight}px`;
+    shell.style.maxHeight = `${getMaxWindowHeight()}px`;
+    layoutLocked = true;
+  };
+
+  const syncWindowLayout = () => {
+    if (!open) return;
+    if (!layoutLocked) {
+      lockWindowLayout();
+    } else {
+      applyLockedShellSize();
+    }
+    clampWindowPosition(shell);
+  };
+
+  const ensureMounted = () => {
+    if (mounted) return;
+    mountContent(body);
+    mounted = true;
+  };
+
+  const setOpen = (next) => {
+    if (open === next) return;
+    open = next;
+    shell.hidden = !open;
+    shell.classList.toggle('is-open', open);
+    if (open) {
+      ensureMounted();
+      requestAnimationFrame(() => syncWindowLayout());
+    }
+    onOpenChange?.(open);
+  };
+
+  closeBtn.addEventListener('click', () => setOpen(false));
+
+  window.addEventListener('resize', () => {
+    if (!open || !layoutLocked) return;
+    applyLockedShellSize();
+    clampWindowPosition(shell);
+  });
+
+  return {
+    open: () => setOpen(true),
+    close: () => setOpen(false),
+    toggle: () => setOpen(!open),
+    isOpen: () => open,
+    getBody: () => body,
+    syncLayout: syncWindowLayout,
+    syncContentHeight: () => {
+      if (!open) return;
+      lockedShellHeight = measureWindowContentHeight(shell, body);
+      applyLockedShellSize();
+      clampWindowPosition(shell);
+    },
+    recalculateLayout: () => {
+      if (!open) return;
+      lockedShellWidth = resolveWindowWidth();
+      lockedShellHeight = measureWindowContentHeight(shell, body);
+      layoutLocked = true;
+      applyLockedShellSize();
+      clampWindowPosition(shell);
+    },
+    refresh: () => {
+      if (!mounted) return;
+      body.replaceChildren();
+      mounted = false;
+      layoutLocked = false;
+      lockedShellWidth = null;
+      lockedShellHeight = null;
+      ensureMounted();
+      if (open) {
+        requestAnimationFrame(() => syncWindowLayout());
+      }
+    },
+    destroy: () => {
+      shell.remove();
+    },
+  };
+}
+
+function bindWindowDrag(handle, el) {
+  handle.addEventListener('mousedown', (event) => {
+    if (event.button !== 0) return;
+    if (event.target.closest('button')) return;
+    event.preventDefault();
+    const rect = el.getBoundingClientRect();
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const startLeft = rect.left;
+    const startTop = rect.top;
+    el.style.right = 'auto';
+
+    const onMouseMove = (ev) => {
+      const left = clamp(
+        startLeft + ev.clientX - startX,
+        8,
+        getLayoutViewportWidth() - el.offsetWidth - 8,
+      );
+      const top = clamp(
+        startTop + ev.clientY - startY,
+        8,
+        window.innerHeight - el.offsetHeight - 8,
+      );
+      el.style.left = `${left}px`;
+      el.style.top = `${top}px`;
+    };
+
+    const onMouseUp = () => {
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+      const nextRect = el.getBoundingClientRect();
+      saveWindowPosition(nextRect.left, nextRect.top);
+    };
+
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+  });
+}
+
 /* ui/plan.js */
 let taxPaymentSettingsMonthDisplayApplier = null;
 let outsourcingSettingsMonthDisplayApplier = null;
@@ -18860,6 +20495,8 @@ function applyOutsourcingSettingsMonthDisplayDom() {
 function applyEmployeeSettingsMonthDisplayDom() {
   employeeSettingsMonthDisplayApplier?.();
 }
+
+
 
 
 
@@ -19402,6 +21039,87 @@ function initColorSettingsWindow() {
   });
 }
 
+let taxForecastWindowApi = null;
+let taxForecastSourcePeriod = null;
+
+function getTaxForecastSourcePeriodOptions() {
+  const maxPeriod = getDashboardMaxPeriod();
+  const options = [];
+  for (let period = 1; period <= maxPeriod; period += 1) {
+    options.push({
+      period,
+      label: formatFiscalPeriodLabel(period),
+    });
+  }
+  return options;
+}
+
+function initTaxForecastWindow() {
+  taxForecastWindow = createTaxForecastWindow({
+    mountContent: (container) => {
+      taxForecastWindowApi = mountTaxForecastWindowContent(container, {
+        getAppSettings: () => appSettings,
+        appSettings,
+        fiscalEndMonth: getActiveFiscalEndMonth(),
+        getForecastContext: getTaxForecastContext,
+        formatYen,
+        getSourcePeriodOptions: getTaxForecastSourcePeriodOptions,
+        getSourcePeriod: () => taxForecastSourcePeriod ?? appSettings.fiscalPeriod,
+        onSourcePeriodChange: (period) => {
+          taxForecastSourcePeriod = period;
+        },
+        onSaveSettings: (patch) => {
+          appSettings = {
+            ...appSettings,
+            taxSimulation: normalizeTaxSimulation(
+              patch.taxSimulation,
+              getActiveFiscalEndMonth(),
+            ),
+          };
+          saveAppSettings(appSettings);
+        },
+        onReset: () => {
+          appSettings = {
+            ...appSettings,
+            taxSimulation: normalizeTaxSimulation(DEFAULT_TAX_SIMULATION, getActiveFiscalEndMonth()),
+          };
+          saveAppSettings(appSettings);
+          taxForecastWindow?.refresh?.();
+        },
+        onLayoutChange: () => {
+          requestAnimationFrame(() => {
+            taxForecastWindow?.recalculateLayout?.();
+          });
+        },
+        getSectionFilterColors: getFilterButtonColors,
+      });
+    },
+    onOpenChange: () => {
+      syncMainMenuChecks();
+    },
+  });
+}
+
+function refreshTaxForecastWindow() {
+  if (!taxForecastWindow?.isOpen()) return;
+  taxForecastWindowApi?.refreshForecast?.();
+}
+
+function refreshTaxForecastSummaryCardColors() {
+  if (!taxForecastWindow?.isOpen()) return;
+  const content = document.querySelector('.tax-forecast-window-content');
+  applyTaxForecastSectionColors(content, getFilterButtonColors);
+}
+
+function openTaxForecastWindow() {
+  if (taxForecastSourcePeriod == null) {
+    taxForecastSourcePeriod = appSettings.fiscalPeriod;
+  }
+  taxForecastWindow?.open();
+  taxForecastWindowApi?.syncSourcePeriodSelect?.();
+  refreshTaxForecastWindow();
+}
+
 function openColorSettingsWindow() {
   colorSettingsWindow?.open();
 }
@@ -19421,6 +21139,7 @@ let generalLedgerName = null;
 let sectionFilterConfig = {};
 let activeTab = 'plan';
 let colorSettingsWindow = null;
+let taxForecastWindow = null;
 let csvGateActive = false;
 let expandConfig = loadExpandConfig();
 let visibilityConfig = loadVisibilityConfig();
@@ -22968,6 +24687,7 @@ function refreshColorDependentViews({ rebuildData = true } = {}) {
   if (activeTab === 'dashboard' || document.querySelector('.dashboard-wrap')) {
     renderDashboardView();
   }
+  refreshTaxForecastSummaryCardColors();
 }
 
 function refreshToolbarFilterStyles() {
@@ -23141,6 +24861,7 @@ function setCsvGateMode(active) {
     closePeriodSelect();
     closeMainMenu();
     colorSettingsWindow?.close?.();
+    taxForecastWindow?.close?.();
   }
 }
 
@@ -23250,6 +24971,7 @@ const MAIN_MENU_ENTRIES = [
   { kind: 'heading', label: '設定' },
   { kind: 'item', value: 'orders', label: '受注', indented: true, shortcutKey: 'O' },
   { kind: 'item', value: 'taxrates', label: '税率定義', indented: true, shortcutKey: 'T' },
+  { kind: 'item', value: 'taxforecast', label: '来期納税見込', indented: true, shortcutKey: 'M' },
   { kind: 'item', value: 'journaldefinition', label: '仕訳定義', indented: true, shortcutKey: 'J' },
   { kind: 'item', value: 'taxpayments', label: '支払い', indented: true, shortcutKey: 'Y' },
   { kind: 'item', value: 'employees', label: '人件費', indented: true, shortcutKey: 'E' },
@@ -25332,6 +27054,31 @@ function bindWithholdingTaxTable({ tbody, addBtn, getRates, onUpdate }) {
 }
 
 
+function getTaxForecastContext(sourcePeriod = taxForecastSourcePeriod ?? appSettings.fiscalPeriod) {
+  const businessStartYear = getActiveBusinessStartYear();
+  const fiscalEndMonth = getActiveFiscalEndMonth(sourcePeriod);
+  const nextPeriod = sourcePeriod + 1;
+  const fiscalMonths = buildFiscalMonths(fiscalEndMonth);
+  const pastMonths = buildPastFiscalMonthSet(
+    businessStartYear,
+    sourcePeriod,
+    fiscalMonths,
+    new Date(),
+    fiscalEndMonth,
+  );
+  const monthYearMap = buildMonthYearMap(businessStartYear, sourcePeriod, fiscalEndMonth);
+  const currentPeriodPlanData = getDashboardPeriodData(sourcePeriod);
+  return {
+    currentPeriodPlanData,
+    currentPeriod: sourcePeriod,
+    nextPeriod,
+    businessStartYear,
+    fiscalEndMonth,
+    monthYearMap,
+    pastMonths,
+  };
+}
+
 function renderTaxRateSettings() {
   setPlanKpi(null);
 
@@ -25474,10 +27221,7 @@ function renderTaxRateSettings() {
       legalWelfareRate: DEFAULT_LEGAL_WELFARE_RATE,
     };
     saveAppSettings(appSettings);
-    legalWelfareRateInput.value = String(DEFAULT_LEGAL_WELFARE_RATE);
-    syncLegalWelfareRateNote(DEFAULT_LEGAL_WELFARE_RATE);
-    consumptionTable.renderRows();
-    withholdingTable.renderRows();
+    renderTaxRateSettings();
     if (activeTab === 'plan') refreshPlanTable();
   });
 
@@ -27583,7 +29327,7 @@ function renderEmployeeSettings() {
     const salaryDesc = document.createElement('p');
     salaryDesc.className = 'salary-plan-desc';
     salaryDesc.textContent = '決算月 '
-      + `${appSettings.fiscalEndMonth}月 を基準とした12か月分です。`
+      + `${getActiveFiscalEndMonth()}月 を基準とした12か月分です。`
       + '月額・賞与の各セルをダブルクリックで編集できます。月額は Shift+Enter で後続月へ同額を反映します（0円も可）。Enter はその月のみ反映します。'
       + '役員は賞与の入力がありません。'
       + `${formatFiscalPeriodLabel(nextPeriod)}の昇給率は月額合計のみを${formatFiscalPeriodLabel(currentPeriod)}と比較します（賞与は含みません）。`
@@ -29176,6 +30920,9 @@ function handleMainMenuAction(value) {
     case 'colors':
       openColorSettingsWindow();
       break;
+    case 'taxforecast':
+      openTaxForecastWindow();
+      break;
     default:
       switchMainTab(value);
   }
@@ -29183,6 +30930,7 @@ function handleMainMenuAction(value) {
 
 function isMainMenuEntryActive(value) {
   if (value === 'colors') return colorSettingsWindow?.isOpen() ?? false;
+  if (value === 'taxforecast') return taxForecastWindow?.isOpen() ?? false;
   if (value.startsWith('action:')) return false;
   return activeTab === value;
 }
@@ -29428,6 +31176,7 @@ async function init() {
   bindPeriodControls();
   bindDashboardButton();
   initColorSettingsWindow();
+  initTaxForecastWindow();
   bindMainMenu();
   bindSettingsImportExport();
 

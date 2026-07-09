@@ -115,6 +115,10 @@ import {
   formatLegalWelfareRatePercent,
 } from '../config/legalWelfareRateConfig.js';
 import {
+  DEFAULT_TAX_SIMULATION,
+  normalizeTaxSimulation,
+} from '../config/taxSimulationConfig.js';
+import {
   loadExpandConfig,
   saveExpandConfig,
   isHideTotalWhenExpanded,
@@ -355,6 +359,11 @@ function applyEmployeeSettingsMonthDisplayDom() {
 }
 import { mountUiColorPanel } from './uiColorPanel.js';
 import { createColorSettingsWindow } from './colorSettingsWindow.js';
+import { createTaxForecastWindow } from './taxForecastWindow.js';
+import {
+  mountTaxForecastWindowContent,
+  applyTaxForecastSectionColors,
+} from './taxForecastSettingsUi.js';
 import { parseEmployeeCsv } from '../parse/parseEmployee.js';
 import { readCsvFile } from '../parse/parser.js';
 
@@ -896,6 +905,87 @@ function initColorSettingsWindow() {
   });
 }
 
+let taxForecastWindowApi = null;
+let taxForecastSourcePeriod = null;
+
+function getTaxForecastSourcePeriodOptions() {
+  const maxPeriod = getDashboardMaxPeriod();
+  const options = [];
+  for (let period = 1; period <= maxPeriod; period += 1) {
+    options.push({
+      period,
+      label: formatFiscalPeriodLabel(period),
+    });
+  }
+  return options;
+}
+
+function initTaxForecastWindow() {
+  taxForecastWindow = createTaxForecastWindow({
+    mountContent: (container) => {
+      taxForecastWindowApi = mountTaxForecastWindowContent(container, {
+        getAppSettings: () => appSettings,
+        appSettings,
+        fiscalEndMonth: getActiveFiscalEndMonth(),
+        getForecastContext: getTaxForecastContext,
+        formatYen,
+        getSourcePeriodOptions: getTaxForecastSourcePeriodOptions,
+        getSourcePeriod: () => taxForecastSourcePeriod ?? appSettings.fiscalPeriod,
+        onSourcePeriodChange: (period) => {
+          taxForecastSourcePeriod = period;
+        },
+        onSaveSettings: (patch) => {
+          appSettings = {
+            ...appSettings,
+            taxSimulation: normalizeTaxSimulation(
+              patch.taxSimulation,
+              getActiveFiscalEndMonth(),
+            ),
+          };
+          saveAppSettings(appSettings);
+        },
+        onReset: () => {
+          appSettings = {
+            ...appSettings,
+            taxSimulation: normalizeTaxSimulation(DEFAULT_TAX_SIMULATION, getActiveFiscalEndMonth()),
+          };
+          saveAppSettings(appSettings);
+          taxForecastWindow?.refresh?.();
+        },
+        onLayoutChange: () => {
+          requestAnimationFrame(() => {
+            taxForecastWindow?.recalculateLayout?.();
+          });
+        },
+        getSectionFilterColors: getFilterButtonColors,
+      });
+    },
+    onOpenChange: () => {
+      syncMainMenuChecks();
+    },
+  });
+}
+
+function refreshTaxForecastWindow() {
+  if (!taxForecastWindow?.isOpen()) return;
+  taxForecastWindowApi?.refreshForecast?.();
+}
+
+function refreshTaxForecastSummaryCardColors() {
+  if (!taxForecastWindow?.isOpen()) return;
+  const content = document.querySelector('.tax-forecast-window-content');
+  applyTaxForecastSectionColors(content, getFilterButtonColors);
+}
+
+function openTaxForecastWindow() {
+  if (taxForecastSourcePeriod == null) {
+    taxForecastSourcePeriod = appSettings.fiscalPeriod;
+  }
+  taxForecastWindow?.open();
+  taxForecastWindowApi?.syncSourcePeriodSelect?.();
+  refreshTaxForecastWindow();
+}
+
 function openColorSettingsWindow() {
   colorSettingsWindow?.open();
 }
@@ -915,6 +1005,7 @@ let generalLedgerName = null;
 let sectionFilterConfig = {};
 let activeTab = 'plan';
 let colorSettingsWindow = null;
+let taxForecastWindow = null;
 let csvGateActive = false;
 let expandConfig = loadExpandConfig();
 let visibilityConfig = loadVisibilityConfig();
@@ -4462,6 +4553,7 @@ function refreshColorDependentViews({ rebuildData = true } = {}) {
   if (activeTab === 'dashboard' || document.querySelector('.dashboard-wrap')) {
     renderDashboardView();
   }
+  refreshTaxForecastSummaryCardColors();
 }
 
 function refreshToolbarFilterStyles() {
@@ -4635,6 +4727,7 @@ function setCsvGateMode(active) {
     closePeriodSelect();
     closeMainMenu();
     colorSettingsWindow?.close?.();
+    taxForecastWindow?.close?.();
   }
 }
 
@@ -4744,6 +4837,7 @@ const MAIN_MENU_ENTRIES = [
   { kind: 'heading', label: '設定' },
   { kind: 'item', value: 'orders', label: '受注', indented: true, shortcutKey: 'O' },
   { kind: 'item', value: 'taxrates', label: '税率定義', indented: true, shortcutKey: 'T' },
+  { kind: 'item', value: 'taxforecast', label: '来期納税見込', indented: true, shortcutKey: 'M' },
   { kind: 'item', value: 'journaldefinition', label: '仕訳定義', indented: true, shortcutKey: 'J' },
   { kind: 'item', value: 'taxpayments', label: '支払い', indented: true, shortcutKey: 'Y' },
   { kind: 'item', value: 'employees', label: '人件費', indented: true, shortcutKey: 'E' },
@@ -6826,6 +6920,31 @@ function bindWithholdingTaxTable({ tbody, addBtn, getRates, onUpdate }) {
 }
 
 
+function getTaxForecastContext(sourcePeriod = taxForecastSourcePeriod ?? appSettings.fiscalPeriod) {
+  const businessStartYear = getActiveBusinessStartYear();
+  const fiscalEndMonth = getActiveFiscalEndMonth(sourcePeriod);
+  const nextPeriod = sourcePeriod + 1;
+  const fiscalMonths = buildFiscalMonths(fiscalEndMonth);
+  const pastMonths = buildPastFiscalMonthSet(
+    businessStartYear,
+    sourcePeriod,
+    fiscalMonths,
+    new Date(),
+    fiscalEndMonth,
+  );
+  const monthYearMap = buildMonthYearMap(businessStartYear, sourcePeriod, fiscalEndMonth);
+  const currentPeriodPlanData = getDashboardPeriodData(sourcePeriod);
+  return {
+    currentPeriodPlanData,
+    currentPeriod: sourcePeriod,
+    nextPeriod,
+    businessStartYear,
+    fiscalEndMonth,
+    monthYearMap,
+    pastMonths,
+  };
+}
+
 function renderTaxRateSettings() {
   setPlanKpi(null);
 
@@ -6968,10 +7087,7 @@ function renderTaxRateSettings() {
       legalWelfareRate: DEFAULT_LEGAL_WELFARE_RATE,
     };
     saveAppSettings(appSettings);
-    legalWelfareRateInput.value = String(DEFAULT_LEGAL_WELFARE_RATE);
-    syncLegalWelfareRateNote(DEFAULT_LEGAL_WELFARE_RATE);
-    consumptionTable.renderRows();
-    withholdingTable.renderRows();
+    renderTaxRateSettings();
     if (activeTab === 'plan') refreshPlanTable();
   });
 
@@ -10670,6 +10786,9 @@ function handleMainMenuAction(value) {
     case 'colors':
       openColorSettingsWindow();
       break;
+    case 'taxforecast':
+      openTaxForecastWindow();
+      break;
     default:
       switchMainTab(value);
   }
@@ -10677,6 +10796,7 @@ function handleMainMenuAction(value) {
 
 function isMainMenuEntryActive(value) {
   if (value === 'colors') return colorSettingsWindow?.isOpen() ?? false;
+  if (value === 'taxforecast') return taxForecastWindow?.isOpen() ?? false;
   if (value.startsWith('action:')) return false;
   return activeTab === value;
 }
@@ -10922,6 +11042,7 @@ async function init() {
   bindPeriodControls();
   bindDashboardButton();
   initColorSettingsWindow();
+  initTaxForecastWindow();
   bindMainMenu();
   bindSettingsImportExport();
 

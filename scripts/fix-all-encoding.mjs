@@ -434,6 +434,8 @@ console.log(jp(0x6587, 0x5b57, 0x30b3, 0x30fc, 0x30c9, 0x30c1, 0x30a7, 0x30c3, 0
 execSync('node scripts/write-bs-balance-sheet-account-config.mjs', { cwd: repoRoot, stdio: 'inherit' });
 execSync('node scripts/gen-journal-definition-config.mjs', { cwd: repoRoot, stdio: 'inherit' });
 execSync('node scripts/gen-journal-definition-settings.mjs', { cwd: repoRoot, stdio: 'inherit' });
+execSync('node scripts/gen-tax-forecast-sources.mjs', { cwd: repoRoot, stdio: 'inherit' });
+execSync('node scripts/gen-tax-forecast-settings-ui.mjs', { cwd: repoRoot, stdio: 'inherit' });
 write('src/config/expenseAccountConfig.js', expenseAccountConfig);
 write('src/config/expenseSortConfig.js', expenseSortConfig);
 write('scripts/check-encoding.mjs', checkEncoding);

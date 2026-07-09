@@ -10,6 +10,10 @@ import {
   DEFAULT_LEGAL_WELFARE_RATE,
   normalizeLegalWelfareRate,
 } from './legalWelfareRateConfig.js';
+import {
+  DEFAULT_TAX_SIMULATION,
+  normalizeTaxSimulation,
+} from './taxSimulationConfig.js';
 
 import { getViewportScale, getContentFitScale } from './viewportScale.js';
 import {
@@ -407,6 +411,7 @@ export const DEFAULT_APP_SETTINGS = {
   consumptionTaxRates: DEFAULT_CONSUMPTION_TAX_RATES.map((r) => ({ ...r })),
   withholdingTaxRates: DEFAULT_WITHHOLDING_TAX_RATES.map((r) => ({ ...r })),
   legalWelfareRate: DEFAULT_LEGAL_WELFARE_RATE,
+  taxSimulation: normalizeTaxSimulation(DEFAULT_TAX_SIMULATION),
 };
 
 export function normalizeFontScale(value) {
@@ -825,6 +830,7 @@ export function loadAppSettings() {
         consumptionTaxRates: DEFAULT_CONSUMPTION_TAX_RATES.map((r) => ({ ...r })),
         withholdingTaxRates: DEFAULT_WITHHOLDING_TAX_RATES.map((r) => ({ ...r })),
         legalWelfareRate: DEFAULT_LEGAL_WELFARE_RATE,
+        taxSimulation: normalizeTaxSimulation(DEFAULT_TAX_SIMULATION),
       };
     }
     const parsed = JSON.parse(raw);
@@ -837,6 +843,7 @@ export function loadAppSettings() {
       consumptionTaxRates: normalizeConsumptionTaxRates(parsed?.consumptionTaxRates),
       withholdingTaxRates: normalizeWithholdingTaxRates(parsed?.withholdingTaxRates),
       legalWelfareRate: normalizeLegalWelfareRate(parsed?.legalWelfareRate),
+      taxSimulation: normalizeTaxSimulation(parsed?.taxSimulation),
     };
   } catch {
     return {
@@ -848,6 +855,7 @@ export function loadAppSettings() {
       consumptionTaxRates: DEFAULT_CONSUMPTION_TAX_RATES.map((r) => ({ ...r })),
       withholdingTaxRates: DEFAULT_WITHHOLDING_TAX_RATES.map((r) => ({ ...r })),
       legalWelfareRate: DEFAULT_LEGAL_WELFARE_RATE,
+      taxSimulation: normalizeTaxSimulation(DEFAULT_TAX_SIMULATION),
     };
   }
 }

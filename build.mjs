@@ -27,6 +27,7 @@ const FILES = [
   'config/consumptionTaxRateConfig.js',
   'config/withholdingTaxRateConfig.js',
   'config/legalWelfareRateConfig.js',
+  'config/taxSimulationConfig.js',
   'config/employeeConfig.js',
   'config/salaryPlanConfig.js',
   'config/planCellEdit.js',
@@ -42,6 +43,8 @@ const FILES = [
   'enrich/planRevenueRows.js',
   'enrich/planMiscIncomeRows.js',
   'enrich/planPeriodAverageFill.js',
+  'enrich/corporateTaxItemized.js',
+  'enrich/nextPeriodTaxForecast.js',
   'enrich/planCashFlowOpening.js',
   'enrich/planCashFlowForecast.js',
   'parse/parseEmployee.js',
@@ -59,6 +62,8 @@ const FILES = [
   'ui/uiColorPanel.js',
   'ui/colorSettingsWindow.js',
   'ui/dashboard.js',
+  'ui/taxForecastSettingsUi.js',
+  'ui/taxForecastWindow.js',
   'ui/plan.js',
 ];
 
