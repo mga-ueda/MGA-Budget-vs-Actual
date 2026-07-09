@@ -17668,12 +17668,20 @@ function dashIsDashboardClickInteractive(ev) {
   return Boolean(ev.target.closest(DASH_CLICK_ROUTE_INTERACTIVE));
 }
 
+function dashEventPathMatches(ev, selector) {
+  for (const node of ev.composedPath()) {
+    if (node instanceof Element && node.matches(selector)) return true;
+  }
+  return false;
+}
+
 function dashIsSidebarClick(ev) {
-  return Boolean(ev.target.closest(DASH_SIDEBAR));
+  // 行クリックでサイドバーが再描画されると target が DOM から外れ closest が効かなくなる
+  return dashEventPathMatches(ev, DASH_SIDEBAR);
 }
 
 function dashIsSidebarRowControlClick(ev) {
-  return Boolean(ev.target.closest(DASH_SIDEBAR_ROW_CONTROLS));
+  return dashEventPathMatches(ev, DASH_SIDEBAR_ROW_CONTROLS);
 }
 
 function dashIsMainChartClick(ev) {
