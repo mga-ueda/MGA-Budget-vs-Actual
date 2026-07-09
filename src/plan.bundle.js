@@ -426,41 +426,566 @@ function setRowDisplayEntry(config, sectionId, row, patch) {
   return newConfig;
 }
 
+/* config/journalDefinitionConfig.js */
+const JOURNAL_DEFINITION_STORAGE_KEY = 'mga-journal-definition';
+
+/** @typedef {'account' | 'pattern' | 'singlePattern'} JournalDefinitionValueType */
+
+/**
+ * @typedef {{
+ *   key: string,
+ *   label: string,
+ *   hint: string,
+ *   valueType: JournalDefinitionValueType,
+ *   sectionColorId?: string,
+ * }} JournalDefinitionSectionMeta
+ */
+
+/**
+ * @typedef {{
+ *   id: string,
+ *   label: string,
+ *   sections: JournalDefinitionSectionMeta[],
+ * }} JournalDefinitionGroupMeta
+ */
+
+const DEFAULT_JOURNAL_DEFINITION = {
+revenueSectionAccounts: [
+    '売上高',
+  ],
+nonOperatingRevenueAccounts: [
+    '受取利息',
+    '雑収入',
+    '営業外収益',
+  ],
+nonOperatingRevenuePatterns: [
+    '^貸倒引当金戻入',
+  ],
+personnelPatterns: [
+    '^役員報酬',
+    '^給料手当',
+    '^法定福利費',
+    '^賞与',
+    '^退職',
+    '旅費交通費\\|通勤手当',
+  ],
+outsourcingPatterns: [
+    '^外注費',
+  ],
+otherPatterns: [
+    '^租税公課',
+    '^減価償却費',
+    '^少額減価償却費',
+    '^繰延資産償却',
+    '^貸倒引当金繰入',
+  ],
+nonOperatingExpensePatterns: [
+    '^支払利息',
+    '^雑損失',
+  ],
+specialProfitPatterns: [
+    '^前期損益修正益',
+    '^固定資産売却益',
+  ],
+specialLossPatterns: [
+    '^法人税、住民税',
+    '^固定資産除却損',
+  ],
+taxPatterns: [
+    '^法人税等$',
+  ],
+plSkipAccounts: [
+    '普通預金',
+    '売掛金',
+    '貸倒引当金',
+    '未払金',
+    '未払費用',
+    '前払金',
+    '前払費用',
+    '長期前払費用',
+    '保険積立金',
+    '資本金',
+    '繰越利益剩余金',
+    '長期未払金',
+    '長期借入金',
+    '短期借入金',
+    '工具器具備品',
+    '車両運搬具',
+    'ソフトウェア',
+    '貯蔵品',
+    '小額資産',
+    '仮払消費税',
+    '未払消費税',
+    '未払法人税等',
+    '役員借入金',
+    '預り金',
+    '仮受消費税',
+    '仮払金',
+    '立替金',
+    '未収還付法人税等',
+  ],
+bsSkipAccountPatterns: [
+    '^未収還付',
+  ],
+paymentCounterparts: [
+    '長期未払金',
+    '保険積立金',
+    '住民税',
+    '役員借入金',
+    '短期借入金',
+    '未払法人税等',
+    '未払消費税',
+  ],
+cashAccounts: [
+    '現金',
+    '普通預金',
+    '当座預金',
+    '定期預金',
+    '通知預金',
+    '別段預金',
+  ],
+expenseSectionAccounts: [
+    '福利厚生費',
+    '荷造運賃',
+    '広告費',
+    '交際費',
+    '旅費交通費',
+    '通信費',
+    '水道光熱費',
+    '修繕費',
+    '車両費',
+    '賃借料',
+    '地代家賃',
+    '保険料',
+    '支払手数料',
+    '会議費',
+    '新聞図書費',
+    '消耗品費',
+    '諸会費',
+    '研修費',
+    '支払顧問料',
+  ],
+expenseAccountExceptions: [
+    '荷造運賃',
+    '地代家賃',
+    '賃借料',
+  ],
+bsPlSkipAccounts: [
+    '商品券',
+    '敷金',
+    '創立費',
+    '未収入金',
+    '未収還付消費税等',
+  ],
+bsCurrentAssetAlwaysVisible: [
+    '商品券',
+  ],
+bsInvestmentOtherAlwaysVisible: [
+    '敷金',
+  ],
+bsDeferredAssetAlwaysVisible: [
+    '創立費',
+  ],
+  expenseAccountSuffixPattern: '(?:費|料)$',
+};
+
+const PATTERN_LIST_KEYS = new Set([
+  'nonOperatingRevenuePatterns',
+  'personnelPatterns',
+  'outsourcingPatterns',
+  'otherPatterns',
+  'nonOperatingExpensePatterns',
+  'specialProfitPatterns',
+  'specialLossPatterns',
+  'taxPatterns',
+  'bsSkipAccountPatterns',
+]);
+
+/** 設定画面のセクション構成 */
+const JOURNAL_DEFINITION_GROUPS = [
+  {
+    id: 'pl',
+    label: 'PLセクション分類',
+    sections: [
+      {
+        key: 'revenueSectionAccounts',
+        sectionColorId: 'revenue',
+        label: '売上高',
+        hint: 'この勘定科目は「売上高」セクションに集計されます',
+        valueType: 'account',
+      },
+      {
+        key: 'nonOperatingRevenueAccounts',
+        sectionColorId: 'nonOperating',
+        label: '営業外収益（勘定名）',
+        hint: '営業外収益セクションに集計する勘定科目名',
+        valueType: 'account',
+      },
+      {
+        key: 'nonOperatingRevenuePatterns',
+        sectionColorId: 'nonOperating',
+        label: '営業外収益（パターン）',
+        hint: '勘定科目名の正規表現。例： ^貸倒引当金戻入',
+        valueType: 'pattern',
+      },
+      {
+        key: 'personnelPatterns',
+        sectionColorId: 'personnel',
+        label: '人件費',
+        hint: '人件費セクションに一致する正規表現。補助科目は「勘定科目名|補助科目名」で指定',
+        valueType: 'pattern',
+      },
+      {
+        key: 'outsourcingPatterns',
+        sectionColorId: 'outsourcing',
+        label: '外注費',
+        hint: '外注費セクションに一致する正規表現',
+        valueType: 'pattern',
+      },
+      {
+        key: 'otherPatterns',
+        sectionColorId: 'other',
+        label: 'その他',
+        hint: 'その他セクションに一致する正規表現',
+        valueType: 'pattern',
+      },
+      {
+        key: 'nonOperatingExpensePatterns',
+        sectionColorId: 'nonOperatingExpense',
+        label: '営業外費用',
+        hint: '営業外費用セクションに一致する正規表現',
+        valueType: 'pattern',
+      },
+      {
+        key: 'specialProfitPatterns',
+        sectionColorId: 'specialProfit',
+        label: '特別利益',
+        hint: '特別利益セクションに一致する正規表現',
+        valueType: 'pattern',
+      },
+      {
+        key: 'specialLossPatterns',
+        sectionColorId: 'specialLoss',
+        label: '特別損失',
+        hint: '特別損失セクションに一致する正規表現',
+        valueType: 'pattern',
+      },
+      {
+        key: 'taxPatterns',
+        sectionColorId: 'tax',
+        label: '法人税',
+        hint: '法人税セクションに一致する正規表現',
+        valueType: 'pattern',
+      },
+      {
+        key: 'plSkipAccounts',
+        label: 'PL集計除外（勘定名）',
+        hint: 'PLに含めない勘定科目名（資産・負債など）',
+        valueType: 'account',
+      },
+      {
+        key: 'bsSkipAccountPatterns',
+        label: 'PL集計除外（パターン）',
+        hint: '勘定科目名に対する正規表現。PLに含めない勘定を指定',
+        valueType: 'pattern',
+      },
+    ],
+  },
+  {
+    id: 'expense',
+    label: '諸経費',
+    sections: [
+      {
+        key: 'expenseAccountSuffixPattern',
+        sectionColorId: 'expense',
+        label: '諸経費の勘定名条件',
+        hint: '常時表示一覧外の仕訳から諸経費に含める勘定名の条件（正規表現。例：末尾が「費」「料」で終わる勘定を含める）',
+        valueType: 'singlePattern',
+      },
+      {
+        key: 'expenseAccountExceptions',
+        sectionColorId: 'expense',
+        label: '諸経費の例外勘定',
+        hint: '条件に一致しなくても諸経費に含める勘定名（荷造運賃・地代家賃・賃借料など）',
+        valueType: 'account',
+      },
+      {
+        key: 'expenseSectionAccounts',
+        sectionColorId: 'expense',
+        label: '常時表示勘定一覧',
+        hint: '仕訳がなくても 0円で表示する諸経費の勘定科目名',
+        valueType: 'account',
+      },
+    ],
+  },
+  {
+    id: 'cashflow',
+    label: 'キャッシュフロー',
+    sections: [
+      {
+        key: 'cashAccounts',
+        sectionColorId: 'cashBalance',
+        label: '現金及び預金勘定',
+        hint: '口座間移動の判定に使う現金・預金系勘定',
+        valueType: 'account',
+      },
+      {
+        key: 'paymentCounterparts',
+        sectionColorId: 'otherPay',
+        label: '支払計画対象勘定',
+        hint: '普通預金との取引で支払い計画を追跡する勘定',
+        valueType: 'account',
+      },
+    ],
+  },
+  {
+    id: 'bs',
+    label: '貸借対照表',
+    sections: [
+      {
+        key: 'bsPlSkipAccounts',
+        label: 'PL集計除外・BS表示',
+        hint: 'PLに含めず貸借対照表に表示する勘定',
+        valueType: 'account',
+      },
+      {
+        key: 'bsCurrentAssetAlwaysVisible',
+        sectionColorId: 'currentAssets',
+        label: '流動資産の常時表示',
+        hint: 'CSVに行がない場合も表示する勘定',
+        valueType: 'account',
+      },
+      {
+        key: 'bsInvestmentOtherAlwaysVisible',
+        sectionColorId: 'fixedAssets',
+        label: '投資その他の常時表示',
+        hint: '固定資産内でCSVに行がない場合も表示',
+        valueType: 'account',
+      },
+      {
+        key: 'bsDeferredAssetAlwaysVisible',
+        sectionColorId: 'deferredAssets',
+        label: '繰延資産の常時表示',
+        hint: '繰延資産でCSVに行がない場合も表示',
+        valueType: 'account',
+      },
+    ],
+  },
+];
+
+let cachedDefinition = null;
+let cachedCompiledPatterns = null;
+let cachedDefinitionSource = null;
+
+function cloneDefaultDefinition() {
+  const result = {};
+  for (const [key, value] of Object.entries(DEFAULT_JOURNAL_DEFINITION)) {
+    result[key] = typeof value === 'string' ? value : [...value];
+  }
+  return result;
+}
+
+function repairLegacyKanji(text) {
+  return text
+    .replace(/稅/g, "税")
+    .replace(/居民/g, "住民");
+}
+
+function normalizePatternString(raw, fallback) {
+  if (typeof raw !== 'string' || !raw.trim()) return fallback;
+  return repairLegacyKanji(raw.trim());
+}
+
+function normalizeStringList(raw, fallback) {
+  if (!Array.isArray(raw)) return [...fallback];
+  const result = [];
+  const seen = new Set();
+  for (const item of raw) {
+    if (typeof item !== 'string') continue;
+    const trimmed = item.trim();
+    if (!trimmed || seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    result.push(trimmed);
+  }
+  return result.length ? result : [...fallback];
+}
+
+/** 保存値を正規化し、空のみはデフォルトに戻す */
+function normalizeJournalDefinition(raw) {
+  const normalized = {};
+  for (const key of Object.keys(DEFAULT_JOURNAL_DEFINITION)) {
+    const fallback = DEFAULT_JOURNAL_DEFINITION[key];
+    if (key === 'expenseAccountSuffixPattern') {
+      normalized[key] = normalizePatternString(raw?.[key], fallback);
+      continue;
+    }
+    normalized[key] = normalizeStringList(raw?.[key], fallback).map((item) => repairLegacyKanji(item));
+  }
+  return normalized;
+}
+
+function loadJournalDefinition() {
+  try {
+    const stored = localStorage.getItem(JOURNAL_DEFINITION_STORAGE_KEY);
+    if (!stored) return cloneDefaultDefinition();
+    return normalizeJournalDefinition(JSON.parse(stored));
+  } catch {
+    return cloneDefaultDefinition();
+  }
+}
+
+function saveJournalDefinition(config) {
+  const normalized = normalizeJournalDefinition(config);
+  localStorage.setItem(JOURNAL_DEFINITION_STORAGE_KEY, JSON.stringify(normalized));
+  cachedDefinition = normalized;
+  cachedCompiledPatterns = null;
+  cachedDefinitionSource = normalized;
+  return normalized;
+}
+
+function resetJournalDefinition() {
+  localStorage.removeItem(JOURNAL_DEFINITION_STORAGE_KEY);
+  cachedDefinition = cloneDefaultDefinition();
+  cachedCompiledPatterns = null;
+  cachedDefinitionSource = cachedDefinition;
+  return cachedDefinition;
+}
+
+/** 有効な仕訳定義を返す（キャッシュ付き） */
+function getJournalDefinition() {
+  if (!cachedDefinition) {
+    cachedDefinition = loadJournalDefinition();
+    cachedDefinitionSource = cachedDefinition;
+  }
+  return cachedDefinition;
+}
+
+/** 外部から仕訳定義を更新したときに呼ぶ */
+function setActiveJournalDefinition(config) {
+  cachedDefinition = normalizeJournalDefinition(config);
+  cachedCompiledPatterns = null;
+  cachedDefinitionSource = cachedDefinition;
+  return cachedDefinition;
+}
+
+function compileJournalPattern(source) {
+  if (!source?.trim()) return null;
+  try {
+    return new RegExp(source);
+  } catch {
+    return null;
+  }
+}
+
+function compilePatternList(list) {
+  return list
+    .map((source) => compileJournalPattern(source))
+    .filter(Boolean);
+}
+
+/** 正規表現をコンパイルした状態で返す */
+function getCompiledJournalPatterns(definition = getJournalDefinition()) {
+  if (cachedCompiledPatterns && cachedDefinitionSource === definition) {
+    return cachedCompiledPatterns;
+  }
+  cachedCompiledPatterns = {
+    nonOperatingRevenue: compilePatternList(definition.nonOperatingRevenuePatterns),
+    personnel: compilePatternList(definition.personnelPatterns),
+    outsourcing: compilePatternList(definition.outsourcingPatterns),
+    other: compilePatternList(definition.otherPatterns),
+    nonOperatingExpense: compilePatternList(definition.nonOperatingExpensePatterns),
+    specialProfit: compilePatternList(definition.specialProfitPatterns),
+    specialLoss: compilePatternList(definition.specialLossPatterns),
+    tax: compilePatternList(definition.taxPatterns),
+    bsSkipAccount: compilePatternList(definition.bsSkipAccountPatterns),
+  };
+  cachedDefinitionSource = definition;
+  return cachedCompiledPatterns;
+}
+
+function isJournalPatternValid(source) {
+  if (!source?.trim()) return false;
+  try {
+    // eslint-disable-next-line no-new
+    new RegExp(source);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function getPaymentCounterpartsSet(definition = getJournalDefinition()) {
+  return new Set(definition.paymentCounterparts);
+}
+
+function getCashAccountsSet(definition = getJournalDefinition()) {
+  return new Set(definition.cashAccounts);
+}
+
+function getPlSkipAccountsSet(definition = getJournalDefinition()) {
+  const skip = new Set(definition.plSkipAccounts);
+  for (const account of definition.bsPlSkipAccounts) skip.add(account);
+  return skip;
+}
+
+/** 諸経費セクションに表示する勘定名か判定 */
+function isExpenseSectionDisplayAccount(account, definition = getJournalDefinition()) {
+  const name = account?.trim();
+  if (!name) return false;
+  const canonical = name;
+  if (definition.expenseSectionAccounts.includes(canonical)) return true;
+  if (definition.expenseAccountExceptions.includes(canonical)) return true;
+  const suffixPattern = compileJournalPattern(definition.expenseAccountSuffixPattern);
+  if (suffixPattern?.test(name)) return true;
+  return false;
+}
+
+function isRevenueAccountKey(key, definition = getJournalDefinition(), patterns = getCompiledJournalPatterns(definition)) {
+  const [account] = key.split('|');
+  if (definition.revenueSectionAccounts.includes(account)) return true;
+  if (definition.nonOperatingRevenueAccounts.includes(account)) return true;
+  return patterns.nonOperatingRevenue.some((pattern) => pattern.test(key));
+}
+
+function categorizeAccountKey(key, definition = getJournalDefinition(), patterns = getCompiledJournalPatterns(definition)) {
+  const [account] = key.split('|');
+  if (isRevenueAccountKey(key, definition, patterns)) {
+    return definition.revenueSectionAccounts.includes(account) ? 'revenue' : 'nonOperating';
+  }
+  if (patterns.personnel.some((pattern) => pattern.test(key))) return 'personnel';
+  if (patterns.outsourcing.some((pattern) => pattern.test(key))) return 'outsourcing';
+  if (patterns.other.some((pattern) => pattern.test(key))) return 'other';
+  if (patterns.nonOperatingExpense.some((pattern) => pattern.test(key))) return 'nonOperatingExpense';
+  if (patterns.specialProfit.some((pattern) => pattern.test(key))) return 'specialProfit';
+  if (patterns.specialLoss.some((pattern) => pattern.test(key))) return 'specialLoss';
+  if (patterns.tax.some((pattern) => pattern.test(key))) return 'tax';
+  if (getPlSkipAccountsSet(definition).has(account)) return null;
+  if (patterns.bsSkipAccount.some((pattern) => pattern.test(account))) return null;
+  return 'expense';
+}
+
 /* config/expenseAccountConfig.js */
 /**
  * 諸経費セクションで常時表示する勘定科目一覧（仕訳がなくても 0円で表示）。
  * 科目名は仕訳 CSVの表記を優先（scripts/scan-expense-accounts.mjs）。
+ * 実行時の一覧は仕訳定義設定（journalDefinitionConfig）を参照します。
  */
-const EXPENSE_SECTION_ACCOUNTS = [
-  '福利厚生費',
-  '荷造運賃',
-  '広告費',
-  '交際費',
-  '旅費交通費',
-  '通信費',
-  '水道光熱費',
-  '修繕費',
-  '車両費',
-  '賃借料',
-  '地代家賃',
-  '保険料',
-  '支払手数料',
-  '会議費',
-  '新聞図書費',
-  '消耗品費',
-  '諸会費',
-  '研修費',
-  '支払顧問料',
-];
 
-const EXPENSE_SECTION_ACCOUNT_SET = new Set(EXPENSE_SECTION_ACCOUNTS);
+const EXPENSE_SECTION_ACCOUNTS = DEFAULT_JOURNAL_DEFINITION.expenseSectionAccounts;
+
+/** 実行時の諸経費常時表示一覧 */
+function getExpenseSectionAccounts() {
+  return getJournalDefinition().expenseSectionAccounts;
+}
 
 /** 表記差を正し、一覧の表記に寄せる */
 function canonicalExpenseAccount(account) {
   if (!account) return account;
-  if (EXPENSE_SECTION_ACCOUNT_SET.has(account)) return account;
+  const accounts = getExpenseSectionAccounts();
+  const accountSet = new Set(accounts);
+  if (accountSet.has(account)) return account;
   const normalized = account.normalize('NFKC');
-  for (const canonical of EXPENSE_SECTION_ACCOUNTS) {
+  for (const canonical of accounts) {
     if (canonical.normalize('NFKC') === normalized) return canonical;
   }
   return account;
@@ -468,7 +993,7 @@ function canonicalExpenseAccount(account) {
 
 /** 諸経費セクションの常時表示一覧に含まれる勘定か */
 function isKnownExpenseSectionAccount(account) {
-  return EXPENSE_SECTION_ACCOUNT_SET.has(canonicalExpenseAccount(account));
+  return new Set(getExpenseSectionAccounts()).has(canonicalExpenseAccount(account));
 }
 
 function combineExpenseJournalItems(items) {
@@ -484,6 +1009,8 @@ function combineExpenseJournalItems(items) {
 
 /** 仕訳と一覧をマージする（一覧外は末尾に出力） */
 function mergeExpenseSectionItems(journalItems, emptyMonthValues) {
+  const expenseAccounts = getExpenseSectionAccounts();
+  const expenseAccountSet = new Set(expenseAccounts);
   const journalByAccount = new Map();
   for (const item of journalItems) {
     const account = canonicalExpenseAccount(item.account);
@@ -494,7 +1021,7 @@ function mergeExpenseSectionItems(journalItems, emptyMonthValues) {
 
   const merged = [];
 
-  for (const account of EXPENSE_SECTION_ACCOUNTS) {
+  for (const account of expenseAccounts) {
     const items = journalByAccount.get(account);
     if (items?.length) {
       const bySub = new Map();
@@ -513,7 +1040,8 @@ function mergeExpenseSectionItems(journalItems, emptyMonthValues) {
 
   for (const item of journalItems) {
     const account = canonicalExpenseAccount(item.account);
-    if (EXPENSE_SECTION_ACCOUNT_SET.has(account)) continue;
+    if (expenseAccountSet.has(account)) continue;
+    if (!isExpenseSectionDisplayAccount(account)) continue;
     merged.push({ ...item, account });
   }
 
@@ -524,16 +1052,34 @@ function mergeExpenseSectionItems(journalItems, emptyMonthValues) {
 /**
  * PL集計除外で貸借対照表に表示する勘定。
  * CSVに行がない場合も常時表示する。
+ * 実行時の一覧は仕訳定義設定（journalDefinitionConfig）を参照します。
  */
-const BS_PL_SKIP_ACCOUNTS = new Set(['商品券', '敷金', '創立費', '未収入金', '未収還付消費税等']);
 
-const BS_CURRENT_ASSET_ALWAYS_VISIBLE = ['商品券'];
+const BS_PL_SKIP_ACCOUNTS = new Set(DEFAULT_JOURNAL_DEFINITION.bsPlSkipAccounts);
+
+const BS_CURRENT_ASSET_ALWAYS_VISIBLE = DEFAULT_JOURNAL_DEFINITION.bsCurrentAssetAlwaysVisible;
 
 /** 固定資産、投資その他の資産 */
-const BS_INVESTMENT_OTHER_ALWAYS_VISIBLE = ['敷金'];
+const BS_INVESTMENT_OTHER_ALWAYS_VISIBLE = DEFAULT_JOURNAL_DEFINITION.bsInvestmentOtherAlwaysVisible;
 
 /** 繰延資産 */
-const BS_DEFERRED_ASSET_ALWAYS_VISIBLE = ['創立費'];
+const BS_DEFERRED_ASSET_ALWAYS_VISIBLE = DEFAULT_JOURNAL_DEFINITION.bsDeferredAssetAlwaysVisible;
+
+function getBsPlSkipAccounts() {
+  return getJournalDefinition().bsPlSkipAccounts;
+}
+
+function getBsCurrentAssetAlwaysVisible() {
+  return getJournalDefinition().bsCurrentAssetAlwaysVisible;
+}
+
+function getBsInvestmentOtherAlwaysVisible() {
+  return getJournalDefinition().bsInvestmentOtherAlwaysVisible;
+}
+
+function getBsDeferredAssetAlwaysVisible() {
+  return getJournalDefinition().bsDeferredAssetAlwaysVisible;
+}
 
 /* config/expenseSortConfig.js */
 const EXPENSE_SORT_STORAGE_KEY = 'mga-expense-sort-order';
@@ -1844,43 +2390,9 @@ function sectionColors(id) {
   return { color: d.color, barColor: d.barColor, textColor: d.textColor ?? COLOR_FALLBACK.textColor };
 }
 
-const REVENUE_ACCOUNTS = new Set(['売上高', '受取利息', '雑収入', '営業外収益']);
-
-const PERSONNEL_PATTERNS = [
-  /^役員報酬/,
-  /^給料手当/,
-  /^法定福利費/,
-  /^賞与/,
-  /^退職/,
-  /旅費交通費\|通勤手当/,
-];
-
-const OUTSOURCING_PATTERNS = [/^外注費/];
-const OTHER_PATTERNS = [
-  /^租税公課/,
-  /^減価償却費/,
-  /^少額減価償却費/,
-  /^繰延資産償却/,
-  /^貸倒引当金繰入/,
-];
-const NON_OPERATING_REVENUE_PATTERNS = [/^貸倒引当金戻入/];
-const NON_OPERATING_EXPENSE_PATTERNS = [/^支払利息/, /^雑損失/];
-/** MF 決算書「特別利益」配下の勘定 */
-const SPECIAL_PROFIT_PATTERNS = [/^前期損益修正益/, /^固定資産売却益/];
-/** MF 決算書「特別損失」配下の勘定（販管費・法人税セクションとは別扱い） */
-const SPECIAL_LOSS_PATTERNS = [/^法人税、住民税/, /^固定資産除却損/];
-const TAX_PATTERNS = [/^法人税等$/];
-/** PL 集計除外: 未収還付○○（流動資産・BS 科目） */
-const BS_SKIP_ACCOUNT_PATTERNS = [/^未収還付/];
-
 function isPlIncomeAccountKey(key) {
-  return isRevenueAccountKey(key) || SPECIAL_PROFIT_PATTERNS.some((p) => p.test(key));
-}
-
-function isRevenueAccountKey(key) {
-  const [account] = key.split('|');
-  return REVENUE_ACCOUNTS.has(account)
-    || NON_OPERATING_REVENUE_PATTERNS.some((p) => p.test(key));
+  const patterns = getCompiledJournalPatterns();
+  return isRevenueAccountKey(key) || patterns.specialProfit.some((p) => p.test(key));
 }
 
 const BS_SKIP = new Set([
@@ -1892,18 +2404,10 @@ function isBsInformationalSub(sub) {
   return /^（うち/.test(sub ?? '');
 }
 
-const PAYMENT_COUNTERPARTS = new Set([
-  '長期未払金', '保険積立金', '住民税', '役員借入金', '短期借入金', '未払法人税等', '未払消費税',
-]);
-
 /** 現金及び預金に属する勘定（口座間資金移動の判定用） */
-const CASH_ACCOUNTS = new Set([
-  '現金', '普通預金', '当座預金', '定期預金', '通知預金', '別段預金',
-]);
-
-/** 借方・貸方がともに現預金勘定の口座間移動か */
 function isInterAccountCashTransfer(debitAcct, creditAcct) {
-  return CASH_ACCOUNTS.has(debitAcct) && CASH_ACCOUNTS.has(creditAcct);
+  const cashAccounts = getCashAccountsSet();
+  return cashAccounts.has(debitAcct) && cashAccounts.has(creditAcct);
 }
 
 function monthKey(dateStr) {
@@ -2028,9 +2532,9 @@ function collectExpenseExpandCandidates(sectionId, sectionLabel, rawItems) {
   }
 
   const candidates = [];
-  const listed = new Set(EXPENSE_SECTION_ACCOUNTS);
+  const listed = new Set(getExpenseSectionAccounts());
 
-  for (const account of EXPENSE_SECTION_ACCOUNTS) {
+  for (const account of getExpenseSectionAccounts()) {
     const items = groups.get(account) ?? [{ account, sub: '' }];
     candidates.push({
       sectionId,
@@ -2179,27 +2683,7 @@ function getTotalRow(section) {
 }
 
 function categorizeAccount(key) {
-  const [account] = key.split('|');
-  if (isRevenueAccountKey(key)) {
-    return account === '売上高' ? 'revenue' : 'nonOperating';
-  }
-  if (PERSONNEL_PATTERNS.some((p) => p.test(key))) return 'personnel';
-  if (OUTSOURCING_PATTERNS.some((p) => p.test(key))) return 'outsourcing';
-  if (OTHER_PATTERNS.some((p) => p.test(key))) return 'other';
-  if (NON_OPERATING_EXPENSE_PATTERNS.some((p) => p.test(key))) return 'nonOperatingExpense';
-  if (SPECIAL_PROFIT_PATTERNS.some((p) => p.test(key))) return 'specialProfit';
-  if (SPECIAL_LOSS_PATTERNS.some((p) => p.test(key))) return 'specialLoss';
-  if (TAX_PATTERNS.some((p) => p.test(key))) return 'tax';
-  const skip = new Set([
-    '普通預金', '売掛金', '貸倒引当金', '未払金', '未払費用', '前払金', '前払費用',
-    '長期前払費用', '保険積立金', '資本金', '繰越利益剰余金', '長期未払金', '長期借入金', '短期借入金',
-    '工具器具備品', '車両運搬具', 'ソフトウェア', '貯蔵品', '少額資産', '仮払消費税',
-    '未払消費税', '未払法人税等', '役員借入金', '預り金', '仮受消費税', '仮払金', '立替金', '未収還付法人税等',
-    ...BS_PL_SKIP_ACCOUNTS,
-  ]);
-  if (skip.has(account)) return null;
-  if (BS_SKIP_ACCOUNT_PATTERNS.some((p) => p.test(account))) return null;
-  return 'expense';
+  return categorizeAccountKey(key);
 }
 
 function pushSection(sections, cfg) {
@@ -2210,6 +2694,7 @@ function aggregateJournal(text) {
   const aggregated = new Map();
   const cashFlow = { inflow: emptyMonthValues(), outflow: emptyMonthValues() };
   const otherPayments = new Map();
+  const paymentCounterparts = getPaymentCounterpartsSet();
 
   const trackPayment = (account, sub, amount, month) => {
     const key = sub ? `${account}|${sub}` : account;
@@ -2245,10 +2730,10 @@ function aggregateJournal(text) {
       cashFlow.outflow[mk] += creditAmt;
     }
 
-    if (creditAcct === '普通預金' && debitAmt > 0 && PAYMENT_COUNTERPARTS.has(debitAcct)) {
+    if (creditAcct === '普通預金' && debitAmt > 0 && paymentCounterparts.has(debitAcct)) {
       trackPayment(debitAcct, debitSub, debitAmt, mk);
     }
-    if (debitAcct === '普通預金' && creditAmt > 0 && PAYMENT_COUNTERPARTS.has(creditAcct)) {
+    if (debitAcct === '普通預金' && creditAmt > 0 && paymentCounterparts.has(creditAcct)) {
       trackPayment(creditAcct, creditSub, creditAmt, mk);
     }
 
@@ -2787,7 +3272,7 @@ function buildBsSections(bsText, expandConfig, expandCandidates) {
 
   const currentAssets = appendMissingBsAccountRows(
     extractBsRows(bsText, ['流動資産'], '流動資産合計'),
-    BS_CURRENT_ASSET_ALWAYS_VISIBLE,
+    getBsCurrentAssetAlwaysVisible(),
   );
   if (currentAssets.length) {
     sections.push(bsRowsToSection(
@@ -2797,7 +3282,7 @@ function buildBsSections(bsText, expandConfig, expandCandidates) {
 
   const investmentOtherAssets = appendMissingBsAccountRows(
     extractBsRows(bsText, ['投資その他の資産'], '投資その他の資産合計'),
-    BS_INVESTMENT_OTHER_ALWAYS_VISIBLE,
+    getBsInvestmentOtherAlwaysVisible(),
   );
   const fixedAssets = [
     ...extractBsRows(bsText, ['有形固定資産'], '有形固定資産合計'),
@@ -2813,7 +3298,7 @@ function buildBsSections(bsText, expandConfig, expandCandidates) {
 
   const deferredAssets = appendMissingBsAccountRows(
     extractBsRows(bsText, ['繰延資産'], '繰延資産合計'),
-    BS_DEFERRED_ASSET_ALWAYS_VISIBLE,
+    getBsDeferredAssetAlwaysVisible(),
   );
   if (deferredAssets.length) {
     sections.push(bsRowsToSection(
@@ -3325,12 +3810,13 @@ function filterCashflow(entries, row, months) {
 
 function filterOtherPay(entries, section, row, months) {
   const keys = collectSectionAccountKeys(section, row);
+  const paymentCounterparts = getPaymentCounterpartsSet();
   return entries.filter((e) => {
     if (!months.includes(e.monthKey)) return false;
     const debitPay = e.creditAcct === '普通預金' && e.debitAmt > 0
-      && PAYMENT_COUNTERPARTS.has(e.debitAcct);
+      && paymentCounterparts.has(e.debitAcct);
     const creditPay = e.debitAcct === '普通預金' && e.creditAmt > 0
-      && PAYMENT_COUNTERPARTS.has(e.creditAcct);
+      && paymentCounterparts.has(e.creditAcct);
     if (!debitPay && !creditPay) return false;
     if (row.type === 'total') return true;
     const counterpart = debitPay ? e.debitAcct : e.creditAcct;
@@ -4974,7 +5460,7 @@ function buildExpenseOverrideMapForPeriod(overrides, fiscalPeriod, fiscalMonths)
 /** プルダウン用の諸経勘定科目候補 */
 function collectExpenseOverrideAccountCandidates(planData, selectedAccounts = []) {
   const selected = new Set(selectedAccounts);
-  const accounts = new Set(EXPENSE_SECTION_ACCOUNTS);
+  const accounts = new Set(getExpenseSectionAccounts());
   const expenseSection = planData?.sections?.find((s) => s.id === 'expense');
   if (expenseSection) {
     for (const row of expenseSection.rows) {
@@ -10359,6 +10845,7 @@ const ALL_SETTINGS_STORAGE_KEYS = [
   'mga-section-filter',
   'mga-ui-colors',
   'mga-csv-name-config',
+  'mga-journal-definition',
   'mga-month-display',
 ];
 
@@ -12094,7 +12581,7 @@ function bindRevenueColumnPlateSync(wrap, fiscalMonths, currentPeriod, appSettin
 function refreshRevenueSettingsSectionTitles(getSectionFilterColors) {
   if (!getSectionFilterColors) return;
   document.querySelectorAll(
-    '.revenue-settings-wrap [data-section-filter], .expense-plan-override-section [data-section-filter], .employee-settings-wrap [data-section-filter], .outsourcing-settings-wrap [data-section-filter], .tax-payment-settings-wrap [data-section-filter]',
+    '.revenue-settings-wrap [data-section-filter], .expense-plan-override-section [data-section-filter], .employee-settings-wrap [data-section-filter], .outsourcing-settings-wrap [data-section-filter], .tax-payment-settings-wrap [data-section-filter], .journal-definition-settings-wrap [data-section-filter]',
   ).forEach((el) => {
     applySectionFilterTitleStyle(el, el.dataset.sectionFilter, getSectionFilterColors);
   });
@@ -13552,6 +14039,262 @@ function mountRevenueSettingsPanel({
   revenueSettingsMonthDisplayApplier = () => applyMonthDisplayToWrap(wrap);
   replaceRootPanel(wrap);
   refreshPlanKpi?.();
+}
+
+/* ui/journalDefinitionSettings.js */
+/** 対応する大項目がある項目名は、予実表と同じ大項目色のチップで表示する */
+function buildJournalDefinitionSectionHead(sectionMeta, getSectionFilterColors) {
+  const head = document.createElement('div');
+  head.className = 'tax-rate-section-head';
+
+  const label = document.createElement('span');
+  label.className = 'app-settings-label';
+  label.textContent = sectionMeta.label;
+  if (sectionMeta.sectionColorId && getSectionFilterColors) {
+    label.classList.add('salary-plan-title');
+    applySectionFilterTitleStyle(label, sectionMeta.sectionColorId, getSectionFilterColors);
+  }
+
+  const hint = document.createElement('span');
+  hint.className = 'app-settings-hint tax-rate-section-hint';
+  hint.textContent = sectionMeta.hint;
+
+  head.append(label, hint);
+  return head;
+}
+
+function bindJournalDefinitionListSection({
+  sectionEl,
+  listKey,
+  valueType,
+  getConfig,
+  onChange,
+}) {
+  const tbody = sectionEl.querySelector('[data-journal-list-body]');
+  const addBtn = sectionEl.querySelector('[data-journal-list-add]');
+
+  const renderRows = () => {
+    const config = getConfig();
+    const values = config[listKey] ?? [];
+    tbody.replaceChildren();
+
+    values.forEach((value, index) => {
+      const tr = document.createElement('tr');
+      tr.dataset.index = String(index);
+
+      const valueTd = document.createElement('td');
+      valueTd.className = 'col-csvname-pattern';
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'csvname-pattern-input journal-definition-value-input';
+      input.value = value;
+      input.spellcheck = false;
+      valueTd.appendChild(input);
+
+      const statusTd = document.createElement('td');
+      statusTd.className = 'col-csvname-test';
+      if (valueType === 'pattern') {
+        const valid = isJournalPatternValid(value);
+        statusTd.textContent = valid ? "有効" : "無効";
+        statusTd.className += valid ? ' is-ok' : ' is-ng';
+      } else {
+        statusTd.textContent = value.trim() ? "—" : "未入力";
+        statusTd.className += value.trim() ? '' : ' is-ng';
+      }
+
+      const actionTd = document.createElement('td');
+      actionTd.className = 'col-tax-rate-actions';
+      const deleteBtn = document.createElement('button');
+      deleteBtn.type = 'button';
+      deleteBtn.className = 'expand-reset-btn journal-definition-delete-btn';
+      deleteBtn.textContent = "削除";
+      actionTd.appendChild(deleteBtn);
+
+      tr.append(valueTd, statusTd, actionTd);
+      tbody.appendChild(tr);
+
+      const persistValue = () => {
+        const nextValues = [...(getConfig()[listKey] ?? [])];
+        nextValues[index] = input.value;
+        onChange({ ...getConfig(), [listKey]: nextValues });
+        renderRows();
+      };
+
+      input.addEventListener('change', persistValue);
+      input.addEventListener('blur', persistValue);
+
+      deleteBtn.addEventListener('click', () => {
+        const nextValues = [...(getConfig()[listKey] ?? [])];
+        nextValues.splice(index, 1);
+        onChange({ ...getConfig(), [listKey]: nextValues });
+        renderRows();
+      });
+    });
+  };
+
+  addBtn.addEventListener('click', () => {
+    const nextValues = [...(getConfig()[listKey] ?? []), ''];
+    onChange({ ...getConfig(), [listKey]: nextValues });
+    renderRows();
+    const lastInput = tbody.querySelector('tr:last-child .journal-definition-value-input');
+    lastInput?.focus();
+  });
+
+  renderRows();
+}
+
+function buildJournalDefinitionSinglePatternSection(sectionMeta, getConfig, onChange, getSectionFilterColors) {
+  const section = document.createElement('div');
+  section.className = 'app-settings-section journal-definition-section';
+  section.dataset.journalSectionKey = sectionMeta.key;
+  section.appendChild(buildJournalDefinitionSectionHead(sectionMeta, getSectionFilterColors));
+
+  const row = document.createElement('div');
+  row.className = 'legal-welfare-rate-inline';
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'csvname-pattern-input journal-definition-value-input';
+  input.spellcheck = false;
+  input.value = getConfig()[sectionMeta.key] ?? '';
+  const status = document.createElement('span');
+  status.className = 'app-settings-hint tax-rate-section-hint';
+
+  const refreshStatus = () => {
+    const valid = isJournalPatternValid(input.value);
+    status.textContent = valid ? "有効" : "無効";
+    status.classList.toggle('is-ng', !valid);
+  };
+
+  const persist = () => {
+    onChange({ ...getConfig(), [sectionMeta.key]: input.value });
+    refreshStatus();
+  };
+
+  input.addEventListener('change', persist);
+  input.addEventListener('blur', persist);
+  refreshStatus();
+
+  row.append(input, status);
+  section.appendChild(row);
+  return section;
+}
+
+function buildJournalDefinitionSection(sectionMeta, getConfig, onChange, getSectionFilterColors) {
+  const section = document.createElement('div');
+  section.className = 'app-settings-section journal-definition-section';
+  section.dataset.journalSectionKey = sectionMeta.key;
+  section.appendChild(buildJournalDefinitionSectionHead(sectionMeta, getSectionFilterColors));
+
+  const table = document.createElement('table');
+  table.className = 'expand-settings-table journal-definition-table';
+  table.innerHTML = `
+    <thead>
+      <tr>
+        <th>${sectionMeta.valueType === 'pattern'
+    ? "正規表現パターン"
+    : "勘定科目名"}</th>
+        <th class="col-csvname-test"></th>
+        <th class="col-tax-rate-actions"></th>
+      </tr>
+    </thead>
+    <tbody data-journal-list-body></tbody>
+  `;
+  section.appendChild(table);
+
+  const addBtn = document.createElement('button');
+  addBtn.type = 'button';
+  addBtn.className = 'expand-reset-btn tax-rate-add-btn';
+  addBtn.dataset.journalListAdd = 'true';
+  addBtn.textContent = "行を追加";
+  section.appendChild(addBtn);
+
+  bindJournalDefinitionListSection({
+    sectionEl: section,
+    listKey: sectionMeta.key,
+    valueType: sectionMeta.valueType,
+    getConfig,
+    onChange,
+  });
+
+  return section;
+}
+
+function mountJournalDefinitionSettingsPanel({
+  replaceRootPanel,
+  refreshPlanData,
+  getSectionFilterColors,
+}) {
+  let journalDefinition = loadJournalDefinition();
+  setActiveJournalDefinition(journalDefinition);
+
+  const wrap = document.createElement('div');
+  wrap.className = 'expand-settings-wrap journal-definition-settings-wrap plan-settings-scalable';
+
+  const header = document.createElement('div');
+  header.className = 'expand-settings-header';
+  header.innerHTML = `
+    <p class="expand-settings-desc journal-definition-settings-desc">
+      仕訳CSVの勘定科目をPL・諸経費・貸借対照表に振り分ける定義を編集します。パターンは正規表現で、「勘定科目名|補助科目名」のキーに対して評価されます（先頭一致は ^ を指定）。変更は保存され、予実表の集計に即時反映されます。
+    </p>
+    <div class="expand-settings-header-actions">
+      <button type="button" class="expand-reset-btn" id="journal-definition-reset-btn">デフォルトに戻す</button>
+    </div>
+  `;
+  wrap.appendChild(header);
+
+  const stack = document.createElement('div');
+  stack.className = 'tax-rate-settings-stack journal-definition-settings-stack';
+
+  const getConfig = () => journalDefinition;
+
+  const persistConfig = (nextConfig) => {
+    journalDefinition = saveJournalDefinition(nextConfig);
+    setActiveJournalDefinition(journalDefinition);
+    refreshPlanData?.();
+  };
+
+  for (const group of JOURNAL_DEFINITION_GROUPS) {
+    const groupEl = document.createElement('section');
+    groupEl.className = 'app-settings-section journal-definition-group';
+
+    const groupTitle = document.createElement('h2');
+    groupTitle.className = 'ui-color-panel-title';
+    groupTitle.textContent = group.label;
+    groupEl.appendChild(groupTitle);
+
+    for (const sectionMeta of group.sections) {
+      if (sectionMeta.valueType === 'singlePattern') {
+        groupEl.appendChild(buildJournalDefinitionSinglePatternSection(sectionMeta, getConfig, persistConfig, getSectionFilterColors));
+      } else {
+        groupEl.appendChild(buildJournalDefinitionSection(sectionMeta, getConfig, persistConfig, getSectionFilterColors));
+      }
+    }
+
+    stack.appendChild(groupEl);
+  }
+
+  wrap.appendChild(stack);
+
+  wrap.querySelector('#journal-definition-reset-btn').addEventListener('click', () => {
+    journalDefinition = resetJournalDefinition();
+    setActiveJournalDefinition(journalDefinition);
+    mountJournalDefinitionSettingsPanel({ replaceRootPanel, refreshPlanData, getSectionFilterColors });
+    refreshPlanData?.();
+  });
+
+  replaceRootPanel(wrap);
+  // 税率定義ページと同じ方針でフィット（表の自然幅の最大 ＋ 左右余白 2rem、下限 28rem）
+  bindPlanSettingsScalableLayout(wrap, {
+    measureNaturalWidth: () => {
+      const tableW = Math.max(
+        0,
+        ...[...wrap.querySelectorAll('.journal-definition-table')].map(
+          (table) => measureElementIntrinsicWidth(table),
+        ),
+      );
+      return Math.max(tableW, planSettingsRemToPx(28)) + planSettingsRemToPx(2);
+    },
+  });
 }
 
 /* ui/expensePlanOverrideSettings.js */
@@ -18457,6 +19200,7 @@ function getPlanColorMode() {
 }
 let uiColorConfig = loadUiColorConfig();
 let csvNameConfig = loadCsvNameConfig();
+setActiveJournalDefinition(loadJournalDefinition());
 let appSettings = loadAppSettings();
 let employees = loadEmployees();
 let salaryPlans = loadSalaryPlans();
@@ -19187,9 +19931,16 @@ function isOutsourcingFixedDisplayRow(section, row) {
     && row.type !== 'breakdown';
 }
 
+/** 売上高差異: 売掛金の明細行は諸経費の明細行と同じ小さいフォントで表示する */
+function isReceivableDetailRow(sectionId, row) {
+  return sectionId === 'revenueVariance'
+    && (row.type === 'item' || row.type === 'group' || row.type === 'sub');
+}
+
 function planRowUsesLargeDisplay(section, row) {
   if (isOutsourcingBreakdownRow(section.id, row)) return false;
   if (isRevenueManMonthRow(section.id, row)) return false;
+  if (isReceivableDetailRow(section.id, row)) return false;
   if (isVisibilityFixedSection(section.id)) return true;
   if (row.type === 'plan' && !isOutsourcingFixedDisplayRow(section, row)) return false;
   if (planRowHasAccentBackground(section, row)) return true;
@@ -22264,6 +23015,7 @@ const MAIN_MENU_ENTRIES = [
   { kind: 'heading', label: '設定' },
   { kind: 'item', value: 'orders', label: '受注', indented: true, shortcutKey: 'O' },
   { kind: 'item', value: 'taxrates', label: '税率定義', indented: true, shortcutKey: 'T' },
+  { kind: 'item', value: 'journaldefinition', label: '仕訳定義', indented: true, shortcutKey: 'J' },
   { kind: 'item', value: 'taxpayments', label: '支払い', indented: true, shortcutKey: 'Y' },
   { kind: 'item', value: 'employees', label: '人件費', indented: true, shortcutKey: 'E' },
   { kind: 'item', value: 'outsourcing', label: '外注費', indented: true, shortcutKey: 'U' },
@@ -22461,6 +23213,7 @@ function renderView({ measureColumnWidths = false } = {}) {
     }
   } else if (activeTab === 'visibility') renderVisibilitySettings();
   else if (activeTab === 'taxrates') renderTaxRateSettings();
+  else if (activeTab === 'journaldefinition') renderJournalDefinitionSettings();
   else if (activeTab === 'orders') renderRevenueSettings();
   else if (activeTab === 'taxpayments') renderTaxPaymentSettings();
   else if (activeTab === 'employees') renderEmployeeSettings();
@@ -26873,6 +27626,18 @@ function renderEmployeeSettings() {
   refreshPlanKpi();
 }
 
+function renderJournalDefinitionSettings() {
+  setPlanKpi(null);
+  mountJournalDefinitionSettingsPanel({
+    replaceRootPanel,
+    refreshPlanData: () => {
+      rebuildPlanData();
+      if (activeTab === 'plan' && data) refreshPlanTable();
+    },
+    getSectionFilterColors: getFilterButtonColors,
+  });
+}
+
 function renderRevenueSettings() {
   mountRevenueSettingsPanel({
     replaceRootPanel,
@@ -28346,6 +29111,7 @@ function reloadAllSettingsFromStorage() {
   sectionColorConfig = loadSectionColorConfig();
   uiColorConfig = loadUiColorConfig();
   csvNameConfig = loadCsvNameConfig();
+  setActiveJournalDefinition(loadJournalDefinition());
   appSettings = loadAppSettings();
   employees = loadEmployees();
   salaryPlans = loadSalaryPlans();

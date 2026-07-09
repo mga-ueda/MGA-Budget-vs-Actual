@@ -7,13 +7,19 @@ import {
 import { isCollapsibleGroup, isExpandSettingsSection } from '../config/expandConfig.js';
 import { collectVisibilityCandidates } from '../config/visibilityConfig.js';
 import { DEFAULT_SECTION_COLORS } from '../config/sectionColorConfig.js';
-import { mergeExpenseSectionItems, EXPENSE_SECTION_ACCOUNTS } from '../config/expenseAccountConfig.js';
+import { mergeExpenseSectionItems, getExpenseSectionAccounts } from '../config/expenseAccountConfig.js';
 import {
-  BS_PL_SKIP_ACCOUNTS,
-  BS_CURRENT_ASSET_ALWAYS_VISIBLE,
-  BS_INVESTMENT_OTHER_ALWAYS_VISIBLE,
-  BS_DEFERRED_ASSET_ALWAYS_VISIBLE,
+  getBsCurrentAssetAlwaysVisible,
+  getBsInvestmentOtherAlwaysVisible,
+  getBsDeferredAssetAlwaysVisible,
 } from '../config/bsBalanceSheetAccountConfig.js';
+import {
+  categorizeAccountKey,
+  getCashAccountsSet,
+  getCompiledJournalPatterns,
+  getPaymentCounterpartsSet,
+  isRevenueAccountKey,
+} from '../config/journalDefinitionConfig.js';
 
 export { formatYen };
 
@@ -36,43 +42,9 @@ function sectionColors(id) {
   return { color: d.color, barColor: d.barColor, textColor: d.textColor ?? COLOR_FALLBACK.textColor };
 }
 
-const REVENUE_ACCOUNTS = new Set(['売上高', '受取利息', '雑収入', '営業外収益']);
-
-const PERSONNEL_PATTERNS = [
-  /^役員報酬/,
-  /^給料手当/,
-  /^法定福利費/,
-  /^賞与/,
-  /^退職/,
-  /旅費交通費\|通勤手当/,
-];
-
-const OUTSOURCING_PATTERNS = [/^外注費/];
-const OTHER_PATTERNS = [
-  /^租税公課/,
-  /^減価償却費/,
-  /^少額減価償却費/,
-  /^繰延資産償却/,
-  /^貸倒引当金繰入/,
-];
-const NON_OPERATING_REVENUE_PATTERNS = [/^貸倒引当金戻入/];
-const NON_OPERATING_EXPENSE_PATTERNS = [/^支払利息/, /^雑損失/];
-/** MF 決算書「特別利益」配下の勘定 */
-const SPECIAL_PROFIT_PATTERNS = [/^前期損益修正益/, /^固定資産売却益/];
-/** MF 決算書「特別損失」配下の勘定（販管費・法人税セクションとは別扱い） */
-const SPECIAL_LOSS_PATTERNS = [/^法人税、住民税/, /^固定資産除却損/];
-const TAX_PATTERNS = [/^法人税等$/];
-/** PL 集計除外: 未収還付○○（流動資産・BS 科目） */
-const BS_SKIP_ACCOUNT_PATTERNS = [/^未収還付/];
-
 function isPlIncomeAccountKey(key) {
-  return isRevenueAccountKey(key) || SPECIAL_PROFIT_PATTERNS.some((p) => p.test(key));
-}
-
-function isRevenueAccountKey(key) {
-  const [account] = key.split('|');
-  return REVENUE_ACCOUNTS.has(account)
-    || NON_OPERATING_REVENUE_PATTERNS.some((p) => p.test(key));
+  const patterns = getCompiledJournalPatterns();
+  return isRevenueAccountKey(key) || patterns.specialProfit.some((p) => p.test(key));
 }
 
 const BS_SKIP = new Set([
@@ -84,18 +56,10 @@ function isBsInformationalSub(sub) {
   return /^（うち/.test(sub ?? '');
 }
 
-const PAYMENT_COUNTERPARTS = new Set([
-  '長期未払金', '保険積立金', '住民税', '役員借入金', '短期借入金', '未払法人税等', '未払消費税',
-]);
-
 /** 現金及び預金に属する勘定（口座間資金移動の判定用） */
-const CASH_ACCOUNTS = new Set([
-  '現金', '普通預金', '当座預金', '定期預金', '通知預金', '別段預金',
-]);
-
-/** 借方・貸方がともに現預金勘定の口座間移動か */
 export function isInterAccountCashTransfer(debitAcct, creditAcct) {
-  return CASH_ACCOUNTS.has(debitAcct) && CASH_ACCOUNTS.has(creditAcct);
+  const cashAccounts = getCashAccountsSet();
+  return cashAccounts.has(debitAcct) && cashAccounts.has(creditAcct);
 }
 
 function monthKey(dateStr) {
@@ -220,9 +184,9 @@ function collectExpenseExpandCandidates(sectionId, sectionLabel, rawItems) {
   }
 
   const candidates = [];
-  const listed = new Set(EXPENSE_SECTION_ACCOUNTS);
+  const listed = new Set(getExpenseSectionAccounts());
 
-  for (const account of EXPENSE_SECTION_ACCOUNTS) {
+  for (const account of getExpenseSectionAccounts()) {
     const items = groups.get(account) ?? [{ account, sub: '' }];
     candidates.push({
       sectionId,
@@ -371,27 +335,7 @@ function getTotalRow(section) {
 }
 
 export function categorizeAccount(key) {
-  const [account] = key.split('|');
-  if (isRevenueAccountKey(key)) {
-    return account === '売上高' ? 'revenue' : 'nonOperating';
-  }
-  if (PERSONNEL_PATTERNS.some((p) => p.test(key))) return 'personnel';
-  if (OUTSOURCING_PATTERNS.some((p) => p.test(key))) return 'outsourcing';
-  if (OTHER_PATTERNS.some((p) => p.test(key))) return 'other';
-  if (NON_OPERATING_EXPENSE_PATTERNS.some((p) => p.test(key))) return 'nonOperatingExpense';
-  if (SPECIAL_PROFIT_PATTERNS.some((p) => p.test(key))) return 'specialProfit';
-  if (SPECIAL_LOSS_PATTERNS.some((p) => p.test(key))) return 'specialLoss';
-  if (TAX_PATTERNS.some((p) => p.test(key))) return 'tax';
-  const skip = new Set([
-    '普通預金', '売掛金', '貸倒引当金', '未払金', '未払費用', '前払金', '前払費用',
-    '長期前払費用', '保険積立金', '資本金', '繰越利益剰余金', '長期未払金', '長期借入金', '短期借入金',
-    '工具器具備品', '車両運搬具', 'ソフトウェア', '貯蔵品', '少額資産', '仮払消費税',
-    '未払消費税', '未払法人税等', '役員借入金', '預り金', '仮受消費税', '仮払金', '立替金', '未収還付法人税等',
-    ...BS_PL_SKIP_ACCOUNTS,
-  ]);
-  if (skip.has(account)) return null;
-  if (BS_SKIP_ACCOUNT_PATTERNS.some((p) => p.test(account))) return null;
-  return 'expense';
+  return categorizeAccountKey(key);
 }
 
 function pushSection(sections, cfg) {
@@ -402,6 +346,7 @@ function aggregateJournal(text) {
   const aggregated = new Map();
   const cashFlow = { inflow: emptyMonthValues(), outflow: emptyMonthValues() };
   const otherPayments = new Map();
+  const paymentCounterparts = getPaymentCounterpartsSet();
 
   const trackPayment = (account, sub, amount, month) => {
     const key = sub ? `${account}|${sub}` : account;
@@ -437,10 +382,10 @@ function aggregateJournal(text) {
       cashFlow.outflow[mk] += creditAmt;
     }
 
-    if (creditAcct === '普通預金' && debitAmt > 0 && PAYMENT_COUNTERPARTS.has(debitAcct)) {
+    if (creditAcct === '普通預金' && debitAmt > 0 && paymentCounterparts.has(debitAcct)) {
       trackPayment(debitAcct, debitSub, debitAmt, mk);
     }
-    if (debitAcct === '普通預金' && creditAmt > 0 && PAYMENT_COUNTERPARTS.has(creditAcct)) {
+    if (debitAcct === '普通預金' && creditAmt > 0 && paymentCounterparts.has(creditAcct)) {
       trackPayment(creditAcct, creditSub, creditAmt, mk);
     }
 
@@ -979,7 +924,7 @@ function buildBsSections(bsText, expandConfig, expandCandidates) {
 
   const currentAssets = appendMissingBsAccountRows(
     extractBsRows(bsText, ['流動資産'], '流動資産合計'),
-    BS_CURRENT_ASSET_ALWAYS_VISIBLE,
+    getBsCurrentAssetAlwaysVisible(),
   );
   if (currentAssets.length) {
     sections.push(bsRowsToSection(
@@ -989,7 +934,7 @@ function buildBsSections(bsText, expandConfig, expandCandidates) {
 
   const investmentOtherAssets = appendMissingBsAccountRows(
     extractBsRows(bsText, ['投資その他の資産'], '投資その他の資産合計'),
-    BS_INVESTMENT_OTHER_ALWAYS_VISIBLE,
+    getBsInvestmentOtherAlwaysVisible(),
   );
   const fixedAssets = [
     ...extractBsRows(bsText, ['有形固定資産'], '有形固定資産合計'),
@@ -1005,7 +950,7 @@ function buildBsSections(bsText, expandConfig, expandCandidates) {
 
   const deferredAssets = appendMissingBsAccountRows(
     extractBsRows(bsText, ['繰延資産'], '繰延資産合計'),
-    BS_DEFERRED_ASSET_ALWAYS_VISIBLE,
+    getBsDeferredAssetAlwaysVisible(),
   );
   if (deferredAssets.length) {
     sections.push(bsRowsToSection(

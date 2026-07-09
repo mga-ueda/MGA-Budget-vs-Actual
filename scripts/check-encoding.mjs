@@ -20,7 +20,7 @@ const SKIP_FILES = new Set([
   resolve(repoRoot, 'scripts/patch-expense-config.mjs'),
 ]);
 
-const EXPENSE_CONFIG = resolve(repoRoot, 'src/config/expenseAccountConfig.js');
+const EXPENSE_CONFIG = resolve(repoRoot, 'src/config/journalDefinitionConfig.js');
 
 const MOJIBAKE_CODE_POINTS = [
   0x7E5D, 0x7E3A, 0x96E3, 0x8AAA, 0x9A5B, 0x9AE2, 0x7ACA,
@@ -144,7 +144,7 @@ if (EXPENSE_CONFIG) {
   const expenseText = readFileSync(EXPENSE_CONFIG, 'utf8');
   for (const required of REQUIRED_EXPENSE_ACCOUNTS) {
     if (!expenseText.includes(required)) {
-      errors.push(`src/config/expenseAccountConfig.js: ${jp(0x6b63, 0x3057, 0x3044, 0x8868, 0x8a18, 0x304c, 0x3042, 0x308a, 0x307e, 0x305b, 0x3093, 0xFF08)}${required}）`);
+      errors.push(`src/config/journalDefinitionConfig.js: ${jp(0x6b63, 0x3057, 0x3044, 0x8868, 0x8a18, 0x304c, 0x3042, 0x308a, 0x307e, 0x305b, 0x3093, 0xFF08)}${required}）`);
     }
   }
 }

@@ -1,4 +1,4 @@
-import { canonicalExpenseAccount, EXPENSE_SECTION_ACCOUNTS } from './expenseAccountConfig.js';
+import { canonicalExpenseAccount, getExpenseSectionAccounts } from './expenseAccountConfig.js';
 import { formatFiscalPeriodLabel } from './appSettings.js';
 import { normalizeAmount, emptyMonthly } from './planAmountUtils.js';
 
@@ -95,7 +95,7 @@ export function buildExpenseOverrideMapForPeriod(overrides, fiscalPeriod, fiscal
 /** プルダウン用の諸経勘定科目候補 */
 export function collectExpenseOverrideAccountCandidates(planData, selectedAccounts = []) {
   const selected = new Set(selectedAccounts);
-  const accounts = new Set(EXPENSE_SECTION_ACCOUNTS);
+  const accounts = new Set(getExpenseSectionAccounts());
   const expenseSection = planData?.sections?.find((s) => s.id === 'expense');
   if (expenseSection) {
     for (const row of expenseSection.rows) {

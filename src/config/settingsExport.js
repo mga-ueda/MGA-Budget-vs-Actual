@@ -42,6 +42,7 @@ export const ALL_SETTINGS_STORAGE_KEYS = [
   'mga-section-filter',
   'mga-ui-colors',
   'mga-csv-name-config',
+  'mga-journal-definition',
   'mga-month-display',
 ];
 

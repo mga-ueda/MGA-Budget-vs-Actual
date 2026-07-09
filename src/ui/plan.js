@@ -314,6 +314,8 @@ import {
   applyManMonthsFromMonthForward,
 } from '../config/revenuePlanConfig.js';
 import { mountRevenueSettingsPanel, refreshRevenueSettingsSectionTitles, applyRevenueSettingsMonthDisplayDom } from './revenueSettings.js';
+import { mountJournalDefinitionSettingsPanel } from './journalDefinitionSettings.js';
+import { loadJournalDefinition, setActiveJournalDefinition } from '../config/journalDefinitionConfig.js';
 import {
   createPlanMonthDisplayUi,
   createPlanAmountCellEditor,
@@ -880,6 +882,7 @@ function getPlanColorMode() {
 }
 let uiColorConfig = loadUiColorConfig();
 let csvNameConfig = loadCsvNameConfig();
+setActiveJournalDefinition(loadJournalDefinition());
 let appSettings = loadAppSettings();
 let employees = loadEmployees();
 let salaryPlans = loadSalaryPlans();
@@ -1610,9 +1613,16 @@ function isOutsourcingFixedDisplayRow(section, row) {
     && row.type !== 'breakdown';
 }
 
+/** 売上高差異: 売掛金の明細行は諸経費の明細行と同じ小さいフォントで表示する */
+function isReceivableDetailRow(sectionId, row) {
+  return sectionId === 'revenueVariance'
+    && (row.type === 'item' || row.type === 'group' || row.type === 'sub');
+}
+
 function planRowUsesLargeDisplay(section, row) {
   if (isOutsourcingBreakdownRow(section.id, row)) return false;
   if (isRevenueManMonthRow(section.id, row)) return false;
+  if (isReceivableDetailRow(section.id, row)) return false;
   if (isVisibilityFixedSection(section.id)) return true;
   if (row.type === 'plan' && !isOutsourcingFixedDisplayRow(section, row)) return false;
   if (planRowHasAccentBackground(section, row)) return true;
@@ -4687,6 +4697,7 @@ const MAIN_MENU_ENTRIES = [
   { kind: 'heading', label: '設定' },
   { kind: 'item', value: 'orders', label: '受注', indented: true, shortcutKey: 'O' },
   { kind: 'item', value: 'taxrates', label: '税率定義', indented: true, shortcutKey: 'T' },
+  { kind: 'item', value: 'journaldefinition', label: '仕訳定義', indented: true, shortcutKey: 'J' },
   { kind: 'item', value: 'taxpayments', label: '支払い', indented: true, shortcutKey: 'Y' },
   { kind: 'item', value: 'employees', label: '人件費', indented: true, shortcutKey: 'E' },
   { kind: 'item', value: 'outsourcing', label: '外注費', indented: true, shortcutKey: 'U' },
@@ -4884,6 +4895,7 @@ function renderView({ measureColumnWidths = false } = {}) {
     }
   } else if (activeTab === 'visibility') renderVisibilitySettings();
   else if (activeTab === 'taxrates') renderTaxRateSettings();
+  else if (activeTab === 'journaldefinition') renderJournalDefinitionSettings();
   else if (activeTab === 'orders') renderRevenueSettings();
   else if (activeTab === 'taxpayments') renderTaxPaymentSettings();
   else if (activeTab === 'employees') renderEmployeeSettings();
@@ -9296,6 +9308,18 @@ function renderEmployeeSettings() {
   refreshPlanKpi();
 }
 
+function renderJournalDefinitionSettings() {
+  setPlanKpi(null);
+  mountJournalDefinitionSettingsPanel({
+    replaceRootPanel,
+    refreshPlanData: () => {
+      rebuildPlanData();
+      if (activeTab === 'plan' && data) refreshPlanTable();
+    },
+    getSectionFilterColors: getFilterButtonColors,
+  });
+}
+
 function renderRevenueSettings() {
   mountRevenueSettingsPanel({
     replaceRootPanel,
@@ -10769,6 +10793,7 @@ function reloadAllSettingsFromStorage() {
   sectionColorConfig = loadSectionColorConfig();
   uiColorConfig = loadUiColorConfig();
   csvNameConfig = loadCsvNameConfig();
+  setActiveJournalDefinition(loadJournalDefinition());
   appSettings = loadAppSettings();
   employees = loadEmployees();
   salaryPlans = loadSalaryPlans();

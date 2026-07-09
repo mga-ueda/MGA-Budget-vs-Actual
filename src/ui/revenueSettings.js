@@ -350,7 +350,7 @@ import { applySectionFilterTitleStyle } from './planSettingsTableUi.js';
 function refreshRevenueSettingsSectionTitles(getSectionFilterColors) {
   if (!getSectionFilterColors) return;
   document.querySelectorAll(
-    '.revenue-settings-wrap [data-section-filter], .expense-plan-override-section [data-section-filter], .employee-settings-wrap [data-section-filter], .outsourcing-settings-wrap [data-section-filter], .tax-payment-settings-wrap [data-section-filter]',
+    '.revenue-settings-wrap [data-section-filter], .expense-plan-override-section [data-section-filter], .employee-settings-wrap [data-section-filter], .outsourcing-settings-wrap [data-section-filter], .tax-payment-settings-wrap [data-section-filter], .journal-definition-settings-wrap [data-section-filter]',
   ).forEach((el) => {
     applySectionFilterTitleStyle(el, el.dataset.sectionFilter, getSectionFilterColors);
   });

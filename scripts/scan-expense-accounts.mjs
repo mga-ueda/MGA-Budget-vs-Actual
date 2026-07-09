@@ -12,6 +12,7 @@ import {
   EXPENSE_SECTION_ACCOUNTS,
   canonicalExpenseAccount,
 } from '../src/config/expenseAccountConfig.js';
+import { isExpenseSectionDisplayAccount } from '../src/config/journalDefinitionConfig.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '..');
@@ -30,18 +31,11 @@ const JOURNAL_FILES = [
   '第８期/仕訳データ_2025-12-01_2026-11-30.csv',
 ];
 
-const SGA_ACCOUNT_EXCEPTIONS = new Set([
-  '荷造運賃',
-  '地代家賃',
-  '賃借料',
-]);
-
-/** 諸経費セクションの常時表示対象を判定 */
+/** 諸経費セクションの常時表示対象を判定（仕訳定義設定を参照） */
 function isScannableExpenseAccount(account) {
   if (!account) return false;
   if (categorizeAccount(account) !== 'expense') return false;
-  if (/(?:費|料)$/.test(account)) return true;
-  return SGA_ACCOUNT_EXCEPTIONS.has(account);
+  return isExpenseSectionDisplayAccount(account);
 }
 
 function scanJournalFile(text) {

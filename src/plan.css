@@ -1798,6 +1798,52 @@ select.app-settings-input {
   vertical-align: middle;
 }
 
+/* 仕訳定義: 税率定義ページに合わせたレイアウト（内容の自然幅で表示し、ブラウザ全幅には広げない） */
+.journal-definition-settings-wrap .expand-settings-header {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+}
+
+.journal-definition-settings-wrap .expand-settings-desc {
+  max-width: none;
+  flex: 0 1 auto;
+  width: 100%;
+}
+
+.journal-definition-settings-wrap .expand-settings-header-actions {
+  align-self: flex-start;
+}
+
+/* グループ（PL・諸経費など）は罫線で区切り、内側のセクションは税率ページと同じ間隔で積む */
+.journal-definition-settings-stack .journal-definition-group {
+  gap: 0.85rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--plan-border);
+}
+
+.journal-definition-settings-stack .journal-definition-group:first-child {
+  padding-top: 0;
+  border-top: none;
+}
+
+.journal-definition-group .ui-color-panel-title {
+  margin: 0;
+}
+
+.journal-definition-section .journal-definition-table {
+  width: max-content;
+  min-width: 0;
+  max-width: 100%;
+  align-self: flex-start;
+}
+
+/* パターン・勘定名は短いため、CSV名設定の入力より狭くする */
+.journal-definition-settings-wrap .journal-definition-value-input {
+  width: 24rem;
+  max-width: 100%;
+}
+
 .consumption-tax-rate-table th,
 .tax-rate-table th,
 .consumption-tax-rate-table td,

@@ -7,6 +7,7 @@ import {
   categorizeAccount,
   isInterAccountCashTransfer,
 } from './parseJournal.js';
+import { getPaymentCounterpartsSet } from '../config/journalDefinitionConfig.js';
 
 const PL_SECTION_CATEGORY = {
   revenue: 'revenue',
@@ -165,12 +166,13 @@ function filterCashflow(entries, row, months) {
 
 function filterOtherPay(entries, section, row, months) {
   const keys = collectSectionAccountKeys(section, row);
+  const paymentCounterparts = getPaymentCounterpartsSet();
   return entries.filter((e) => {
     if (!months.includes(e.monthKey)) return false;
     const debitPay = e.creditAcct === '普通預金' && e.debitAmt > 0
-      && PAYMENT_COUNTERPARTS.has(e.debitAcct);
+      && paymentCounterparts.has(e.debitAcct);
     const creditPay = e.debitAcct === '普通預金' && e.creditAmt > 0
-      && PAYMENT_COUNTERPARTS.has(e.creditAcct);
+      && paymentCounterparts.has(e.creditAcct);
     if (!debitPay && !creditPay) return false;
     if (row.type === 'total') return true;
     const counterpart = debitPay ? e.debitAcct : e.creditAcct;
