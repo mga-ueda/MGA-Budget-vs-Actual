@@ -4,7 +4,6 @@
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
-    "check:encoding": "node scripts/check-encoding.mjs",
-    "scan:expense": "node scripts/scan-expense-accounts.mjs"
+    "check:encoding": "node scripts/check-encoding.mjs"
   }
 }

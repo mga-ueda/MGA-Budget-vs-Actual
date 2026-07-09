@@ -17,7 +17,6 @@ const SKIP_FILES = new Set([
   resolve(repoRoot, 'src/plan.bundle.js'),
   resolve(repoRoot, 'scripts/check-encoding.mjs'),
   resolve(repoRoot, 'scripts/fix-all-encoding.mjs'),
-  resolve(repoRoot, 'scripts/patch-expense-config.mjs'),
 ]);
 
 const EXPENSE_CONFIG = resolve(repoRoot, 'src/config/journalDefinitionConfig.js');

@@ -11,38 +11,6 @@ function jp(...codes) {
   return String.fromCodePoint(...codes);
 }
 
-const EXPENSE_ACCOUNTS = [
-  [0x798f, 0x5229, 0x539a, 0x751f, 0x8cbb],
-  [0x8377, 0x9020, 0x904b, 0x8cc3],
-  [0x5e83, 0x544a, 0x8cbb],
-  [0x4ea4, 0x969b, 0x8cbb],
-  [0x65c5, 0x8cbb, 0x4ea4, 0x901a, 0x8cbb],
-  [0x901a, 0x4fe1, 0x8cbb],
-  [0x6c34, 0x9053, 0x5149, 0x71b1, 0x8cbb],
-  [0x4fee, 0x7e55, 0x8cbb],
-  [0x8eca, 0x4e21, 0x8cbb],
-  [0x8cc3, 0x501f, 0x6599],
-  [0x5730, 0x4ee3, 0x5bb6, 0x8cc3],
-  [0x4fdd, 0x967a, 0x6599],
-  [0x652f, 0x6255, 0x624b, 0x6570, 0x6599],
-  [0x4f1a, 0x8b70, 0x8cbb],
-  [0x65b0, 0x805e, 0x56f3, 0x66f8, 0x8cbb],
-  [0x6d88, 0x8017, 0x54c1, 0x8cbb],
-  [0x8af8, 0x4f1a, 0x8cbb],
-  [0x7814, 0x4fee, 0x8cbb],
-  [0x652f, 0x6255, 0x9867, 0x554f, 0x6599],
-].map((cps) => String.fromCodePoint(...cps));
-
-function escapeSingleQuoted(value) {
-  return `'${value.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
-}
-
-function write(relPath, content) {
-  const path = resolve(repoRoot, relPath);
-  writeFileSync(path, content, { encoding: 'utf8' });
-  console.log('Wrote', relPath);
-}
-
 function replaceFunctionComment(source, functionName, commentText) {
   const marker = `export function ${functionName}`;
   const idx = source.indexOf(marker);
@@ -57,16 +25,24 @@ function replaceFunctionComment(source, functionName, commentText) {
   return `${before.slice(0, commentStart)}/** ${commentText} */\n${after}`;
 }
 
-const accountLines = EXPENSE_ACCOUNTS.map((name) => `  ${escapeSingleQuoted(name)},`).join('\n');
+function escapeSingleQuoted(value) {
+  return `'${value.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
+}
+
+function write(relPath, content) {
+  const path = resolve(repoRoot, relPath);
+  writeFileSync(path, content, { encoding: 'utf8' });
+  console.log('Wrote', relPath);
+}
 
 const expenseAccountConfig = `/**
  * ${jp(0x8af8, 0x7d4c, 0x8cbb, 0x30bb, 0x30af, 0x30b7, 0x30e7, 0x30f3, 0x3067, 0x5e38, 0x6642, 0x8868, 0x793a, 0x3059, 0x308b, 0x52d8, 0x5b9a, 0x79d1, 0x76ee, 0x4e00, 0x89a7, 0xFF08, 0x4ed5, 0x8a33, 0x304c, 0x306a, 0x304f, 0x3066, 0x3082, 0x20, 0x30, 0x5186, 0x3067, 0x8868, 0x793a, 0xFF09, 0x3002)}
- * ${jp(0x79d1, 0x76ee, 0x540d, 0x306f, 0x4ed5, 0x8a33, 0x20, 0x43, 0x53, 0x56, 0x306e, 0x8868, 0x8a18, 0x3092, 0x512a, 0x5148, 0xFF08, 0x73, 0x63, 0x72, 0x69, 0x70, 0x74, 0x73, 0x2f, 0x73, 0x63, 0x61, 0x6e, 0x2d, 0x65, 0x78, 0x70, 0x65, 0x6e, 0x73, 0x65, 0x2d, 0x61, 0x63, 0x63, 0x6f, 0x75, 0x6e, 0x74, 0x73, 0x2e, 0x6d, 0x6a, 0x73, 0xFF09, 0x3002}
  * ${jp(0x5b9f, 0x884c, 0x6642, 0x306e, 0x4e00, 0x89a7, 0x306f, 0x4ed5, 0x8a33, 0x5b9a, 0x7fa9, 0x8a2d, 0x5b9a, 0xFF08, 0x6a, 0x6f, 0x75, 0x72, 0x6e, 0x61, 0x6c, 0x44, 0x65, 0x66, 0x69, 0x6e, 0x69, 0x74, 0x69, 0x6f, 0x6e, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0xFF09, 0x3092, 0x53c2, 0x7167, 0x3057, 0x307e, 0x3059, 0x3002)}
  */
 import {
   DEFAULT_JOURNAL_DEFINITION,
   getJournalDefinition,
+  isExpenseSectionDisplayAccount,
 } from './journalDefinitionConfig.js';
 
 export const EXPENSE_SECTION_ACCOUNTS = DEFAULT_JOURNAL_DEFINITION.expenseSectionAccounts;
@@ -139,6 +115,7 @@ export function mergeExpenseSectionItems(journalItems, emptyMonthValues) {
   for (const item of journalItems) {
     const account = canonicalExpenseAccount(item.account);
     if (expenseAccountSet.has(account)) continue;
+    if (!isExpenseSectionDisplayAccount(account)) continue;
     merged.push({ ...item, account });
   }
 
@@ -293,161 +270,6 @@ export function applyExpenseSortToPlanData(planData, config) {
 }
 `;
 
-const period = (n) => `${String.fromCodePoint(0x7b2c)}${String.fromCodePoint(0xff10 + n)}${String.fromCodePoint(0x671f)}`;
-const journalPrefix = jp(0x4ed5, 0x8a33, 0x30c7, 0x30fc, 0x30bf, 0x5f);
-
-const JOURNAL_FILES = [
-  `${period(1)}/${journalPrefix}2018-12-07_2019-11-30.csv`,
-  `${period(2)}/${journalPrefix}2019-12-01_2020-11-30.csv`,
-  `${period(3)}/${journalPrefix}2020-12-01_2021-11-30.csv`,
-  `${period(4)}/${journalPrefix}2021-12-01_2022-11-30.csv`,
-  `${period(5)}/${journalPrefix}2022-12-01_2023-11-30.csv`,
-  `${period(6)}/${journalPrefix}2023-12-01_2024-11-30.csv`,
-  `${period(7)}/${journalPrefix}2024-12-01_2025-11-30.csv`,
-  `${period(8)}/${journalPrefix}2025-12-01_2026-11-30.csv`,
-];
-
-const journalFilesLiteral = JOURNAL_FILES.map((p) => `  ${escapeSingleQuoted(p)},`).join('\n');
-
-const scanExpenseAccounts = `/**
- * ${jp(0x5168, 0x671f, 0x306e, 0x4ed5, 0x8a33, 0x20, 0x43, 0x53, 0x56, 0x304b, 0x3089, 0x8af8, 0x7d4c, 0x8cbb, 0x52d8, 0x5b9a, 0x79d1, 0x76ee, 0x3092, 0x30b9, 0x30ad, 0x30e3, 0x30f3, 0x3057, 0x3001, 0x65, 0x78, 0x70, 0x65, 0x6e, 0x73, 0x65, 0x41, 0x63, 0x63, 0x6f, 0x75, 0x6e, 0x74, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x2e, 0x6a, 0x73, 0x3092, 0x66f4, 0x65b0, 0x3059, 0x308b, 0x3002)}
- * ${jp(0x5b9f, 0x884c, 0x3a, 0x20, 0x73, 0x63, 0x61, 0x6e, 0x2d, 0x65, 0x78, 0x70, 0x65, 0x6e, 0x73, 0x65, 0x2e, 0x62, 0x61, 0x74, 0x20, 0x307e, 0x305f, 0x306f, 0x20, 0x6e, 0x6f, 0x64, 0x65, 0x20, 0x73, 0x63, 0x72, 0x69, 0x70, 0x74, 0x73, 0x2f, 0x73, 0x63, 0x61, 0x6e, 0x2d, 0x65, 0x78, 0x70, 0x65, 0x6e, 0x73, 0x65, 0x2d, 0x61, 0x63, 0x63, 0x6f, 0x75, 0x6e, 0x74, 0x73, 0x2e, 0x6d, 0x6a, 0x73)}
- */
-import { readFileSync, writeFileSync, existsSync } from 'fs';
-import { resolve, join, dirname } from 'path';
-import { fileURLToPath } from 'url';
-import { execSync } from 'child_process';
-import { parseCsvLine, decodeCsvBuffer } from '../src/parse/parser.js';
-import { categorizeAccount } from '../src/parse/parseJournal.js';
-import {
-  EXPENSE_SECTION_ACCOUNTS,
-  canonicalExpenseAccount,
-} from '../src/config/expenseAccountConfig.js';
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const repoRoot = resolve(__dirname, '..');
-const csvRoot = resolve(repoRoot, 'csv');
-const configPath = resolve(repoRoot, 'src/config/expenseAccountConfig.js');
-const outputPath = resolve(__dirname, 'expense-scan-output.json');
-
-const JOURNAL_FILES = [
-${journalFilesLiteral}
-];
-
-const SGA_ACCOUNT_EXCEPTIONS = new Set([
-  ${escapeSingleQuoted(jp(0x8377, 0x9020, 0x904b, 0x8cc3))},
-  ${escapeSingleQuoted(jp(0x5730, 0x4ee3, 0x5bb6, 0x8cc3))},
-  ${escapeSingleQuoted(jp(0x8cc3, 0x501f, 0x6599))},
-]);
-
-/** ${jp(0x8af8, 0x7d4c, 0x8cbb, 0x30bb, 0x30af, 0x30b7, 0x30e7, 0x30f3, 0x306e, 0x5e38, 0x6642, 0x8868, 0x793a, 0x5bfe, 0x8c61, 0x3092, 0x5224, 0x5b9a)} */
-function isScannableExpenseAccount(account) {
-  if (!account) return false;
-  if (categorizeAccount(account) !== 'expense') return false;
-  if (/(?:${jp(0x8cbb)}|${jp(0x6599)})$/.test(account)) return true;
-  return SGA_ACCOUNT_EXCEPTIONS.has(account);
-}
-
-function scanJournalFile(text) {
-  const byCanonical = new Map();
-  for (const line of text.split(/\\r?\\n/).slice(1)) {
-    if (!line.trim()) continue;
-    const cells = parseCsvLine(line);
-    if (cells[19]?.trim() === ${escapeSingleQuoted(jp(0x958b, 0x59cb, 0x4ed5, 0x8a33))}) continue;
-
-    for (const account of [cells[2]?.trim(), cells[10]?.trim()]) {
-      if (!isScannableExpenseAccount(account)) continue;
-      const key = canonicalExpenseAccount(account);
-      const prev = byCanonical.get(key);
-      if (!prev) {
-        byCanonical.set(key, { name: account, count: 1 });
-      } else {
-        prev.count += 1;
-        if (account !== prev.name) prev.name = account;
-      }
-    }
-  }
-  return byCanonical;
-}
-
-function mergeAccountLists(existing, scannedByCanonical) {
-  const merged = [];
-  const known = new Set();
-
-  for (const name of existing) {
-    const key = canonicalExpenseAccount(name);
-    known.add(key);
-    const fromJournal = scannedByCanonical.get(key);
-    merged.push(fromJournal?.name ?? name);
-  }
-
-  const additions = [];
-  return { merged, additions };
-}
-
-function escapeSingleQuoted(value) {
-  return \`'\${value.replace(/\\\\/g, '\\\\\\\\').replace(/'/g, "\\\\'")}'\`;
-}
-
-function formatAccountsArray(accounts) {
-  return accounts.map((account) => \`  \${escapeSingleQuoted(account)},\`).join('\\n');
-}
-
-function updateExpenseAccountConfig(accounts) {
-  const source = readFileSync(configPath, 'utf8');
-  const arrayBlock = \`export const EXPENSE_SECTION_ACCOUNTS = [\\n\${formatAccountsArray(accounts)}\\n];\`;
-  const updated = source.replace(
-    /export const EXPENSE_SECTION_ACCOUNTS = \\[[\\s\\S]*?\\];/,
-    arrayBlock,
-  );
-  if (updated === source) {
-    throw new Error(${escapeSingleQuoted(jp(0x45, 0x58, 0x50, 0x45, 0x4e, 0x53, 0x45, 0x5f, 0x53, 0x45, 0x43, 0x54, 0x49, 0x4f, 0x4e, 0x5f, 0x41, 0x43, 0x43, 0x4f, 0x55, 0x4e, 0x54, 0x53, 0x306e, 0x66f4, 0x65b0, 0x306b, 0x5931, 0x6557, 0x3057, 0x307e, 0x3057, 0x305f))});
-  }
-  writeFileSync(configPath, updated, { encoding: 'utf8' });
-}
-
-const scannedByCanonical = new Map();
-for (const rel of JOURNAL_FILES) {
-  const filePath = join(csvRoot, rel);
-  if (!existsSync(filePath)) {
-    console.warn(\`${jp(0x30B9, 0x30AD, 0x30C3, 0x30D7, 0xFF08, 0x30d5, 0x30a1, 0x30a4, 0x30eb, 0x306a, 0x3057, 0xFF09, 0x3a, 0x20)}\${filePath}\`);
-    continue;
-  }
-  const text = decodeCsvBuffer(readFileSync(filePath));
-  for (const [key, entry] of scanJournalFile(text)) {
-    const prev = scannedByCanonical.get(key);
-    if (!prev || entry.count > prev.count) {
-      scannedByCanonical.set(key, { ...entry });
-    }
-  }
-}
-
-const { merged, additions } = mergeAccountLists(EXPENSE_SECTION_ACCOUNTS, scannedByCanonical);
-const spellingChanges = merged.filter((name, index) => name !== EXPENSE_SECTION_ACCOUNTS[index]);
-const unchanged = additions.length === 0
-  && spellingChanges.length === 0
-  && merged.length === EXPENSE_SECTION_ACCOUNTS.length;
-
-writeFileSync(outputPath, \`\${JSON.stringify({
-  scannedFiles: JOURNAL_FILES.length,
-  previousCount: EXPENSE_SECTION_ACCOUNTS.length,
-  nextCount: merged.length,
-  additions,
-  accounts: merged,
-}, null, 2)}\\n\`, { encoding: 'utf8' });
-
-if (unchanged) {
-  console.log(\`${jp(0x5909, 0x66f4, 0x306a, 0x3057, 0xFF08)}\${merged.length}${jp(0x20, 0x79d1, 0x76ee, 0xFF09, 0x3002, 0x20)}\${outputPath} ${jp(0x3092, 0x51fa, 0x529b, 0x3057, 0x307e, 0x3057, 0x305f, 0x3002)}\`);
-} else {
-  updateExpenseAccountConfig(merged);
-  execSync('node scripts/check-encoding.mjs', { cwd: repoRoot, stdio: 'inherit' });
-  execSync('node build.mjs', { cwd: repoRoot, stdio: 'inherit' });
-  console.log(\`${jp(0x66f4, 0x65b0, 0x3057, 0x307e, 0x3057, 0x305f, 0x3a, 0x20)}\${configPath}\`);
-  console.log(\`${jp(0x8ffd, 0x52a0, 0x20)}\${additions.length}${jp(0x20, 0x79d1, 0x76ee, 0x3a, 0x20)}\${additions.join(${escapeSingleQuoted(jp(0x3001))}) || ${escapeSingleQuoted(jp(0x306a, 0x3057))}}\`);
-  console.log(\`${jp(0x5408, 0x8a08, 0x20)}\${merged.length}${jp(0x20, 0x79d1, 0x76ee, 0x3002, 0x20)}\${outputPath} ${jp(0x3092, 0x51fa, 0x529b, 0x3057, 0x307e, 0x3057, 0x305f, 0x3002)}\`);
-}
-`;
-
 const checkEncoding = `/**
  * ${jp(0x6587, 0x5b57, 0x30b3, 0x30fc, 0x30c9, 0x306e, 0x6587, 0x5b57, 0x5316, 0x3051, 0x30fb, 0x82f1, 0x8a9e, 0x30b3, 0x30e1, 0x30f3, 0x30c8, 0x3092, 0x691c, 0x67fb, 0x3059, 0x308b, 0x3002)}
  */
@@ -467,7 +289,6 @@ const SKIP_FILES = new Set([
   resolve(repoRoot, 'src/plan.bundle.js'),
   resolve(repoRoot, 'scripts/check-encoding.mjs'),
   resolve(repoRoot, 'scripts/fix-all-encoding.mjs'),
-  resolve(repoRoot, 'scripts/patch-expense-config.mjs'),
 ]);
 
 const EXPENSE_CONFIG = resolve(repoRoot, 'src/config/journalDefinitionConfig.js');
@@ -610,25 +431,12 @@ if (errors.length > 0) {
 console.log(jp(0x6587, 0x5b57, 0x30b3, 0x30fc, 0x30c9, 0x30c1, 0x30a7, 0x30c3, 0x30af, 0x20, 0x4f, 0x4b));
 `;
 
-const restoreScript = `/**
- * ${jp(0x65, 0x78, 0x70, 0x65, 0x6e, 0x73, 0x65, 0x41, 0x63, 0x63, 0x6f, 0x75, 0x6e, 0x74, 0x43, 0x6f, 0x6e, 0x66, 0x69, 0x67, 0x2e, 0x6a, 0x73, 0x3092, 0x518d, 0x751f, 0x6210, 0xFF08, 0x66, 0x69, 0x78, 0x2d, 0x61, 0x6c, 0x6c, 0x2d, 0x65, 0x6e, 0x63, 0x6f, 0x64, 0x69, 0x6e, 0x67, 0x2e, 0x6d, 0x6a, 0x73, 0x3092, 0x5b9f, 0x884c, 0xFF09, 0x3002)}
- */
-import { execSync } from 'child_process';
-import { resolve, dirname } from 'path';
-import { fileURLToPath } from 'url';
-
-const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-execSync('node scripts/fix-all-encoding.mjs', { cwd: repoRoot, stdio: 'inherit' });
-`;
-
-execSync('node scripts/patch-expense-config.mjs', { cwd: repoRoot, stdio: 'inherit' });
 execSync('node scripts/write-bs-balance-sheet-account-config.mjs', { cwd: repoRoot, stdio: 'inherit' });
 execSync('node scripts/gen-journal-definition-config.mjs', { cwd: repoRoot, stdio: 'inherit' });
 execSync('node scripts/gen-journal-definition-settings.mjs', { cwd: repoRoot, stdio: 'inherit' });
+write('src/config/expenseAccountConfig.js', expenseAccountConfig);
 write('src/config/expenseSortConfig.js', expenseSortConfig);
-write('scripts/scan-expense-accounts.mjs', scanExpenseAccounts);
 write('scripts/check-encoding.mjs', checkEncoding);
-write('scripts/restore-expense-account-config.mjs', restoreScript);
 
 patchOutsourcingSources();
 patchEnglishComments();

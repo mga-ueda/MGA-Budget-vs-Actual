@@ -967,7 +967,6 @@ function categorizeAccountKey(key, definition = getJournalDefinition(), patterns
 /* config/expenseAccountConfig.js */
 /**
  * 諸経費セクションで常時表示する勘定科目一覧（仕訳がなくても 0円で表示）。
- * 科目名は仕訳 CSVの表記を優先（scripts/scan-expense-accounts.mjs）。
  * 実行時の一覧は仕訳定義設定（journalDefinitionConfig）を参照します。
  */
 
@@ -978,7 +977,7 @@ function getExpenseSectionAccounts() {
   return getJournalDefinition().expenseSectionAccounts;
 }
 
-/** 表記差を正し、一覧の表記に寄せる */
+/** 勘定科目名を一覧の正規表記に寄せる（表記差・異体字の重複を防ぐ） */
 function canonicalExpenseAccount(account) {
   if (!account) return account;
   const accounts = getExpenseSectionAccounts();
