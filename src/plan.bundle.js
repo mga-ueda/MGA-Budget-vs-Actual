@@ -46,6 +46,64 @@ async function readCsvFile(file) {
   return decodeCsvBuffer(buffer);
 }
 
+/* config/fiscalCalendar.js */
+const DEFAULT_FISCAL_END_MONTH = 12;
+
+/** 決算整理列ラベル */
+const SETTLEMENT_MONTH_LABEL = "決算整理";
+
+function normalizeFiscalEndMonth(value) {
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 1 || n > 12) return DEFAULT_FISCAL_END_MONTH;
+  return n;
+}
+
+/** 第一期の会計月 */
+function getFiscalYearStartMonth(fiscalEndMonth) {
+  const end = normalizeFiscalEndMonth(fiscalEndMonth);
+  return end === 12 ? 12 : (end % 12) + 1;
+}
+
+/** 決算月を含む会計期間の月ラベル配列 */
+function buildFiscalYearMonths(fiscalEndMonth) {
+  const start = getFiscalYearStartMonth(fiscalEndMonth);
+  const months = [];
+  let m = start;
+  for (let i = 0; i < 12; i += 1) {
+    months.push(`${m}月`);
+    m = (m % 12) + 1;
+  }
+  return months;
+}
+
+/** 決算整理を含む会計期間の月ラベル配列 */
+function buildFiscalMonths(fiscalEndMonth) {
+  return [...buildFiscalYearMonths(fiscalEndMonth), SETTLEMENT_MONTH_LABEL];
+}
+
+/** 会計期間の月終月 */
+function getLastRegularFiscalMonth(fiscalEndMonth) {
+  const months = buildFiscalYearMonths(fiscalEndMonth);
+  return months[months.length - 1];
+}
+
+function monthLabelToNumber(label) {
+  const m = String(label).match(/^(\d{1,2})月$/);
+  return m ? parseInt(m[1], 10) : null;
+}
+
+function monthNumberToLabel(num) {
+  return `${num}月`;
+}
+
+/** アプリ設定から会計月列を取得（決算月はCSVから判定するためデフォルト） */
+function getAppFiscalMonths() {
+  return FISCAL_MONTHS;
+}
+
+/** デフォルト */
+const FISCAL_MONTHS = buildFiscalMonths(DEFAULT_FISCAL_END_MONTH);
+
 /* config/planAmountUtils.js */
 function normalizeAmount(value) {
   if (value === null || value === undefined || value === '') return null;
@@ -2364,12 +2422,32 @@ function applyUiColors(config = {}) {
 }
 
 /* parse/parseJournal.js */
-const FISCAL_MONTHS = [
-  '12月', '1月', '2月', '3月', '4月', '5月', '6月',
-  '7月', '8月', '9月', '10月', '11月', '決算整理',
-];
-
 const EXTRA_COLUMNS = ['合計', '平均'];
+
+let _activeFiscalMonths = FISCAL_MONTHS;
+let _activeFiscalEndMonth = DEFAULT_FISCAL_END_MONTH;
+
+function resolveFiscalMonths(expandConfig = {}) {
+  const end = expandConfig.fiscalEndMonth ?? DEFAULT_FISCAL_END_MONTH;
+  return buildFiscalMonths(end);
+}
+
+function useFiscalContext(expandConfig, fn) {
+  const prevMonths = _activeFiscalMonths;
+  const prevEnd = _activeFiscalEndMonth;
+  _activeFiscalEndMonth = expandConfig?.fiscalEndMonth ?? DEFAULT_FISCAL_END_MONTH;
+  _activeFiscalMonths = resolveFiscalMonths(expandConfig);
+  try {
+    return fn();
+  } finally {
+    _activeFiscalMonths = prevMonths;
+    _activeFiscalEndMonth = prevEnd;
+  }
+}
+
+function getActiveFiscalMonths(fiscalMonths) {
+  return fiscalMonths ?? _activeFiscalMonths;
+}
 
 /** 貸借対照表・現預金の大項目（合計・平均列は表示しない） */
 const BS_SECTION_IDS = new Set([
@@ -2408,25 +2486,28 @@ function monthKey(dateStr) {
   return m === 12 ? '12月' : `${m}月`;
 }
 
-function emptyMonthValues() {
+function emptyMonthValues(fiscalMonths = _activeFiscalMonths) {
   const v = {};
-  for (const m of FISCAL_MONTHS) v[m] = 0;
+  for (const m of fiscalMonths) v[m] = 0;
   return v;
 }
 
-function enrichRowValues(values, mode = 'flow') {
-  if (mode === 'balance') return enrichBalanceRowValues(values);
-  const monthsWithData = FISCAL_MONTHS.filter((m) => (values[m] ?? 0) !== 0);
-  const total = FISCAL_MONTHS.reduce((s, m) => s + (values[m] ?? 0), 0);
+function enrichRowValues(values, mode = 'flow', fiscalMonths = _activeFiscalMonths) {
+  if (mode === 'balance') return enrichBalanceRowValues(values, fiscalMonths);
+  const months = getActiveFiscalMonths(fiscalMonths);
+  const monthsWithData = months.filter((m) => (values[m] ?? 0) !== 0);
+  const total = months.reduce((s, m) => s + (values[m] ?? 0), 0);
   const avg = monthsWithData.length > 0 ? Math.round(total / monthsWithData.length) : 0;
   return { ...values, 合計: total, 平均: avg };
 }
 
 /** BS 残高行: 合計=期末残高、平均=月次残高の平均 */
-function enrichBalanceRowValues(values) {
-  const monthsWithData = FISCAL_MONTHS.filter((m) => (values[m] ?? 0) !== 0);
-  const endBalance = values['決算整理']
-    ?? values['11月']
+function enrichBalanceRowValues(values, fiscalMonths = _activeFiscalMonths) {
+  const months = getActiveFiscalMonths(fiscalMonths);
+  const monthsWithData = months.filter((m) => (values[m] ?? 0) !== 0);
+  const lastRegularMonth = getLastRegularFiscalMonth(_activeFiscalEndMonth);
+  const endBalance = values[SETTLEMENT_MONTH_LABEL]
+    ?? values[lastRegularMonth]
     ?? (monthsWithData.length ? values[monthsWithData[monthsWithData.length - 1]] : 0)
     ?? 0;
   const avg = monthsWithData.length > 0
@@ -2455,7 +2536,7 @@ function makeRow(id, label, subLabel, values, type = 'item', parentId = null, va
 
 function buildArMinusRevValues(arValues, revValues) {
   const values = emptyMonthValues();
-  for (const m of FISCAL_MONTHS) {
+  for (const m of _activeFiscalMonths) {
     values[m] = (arValues[m] ?? 0) - (revValues[m] ?? 0);
   }
   return values;
@@ -2473,7 +2554,7 @@ function appendReceivableSubVarianceRows(filteredItems, revenueSection) {
     if (row.type !== 'item' && row.type !== 'sub') continue;
     const rev = revBySub.get(subSortKey(row.subLabel || '')) ?? emptyMonthValues();
     const diff = buildArMinusRevValues(monthValuesOnly(row.values), rev);
-    if (!FISCAL_MONTHS.some((m) => (diff[m] ?? 0) !== 0)) continue;
+    if (!_activeFiscalMonths.some((m) => (diff[m] ?? 0) !== 0)) continue;
     rows.push(makeRow(`${row.id}-saiko`, '', '差額有', diff, 'sub-variance', row.id));
   }
   return rows;
@@ -2482,7 +2563,7 @@ function appendReceivableSubVarianceRows(filteredItems, revenueSection) {
 function sumRawValues(items) {
   const total = emptyMonthValues();
   for (const item of items) {
-    for (const m of FISCAL_MONTHS) total[m] += item.values[m] ?? 0;
+    for (const m of _activeFiscalMonths) total[m] += item.values[m] ?? 0;
   }
   return total;
 }
@@ -2652,21 +2733,21 @@ function makeTotalRow(id, label, values, valueMode = 'flow', aggregateFormula = 
 function sumValues(rows) {
   const total = emptyMonthValues();
   for (const row of rows) {
-    for (const m of FISCAL_MONTHS) total[m] += row.values[m] ?? 0;
+    for (const m of _activeFiscalMonths) total[m] += row.values[m] ?? 0;
   }
   return total;
 }
 
 function subtractValues(a, b) {
   const r = emptyMonthValues();
-  for (const m of FISCAL_MONTHS) r[m] = (a[m] ?? 0) - (b[m] ?? 0);
+  for (const m of _activeFiscalMonths) r[m] = (a[m] ?? 0) - (b[m] ?? 0);
   for (const c of EXTRA_COLUMNS) r[c] = (a[c] ?? 0) - (b[c] ?? 0);
   return enrichRowValues(r);
 }
 
 function addValues(a, b) {
   const r = emptyMonthValues();
-  for (const m of FISCAL_MONTHS) r[m] = (a[m] ?? 0) + (b[m] ?? 0);
+  for (const m of _activeFiscalMonths) r[m] = (a[m] ?? 0) + (b[m] ?? 0);
   for (const c of EXTRA_COLUMNS) r[c] = (a[c] ?? 0) + (b[c] ?? 0);
   return enrichRowValues(r);
 }
@@ -2705,7 +2786,7 @@ function aggregateJournal(text) {
     const memo = cells[19]?.trim();
     if (memo === '開始仕訳') continue;
 
-    const mk = settlement === '決算整理仕訳' ? '決算整理' : monthKey(date);
+    const mk = settlement === '決算整理仕訳' ? SETTLEMENT_MONTH_LABEL : monthKey(date);
 
     const debitAcct = cells[2]?.trim();
     const debitSub = cells[3]?.trim();
@@ -2759,7 +2840,7 @@ function buildPlSections(aggregated, expandConfig, expandCandidates) {
   };
 
   for (const [key, { category, values }] of aggregated) {
-    const total = FISCAL_MONTHS.reduce((s, m) => s + Math.abs(values[m] ?? 0), 0);
+    const total = _activeFiscalMonths.reduce((s, m) => s + Math.abs(values[m] ?? 0), 0);
     if (total === 0) continue;
     const [account, sub] = key.split('|');
     bySection[category].push({ account, sub: sub ?? '', values });
@@ -2809,7 +2890,7 @@ function extractReceivableRowsFromBs(bsText) {
 
 function monthValuesOnly(values) {
   const months = {};
-  for (const m of FISCAL_MONTHS) months[m] = values[m] ?? 0;
+  for (const m of _activeFiscalMonths) months[m] = values[m] ?? 0;
   return months;
 }
 
@@ -2820,7 +2901,7 @@ function revenueBySub(revenueSection) {
     const key = subSortKey(row.subLabel || '');
     if (!bySub.has(key)) bySub.set(key, emptyMonthValues());
     const bucket = bySub.get(key);
-    for (const m of FISCAL_MONTHS) {
+    for (const m of _activeFiscalMonths) {
       bucket[m] = (bucket[m] ?? 0) + (row.values[m] ?? 0);
     }
   }
@@ -2831,7 +2912,7 @@ function sumRevValues(revBySub, subKeys) {
   const sum = emptyMonthValues();
   for (const key of subKeys) {
     const rev = revBySub.get(key) ?? emptyMonthValues();
-    for (const m of FISCAL_MONTHS) sum[m] += rev[m] ?? 0;
+    for (const m of _activeFiscalMonths) sum[m] += rev[m] ?? 0;
   }
   return sum;
 }
@@ -2844,7 +2925,7 @@ function sectionValuesBySub(section) {
     const key = subSortKey(row.subLabel || '');
     if (!bySub.has(key)) bySub.set(key, emptyMonthValues());
     const bucket = bySub.get(key);
-    for (const m of FISCAL_MONTHS) {
+    for (const m of _activeFiscalMonths) {
       bucket[m] = (bucket[m] ?? 0) + (row.values[m] ?? 0);
     }
   }
@@ -2901,7 +2982,7 @@ function shouldShowCrossVarianceMonth(section, row, month, ctx) {
 }
 
 function hasAnyMonthDifference(aValues, bValues) {
-  return FISCAL_MONTHS.some((m) => (aValues[m] ?? 0) !== (bValues[m] ?? 0));
+  return _activeFiscalMonths.some((m) => (aValues[m] ?? 0) !== (bValues[m] ?? 0));
 }
 
 /** 相手側の補助科目別月次と全月一致する明細行を除外 */
@@ -2937,7 +3018,7 @@ function extractReceivableRawItems(bsText) {
   return filterBsDuplicateParents(extractReceivableRowsFromBs(bsText))
     .filter((r) => !r.isTotal)
     .map((r) => ({ account: r.account, sub: r.sub ?? '', values: r.values }))
-    .filter((item) => FISCAL_MONTHS.some((m) => (item.values[m] ?? 0) !== 0));
+    .filter((item) => _activeFiscalMonths.some((m) => (item.values[m] ?? 0) !== 0));
 }
 
 function buildReceivablesSection(bsText, revenueSection, expandConfig, expandCandidates) {
@@ -3223,7 +3304,7 @@ function appendMissingBsAccountRows(rawRows, alwaysVisibleAccounts) {
       .map((r) => r.account),
   );
   const sampleValues = rawRows.find((r) => r.values)?.values;
-  const monthKeys = sampleValues ? Object.keys(sampleValues) : [...FISCAL_MONTHS];
+  const monthKeys = sampleValues ? Object.keys(sampleValues) : [..._activeFiscalMonths];
   const additions = [];
   for (const account of alwaysVisibleAccounts) {
     if (detailAccounts.has(account)) continue;
@@ -3362,47 +3443,52 @@ function buildCashFlowSections(cashFlow, otherPayments, bsText, expandConfig, ex
 
 function zeroOutPlanData(planData) {
   if (!planData) return buildFullPlan('', null);
+  const fiscalMonths = planData.fiscalMonths ?? _activeFiscalMonths;
   return {
     ...planData,
     sections: planData.sections.map((section) => ({
       ...section,
       rows: section.rows.map((row) => ({
         ...row,
-        values: enrichRowValues(emptyMonthValues(), row.valueMode ?? 'flow'),
+        values: enrichRowValues(emptyMonthValues(fiscalMonths), row.valueMode ?? 'flow', fiscalMonths),
       })),
     })),
   };
 }
 
 function buildFullPlan(journalText, bsText, expandConfig = {}) {
-  const { aggregated, cashFlow, otherPayments } = aggregateJournal(journalText);
-  const expandCandidates = [];
-  const plSections = buildPlSections(aggregated, expandConfig, expandCandidates);
-  const revenueSection = plSections.find((s) => s.id === 'revenue');
-  const receivablesSection = buildReceivablesSection(
-    bsText, revenueSection, expandConfig, expandCandidates,
-  );
-  const plWithAr = insertReceivablesAfterRevenue(plSections, receivablesSection);
-  const profitSection = buildProfitSection(plWithAr);
-  const bsSections = bsText ? buildBsSections(bsText, expandConfig, expandCandidates) : [];
-  const cfSections = bsText
-    ? buildCashFlowSections(cashFlow, otherPayments, bsText, expandConfig, expandCandidates)
-    : [];
+  return useFiscalContext(expandConfig, () => {
+    const { aggregated, cashFlow, otherPayments } = aggregateJournal(journalText);
+    const expandCandidates = [];
+    const plSections = buildPlSections(aggregated, expandConfig, expandCandidates);
+    const revenueSection = plSections.find((s) => s.id === 'revenue');
+    const receivablesSection = buildReceivablesSection(
+      bsText, revenueSection, expandConfig, expandCandidates,
+    );
+    const plWithAr = insertReceivablesAfterRevenue(plSections, receivablesSection);
+    const profitSection = buildProfitSection(plWithAr);
+    const bsSections = bsText ? buildBsSections(bsText, expandConfig, expandCandidates) : [];
+    const cfSections = bsText
+      ? buildCashFlowSections(cashFlow, otherPayments, bsText, expandConfig, expandCandidates)
+      : [];
 
-  const sections = [
-    ...plWithAr,
-    ...(profitSection ? [profitSection] : []),
-    ...bsSections,
-    ...cfSections,
-  ];
+    const sections = [
+      ...plWithAr,
+      ...(profitSection ? [profitSection] : []),
+      ...bsSections,
+      ...cfSections,
+    ];
 
-  return {
-    months: [...FISCAL_MONTHS, ...EXTRA_COLUMNS],
-    fiscalMonths: FISCAL_MONTHS,
-    sections,
-    expandCandidates,
-    visibilityCandidates: collectVisibilityCandidates(sections),
-  };
+    const fiscalMonths = [..._activeFiscalMonths];
+    return {
+      months: [...fiscalMonths, ...EXTRA_COLUMNS],
+      fiscalMonths,
+      fiscalEndMonth: _activeFiscalEndMonth,
+      sections,
+      expandCandidates,
+      visibilityCandidates: collectVisibilityCandidates(sections),
+    };
+  });
 }
 
 function parseJournalCsv(text) {
@@ -3858,11 +3944,11 @@ function drilldownCellKey(sectionId, row, month) {
 }
 
 /** 仕訳のあるセルキー一覧（データ読込時に1回構築） */
-function buildDrilldownIndex(entries, sections) {
+function buildDrilldownIndex(entries, sections, fiscalMonths = FISCAL_MONTHS) {
   const index = new Set();
   if (!entries.length || !sections?.length) return index;
 
-  const months = [...FISCAL_MONTHS, ...EXTRA_COLUMNS];
+  const months = [...fiscalMonths, ...EXTRA_COLUMNS];
   for (const section of sections) {
     for (const row of section.rows) {
       if (!isDrilldownAvailable(section, row)) continue;
@@ -4477,28 +4563,6 @@ const SALARY_PLAN_SETTINGS_STORAGE_KEY = 'mga-salary-plan-settings';
 const MAX_BONUS_COUNT = 2;
 const DEFAULT_BONUS_PAYMENT_MONTHS = [6, 12];
 const DEFAULT_TRAVEL_ALLOWANCE_PER_PERSON = 20000;
-
-function buildFiscalYearMonths(fiscalEndMonth) {
-  const end = normalizeFiscalEndMonth(fiscalEndMonth);
-  // 決算月12月の場合は表示順も12月始まり（12月→11月）
-  const start = end === 12 ? 12 : (end % 12) + 1;
-  const months = [];
-  let m = start;
-  for (let i = 0; i < 12; i += 1) {
-    months.push(`${m}月`);
-    m = (m % 12) + 1;
-  }
-  return months;
-}
-
-function monthLabelToNumber(label) {
-  const m = String(label).match(/^(\d{1,2})月$/);
-  return m ? parseInt(m[1], 10) : null;
-}
-
-function monthNumberToLabel(num) {
-  return `${num}月`;
-}
 
 function normalizeBonusPaymentMonths(raw, fiscalMonths) {
   const validNumbers = new Set(fiscalMonths.map(monthLabelToNumber));
@@ -6310,14 +6374,14 @@ function getPlanKpiTooltip(key, value = null) {
 }
 
 /* enrich/enrichUtils.js */
-function emptyRawMonthValues() {
+function emptyRawMonthValues(fiscalMonths = FISCAL_MONTHS) {
   const values = {};
-  for (const m of FISCAL_MONTHS) values[m] = 0;
+  for (const m of fiscalMonths) values[m] = 0;
   return values;
 }
 
-function addRawMonthValues(target, source) {
-  for (const m of FISCAL_MONTHS) {
+function addRawMonthValues(target, source, fiscalMonths = FISCAL_MONTHS) {
+  for (const m of fiscalMonths) {
     target[m] += source[m] ?? 0;
   }
 }
@@ -6410,14 +6474,10 @@ const TOTAL_COLUMN = EXTRA_COLUMNS[0];
 
 function combineMonthlyAndBonusValues(plan, fiscalMonths) {
   const values = {};
-  for (const m of FISCAL_MONTHS) {
-    if (!fiscalMonths.includes(m)) {
-      values[m] = 0;
-      continue;
-    }
+  for (const m of fiscalMonths) {
     values[m] = (plan.monthly[m] ?? 0) + (plan.bonusMonthly[m] ?? 0);
   }
-  return enrichRowValues(values, 'flow');
+  return enrichRowValues(values, 'flow', [...fiscalMonths, SETTLEMENT_MONTH_LABEL]);
 }
 
 function makePlanRow(id, label, subLabel, values) {
@@ -9224,7 +9284,7 @@ function enrichPlanDataWithCashFlowOpeningInflow(planData, {
     }));
   } else {
     pastMonthSet = displayMode === 'actual'
-      ? new Set(FISCAL_MONTHS)
+      ? new Set(buildFiscalMonths(fiscalEndMonth))
       : new Set();
   }
 
@@ -9829,10 +9889,16 @@ function getSettingsLockedMonths({
   businessStartYear,
   fiscalPeriod,
   fiscalMonths = FISCAL_MONTHS,
+  fiscalEndMonth,
   currentFiscalPeriod,
   date = new Date(),
 }) {
-  const displayMode = getFiscalPeriodDisplayMode(businessStartYear, fiscalPeriod, date);
+  const displayMode = getFiscalPeriodDisplayMode(
+    businessStartYear,
+    fiscalPeriod,
+    date,
+    fiscalEndMonth,
+  );
   if (fiscalPeriod === currentFiscalPeriod && displayMode === 'budget-actual') {
     return buildBudgetActualMonthSets({
       config,
@@ -9843,7 +9909,13 @@ function getSettingsLockedMonths({
     }).actualMonthSet;
   }
   if (fiscalPeriod === currentFiscalPeriod) {
-    return buildPastFiscalMonthSet(businessStartYear, fiscalPeriod, fiscalMonths, date);
+    return buildPastFiscalMonthSet(
+      businessStartYear,
+      fiscalPeriod,
+      fiscalMonths,
+      date,
+      fiscalEndMonth,
+    );
   }
   return new Set();
 }
@@ -9877,6 +9949,7 @@ function purgePeriodKeyedStorage(storageObject, firstKeptPeriod) {
 /** 終了した期の計画データをまとめて削除する。 */
 function purgeClosedPeriodPlanStorage({
   businessStartYear,
+  fiscalEndMonth,
   date = new Date(),
   revenuePlans,
   salaryPlans,
@@ -9886,7 +9959,7 @@ function purgeClosedPeriodPlanStorage({
   expensePlanOverrides,
   monthDisplayConfig,
 }) {
-  const firstKeptPeriod = getFiscalPeriodForDate(businessStartYear, date);
+  const firstKeptPeriod = getFiscalPeriodForDate(businessStartYear, date, fiscalEndMonth);
   const parts = {
     revenuePlans: purgePeriodKeyedStorage(revenuePlans, firstKeptPeriod),
     salaryPlans: purgePeriodKeyedStorage(salaryPlans, firstKeptPeriod),
@@ -10005,9 +10078,6 @@ function bindViewportScale(onChange) {
 const APP_SETTINGS_STORAGE_KEY = 'mga-app-settings';
 
 const DEFAULT_BUSINESS_START_YEAR = 2018;
-
-/** 会計期の決算月（1〜12） */
-const DEFAULT_FISCAL_END_MONTH = 12;
 
 /** 設定 UI で 100% と表示するときの実際の CSS 倍率 */
 const DESIGN_FONT_BASELINE = 0.85;
@@ -10376,8 +10446,6 @@ function applyBrandSettings(settings, mode = 'dark') {
 }
 
 const DEFAULT_APP_SETTINGS = {
-  businessStartYear: DEFAULT_BUSINESS_START_YEAR,
-  fiscalEndMonth: DEFAULT_FISCAL_END_MONTH,
   fiscalPeriod: null,
   fontScale: DEFAULT_FONT_SCALE,
   rowPaddingScale: DEFAULT_ROW_PADDING_SCALE,
@@ -10472,30 +10540,27 @@ function isCorporateSubLabel(subLabel, markers = parseCorpEntityMarkers()) {
   return markers.some((marker) => text.includes(marker));
 }
 
-/** 第 N 期の月→年ラベル（12月=開始年+N-1、1〜11月・決算整理=その翌年） */
-function buildMonthYearMap(businessStartYear, fiscalPeriod) {
-  const decYear = businessStartYear + fiscalPeriod - 1;
-  const nextYear = decYear + 1;
-  return {
-    '12月': decYear,
-    '1月': nextYear,
-    '2月': nextYear,
-    '3月': nextYear,
-    '4月': nextYear,
-    '5月': nextYear,
-    '6月': nextYear,
-    '7月': nextYear,
-    '8月': nextYear,
-    '9月': nextYear,
-    '10月': nextYear,
-    '11月': nextYear,
-    '決算整理': nextYear,
-  };
+/** 第 N 期の月→年ラベル */
+function buildMonthYearMap(businessStartYear, fiscalPeriod, fiscalEndMonth = DEFAULT_FISCAL_END_MONTH) {
+  const startMonth = getFiscalYearStartMonth(fiscalEndMonth);
+  const startYear = businessStartYear + fiscalPeriod - 1;
+  const endYear = businessStartYear + fiscalPeriod;
+  const map = {};
+  for (const label of buildFiscalYearMonths(fiscalEndMonth)) {
+    const num = monthLabelToNumber(label);
+    if (num == null) continue;
+    if (startMonth === 12) {
+      map[label] = num === 12 ? startYear : endYear;
+    } else {
+      map[label] = num >= startMonth ? startYear : endYear;
+    }
+  }
+  map[SETTLEMENT_MONTH_LABEL] = endYear;
+  return map;
 }
 
 function parseMonthLabelNumber(label) {
-  const m = String(label).match(/^(\d{1,2})月$/);
-  return m ? parseInt(m[1], 10) : null;
+  return monthLabelToNumber(label);
 }
 
 /** 今日より前の会計月（fiscalMonths 内の月ラベル） */
@@ -10504,8 +10569,9 @@ function buildPastFiscalMonthSet(
   fiscalPeriod,
   fiscalMonths,
   date = new Date(),
+  fiscalEndMonth = DEFAULT_FISCAL_END_MONTH,
 ) {
-  const monthYearMap = buildMonthYearMap(businessStartYear, fiscalPeriod);
+  const monthYearMap = buildMonthYearMap(businessStartYear, fiscalPeriod, fiscalEndMonth);
   const refYear = date.getFullYear();
   const refMonth = date.getMonth() + 1;
   const past = new Set();
@@ -10528,8 +10594,9 @@ function getCurrentFiscalMonthLabel(
   fiscalPeriod,
   fiscalMonths,
   date = new Date(),
+  fiscalEndMonth = DEFAULT_FISCAL_END_MONTH,
 ) {
-  const monthYearMap = buildMonthYearMap(businessStartYear, fiscalPeriod);
+  const monthYearMap = buildMonthYearMap(businessStartYear, fiscalPeriod, fiscalEndMonth);
   const refYear = date.getFullYear();
   const refMonth = date.getMonth() + 1;
 
@@ -10545,24 +10612,47 @@ function getCurrentFiscalMonthLabel(
   return null;
 }
 
-function getFiscalPeriodForDate(businessStartYear, date = new Date()) {
+function getFiscalPeriodForDate(
+  businessStartYear,
+  date = new Date(),
+  fiscalEndMonth = DEFAULT_FISCAL_END_MONTH,
+) {
   const y = date.getFullYear();
   const m = date.getMonth() + 1;
-  const decYear = m === 12 ? y : y - 1;
-  return decYear - businessStartYear + 1;
+  const startMonth = getFiscalYearStartMonth(fiscalEndMonth);
+  if (startMonth === 12) {
+    const anchorYear = m === 12 ? y : y - 1;
+    return anchorYear - businessStartYear + 1;
+  }
+  const endYear = m >= startMonth ? y + 1 : y;
+  return endYear - businessStartYear;
 }
 
-function getMaxSelectablePeriod(businessStartYear, date = new Date()) {
-  return Math.max(1, getFiscalPeriodForDate(businessStartYear, date) + 1);
+function getMaxSelectablePeriod(
+  businessStartYear,
+  date = new Date(),
+  fiscalEndMonth = DEFAULT_FISCAL_END_MONTH,
+) {
+  return Math.max(1, getFiscalPeriodForDate(businessStartYear, date, fiscalEndMonth) + 1);
 }
 
 /** 選択期が来期（実績 CSV なし・計画表示のみ）か */
-function isPlanOnlyPeriod(businessStartYear, fiscalPeriod, date = new Date()) {
-  return fiscalPeriod > getFiscalPeriodForDate(businessStartYear, date);
+function isPlanOnlyPeriod(
+  businessStartYear,
+  fiscalPeriod,
+  date = new Date(),
+  fiscalEndMonth = DEFAULT_FISCAL_END_MONTH,
+) {
+  return fiscalPeriod > getFiscalPeriodForDate(businessStartYear, date, fiscalEndMonth);
 }
 
-function getFiscalPeriodDisplayMode(businessStartYear, fiscalPeriod, date = new Date()) {
-  const currentPeriod = getFiscalPeriodForDate(businessStartYear, date);
+function getFiscalPeriodDisplayMode(
+  businessStartYear,
+  fiscalPeriod,
+  date = new Date(),
+  fiscalEndMonth = DEFAULT_FISCAL_END_MONTH,
+) {
+  const currentPeriod = getFiscalPeriodForDate(businessStartYear, date, fiscalEndMonth);
   if (fiscalPeriod > currentPeriod) return 'plan';
   if (fiscalPeriod === currentPeriod) return 'budget-actual';
   return 'actual';
@@ -10581,20 +10671,23 @@ function getFiscalPeriodDisplayModeLabel(mode) {
   }
 }
 
-function getDefaultFiscalPeriod(businessStartYear, date = new Date()) {
-  return getFiscalPeriodForDate(businessStartYear, date);
+function getDefaultFiscalPeriod(
+  businessStartYear,
+  date = new Date(),
+  fiscalEndMonth = DEFAULT_FISCAL_END_MONTH,
+) {
+  return getFiscalPeriodForDate(businessStartYear, date, fiscalEndMonth);
 }
 
-function normalizeFiscalEndMonth(value) {
-  const n = Number(value);
-  if (!Number.isInteger(n) || n < 1 || n > 12) return DEFAULT_FISCAL_END_MONTH;
-  return n;
-}
-
-function normalizeFiscalPeriod(businessStartYear, fiscalPeriod, date = new Date()) {
-  const max = getMaxSelectablePeriod(businessStartYear, date);
+function normalizeFiscalPeriod(
+  businessStartYear,
+  fiscalPeriod,
+  date = new Date(),
+  fiscalEndMonth = DEFAULT_FISCAL_END_MONTH,
+) {
+  const max = getMaxSelectablePeriod(businessStartYear, date, fiscalEndMonth);
   const n = Number(fiscalPeriod);
-  if (!Number.isInteger(n) || n < 1) return getDefaultFiscalPeriod(businessStartYear, date);
+  if (!Number.isInteger(n) || n < 1) return getDefaultFiscalPeriod(businessStartYear, date, fiscalEndMonth);
   return Math.min(max, Math.max(1, n));
 }
 
@@ -10616,21 +10709,105 @@ function parseFiscalPeriod(label) {
   return m ? parseInt(m[1], 10) : 8;
 }
 
-function fiscalPeriodJournalBounds(businessStartYear, fiscalPeriod) {
-  const decYear = businessStartYear + fiscalPeriod - 1;
-  const nextYear = decYear + 1;
+function fiscalPeriodJournalBounds(
+  businessStartYear,
+  fiscalPeriod,
+  fiscalEndMonth = DEFAULT_FISCAL_END_MONTH,
+) {
+  const startMonth = getFiscalYearStartMonth(fiscalEndMonth);
+  const lastMonth = monthLabelToNumber(getLastRegularFiscalMonth(fiscalEndMonth));
+  const startYear = businessStartYear + fiscalPeriod - 1;
+  const endYear = businessStartYear + fiscalPeriod;
   return {
-    startPrefix: `${decYear}-12`,
-    endPrefix: `${nextYear}-11`,
+    startPrefix: `${startYear}-${String(startMonth).padStart(2, '0')}`,
+    endPrefix: `${endYear}-${String(lastMonth).padStart(2, '0')}`,
   };
 }
 
+/** 仕訳データCSVのファイル名から期間の開始・終了日を解析する */
+function parseJournalCsvFileName(fileName) {
+  const base = fileName.replace(/\\/g, '/').split('/').pop() ?? fileName;
+  const m = base.match(/^仕訳データ_(\d{4})-(\d{2})-\d{2}_(\d{4})-(\d{2})-\d{2}\.csv$/);
+  if (!m) return null;
+  return {
+    startYear: parseInt(m[1], 10),
+    startMonth: parseInt(m[2], 10),
+    endYear: parseInt(m[3], 10),
+    endMonth: parseInt(m[4], 10),
+  };
+}
+
+/** 仕訳CSVの終了日から決算月を推定 */
+function inferFiscalEndMonthFromJournalFileName(fileName) {
+  const parsed = parseJournalCsvFileName(fileName);
+  if (!parsed) return null;
+  return normalizeFiscalEndMonth(parsed.endMonth);
+}
+
+/** 仕訳CSV群のうち開始日が最古のファイル名を返す */
+function pickOldestJournalCsvFileName(journalItems) {
+  if (!journalItems?.length) return null;
+  const sorted = [...journalItems].sort((a, b) => {
+    const nameA = typeof a === 'string' ? a : a.name;
+    const nameB = typeof b === 'string' ? b : b.name;
+    const pa = parseJournalCsvFileName(nameA);
+    const pb = parseJournalCsvFileName(nameB);
+    if (!pa && !pb) return nameA.localeCompare(nameB, 'ja');
+    if (!pa) return 1;
+    if (!pb) return -1;
+    if (pa.startYear !== pb.startYear) return pa.startYear - pb.startYear;
+    if (pa.startMonth !== pb.startMonth) return pa.startMonth - pb.startMonth;
+    return nameA.localeCompare(nameB, 'ja');
+  });
+  const first = sorted[0];
+  return typeof first === 'string' ? first : first.name;
+}
+
+/** 最古の仕訳CSVを第1期として事業開始年を推定 */
+function inferBusinessStartYearFromJournalFileName(fileName) {
+  const parsed = parseJournalCsvFileName(fileName);
+  if (!parsed) return null;
+  const fiscalEndMonth = inferFiscalEndMonthFromJournalFileName(fileName);
+  if (fiscalEndMonth == null) return null;
+  const fromEndYear = parsed.endYear - 1;
+  if (journalFileMatchesFiscalPeriod(fileName, fromEndYear, 1, fiscalEndMonth)) {
+    return fromEndYear;
+  }
+  if (journalFileMatchesFiscalPeriod(fileName, parsed.startYear, 1, fiscalEndMonth)) {
+    return parsed.startYear;
+  }
+  return fromEndYear;
+}
+
+/** 仕訳CSVの配列から事業開始年を推定 */
+function inferBusinessStartYearFromJournalItems(journalItems) {
+  const fileName = pickOldestJournalCsvFileName(journalItems);
+  if (!fileName) return null;
+  return inferBusinessStartYearFromJournalFileName(fileName);
+}
+
+/** 仕訳CSVの期間が選択期と一致するか（決算月はファイル名から判定） */
+function journalFileMatchesFiscalPeriodByDates(fileName, businessStartYear, fiscalPeriod) {
+  const fiscalEndMonth = inferFiscalEndMonthFromJournalFileName(fileName);
+  if (fiscalEndMonth == null) return false;
+  return journalFileMatchesFiscalPeriod(fileName, businessStartYear, fiscalPeriod, fiscalEndMonth);
+}
+
 /** 仕訳 CSV の期間が選択期と一致するか */
-function journalFileMatchesFiscalPeriod(fileName, businessStartYear, fiscalPeriod) {
+function journalFileMatchesFiscalPeriod(
+  fileName,
+  businessStartYear,
+  fiscalPeriod,
+  fiscalEndMonth = DEFAULT_FISCAL_END_MONTH,
+) {
   const base = fileName.replace(/\\/g, '/').split('/').pop() ?? fileName;
   const m = base.match(/^仕訳データ_(\d{4}-\d{2}-\d{2})_(\d{4}-\d{2}-\d{2})\.csv$/);
   if (!m) return false;
-  const { startPrefix, endPrefix } = fiscalPeriodJournalBounds(businessStartYear, fiscalPeriod);
+  const { startPrefix, endPrefix } = fiscalPeriodJournalBounds(
+    businessStartYear,
+    fiscalPeriod,
+    fiscalEndMonth,
+  );
   return m[1].startsWith(startPrefix) && m[2].startsWith(endPrefix);
 }
 
@@ -10641,16 +10818,23 @@ function csvDirname(filePath) {
 }
 
 /** ファイル名の出力日時（_YYYYMMDD_HHMM.csv）が選択期の範囲内か */
-function csvExportDateMatchesFiscalPeriod(fileName, businessStartYear, fiscalPeriod) {
+function csvExportDateMatchesFiscalPeriod(
+  fileName,
+  businessStartYear,
+  fiscalPeriod,
+  fiscalEndMonth = DEFAULT_FISCAL_END_MONTH,
+) {
   const base = fileName.replace(/\\/g, '/').split('/').pop() ?? fileName;
   const m = base.match(/_(\d{4})(\d{2})(\d{2})_\d{4}\.csv$/);
   if (!m) return false;
   const y = parseInt(m[1], 10);
   const mo = parseInt(m[2], 10);
-  const decYear = businessStartYear + fiscalPeriod - 1;
-  const nextYear = decYear + 1;
-  if (y === decYear && mo === 12) return true;
-  if (y === nextYear && mo >= 1 && mo <= 11) return true;
+  const startMonth = getFiscalYearStartMonth(fiscalEndMonth);
+  const lastMonth = monthLabelToNumber(getLastRegularFiscalMonth(fiscalEndMonth));
+  const startYear = businessStartYear + fiscalPeriod - 1;
+  const endYear = businessStartYear + fiscalPeriod;
+  if (y === startYear && mo >= startMonth && mo <= 12) return true;
+  if (y === endYear && mo >= 1 && mo <= lastMonth) return true;
   return false;
 }
 
@@ -10683,11 +10867,8 @@ function loadAppSettings() {
   try {
     const raw = localStorage.getItem(APP_SETTINGS_STORAGE_KEY);
     if (!raw) {
-      const businessStartYear = DEFAULT_BUSINESS_START_YEAR;
       return {
-        businessStartYear,
-        fiscalEndMonth: DEFAULT_FISCAL_END_MONTH,
-        fiscalPeriod: getDefaultFiscalPeriod(businessStartYear),
+        fiscalPeriod: getDefaultFiscalPeriod(DEFAULT_BUSINESS_START_YEAR),
         fontScale: DEFAULT_FONT_SCALE,
         rowPaddingScale: DEFAULT_ROW_PADDING_SCALE,
         corpEntityMarkers: DEFAULT_CORP_ENTITY_MARKERS,
@@ -10698,12 +10879,8 @@ function loadAppSettings() {
       };
     }
     const parsed = JSON.parse(raw);
-    const year = Number(parsed?.businessStartYear);
-    const businessStartYear = Number.isInteger(year) ? year : DEFAULT_BUSINESS_START_YEAR;
     return {
-      businessStartYear,
-      fiscalEndMonth: normalizeFiscalEndMonth(parsed?.fiscalEndMonth),
-      fiscalPeriod: normalizeFiscalPeriod(businessStartYear, parsed?.fiscalPeriod),
+      fiscalPeriod: normalizeFiscalPeriod(DEFAULT_BUSINESS_START_YEAR, parsed?.fiscalPeriod),
       fontScale: loadFontScale(parsed),
       rowPaddingScale: loadRowPaddingScale(parsed),
       corpEntityMarkers: loadCorpEntityMarkers(parsed?.corpEntityMarkers),
@@ -10713,11 +10890,8 @@ function loadAppSettings() {
       legalWelfareRate: normalizeLegalWelfareRate(parsed?.legalWelfareRate),
     };
   } catch {
-    const businessStartYear = DEFAULT_BUSINESS_START_YEAR;
     return {
-      businessStartYear,
-      fiscalEndMonth: DEFAULT_FISCAL_END_MONTH,
-      fiscalPeriod: getDefaultFiscalPeriod(businessStartYear),
+      fiscalPeriod: getDefaultFiscalPeriod(DEFAULT_BUSINESS_START_YEAR),
       fontScale: DEFAULT_FONT_SCALE,
       rowPaddingScale: DEFAULT_ROW_PADDING_SCALE,
       corpEntityMarkers: DEFAULT_CORP_ENTITY_MARKERS,
@@ -10738,12 +10912,9 @@ function saveAppSettings(settings) {
 
 /** その他設定タブの項目のみデフォルトに戻す（フォント・行パディング等は維持） */
 function resetOtherAppSettings(current) {
-  const businessStartYear = DEFAULT_BUSINESS_START_YEAR;
   return {
     ...current,
-    businessStartYear,
-    fiscalEndMonth: DEFAULT_FISCAL_END_MONTH,
-    fiscalPeriod: normalizeFiscalPeriod(businessStartYear, current.fiscalPeriod),
+    fiscalPeriod: normalizeFiscalPeriod(DEFAULT_BUSINESS_START_YEAR, current.fiscalPeriod),
     corpEntityMarkers: DEFAULT_CORP_ENTITY_MARKERS,
     companyName: DEFAULT_COMPANY_NAME,
     brandIconText: DEFAULT_BRAND_ICON_TEXT,
@@ -10806,6 +10977,8 @@ function stripAppSettingsForExport(appSettings) {
   for (const key of APP_SETTINGS_EXCLUDED_KEYS) {
     delete stripped[key];
   }
+  delete stripped.fiscalEndMonth;
+  delete stripped.businessStartYear;
   return stripped;
 }
 
@@ -10829,6 +11002,8 @@ function mergeAppSettingsForImport(imported) {
       delete merged[key];
     }
   }
+  delete merged.fiscalEndMonth;
+  delete merged.businessStartYear;
   return merged;
 }
 
@@ -11113,7 +11288,7 @@ function pickNewest(items) {
 }
 
 /** 仕訳と同じフォルダ → 出力日時が期の範囲内 → 全体の最新 の順で候補を絞る */
-function pickCsvForPeriod(items, journal, businessStartYear, fiscalPeriod) {
+function pickCsvForPeriod(items, journal, businessStartYear, fiscalPeriod, fiscalEndMonth) {
   if (!items.length) return null;
 
   const sameDir = journal
@@ -11121,28 +11296,41 @@ function pickCsvForPeriod(items, journal, businessStartYear, fiscalPeriod) {
     : [];
 
   const pool = sameDir.length ? sameDir : items;
-  const periodMatches = pool.filter((item) =>
-    csvExportDateMatchesFiscalPeriod(item.name, businessStartYear, fiscalPeriod),
-  );
+  const periodMatches = fiscalEndMonth != null
+    ? pool.filter((item) =>
+      csvExportDateMatchesFiscalPeriod(item.name, businessStartYear, fiscalPeriod, fiscalEndMonth),
+    )
+    : [];
 
   return pickNewest(periodMatches.length ? periodMatches : pool);
 }
 
+function resolveBusinessStartYear(buckets, periodOptions = {}) {
+  if (periodOptions.businessStartYear != null) {
+    return periodOptions.businessStartYear;
+  }
+  return inferBusinessStartYearFromJournalItems(buckets.journal) ?? DEFAULT_BUSINESS_START_YEAR;
+}
+
 function resolveCsvBuckets(buckets, periodOptions = {}) {
   const settings = loadAppSettings();
-  const businessStartYear = periodOptions.businessStartYear ?? settings.businessStartYear;
+  const businessStartYear = resolveBusinessStartYear(buckets, periodOptions);
   const fiscalPeriod = periodOptions.fiscalPeriod ?? settings.fiscalPeriod;
 
   const journalMatches = buckets.journal.filter((item) =>
-    journalFileMatchesFiscalPeriod(item.name, businessStartYear, fiscalPeriod),
+    journalFileMatchesFiscalPeriodByDates(item.name, businessStartYear, fiscalPeriod),
   );
   const journal = pickNewest(journalMatches);
+  const fiscalEndMonth = journal
+    ? inferFiscalEndMonthFromJournalFileName(journal.name)
+    : null;
 
   return {
     journal,
-    bs: pickCsvForPeriod(buckets.balanceSheet, journal, businessStartYear, fiscalPeriod),
-    generalLedger: pickCsvForPeriod(buckets.generalLedger, journal, businessStartYear, fiscalPeriod),
+    bs: pickCsvForPeriod(buckets.balanceSheet, journal, businessStartYear, fiscalPeriod, fiscalEndMonth),
+    generalLedger: pickCsvForPeriod(buckets.generalLedger, journal, businessStartYear, fiscalPeriod, fiscalEndMonth),
     fiscalPeriod,
+    fiscalEndMonth,
   };
 }
 
@@ -11158,7 +11346,7 @@ function clearFolderCsvCache() {
 }
 
 function folderDataFromResolved(resolved, folderName) {
-  const { journal, bs, generalLedger, fiscalPeriod } = resolved;
+  const { journal, bs, generalLedger, fiscalPeriod, fiscalEndMonth } = resolved;
   const examples = getCsvNameExamples();
   if (!journal || !bs || !generalLedger) {
     const missing = [];
@@ -11179,6 +11367,7 @@ function folderDataFromResolved(resolved, folderName) {
     generalLedgerName: generalLedger.name,
     generalLedgerText: generalLedger.text,
     fiscalPeriod,
+    fiscalEndMonth,
   };
 }
 
@@ -11267,12 +11456,36 @@ async function loadCsvFromSavedFolderWithAccess(handle, periodOptions, options =
   return readCsvFromFolderHandle(handle, periodOptions, options);
 }
 
+/** キャッシュ済み仕訳 CSV から指定の期の決算月を推定する */
+function resolveFiscalEndMonthFromCache(periodOptions = {}) {
+  if (!folderCsvCache) return null;
+  const resolved = resolveCsvBuckets(folderCsvCache.buckets, periodOptions);
+  return resolved.fiscalEndMonth ?? null;
+}
+
+/** キャッシュ内の最新仕訳 CSV から決算月を推定する（来期など CSV 未登録期のフォールバック用） */
+function resolveLatestFiscalEndMonthFromCache() {
+  if (!folderCsvCache?.buckets?.journal?.length) return null;
+  const journals = [...folderCsvCache.buckets.journal].sort((a, b) => b.name.localeCompare(a.name, 'ja'));
+  for (const item of journals) {
+    const endMonth = inferFiscalEndMonthFromJournalFileName(item.name);
+    if (endMonth != null) return endMonth;
+  }
+  return null;
+}
+
+/** キャッシュ内の最古仕訳 CSV から事業開始年を推定する */
+function resolveBusinessStartYearFromCache() {
+  if (!folderCsvCache?.buckets?.journal?.length) return null;
+  return inferBusinessStartYearFromJournalItems(folderCsvCache.buckets.journal);
+}
+
 /* csv/csvLoader.js */
 /* classifyCsvFile の定義元は csvNameConfig（csvFolder 経由だと ES モジュールとして解決できない） */
 
 
 
-function planDataFromFolder(folderData, expandConfig) {
+function planDataFromFolder(folderData, expandConfig, periodOptions = {}) {
   const {
     folderName,
     journalName,
@@ -11281,7 +11494,10 @@ function planDataFromFolder(folderData, expandConfig) {
     bsText,
     generalLedgerName = null,
     generalLedgerText = null,
+    fiscalEndMonth: folderFiscalEndMonth,
   } = folderData;
+
+  const fiscalEndMonth = folderFiscalEndMonth ?? DEFAULT_FISCAL_END_MONTH;
 
   return {
     journalName,
@@ -11291,12 +11507,12 @@ function planDataFromFolder(folderData, expandConfig) {
     generalLedgerName,
     generalLedgerText,
     folderName,
-    data: buildFullPlan(journalText, bsText, expandConfig),
+    data: buildFullPlan(journalText, bsText, { ...expandConfig, fiscalEndMonth }),
   };
 }
 
-function toPlanData(folderData, expandConfig) {
-  return planDataFromFolder(folderData, expandConfig);
+function toPlanData(folderData, expandConfig, periodOptions = {}) {
+  return planDataFromFolder(folderData, expandConfig, periodOptions);
 }
 
 /** キャッシュから計画データを生成（期切替用・フォルダアクセス不要） */
@@ -11304,7 +11520,7 @@ function planDataFromCache(expandConfig, periodOptions) {
   try {
     const folderData = resolveFolderDataFromCache(periodOptions);
     if (!folderData) return null;
-    return toPlanData(folderData, expandConfig);
+    return toPlanData(folderData, expandConfig, periodOptions);
   } catch {
     // ダッシュボードの複数期参照など、未用意の期は null 扱いにする
     return null;
@@ -11356,7 +11572,7 @@ async function reloadPlanDataFromSavedFolder(expandConfig, periodOptions, option
     if (!folderData) {
       throw new Error('CSV フォルダが未設定です。フォルダを選択してください。');
     }
-    return toPlanData(folderData, expandConfig);
+    return toPlanData(folderData, expandConfig, periodOptions);
   } catch (err) {
     if (err?.code === 'NEEDS_PERMISSION') throw err;
     throw err;
@@ -14271,7 +14487,8 @@ function mountExpensePlanOverrideSection({
   getSectionFilterColors,
   refreshPlanSettingsColumnPlates,
 }) {
-  const fiscalMonths = buildFiscalYearMonths(appSettings.fiscalEndMonth);
+  const fiscalEndMonth = rawPlanData?.fiscalEndMonth ?? DEFAULT_FISCAL_END_MONTH;
+  const fiscalMonths = buildFiscalYearMonths(fiscalEndMonth);
   const currentPeriod = appSettings.fiscalPeriod;
   const periodEntries = buildExpensePlanOverridePeriodEntries(currentPeriod);
 
@@ -15607,7 +15824,7 @@ function createColorSettingsWindow({
 }
 
 /* ui/dashboard.js */
-const DASHBOARD_KESSAN = '決算整理';
+const DASHBOARD_KESSAN = SETTLEMENT_MONTH_LABEL;
 const DASHBOARD_GOUKEI = '合計';
 const DASHBOARD_HOJO_NASHI = '補助科目なし';
 const DASHBOARD_GENKIN_TOTAL = '現金及び預金合計';
@@ -15689,7 +15906,25 @@ function dashBindPeriodRangeControls(
   });
 }
 
-const DASHBOARD_DISPLAY_MONTHS = FISCAL_MONTHS.filter((m) => m !== DASHBOARD_KESSAN);
+function dashGetFiscalMonths(data) {
+  return data?.fiscalMonths ?? FISCAL_MONTHS;
+}
+
+function dashGetFiscalEndMonth(data) {
+  return data?.fiscalEndMonth ?? DEFAULT_FISCAL_END_MONTH;
+}
+
+function dashGetDisplayMonths(data) {
+  return dashGetFiscalMonths(data).filter((m) => m !== DASHBOARD_KESSAN);
+}
+
+let _dashFiscalMonths = FISCAL_MONTHS;
+let _dashDisplayMonths = FISCAL_MONTHS.filter((m) => m !== DASHBOARD_KESSAN);
+
+function dashSetFiscalContext(data) {
+  _dashFiscalMonths = dashGetFiscalMonths(data);
+  _dashDisplayMonths = dashGetDisplayMonths(data);
+}
 const REVENUE_SECTION_IDS = ['revenue', 'nonOperating', 'specialProfit'];
 const EXPENSE_SECTION_IDS = ['personnel', 'expense', 'outsourcing', 'other', 'specialLoss', 'tax', 'nonOperatingExpense'];
 const DASHBOARD_CHART_MODES = [
@@ -15920,13 +16155,13 @@ function dashAccountGroupKey(sectionId, accountLabel) {
 }
 
 function dashAddRowValues(target, source) {
-  for (const m of FISCAL_MONTHS) {
+  for (const m of _dashFiscalMonths) {
     target[m] = (target[m] ?? 0) + (source[m] ?? 0);
   }
 }
 
 function dashFinalizeRowValues(values) {
-  const total = FISCAL_MONTHS.reduce((s, m) => s + (values[m] ?? 0), 0);
+  const total = _dashFiscalMonths.reduce((s, m) => s + (values[m] ?? 0), 0);
   values[DASHBOARD_GOUKEI] = total;
   return total;
 }
@@ -16072,7 +16307,7 @@ function dashAllPeriodItemKey(item, mode) {
 
 /** 全期モード: 全期分の内訳を合算し、全期連結の月次系列（seriesValues）を付与する */
 function dashCollectAllPeriodBreakdownItems(allPeriods, sectionIds, mode) {
-  const monthsPerPeriod = DASHBOARD_DISPLAY_MONTHS.length;
+  const monthsPerPeriod = _dashDisplayMonths.length;
   const totalMonths = allPeriods.length * monthsPerPeriod;
   const byKey = new Map();
   allPeriods.forEach(({ data }, periodIndex) => {
@@ -16095,7 +16330,7 @@ function dashCollectAllPeriodBreakdownItems(allPeriods, sectionIds, mode) {
       merged.row = item.row;
       dashAddRowValues(merged.values, item.values ?? {});
       merged.total += item.total;
-      DASHBOARD_DISPLAY_MONTHS.forEach((month, mi) => {
+      _dashDisplayMonths.forEach((month, mi) => {
         merged.seriesValues[periodIndex * monthsPerPeriod + mi] += item.values?.[month] ?? 0;
       });
     }
@@ -16260,7 +16495,7 @@ function dashBuildStackedSeries(items, checkedKeys, colorMap) {
       // 全期モードでは全期連結の系列（seriesValues）を使う
       values: item.seriesValues
         ? item.seriesValues.map((v) => Math.abs(v))
-        : DASHBOARD_DISPLAY_MONTHS.map((month) => Math.abs(item.values[month] ?? 0)),
+        : _dashDisplayMonths.map((month) => Math.abs(item.values[month] ?? 0)),
     }));
 }
 
@@ -16336,7 +16571,7 @@ function dashResolveStackedChartDrilldown(hoverRect, ev, svg, itemByKey, drilldo
   const seg = dashPeekChartElementUnder(hoverRect, ev.clientX, ev.clientY, '.dashboard-chart-segment');
   if (!seg || seg.closest('svg') !== svg) return null;
   const monthIdx = Number(seg.getAttribute('data-month-index'));
-  const month = DASHBOARD_DISPLAY_MONTHS[monthIdx];
+  const month = _dashDisplayMonths[monthIdx];
   const item = itemByKey.get(seg.getAttribute('data-series-key'));
   if (!dashCanShowJournal(drilldownCtx, item, month)) return null;
   return { item, month };
@@ -16352,7 +16587,7 @@ function dashResolveGroupedChartDrilldown(hoverRect, ev, svg, drilldownCtx) {
   if (!bar || bar.closest('svg') !== svg) return null;
   const monthIdx = Number(bar.getAttribute('data-month-index'));
   const seriesIndex = Number(bar.getAttribute('data-series-index'));
-  const month = DASHBOARD_DISPLAY_MONTHS[monthIdx];
+  const month = _dashDisplayMonths[monthIdx];
   const cf = cfTargets.find((target) => target.seriesIndex === seriesIndex);
   if (!cf || !dashCanShowCfJournal(drilldownCtx, cf.sectionId, cf.rowId, month)) return null;
   return { cfSectionId: cf.sectionId, cfRowId: cf.rowId, month };
@@ -16470,7 +16705,11 @@ function dashRenderStackedLegendHtml(series) {
 
 function dashBuildMonthlySeries(data, appSettings) {
   const sections = data?.sections ?? [];
-  const monthYearMap = buildMonthYearMap(appSettings.businessStartYear, appSettings.fiscalPeriod);
+  const monthYearMap = buildMonthYearMap(
+    appSettings.businessStartYear,
+    appSettings.fiscalPeriod,
+    dashGetFiscalEndMonth(data),
+  );
   const cfIn = dashFindRow(dashFindSection(sections, 'cfIn'), 'cf-in')?.values ?? {};
   const cfOut = dashFindRow(dashFindSection(sections, 'cfOut'), 'cf-out')?.values ?? {};
   const profitSection = dashFindSection(sections, 'profit');
@@ -16481,7 +16720,7 @@ function dashBuildMonthlySeries(data, appSettings) {
   );
   const cashValues = cashRow?.values ?? {};
 
-  return DASHBOARD_DISPLAY_MONTHS.map((month) => ({
+  return _dashDisplayMonths.map((month) => ({
     month,
     label: dashFormatMonthAxisLabel(month, monthYearMap),
     inflow: Math.abs(cfIn[month] ?? 0),
@@ -18429,6 +18668,8 @@ function mountDashboardPanel({
 }) {
   if (!data) return;
 
+  dashSetFiscalContext(data);
+
   const prevCtx = dashboardMountCtx;
   const periodKey = allPeriods?.length
     ? dashMultiPeriodStorageKey(periodRange.from, periodRange.to)
@@ -18625,41 +18866,86 @@ function applyEmployeeSettingsMonthDisplayDom() {
 
 function getPeriodOptions() {
   return {
-    businessStartYear: appSettings.businessStartYear,
     fiscalPeriod: appSettings.fiscalPeriod,
   };
 }
 
+/** 事業開始年（最古の仕訳 CSV を第1期とみなして推定。未ロード時はデフォルト） */
+function getActiveBusinessStartYear() {
+  return resolveBusinessStartYearFromCache() ?? DEFAULT_BUSINESS_START_YEAR;
+}
+
+/** 選択期の決算月（仕訳 CSV ファイル名から推定。未ロード時はキャッシュまたはデフォルト） */
+function getActiveFiscalEndMonth(fiscalPeriod = appSettings.fiscalPeriod) {
+  if (fiscalPeriod === appSettings.fiscalPeriod && rawPlanData?.fiscalEndMonth != null) {
+    return rawPlanData.fiscalEndMonth;
+  }
+  const fromCache = resolveFiscalEndMonthFromCache({ fiscalPeriod });
+  if (fromCache != null) return fromCache;
+  const latest = resolveLatestFiscalEndMonthFromCache();
+  if (latest != null) return latest;
+  return DEFAULT_FISCAL_END_MONTH;
+}
+
+/** 会計カレンダー推定値を含む appSettings（子 UI パネル向け） */
+function getAppSettingsWithFiscalContext() {
+  return {
+    ...appSettings,
+    businessStartYear: getActiveBusinessStartYear(),
+    fiscalEndMonth: getActiveFiscalEndMonth(),
+  };
+}
+
+function getExpandConfigWithFiscal() {
+  return { ...expandConfig, fiscalEndMonth: getActiveFiscalEndMonth() };
+}
+
+function getPlanFiscalMonths() {
+  return data?.fiscalMonths ?? buildFiscalMonths(getActiveFiscalEndMonth());
+}
+
 /** CSV が存在する期向けの読み込みオプション（来期・計画のみの期は今期にフォールバック） */
 function getCsvLoadPeriodOptions() {
-  const { businessStartYear, fiscalPeriod } = appSettings;
-  if (isPlanOnlyPeriod(businessStartYear, fiscalPeriod)) {
+  const { fiscalPeriod } = appSettings;
+  const businessStartYear = getActiveBusinessStartYear();
+  const fiscalEndMonth = getActiveFiscalEndMonth();
+  if (isPlanOnlyPeriod(businessStartYear, fiscalPeriod, undefined, fiscalEndMonth)) {
     return {
-      businessStartYear,
-      fiscalPeriod: getFiscalPeriodForDate(businessStartYear),
+      fiscalPeriod: getFiscalPeriodForDate(businessStartYear, undefined, fiscalEndMonth),
     };
   }
   return getPeriodOptions();
 }
 
 function getMonthYear() {
-  return buildMonthYearMap(appSettings.businessStartYear, appSettings.fiscalPeriod);
+  return buildMonthYearMap(
+    getActiveBusinessStartYear(),
+    appSettings.fiscalPeriod,
+    getActiveFiscalEndMonth(),
+  );
+}
+
+function getAppFiscalPeriodDisplayMode(fiscalPeriod = appSettings.fiscalPeriod) {
+  return getFiscalPeriodDisplayMode(
+    getActiveBusinessStartYear(),
+    fiscalPeriod,
+    undefined,
+    getActiveFiscalEndMonth(fiscalPeriod),
+  );
 }
 
 function shouldHighlightCurrentMonth() {
-  return getFiscalPeriodDisplayMode(
-    appSettings.businessStartYear,
-    appSettings.fiscalPeriod,
-  ) === 'budget-actual';
+  return getAppFiscalPeriodDisplayMode() === 'budget-actual';
 }
 
 function getHighlightFiscalMonth(date = new Date()) {
   if (!shouldHighlightCurrentMonth()) return null;
   return getCurrentFiscalMonthLabel(
-    appSettings.businessStartYear,
+    getActiveBusinessStartYear(),
     appSettings.fiscalPeriod,
-    FISCAL_MONTHS,
+    getPlanFiscalMonths(),
     date,
+    getActiveFiscalEndMonth(),
   );
 }
 
@@ -18683,8 +18969,8 @@ function syncPlanTableMonthHighlightClasses(el, month, highlightFiscalMonth) {
 function syncPlanTableHeaderMonthHighlights(table, highlightFiscalMonth) {
   const yearThs = table.querySelectorAll('thead .year-row th.col-amount-month');
   const monthThs = table.querySelectorAll('thead .month-row th.col-amount-month');
-  for (let mi = 0; mi < FISCAL_MONTHS.length; mi += 1) {
-    const month = FISCAL_MONTHS[mi];
+  for (let mi = 0; mi < getPlanFiscalMonths().length; mi += 1) {
+    const month = getPlanFiscalMonths()[mi];
     syncPlanTableMonthHighlightClasses(yearThs[mi], month, highlightFiscalMonth);
     syncPlanTableMonthHighlightClasses(monthThs[mi], month, highlightFiscalMonth);
   }
@@ -18712,7 +18998,7 @@ function getDashboardPeriodData(period) {
   if (period === appSettings.fiscalPeriod && data) return data;
   try {
     const cached = planDataFromCache(expandConfig, {
-      businessStartYear: appSettings.businessStartYear,
+      businessStartYear: getActiveBusinessStartYear(),
       fiscalPeriod: period,
     });
     if (cached?.data) return applyPlanColors(cached.data, period);
@@ -18720,7 +19006,7 @@ function getDashboardPeriodData(period) {
     /* ignore */
   }
   // 来期など CSV 未用意の計画期は、テンプレートから計画データを組み立てる
-  if (isPlanOnlyPeriod(appSettings.businessStartYear, period)) {
+  if (isPlanOnlyPeriod(getActiveBusinessStartYear(), period, undefined, getActiveFiscalEndMonth(period))) {
     return buildPlanOnlyPeriodDashboardData(period);
   }
   return null;
@@ -18730,7 +19016,7 @@ function getDashboardPeriodData(period) {
 function buildPlanOnlyPeriodDashboardData(period) {
   const template = rawPlanData
     ? zeroOutPlanData(rawPlanData)
-    : buildFullPlan('', null, expandConfig);
+    : buildFullPlan('', null, getExpandConfigWithFiscal());
   return applyPlanColors(template, period);
 }
 
@@ -18739,7 +19025,7 @@ function getDashboardCachedPeriodData(period) {
   if (period === appSettings.fiscalPeriod) return data;
   try {
     const cached = planDataFromCache(expandConfig, {
-      businessStartYear: appSettings.businessStartYear,
+      businessStartYear: getActiveBusinessStartYear(),
       fiscalPeriod: period,
     });
     return cached?.data ? applyPlanColors(cached.data, period) : null;
@@ -18783,7 +19069,7 @@ function setDashboardPeriodRange(from, to) {
 
 function getDashboardMaxPeriod() {
   // ヘッダーと同じく計画期（来期）も含める。CSV が無くても計画データで表示する
-  return getMaxSelectablePeriod(appSettings.businessStartYear);
+  return getMaxSelectablePeriod(getActiveBusinessStartYear(), undefined, getActiveFiscalEndMonth());
 }
 
 function getPeriodSelectElements() {
@@ -18829,7 +19115,7 @@ function buildPeriodSelectPanel() {
   const { panel } = getPeriodSelectElements();
   if (!panel) return;
 
-  const maxPeriod = getMaxSelectablePeriod(appSettings.businessStartYear);
+  const maxPeriod = getMaxSelectablePeriod(getActiveBusinessStartYear(), undefined, getActiveFiscalEndMonth());
   const existing = getPeriodSelectItems();
   if (
     existing.length === maxPeriod
@@ -18939,7 +19225,7 @@ function syncPeriodControls() {
   const modeEl = document.getElementById('plan-period-mode');
   if (!trigger) return;
 
-  const maxPeriod = getMaxSelectablePeriod(appSettings.businessStartYear);
+  const maxPeriod = getMaxSelectablePeriod(getActiveBusinessStartYear(), undefined, getActiveFiscalEndMonth());
   const showPeriodOverride = activeTab === 'dashboard' && isDashboardMultiPeriodView();
   trigger.textContent = showPeriodOverride
     ? PLAN_PERIOD_OVERRIDE_LABEL
@@ -18960,17 +19246,14 @@ function syncPeriodControls() {
     modeEl.hidden = !showMode;
     modeEl.style.display = showMode ? '' : 'none';
     if (!showMode) return;
-    const mode = getFiscalPeriodDisplayMode(
-      appSettings.businessStartYear,
-      appSettings.fiscalPeriod,
-    );
+    const mode = getAppFiscalPeriodDisplayMode();
     modeEl.textContent = getFiscalPeriodDisplayModeLabel(mode);
     modeEl.className = `plan-period-mode plan-period-mode--${mode}`;
   }
 }
 
 async function setFiscalPeriod(nextPeriod) {
-  const maxPeriod = getMaxSelectablePeriod(appSettings.businessStartYear);
+  const maxPeriod = getMaxSelectablePeriod(getActiveBusinessStartYear(), undefined, getActiveFiscalEndMonth());
   const clamped = Math.min(maxPeriod, Math.max(1, nextPeriod));
   const wasMultiPeriod = activeTab === 'dashboard' && isDashboardMultiPeriodView();
   if (clamped === appSettings.fiscalPeriod) {
@@ -19029,7 +19312,7 @@ async function setFiscalPeriod(nextPeriod) {
     return;
   }
 
-  if (isPlanOnlyPeriod(appSettings.businessStartYear, clamped)) {
+  if (isPlanOnlyPeriod(getActiveBusinessStartYear(), clamped, undefined, getActiveFiscalEndMonth(clamped))) {
     showPlanLoadingOverlay({ awaitLayout: true });
     loadPlanOnlyPeriodData({ measureColumnWidths: true });
     return;
@@ -19277,7 +19560,7 @@ function refreshPlanKpi() {
 function buildPlanKpiOptions(fiscalPeriod = appSettings.fiscalPeriod) {
   const active = employees.filter(isSalaryPlanEmployee);
   if (active.length === 0) return {};
-  const fiscalMonths = buildFiscalYearMonths(appSettings.fiscalEndMonth);
+  const fiscalMonths = buildFiscalYearMonths(getActiveFiscalEndMonth());
   const directorCount = active
     .filter(isDirectorEmployee)
     .filter((emp) => {
@@ -19464,11 +19747,11 @@ function isPlanAmountHighlightMonth(displayMode, monthLabel, pastMonthSet) {
 /** 給与計画と同様: 期首月は常に差異色、以降は前月比（過去実績月は対象外） */
 function shouldHighlightPlanAmountMonth(rowValues, monthIndex, displayMode, pastMonthSet) {
   if (monthIndex < 0) return false;
-  const month = FISCAL_MONTHS[monthIndex];
+  const month = getPlanFiscalMonths()[monthIndex];
   if (month === '決算整理') return false;
   if (!isPlanAmountHighlightMonth(displayMode, month, pastMonthSet)) return false;
   if (monthIndex === 0) return true;
-  const prevMonth = FISCAL_MONTHS[monthIndex - 1];
+  const prevMonth = getPlanFiscalMonths()[monthIndex - 1];
   if (prevMonth === '決算整理') return false;
   return salaryPlanAmountDiffersFromPrevious(rowValues[prevMonth], rowValues[month]);
 }
@@ -19476,10 +19759,10 @@ function shouldHighlightPlanAmountMonth(rowValues, monthIndex, displayMode, past
 /** 給与設定の個別給与と同様: 期首月は常に差異色、以降は前月比 */
 function shouldHighlightActualMonthDeltaFromPrevious(rowValues, monthIndex) {
   if (monthIndex < 0) return false;
-  const month = FISCAL_MONTHS[monthIndex];
+  const month = getPlanFiscalMonths()[monthIndex];
   if (month === '決算整理') return false;
   if (monthIndex === 0) return true;
-  const prevMonth = FISCAL_MONTHS[monthIndex - 1];
+  const prevMonth = getPlanFiscalMonths()[monthIndex - 1];
   if (prevMonth === '決算整理') return false;
   return salaryPlanAmountDiffersFromPrevious(rowValues[prevMonth], rowValues[month]);
 }
@@ -19602,7 +19885,7 @@ function appendPlanTableColgroup(table) {
     col.className = cls;
     colgroup.appendChild(col);
   }
-  for (let i = 0; i < FISCAL_MONTHS.length; i += 1) {
+  for (let i = 0; i < getPlanFiscalMonths().length; i += 1) {
     const col = document.createElement('col');
     col.className = 'col-amount-month';
     colgroup.appendChild(col);
@@ -20106,7 +20389,7 @@ function measureSubColumnWidth(table, subEntries) {
 }
 
 function getPlanTableMonthColumnIndex(monthLabel) {
-  return FISCAL_MONTHS.indexOf(monthLabel);
+  return getPlanFiscalMonths().indexOf(monthLabel);
 }
 
 function getPlanColumnPlateClipRect(wrap, table) {
@@ -20941,7 +21224,7 @@ function getTaxPaymentPlanEditTarget(section, row) {
   if (account) return { kind: 'simple', account };
   const municipality = getTaxPaymentResidentTaxMunicipalityFromPlanRow(section, row);
   if (!municipality) return null;
-  const fiscalMonths = buildFiscalYearMonths(appSettings.fiscalEndMonth);
+  const fiscalMonths = buildFiscalYearMonths(getActiveFiscalEndMonth());
   const entry = getResidentTaxMunicipalityEntries(
     taxPaymentPlans,
     appSettings.fiscalPeriod,
@@ -20952,7 +21235,7 @@ function getTaxPaymentPlanEditTarget(section, row) {
 }
 
 function persistTaxPaymentPlanMonthly(account, nextMonthly) {
-  const fiscalMonths = buildFiscalYearMonths(appSettings.fiscalEndMonth);
+  const fiscalMonths = buildFiscalYearMonths(getActiveFiscalEndMonth());
   taxPaymentPlans = setPaymentPlanAccount(
     taxPaymentPlans,
     appSettings.fiscalPeriod,
@@ -20965,7 +21248,7 @@ function persistTaxPaymentPlanMonthly(account, nextMonthly) {
 }
 
 function persistTaxPaymentResidentTaxMonthly(entryId, nextMonthly) {
-  const fiscalMonths = buildFiscalYearMonths(appSettings.fiscalEndMonth);
+  const fiscalMonths = buildFiscalYearMonths(getActiveFiscalEndMonth());
   const entries = getResidentTaxMunicipalityEntries(
     taxPaymentPlans,
     appSettings.fiscalPeriod,
@@ -20997,7 +21280,7 @@ function startTaxPaymentPlanTableCellEdit(td, {
   }
   if (td.querySelector('input')) return;
 
-  const fiscalMonths = buildFiscalYearMonths(appSettings.fiscalEndMonth);
+  const fiscalMonths = buildFiscalYearMonths(getActiveFiscalEndMonth());
   const fiscalPeriod = appSettings.fiscalPeriod;
   let rawValue;
   let planMonthly;
@@ -21124,7 +21407,7 @@ function shouldShowPlanTableMonthAmount(section, row, month, amountCtx) {
 }
 
 function persistRevenueManMonths(clientId, nextManMonths) {
-  const fiscalMonths = buildFiscalYearMonths(appSettings.fiscalEndMonth);
+  const fiscalMonths = buildFiscalYearMonths(getActiveFiscalEndMonth());
   const clients = getPeriodClientEntries(revenuePlans, appSettings.fiscalPeriod, fiscalMonths);
   const client = clients.find((c) => c.id === clientId);
   if (!client) return;
@@ -21146,7 +21429,7 @@ function applyRevenueManMonthEditDom(table, clientId) {
   const revenueSection = data.sections.find((s) => s.id === 'revenue');
   if (!revenueSection) return;
 
-  const fiscalMonths = buildFiscalYearMonths(appSettings.fiscalEndMonth);
+  const fiscalMonths = buildFiscalYearMonths(getActiveFiscalEndMonth());
   const client = getClientEntry(revenuePlans, appSettings.fiscalPeriod, clientId, fiscalMonths);
 
   const parentRowIds = new Set();
@@ -21193,10 +21476,10 @@ function applyRevenueManMonthEditDom(table, clientId) {
 function updatePlanTableManMonthRowCells(tr, section, row, amountCtx) {
   const { displayMode, pastMonthSet } = amountCtx;
   const monthTds = tr.querySelectorAll('td.col-amount-month');
-  for (let mi = 0; mi < FISCAL_MONTHS.length; mi += 1) {
+  for (let mi = 0; mi < getPlanFiscalMonths().length; mi += 1) {
     const td = monthTds[mi];
     if (!td || td.querySelector('input')) continue;
-    const m = FISCAL_MONTHS[mi];
+    const m = getPlanFiscalMonths()[mi];
     const val = row.values[m];
     td.classList.toggle(
       'plan-amount-variance',
@@ -21220,10 +21503,10 @@ function updatePlanTableRevenueAmountRowCells(tr, section, row, amountCtx) {
     && expandedGroups.has(row.id)
     && isHideTotalWhenExpanded(section.id, row.label, expandConfig);
   const monthTds = tr.querySelectorAll('td.col-amount-month');
-  for (let mi = 0; mi < FISCAL_MONTHS.length; mi += 1) {
+  for (let mi = 0; mi < getPlanFiscalMonths().length; mi += 1) {
     const td = monthTds[mi];
     if (!td) continue;
-    const m = FISCAL_MONTHS[mi];
+    const m = getPlanFiscalMonths()[mi];
     const val = row.values[m];
     td.classList.toggle(
       'has-variance',
@@ -21271,10 +21554,10 @@ function updatePlanTableProfitRowCells(tr, section, row, amountCtx) {
   const { crossVarianceCtx } = amountCtx;
   const amountType = row.type === 'variance' ? 'variance' : 'item';
   const monthTds = tr.querySelectorAll('td.col-amount-month');
-  for (let mi = 0; mi < FISCAL_MONTHS.length; mi += 1) {
+  for (let mi = 0; mi < getPlanFiscalMonths().length; mi += 1) {
     const td = monthTds[mi];
     if (!td) continue;
-    const m = FISCAL_MONTHS[mi];
+    const m = getPlanFiscalMonths()[mi];
     const val = row.values[m];
     td.classList.toggle(
       'has-variance',
@@ -21316,7 +21599,7 @@ function startRevenueManMonthCellEdit(td, {
   if (!isRevenueManMonthMonthEditable(month, displayMode, pastMonthSet)) return;
   if (td.querySelector('input')) return;
 
-  const fiscalMonths = buildFiscalYearMonths(appSettings.fiscalEndMonth);
+  const fiscalMonths = buildFiscalYearMonths(getActiveFiscalEndMonth());
   const clients = getPeriodClientEntries(revenuePlans, appSettings.fiscalPeriod, fiscalMonths);
   const client = clients.find((c) => c.id === clientId);
   if (!client) return;
@@ -21398,7 +21681,7 @@ function startRevenueManMonthCellEdit(td, {
 }
 
 function persistOutsourcingVendorMonthly(vendorId, nextMonthly) {
-  const fiscalMonths = buildFiscalYearMonths(appSettings.fiscalEndMonth);
+  const fiscalMonths = buildFiscalYearMonths(getActiveFiscalEndMonth());
   const vendor = getVendorEntry(outsourcingPlans, appSettings.fiscalPeriod, vendorId, fiscalMonths);
   if (!vendor) return;
   outsourcingPlans = setVendorEntry(
@@ -21420,7 +21703,7 @@ function startOutsourcingPlanCellEdit(td, {
   if (!isOutsourcingPlanMonthEditable(month, displayMode, pastMonthSet)) return;
   if (td.querySelector('input')) return;
 
-  const fiscalMonths = buildFiscalYearMonths(appSettings.fiscalEndMonth);
+  const fiscalMonths = buildFiscalYearMonths(getActiveFiscalEndMonth());
   const vendor = getVendorEntry(outsourcingPlans, appSettings.fiscalPeriod, vendorId, fiscalMonths);
   if (!vendor) return;
 
@@ -21502,7 +21785,7 @@ function startOutsourcingPlanCellEdit(td, {
 function persistEmployeeSalaryPlanMonthly(employeeId, nextMonthly) {
   const emp = employees.find((e) => e.id === employeeId);
   if (!emp) return;
-  const fiscalMonths = buildFiscalYearMonths(appSettings.fiscalEndMonth);
+  const fiscalMonths = buildFiscalYearMonths(getActiveFiscalEndMonth());
   const plan = getEmployeeSalaryPlan(
     salaryPlans,
     appSettings.fiscalPeriod,
@@ -21524,7 +21807,7 @@ function persistEmployeeSalaryPlanMonthly(employeeId, nextMonthly) {
 function persistEmployeeSalaryPlanBonusMonthly(employeeId, nextBonusMonthly) {
   const emp = employees.find((e) => e.id === employeeId);
   if (!emp) return;
-  const fiscalMonths = buildFiscalYearMonths(appSettings.fiscalEndMonth);
+  const fiscalMonths = buildFiscalYearMonths(getActiveFiscalEndMonth());
   const plan = getEmployeeSalaryPlan(
     salaryPlans,
     appSettings.fiscalPeriod,
@@ -21563,7 +21846,7 @@ function startEmployeeSalaryPlanCellEdit(td, {
   const emp = employees.find((e) => e.id === employeeId);
   if (!emp) return;
 
-  const fiscalMonths = buildFiscalYearMonths(appSettings.fiscalEndMonth);
+  const fiscalMonths = buildFiscalYearMonths(getActiveFiscalEndMonth());
   const fiscalPeriod = appSettings.fiscalPeriod;
   const plan = getEmployeeSalaryPlan(
     salaryPlans,
@@ -21659,7 +21942,7 @@ function startEmployeeSalaryPlanCellEdit(td, {
 }
 
 function persistOvertimePlanMonthly(nextOvertimeMonthly) {
-  const fiscalMonths = buildFiscalYearMonths(appSettings.fiscalEndMonth);
+  const fiscalMonths = buildFiscalYearMonths(getActiveFiscalEndMonth());
   salaryPlanSettings = setOvertimePlan(
     salaryPlanSettings,
     appSettings.fiscalPeriod,
@@ -21679,7 +21962,7 @@ function startOvertimePlanTableCellEdit(td, {
   if (!isOvertimePlanMonthEditable(month, displayMode, pastMonthSet)) return;
   if (td.querySelector('input')) return;
 
-  const fiscalMonths = buildFiscalYearMonths(appSettings.fiscalEndMonth);
+  const fiscalMonths = buildFiscalYearMonths(getActiveFiscalEndMonth());
   const fiscalPeriod = appSettings.fiscalPeriod;
   const overtime = getOvertimePlan(salaryPlanSettings, fiscalPeriod, fiscalMonths);
   const rawValue = overtime[month];
@@ -22531,7 +22814,7 @@ function rowVisibleInSection(section, row) {
 function getSettingsLockedMonthsForPeriod(fiscalPeriod, fiscalMonths) {
   return getSettingsLockedMonths({
     config: monthDisplayConfig,
-    businessStartYear: appSettings.businessStartYear,
+    businessStartYear: getActiveBusinessStartYear(),
     fiscalPeriod,
     fiscalMonths,
     currentFiscalPeriod: appSettings.fiscalPeriod,
@@ -22540,7 +22823,8 @@ function getSettingsLockedMonthsForPeriod(fiscalPeriod, fiscalMonths) {
 
 function applyClosedPeriodPlanPurgeIfNeeded() {
   const purged = purgeClosedPeriodPlanStorage({
-    businessStartYear: appSettings.businessStartYear,
+    businessStartYear: getActiveBusinessStartYear(),
+    fiscalEndMonth: getActiveFiscalEndMonth(),
     revenuePlans,
     salaryPlans,
     salaryPlanSettings,
@@ -22568,31 +22852,30 @@ function applyClosedPeriodPlanPurgeIfNeeded() {
 }
 
 function buildPlanTablePastMonthSet(displayMode) {
+  const fiscalMonths = getPlanFiscalMonths();
   if (displayMode === 'budget-actual') {
     return buildBudgetActualMonthSets({
       config: monthDisplayConfig,
-      businessStartYear: appSettings.businessStartYear,
+      businessStartYear: getActiveBusinessStartYear(),
       fiscalPeriod: appSettings.fiscalPeriod,
-      fiscalMonths: FISCAL_MONTHS,
+      fiscalMonths,
+      fiscalEndMonth: getActiveFiscalEndMonth(),
     }).actualMonthSet;
   }
-  if (displayMode === 'actual') return new Set(FISCAL_MONTHS);
+  if (displayMode === 'actual') return new Set(fiscalMonths);
   return new Set();
 }
 
 function applyPlanColors(planData, fiscalPeriod = appSettings.fiscalPeriod) {
   if (!planData) return null;
-  const displayMode = getFiscalPeriodDisplayMode(
-    appSettings.businessStartYear,
-    fiscalPeriod,
-  );
+  const displayMode = getAppFiscalPeriodDisplayMode(fiscalPeriod);
   const enriched = enrichPlanDataWithEmployeeSalaryRows(planData, {
     employees,
     salaryPlans,
     salaryPlanSettings,
-    businessStartYear: appSettings.businessStartYear,
+    businessStartYear: getActiveBusinessStartYear(),
     fiscalPeriod,
-    fiscalEndMonth: appSettings.fiscalEndMonth,
+    fiscalEndMonth: getActiveFiscalEndMonth(),
     displayMode,
     legalWelfareRate: appSettings.legalWelfareRate,
     monthDisplayConfig,
@@ -22600,18 +22883,18 @@ function applyPlanColors(planData, fiscalPeriod = appSettings.fiscalPeriod) {
   const withTaxPayments = enrichPlanDataWithTaxPaymentRows(enriched, {
     taxPaymentPlans,
     employees,
-    businessStartYear: appSettings.businessStartYear,
+    businessStartYear: getActiveBusinessStartYear(),
     fiscalPeriod,
-    fiscalEndMonth: appSettings.fiscalEndMonth,
+    fiscalEndMonth: getActiveFiscalEndMonth(),
     displayMode,
     actualSourcePlanData: enriched,
     monthDisplayConfig,
   });
   const withOutsourcing = enrichPlanDataWithOutsourcingRows(withTaxPayments, {
     outsourcingPlans,
-    businessStartYear: appSettings.businessStartYear,
+    businessStartYear: getActiveBusinessStartYear(),
     fiscalPeriod,
-    fiscalEndMonth: appSettings.fiscalEndMonth,
+    fiscalEndMonth: getActiveFiscalEndMonth(),
     displayMode,
     corpEntityMarkers: appSettings.corpEntityMarkers,
     consumptionTaxRates: appSettings.consumptionTaxRates,
@@ -22620,43 +22903,43 @@ function applyPlanColors(planData, fiscalPeriod = appSettings.fiscalPeriod) {
   });
   const withRevenue = enrichPlanDataWithRevenueRows(withOutsourcing, {
     revenuePlans,
-    businessStartYear: appSettings.businessStartYear,
+    businessStartYear: getActiveBusinessStartYear(),
     fiscalPeriod,
-    fiscalEndMonth: appSettings.fiscalEndMonth,
+    fiscalEndMonth: getActiveFiscalEndMonth(),
     displayMode,
     consumptionTaxRates: appSettings.consumptionTaxRates,
     monthDisplayConfig,
   });
   const withMiscIncome = enrichPlanDataWithMiscIncomeRows(withRevenue, {
     revenuePlans,
-    businessStartYear: appSettings.businessStartYear,
+    businessStartYear: getActiveBusinessStartYear(),
     fiscalPeriod,
-    fiscalEndMonth: appSettings.fiscalEndMonth,
+    fiscalEndMonth: getActiveFiscalEndMonth(),
     displayMode,
     monthDisplayConfig,
   });
   const withAverages = enrichPlanDataWithPeriodAverageFills(withMiscIncome, {
     expandConfig,
-    businessStartYear: appSettings.businessStartYear,
+    businessStartYear: getActiveBusinessStartYear(),
     fiscalPeriod,
-    fiscalEndMonth: appSettings.fiscalEndMonth,
+    fiscalEndMonth: getActiveFiscalEndMonth(),
     displayMode,
     expensePlanOverrides,
     monthDisplayConfig,
   });
   const withCashOpening = enrichPlanDataWithCashFlowOpeningInflow(withAverages, {
     expandConfig,
-    businessStartYear: appSettings.businessStartYear,
+    businessStartYear: getActiveBusinessStartYear(),
     fiscalPeriod,
-    fiscalEndMonth: appSettings.fiscalEndMonth,
+    fiscalEndMonth: getActiveFiscalEndMonth(),
     displayMode,
     monthDisplayConfig,
   });
   const withCashForecast = enrichPlanDataWithCashFlowForecast(withCashOpening, {
     expandConfig,
-    businessStartYear: appSettings.businessStartYear,
+    businessStartYear: getActiveBusinessStartYear(),
     fiscalPeriod,
-    fiscalEndMonth: appSettings.fiscalEndMonth,
+    fiscalEndMonth: getActiveFiscalEndMonth(),
     displayMode,
     monthDisplayConfig,
   });
@@ -22698,11 +22981,12 @@ function refreshColorSettingsPanels() {
 
 function rebuildPlanData() {
   if (!journalText) return;
-  rawPlanData = buildFullPlan(journalText, bsText, expandConfig);
+  rawPlanData = buildFullPlan(journalText, bsText, getExpandConfigWithFiscal());
   data = applyPlanColors(rawPlanData);
   invalidateDrilldownIndex();
   expandedGroups.clear();
 }
+
 
 function styleSectionLabelCell(td, sectionId) {
   const barColor = getSectionBarColor(sectionId, data?.sections, sectionColorConfig, getPlanColorMode());
@@ -22722,6 +23006,7 @@ function getDrilldownIndex() {
     drilldownIndex = buildDrilldownIndex(
       getCachedJournalEntries(),
       rawPlanData.sections,
+      rawPlanData.fiscalMonths,
     );
   }
   return drilldownIndex ?? new Set();
@@ -23229,7 +23514,7 @@ function renderDashboardView() {
     periodRange: { ...dashboardPeriodRange },
     maxFiscalPeriod: getDashboardMaxPeriod(),
     onPeriodRangeChange: setDashboardPeriodRange,
-    appSettings,
+    appSettings: getAppSettingsWithFiscalContext(),
     getSectionFilterColors: getFilterButtonColors,
     showJournalPopup,
     hasJournalDrilldown: (section, row, month) =>
@@ -23241,10 +23526,7 @@ function renderDashboardView() {
 }
 
 function getPlanTableAmountContext() {
-  const displayMode = getFiscalPeriodDisplayMode(
-    appSettings.businessStartYear,
-    appSettings.fiscalPeriod,
-  );
+  const displayMode = getAppFiscalPeriodDisplayMode();
   const pastMonthSet = buildPlanTablePastMonthSet(displayMode);
   return {
     displayMode,
@@ -23260,8 +23542,8 @@ function updateGroupRowAmountDisplay(tr, section, row, amountCtx) {
   const { crossVarianceCtx } = amountCtx;
 
   const monthTds = tr.querySelectorAll('td.col-amount-month');
-  for (let mi = 0; mi < FISCAL_MONTHS.length; mi += 1) {
-    const m = FISCAL_MONTHS[mi];
+  for (let mi = 0; mi < getPlanFiscalMonths().length; mi += 1) {
+    const m = getPlanFiscalMonths()[mi];
     const td = monthTds[mi];
     if (!td) continue;
     const val = row.values[m];
@@ -23343,8 +23625,8 @@ function updatePlanMonthDisplayHeaderCell(th, monthLabel, displayMode, highlight
     monthDisplayConfig,
     appSettings.fiscalPeriod,
     monthLabel,
-    appSettings.businessStartYear,
-    FISCAL_MONTHS,
+    getActiveBusinessStartYear(),
+    getPlanFiscalMonths(),
   );
   th.classList.add('month-display-toggle');
   th.classList.toggle('month-display-actual', mode === 'actual');
@@ -23367,8 +23649,8 @@ function updatePlanTableRowMonthCells(tr, section, row, {
   const isManMonthRow = isRevenueManMonthRow(section.id, row);
   const monthTds = tr.querySelectorAll('td.col-amount-month');
 
-  for (let mi = 0; mi < FISCAL_MONTHS.length; mi += 1) {
-    const m = FISCAL_MONTHS[mi];
+  for (let mi = 0; mi < getPlanFiscalMonths().length; mi += 1) {
+    const m = getPlanFiscalMonths()[mi];
     const td = monthTds[mi];
     if (!td || td.querySelector('input')) continue;
     const val = row.values[m];
@@ -23647,16 +23929,13 @@ function updatePlanTableRowMonthCells(tr, section, row, {
 
 function applyPlanMonthDisplayDom(table) {
   if (!table || !data) return;
-  const displayMode = getFiscalPeriodDisplayMode(
-    appSettings.businessStartYear,
-    appSettings.fiscalPeriod,
-  );
+  const displayMode = getAppFiscalPeriodDisplayMode();
   const highlightFiscalMonth = getHighlightFiscalMonth();
   const amountCtx = getPlanTableAmountContext();
   const monthThs = table.querySelectorAll('thead .month-row th.col-amount-month');
-  for (let mi = 0; mi < FISCAL_MONTHS.length; mi += 1) {
+  for (let mi = 0; mi < getPlanFiscalMonths().length; mi += 1) {
     const th = monthThs[mi];
-    if (th) updatePlanMonthDisplayHeaderCell(th, FISCAL_MONTHS[mi], displayMode, highlightFiscalMonth);
+    if (th) updatePlanMonthDisplayHeaderCell(th, getPlanFiscalMonths()[mi], displayMode, highlightFiscalMonth);
   }
   syncPlanTableHeaderMonthHighlights(table, highlightFiscalMonth);
   syncPlanColumnPlates(table.closest('.plan-table-wrap'), table);
@@ -23676,17 +23955,14 @@ function applyPlanMonthDisplayDom(table) {
 }
 
 function togglePlanMonthDisplay(monthLabel) {
-  const displayMode = getFiscalPeriodDisplayMode(
-    appSettings.businessStartYear,
-    appSettings.fiscalPeriod,
-  );
+  const displayMode = getAppFiscalPeriodDisplayMode();
   if (displayMode !== 'budget-actual' || !isMonthDisplayToggleTarget(monthLabel)) return;
   monthDisplayConfig = toggleMonthDisplayMode(
     monthDisplayConfig,
     appSettings.fiscalPeriod,
     monthLabel,
-    appSettings.businessStartYear,
-    FISCAL_MONTHS,
+    getActiveBusinessStartYear(),
+    getPlanFiscalMonths(),
   );
   saveMonthDisplayConfig(monthDisplayConfig);
   if (rawPlanData) {
@@ -23729,10 +24005,7 @@ function renderTable({ measureColumnWidths = false } = {}) {
 
   const allSections = data.sections;
   const highlightFiscalMonth = getHighlightFiscalMonth();
-  const displayMode = getFiscalPeriodDisplayMode(
-    appSettings.businessStartYear,
-    appSettings.fiscalPeriod,
-  );
+  const displayMode = getAppFiscalPeriodDisplayMode();
   const pastMonthSet = buildPlanTablePastMonthSet(displayMode);
 
   const crossVarianceCtx = buildRevenueReceivablesCrossVarianceContext(data.sections);
@@ -23751,7 +24024,7 @@ function renderTable({ measureColumnWidths = false } = {}) {
 
   let lastYear = null;
   const monthYear = getMonthYear();
-  for (const m of FISCAL_MONTHS) {
+  for (const m of getPlanFiscalMonths()) {
     const y = monthYear[m];
     const monthHighlightClass = planTableMonthHighlightClass(m, highlightFiscalMonth);
     if (y !== lastYear) {
@@ -23778,15 +24051,15 @@ function renderTable({ measureColumnWidths = false } = {}) {
   monthRow.className = 'month-row';
   monthRow.innerHTML =
     '<th class="col-account-header" colspan="2">勘定科目</th><th class="col-sub">補助科目</th>';
-  for (const m of FISCAL_MONTHS) {
+  for (const m of getPlanFiscalMonths()) {
     const th = document.createElement('th');
     const monthDisplayMode = displayMode === 'budget-actual' && isMonthDisplayToggleTarget(m)
       ? getMonthDisplayMode(
         monthDisplayConfig,
         appSettings.fiscalPeriod,
         m,
-        appSettings.businessStartYear,
-        FISCAL_MONTHS,
+        getActiveBusinessStartYear(),
+        getPlanFiscalMonths(),
       )
       : null;
     th.className = `col-amount col-amount-month${planTableMonthHighlightClass(m, highlightFiscalMonth)}${monthDisplayMode ? ` month-display-toggle month-display-${monthDisplayMode}` : ''}`;
@@ -23922,8 +24195,8 @@ function renderTable({ measureColumnWidths = false } = {}) {
 
       const isManMonthRow = isRevenueManMonthRow(section.id, row);
 
-      for (let mi = 0; mi < FISCAL_MONTHS.length; mi += 1) {
-        const m = FISCAL_MONTHS[mi];
+      for (let mi = 0; mi < getPlanFiscalMonths().length; mi += 1) {
+        const m = getPlanFiscalMonths()[mi];
         const td = document.createElement('td');
         const val = row.values[m];
         td.className = `col-amount col-amount-month${planTableMonthHighlightClass(m, highlightFiscalMonth)}`;
@@ -24259,1901 +24532,7 @@ function renderVisibilitySettings() {
   const header = document.createElement('div');
   header.className = 'expand-settings-header';
   header.innerHTML = `
-    <p class="expand-settings-desc">予実表に表示する行と見え方を設定します。オフにした行は予実表に表示されません（補助科目行は親行をオフにすると非表示になります）。<strong>折りたたむ</strong>（オン）の場合はグループ行で畳み、クリックで補助科目を表示します（デフォルトはオフ＝常時表示）。<strong>展開時に合計非表示</strong>（オン）の場合、展開中はグループ行の合計金額を非表示にします。<strong>大きく表示</strong>は通常サイズのフォント・行高で表示します（デフォルトは小さめ）。<strong>塗り色１</strong>は注目したい行、<strong>塗り色２</strong>は注意したい行に着色します（色は色設定で変更可能）。<strong>諸経費</strong>の勘定科目行では<strong>並び順</strong>（数値が小さいほど上）を指定できます。設定はブラウザに保存されます。</p>
-    <div class="expand-settings-header-actions">
-      <button type="button" class="expand-reset-btn" id="visibility-show-all-btn">すべて表示</button>
-      <button type="button" class="expand-reset-btn" id="visibility-reset-btn">デフォルトに戻す</button>
-    </div>
-  `;
-  wrap.appendChild(header);
-
-  function bindVisibilitySettingsHeaderActions() {
-    wrap.querySelector('#visibility-show-all-btn')?.addEventListener('click', () => {
-      visibilityConfig = {};
-      saveVisibilityConfig(visibilityConfig);
-      renderVisibilitySettings();
-      if (activeTab === 'plan') refreshPlanTable();
-    });
-    wrap.querySelector('#visibility-reset-btn')?.addEventListener('click', () => {
-      visibilityConfig = {};
-      rowDisplayConfig = {};
-      expenseSortConfig = {};
-      expandConfig = {};
-      saveVisibilityConfig(visibilityConfig);
-      saveRowDisplayConfig(rowDisplayConfig);
-      saveExpenseSortConfig(expenseSortConfig);
-      saveExpandConfig(expandConfig);
-      if (journalText) rebuildPlanData();
-      else if (rawPlanData) data = applyPlanColors(rawPlanData);
-      renderVisibilitySettings();
-      if (activeTab === 'plan') refreshPlanTable();
-    });
-  }
-
-  const candidates = collectVisibilityCandidates(data.sections);
-  if (candidates.length === 0) {
-    const empty = document.createElement('p');
-    empty.className = 'expand-settings-empty';
-    empty.textContent = '表示対象の行がありません。';
-    wrap.appendChild(empty);
-    bindVisibilitySettingsHeaderActions();
-    replaceRootPanel(wrap);
-    return;
-  }
-
-  const table = document.createElement('table');
-  table.className = 'expand-settings-table visibility-config-table';
-  table.innerHTML = `
-    <thead>
-      <tr>
-        <th>大項目</th>
-        <th class="col-row-type">種別</th>
-        <th class="col-settings-label">勘定科目</th>
-        <th class="col-subs">補助科目</th>
-        <th class="col-sort-order">並び順</th>
-        <th class="col-toggle">折りたたむ</th>
-        <th class="col-toggle">展開時に合計非表示</th>
-        <th class="col-toggle">表示</th>
-        <th class="col-toggle">大きく表示</th>
-        <th class="col-toggle">塗り色１（注目）</th>
-        <th class="col-toggle">塗り色２（注意）</th>
-      </tr>
-    </thead>
-  `;
-
-  const tbody = document.createElement('tbody');
-  let lastSection = '';
-  const expenseSortAccountsShown = new Set();
-  const expandAccountsShown = new Set();
-
-  function applyExpenseSortAndRefreshPlan() {
-    if (rawPlanData) data = applyPlanColors(rawPlanData);
-    if (activeTab === 'plan') refreshPlanTable();
-  }
-
-  function appendDisplayCheckbox(cell, { checked, ariaLabel, disabled, onChange, toggle }) {
-    const label = document.createElement('label');
-    label.className = 'expand-toggle-label';
-    if (toggle) label.dataset.toggle = toggle;
-    const checkbox = document.createElement('input');
-    checkbox.type = 'checkbox';
-    checkbox.checked = checked;
-    checkbox.disabled = disabled;
-    checkbox.setAttribute('aria-label', ariaLabel);
-    if (toggle) checkbox.dataset.toggle = toggle;
-    label.appendChild(checkbox);
-    checkbox.addEventListener('change', onChange);
-    cell.appendChild(label);
-    return checkbox;
-  }
-
-  for (const c of candidates) {
-    const tr = document.createElement('tr');
-    tr.dataset.rowKey = c.key;
-    tr.dataset.sectionId = c.sectionId;
-    tr.dataset.rowType = c.rowType;
-    tr.dataset.account = c.account;
-    if (c.subLabel) tr.dataset.subLabel = c.subLabel;
-    if (c.sectionLabel !== lastSection) {
-      tr.className = 'expand-section-row';
-      lastSection = c.sectionLabel;
-    }
-
-    const visible = isRowVisible(c.sectionId, {
-      type: c.rowType,
-      label: c.account,
-      subLabel: c.subLabel,
-    }, visibilityConfig);
-
-    const displayEntry = getRowDisplayEntry(rowDisplayConfig, c.sectionId, {
-      type: c.rowType,
-      label: c.account,
-      subLabel: c.subLabel,
-    });
-
-    tr.innerHTML = `
-      <td></td>
-      <td class="col-row-type">${c.rowTypeLabel}</td>
-      <td class="col-settings-label">${c.account}</td>
-      <td class="col-subs">${c.subLabel}</td>
-      <td class="col-sort-order"></td>
-      <td class="col-toggle"></td>
-      <td class="col-toggle"></td>
-      <td class="col-toggle"></td>
-      <td class="col-toggle"></td>
-      <td class="col-toggle"></td>
-      <td class="col-toggle"></td>
-    `;
-    styleSectionLabelCell(tr.querySelector('td'), c.sectionId);
-    tr.querySelector('td').textContent = c.sectionLabel;
-
-    const sortCell = tr.querySelector('.col-sort-order');
-    if (
-      c.sectionId === 'expense'
-      && c.rowType !== 'total'
-      && !expenseSortAccountsShown.has(c.account)
-    ) {
-      expenseSortAccountsShown.add(c.account);
-      const sortInput = document.createElement('input');
-      sortInput.type = 'text';
-      sortInput.inputMode = 'numeric';
-      sortInput.autocomplete = 'off';
-      sortInput.className = 'expense-sort-order-input';
-      sortInput.value = getExpenseAccountSortOrderDisplay(expenseSortConfig, c.account);
-      sortInput.setAttribute('aria-label', `${c.account} の並び順`);
-      sortInput.addEventListener('change', () => {
-        expenseSortConfig = setExpenseAccountSortOrder(
-          expenseSortConfig,
-          c.account,
-          sortInput.value,
-        );
-        saveExpenseSortConfig(expenseSortConfig);
-        applyExpenseSortAndRefreshPlan();
-      });
-      sortCell.appendChild(sortInput);
-    }
-
-    const expandAccountKey = `${c.sectionId}|${c.account}`;
-    const isExpandAccountRow = findExpandCandidate(c.sectionId, c.account)
-      && !expandAccountsShown.has(expandAccountKey);
-    if (isExpandAccountRow) expandAccountsShown.add(expandAccountKey);
-
-    const toggleCells = tr.querySelectorAll('.col-toggle');
-
-    if (isExpandAccountRow) {
-      tr.dataset.sectionId = c.sectionId;
-      tr.dataset.account = c.account;
-
-      const entry = getExpandEntry(expandConfig, c.sectionId, c.account);
-      const isDefault = !Object.prototype.hasOwnProperty.call(
-        expandConfig,
-        expandConfigKey(c.sectionId, c.account),
-      );
-      const forceExpanded = ALWAYS_EXPAND_SECTION_IDS.has(c.sectionId);
-
-      const collapsibleCheckbox = appendExpandSettingsCheckbox(toggleCells[0], {
-        checked: entry.collapsible,
-        labelText: '折りたたむ',
-        disabled: forceExpanded,
-        toggle: 'collapsible',
-        onChange: () => {
-          expandConfig = setExpandEntry(expandConfig, c.sectionId, c.account, {
-            collapsible: collapsibleCheckbox.checked,
-          });
-          saveExpandConfig(expandConfig);
-          rebuildPlanData();
-          renderVisibilitySettings();
-        },
-      });
-
-      const hideTotalCheckbox = appendExpandSettingsCheckbox(toggleCells[1], {
-        checked: entry.hideTotalWhenExpanded,
-        labelText: '展開時に合計非表示',
-        disabled: forceExpanded || !entry.collapsible,
-        toggle: 'hideTotal',
-        onChange: () => {
-          expandConfig = setExpandEntry(expandConfig, c.sectionId, c.account, {
-            hideTotalWhenExpanded: hideTotalCheckbox.checked,
-          });
-          saveExpandConfig(expandConfig);
-        },
-      });
-
-      if (isDefault) {
-        const hint = document.createElement('span');
-        hint.className = 'expand-default-hint';
-        hint.textContent = '（初期）';
-        toggleCells[0].querySelector('.expand-toggle-label').appendChild(hint);
-      }
-    }
-
-    const toggleCell = toggleCells[2];
-    const label = document.createElement('label');
-    label.className = 'expand-toggle-label';
-    label.dataset.toggle = 'visible';
-    const checkbox = document.createElement('input');
-    checkbox.type = 'checkbox';
-    checkbox.checked = visible;
-    checkbox.dataset.toggle = 'visible';
-    label.appendChild(checkbox);
-    label.append(' 表示');
-    toggleCell.appendChild(label);
-
-    checkbox.addEventListener('change', () => {
-      visibilityConfig = { ...visibilityConfig };
-      if (checkbox.checked) delete visibilityConfig[c.key];
-      else visibilityConfig[c.key] = false;
-      saveVisibilityConfig(visibilityConfig);
-      renderVisibilitySettings();
-    });
-
-    const rowRef = { type: c.rowType, label: c.account, subLabel: c.subLabel };
-    const hasFixedDisplayStyle = planRowHasAccentBackground({ id: c.sectionId }, rowRef)
-      || rowRef?.type === 'plan';
-
-    appendDisplayCheckbox(toggleCells[3], {
-      checked: hasFixedDisplayStyle ? false : displayEntry.largeDisplay,
-      ariaLabel: '大きく表示',
-      disabled: hasFixedDisplayStyle,
-      toggle: 'large',
-      onChange: (ev) => {
-        rowDisplayConfig = setRowDisplayEntry(
-          rowDisplayConfig,
-          c.sectionId,
-          rowRef,
-          { largeDisplay: ev.target.checked },
-        );
-        saveRowDisplayConfig(rowDisplayConfig);
-        renderVisibilitySettings();
-        if (activeTab === 'plan') refreshPlanTable();
-      },
-    });
-
-    appendDisplayCheckbox(toggleCells[4], {
-      checked: hasFixedDisplayStyle ? false : displayEntry.fillColor1,
-      ariaLabel: '塗り色１（注目）',
-      disabled: hasFixedDisplayStyle,
-      toggle: 'fill1',
-      onChange: (ev) => {
-        rowDisplayConfig = setRowDisplayEntry(
-          rowDisplayConfig,
-          c.sectionId,
-          rowRef,
-          { fillColor1: ev.target.checked },
-        );
-        saveRowDisplayConfig(rowDisplayConfig);
-        renderVisibilitySettings();
-        if (activeTab === 'plan') refreshPlanTable();
-      },
-    });
-
-    appendDisplayCheckbox(toggleCells[5], {
-      checked: hasFixedDisplayStyle ? false : displayEntry.fillColor2,
-      ariaLabel: '塗り色２（注意）',
-      disabled: hasFixedDisplayStyle,
-      toggle: 'fill2',
-      onChange: (ev) => {
-        rowDisplayConfig = setRowDisplayEntry(
-          rowDisplayConfig,
-          c.sectionId,
-          rowRef,
-          { fillColor2: ev.target.checked },
-        );
-        saveRowDisplayConfig(rowDisplayConfig);
-        renderVisibilitySettings();
-        if (activeTab === 'plan') refreshPlanTable();
-      },
-    });
-
-    tbody.appendChild(tr);
-  }
-
-  table.appendChild(tbody);
-  wrap.appendChild(table);
-  bindExpandSettingsContextMenu(wrap, table);
-
-  bindVisibilitySettingsHeaderActions();
-
-  replaceRootPanel(wrap);
-  // ブラウザ幅へフィットさせる（表の自然幅 ＋ 左右余白 2rem を基準に UI スケール）
-  bindPlanSettingsScalableLayout(wrap, {
-    measureNaturalWidth: () => {
-      const tableW = measureElementIntrinsicWidth(wrap.querySelector('.visibility-config-table'));
-      return tableW > 0 ? tableW + planSettingsRemToPx(2) : 0;
-    },
-  });
-}
-
-function renderUiColorPanel(container) {
-  mountUiColorPanel(container, {
-    getConfig: () => uiColorConfig,
-    setConfig: (next) => { uiColorConfig = next; },
-    data,
-    sectionColorConfig,
-    onRefreshPlanView: () => refreshColorDependentViews({ rebuildData: false }),
-    onRefreshToolbar: refreshToolbarFilterStyles,
-    onRefreshDashboard: renderDashboardView,
-    onReRender: refreshColorSettingsPanels,
-  });
-}
-
-function mountSectionColorPanel(sectionPanel) {
-  sectionPanel.replaceChildren();
-
-  const sectionTitle = document.createElement('h2');
-  sectionTitle.className = 'ui-color-panel-title';
-  sectionTitle.textContent = '大項目';
-  sectionPanel.appendChild(sectionTitle);
-
-  const defs = collectSectionColorDefs(
-    data?.sections ?? rawPlanData?.sections ?? [],
-    sectionColorConfig,
-    getPlanColorMode(),
-  );
-  if (defs.length === 0) {
-    const empty = document.createElement('p');
-    empty.className = 'expand-settings-empty';
-    empty.textContent = '大項目がありません。';
-    sectionPanel.appendChild(empty);
-    return;
-  }
-
-  const table = document.createElement('table');
-  table.className = 'expand-settings-table section-color-table';
-  table.innerHTML = `
-    <thead>
-      <tr>
-        <th>大項目</th>
-        <th class="col-color-input">塗り色</th>
-        <th class="col-color-input">文字色</th>
-        <th class="col-color-preview">プレビュー</th>
-        <th class="col-color-action">操作</th>
-      </tr>
-    </thead>
-  `;
-
-  const tbody = document.createElement('tbody');
-
-  let sectionColorSaveTimer = null;
-  let sectionColorRefreshTimer = null;
-
-  const flushSectionColorSave = () => {
-    if (sectionColorSaveTimer != null) {
-      clearTimeout(sectionColorSaveTimer);
-      sectionColorSaveTimer = null;
-    }
-    saveSectionColorConfig(sectionColorConfig);
-  };
-
-  const scheduleSectionColorSave = () => {
-    if (sectionColorSaveTimer != null) clearTimeout(sectionColorSaveTimer);
-    sectionColorSaveTimer = setTimeout(flushSectionColorSave, 300);
-  };
-
-  const scheduleSectionColorRefresh = () => {
-    if (sectionColorRefreshTimer != null) cancelAnimationFrame(sectionColorRefreshTimer);
-    sectionColorRefreshTimer = requestAnimationFrame(() => {
-      refreshColorDependentViews();
-      sectionColorRefreshTimer = null;
-    });
-  };
-
-  for (const def of defs) {
-    const tr = document.createElement('tr');
-
-    const labelTd = document.createElement('td');
-    labelTd.textContent = def.label;
-    styleSectionLabelCell(labelTd, def.sectionId);
-
-    const bgInputTd = document.createElement('td');
-    bgInputTd.className = 'col-color-input';
-    const bgInput = document.createElement('input');
-    bgInput.type = 'color';
-    bgInput.className = 'section-color-input';
-    bgInput.value = def.barColor;
-    bgInput.title = def.barColor;
-    bgInputTd.appendChild(bgInput);
-
-    const textInputTd = document.createElement('td');
-    textInputTd.className = 'col-color-input';
-    const textInput = document.createElement('input');
-    textInput.type = 'color';
-    textInput.className = 'section-color-input';
-    textInput.value = def.textColor;
-    textInput.title = def.textColor;
-    textInputTd.appendChild(textInput);
-
-    const previewTd = document.createElement('td');
-    previewTd.className = 'col-color-preview';
-    const preview = document.createElement('span');
-    preview.className = 'section-color-preview';
-    preview.style.background = def.barColor;
-    preview.style.color = def.textColor;
-    preview.textContent = def.label;
-    previewTd.appendChild(preview);
-
-    const actionTd = document.createElement('td');
-    actionTd.className = 'col-color-action';
-    const resetBtn = document.createElement('button');
-    resetBtn.type = 'button';
-    resetBtn.className = 'section-color-reset-btn';
-    resetBtn.textContent = 'デフォルト';
-    resetBtn.disabled = !def.isCustom;
-    actionTd.appendChild(resetBtn);
-
-    tr.append(labelTd, bgInputTd, textInputTd, previewTd, actionTd);
-    tbody.appendChild(tr);
-
-    const applySectionColorOverride = (barColor, textColor, { flush = false } = {}) => {
-      sectionColorConfig = setSectionColorOverride(
-        sectionColorConfig,
-        getPlanColorMode(),
-        def.sectionId,
-        { barColor, textColor },
-      );
-      if (flush) flushSectionColorSave();
-      else scheduleSectionColorSave();
-      scheduleSectionColorRefresh();
-      bgInput.value = barColor;
-      bgInput.title = barColor;
-      textInput.value = textColor;
-      textInput.title = textColor;
-      preview.style.background = barColor;
-      preview.style.color = textColor;
-      styleSectionLabelCell(labelTd, def.sectionId);
-      resetBtn.disabled = false;
-    };
-
-    const emitSectionColorOverride = (flush) => {
-      applySectionColorOverride(bgInput.value, textInput.value, { flush });
-    };
-
-    bgInput.addEventListener('input', () => emitSectionColorOverride(false));
-    bgInput.addEventListener('change', () => emitSectionColorOverride(true));
-    textInput.addEventListener('input', () => emitSectionColorOverride(false));
-    textInput.addEventListener('change', () => emitSectionColorOverride(true));
-
-    resetBtn.addEventListener('click', () => {
-      sectionColorConfig = resetSectionColorOverride(
-        sectionColorConfig,
-        getPlanColorMode(),
-        def.sectionId,
-      );
-      flushSectionColorSave();
-      refreshColorDependentViews();
-      const colors = getSectionColors(def.sectionId, sectionColorConfig, getPlanColorMode());
-      bgInput.value = colors.barColor;
-      bgInput.title = colors.barColor;
-      textInput.value = colors.textColor;
-      textInput.title = colors.textColor;
-      preview.style.background = colors.barColor;
-      preview.style.color = colors.textColor;
-      styleSectionLabelCell(labelTd, def.sectionId);
-      resetBtn.disabled = true;
-    });
-  }
-
-  table.appendChild(tbody);
-  sectionPanel.appendChild(table);
-}
-
-function buildColorSettingsColumns() {
-  const columns = document.createElement('div');
-  columns.className = 'color-settings-columns';
-
-  const uiColumn = document.createElement('div');
-  uiColumn.className = 'color-settings-column color-settings-column-ui';
-  renderUiColorPanel(uiColumn);
-  columns.appendChild(uiColumn);
-
-  const sectionColumn = document.createElement('div');
-  sectionColumn.className = 'color-settings-column color-settings-column-sections';
-
-  const sectionPanel = document.createElement('div');
-  sectionPanel.className = 'section-color-panel';
-  mountSectionColorPanel(sectionPanel);
-  sectionColumn.appendChild(sectionPanel);
-  columns.appendChild(sectionColumn);
-
-  return columns;
-}
-
-function bindColorSettingsResetActions(container) {
-  container.querySelector('#ui-color-reset-btn')?.addEventListener('click', () => {
-    uiColorConfig = resetUiColorModeOverrides(uiColorConfig, getPlanColorMode());
-    saveUiColorConfig(uiColorConfig);
-    applyUiColors(uiColorConfig);
-    refreshColorSettingsPanels();
-    refreshColorDependentViews();
-  });
-
-  container.querySelector('#section-color-reset-btn')?.addEventListener('click', () => {
-    sectionColorConfig = resetSectionColorModeOverrides(sectionColorConfig, getPlanColorMode());
-    saveSectionColorConfig(sectionColorConfig);
-    refreshSectionColors();
-    refreshColorSettingsPanels();
-    refreshColorDependentViews();
-  });
-}
-
-function buildColorSettingsContent() {
-  const wrap = document.createElement('div');
-  wrap.className = 'color-settings-content';
-
-  const header = document.createElement('div');
-  header.className = 'expand-settings-header color-settings-content-header';
-  header.innerHTML = `
-    <div class="expand-settings-header-actions color-settings-window-reset-actions">
-      <button type="button" class="expand-reset-btn" id="ui-color-reset-btn">全体をデフォルトに戻す</button>
-      <button type="button" class="expand-reset-btn" id="section-color-reset-btn">大項目をすべてデフォルトに戻す</button>
-    </div>
-  `;
-  wrap.appendChild(header);
-  wrap.appendChild(buildColorSettingsColumns());
-  bindColorSettingsResetActions(wrap);
-  return wrap;
-}
-
-function appendCsvNameSettingsPanel(wrap) {
-  const section = document.createElement('div');
-  section.className = 'app-settings-section csv-name-settings-wrap';
-
-  const title = document.createElement('h2');
-  title.className = 'ui-color-panel-title';
-  title.textContent = 'CSV名定義';
-  section.appendChild(title);
-
-  const desc = document.createElement('p');
-  desc.className = 'app-settings-hint';
-  desc.innerHTML = `
-    フォルダ読み込み時に対象とする CSV ファイル名を、種類ごとに<strong>正規表現</strong>で定義します。
-    例のファイル名でパターンをテストできます。変更後は <strong>CSV再読込</strong> で反映されます。
-  `;
-  section.appendChild(desc);
-
-  const resetRow = document.createElement('div');
-  resetRow.className = 'expand-settings-header-actions';
-  const resetBtn = document.createElement('button');
-  resetBtn.type = 'button';
-  resetBtn.className = 'expand-reset-btn';
-  resetBtn.id = 'csvname-reset-btn';
-  resetBtn.textContent = 'CSV名定義をデフォルトに戻す';
-  resetRow.appendChild(resetBtn);
-  section.appendChild(resetRow);
-
-  const table = document.createElement('table');
-  table.className = 'expand-settings-table csv-name-settings-table';
-  table.innerHTML = `
-    <thead>
-      <tr>
-        <th>種類</th>
-        <th>正規表現パターン</th>
-        <th>例（ファイル名）</th>
-        <th class="col-csvname-test">テスト</th>
-      </tr>
-    </thead>
-  `;
-
-  const tbody = document.createElement('tbody');
-
-  for (const kind of CSV_KINDS) {
-    const entry = csvNameConfig[kind.id];
-    const tr = document.createElement('tr');
-    tr.dataset.csvKind = kind.id;
-
-    const labelTd = document.createElement('td');
-    labelTd.textContent = kind.required ? kind.label : `${kind.label}（任意）`;
-
-    const patternTd = document.createElement('td');
-    patternTd.className = 'col-csvname-pattern';
-    const patternInput = document.createElement('input');
-    patternInput.type = 'text';
-    patternInput.className = 'csvname-pattern-input';
-    patternInput.value = entry.pattern;
-    patternInput.spellcheck = false;
-    patternTd.appendChild(patternInput);
-
-    const exampleTd = document.createElement('td');
-    exampleTd.className = 'col-csvname-example';
-    const exampleInput = document.createElement('input');
-    exampleInput.type = 'text';
-    exampleInput.className = 'csvname-example-input';
-    exampleInput.value = entry.example;
-    exampleInput.spellcheck = false;
-    exampleTd.appendChild(exampleInput);
-
-    const testTd = document.createElement('td');
-    testTd.className = 'col-csvname-test';
-
-    function refreshTestCell() {
-      const result = testCsvNameExample(kind.id, csvNameConfig);
-      testTd.textContent = result.ok ? '一致' : (result.error ?? '—');
-      testTd.className = `col-csvname-test${result.ok ? ' is-ok' : ' is-ng'}`;
-    }
-
-    function persistField(field, value) {
-      csvNameConfig = {
-        ...csvNameConfig,
-        [kind.id]: { ...csvNameConfig[kind.id], [field]: value },
-      };
-      saveCsvNameConfig(csvNameConfig);
-      refreshTestCell();
-    }
-
-    patternInput.addEventListener('input', () => {
-      persistField('pattern', patternInput.value);
-    });
-    exampleInput.addEventListener('input', () => {
-      persistField('example', exampleInput.value);
-    });
-
-    tr.append(labelTd, patternTd, exampleTd, testTd);
-    tbody.appendChild(tr);
-    refreshTestCell();
-  }
-
-  table.appendChild(tbody);
-  section.appendChild(table);
-
-  resetBtn.addEventListener('click', () => {
-    csvNameConfig = resetCsvNameConfig();
-    if (activeTab === 'settings') renderOtherSettings();
-  });
-
-  wrap.appendChild(section);
-}
-
-function filterBrandLogoDecimalInput(value) {
-  const cleaned = String(value ?? '').replace(/[^\d.]/g, '');
-  const dotIndex = cleaned.indexOf('.');
-  if (dotIndex === -1) return cleaned;
-  const intPart = cleaned.slice(0, dotIndex);
-  const fracPart = cleaned.slice(dotIndex + 1).replace(/\./g, '').slice(0, 1);
-  if (fracPart.length > 0 || cleaned.endsWith('.')) {
-    return `${intPart}.${fracPart}`;
-  }
-  return `${intPart}.`;
-}
-
-function filterTaxRateIntegerInput(value) {
-  return String(value ?? '').replace(/[^\d]/g, '');
-}
-
-function filterTaxRateDecimalInput(value) {
-  const cleaned = String(value ?? '').replace(/[^\d.]/g, '');
-  const dotIndex = cleaned.indexOf('.');
-  if (dotIndex === -1) return cleaned;
-  const intPart = cleaned.slice(0, dotIndex);
-  const fracPart = cleaned.slice(dotIndex + 1).replace(/\./g, '');
-  return `${intPart}.${fracPart}`;
-}
-
-function formatTaxRateThresholdYen(value) {
-  const digits = String(value ?? '').replace(/[^\d]/g, '');
-  if (!digits) return '';
-  const num = parseInt(digits, 10);
-  if (!Number.isFinite(num)) return '';
-  return `\u00a5${num.toLocaleString('ja-JP')}`;
-}
-
-function parseTaxRateThresholdYen(raw) {
-  return String(raw ?? '').replace(/[^\d]/g, '');
-}
-
-function createTaxRateThresholdInput({ field, value, className }) {
-  const input = document.createElement('input');
-  input.type = 'text';
-  input.inputMode = 'numeric';
-  input.autocomplete = 'off';
-  input.spellcheck = false;
-  input.className = className;
-  input.dataset.field = field;
-  input.value = formatTaxRateThresholdYen(value);
-
-  input.addEventListener('focus', () => {
-    input.value = parseTaxRateThresholdYen(input.value);
-  });
-
-  input.addEventListener('input', () => {
-    const filtered = filterTaxRateIntegerInput(input.value);
-    if (filtered !== input.value) input.value = filtered;
-  });
-
-  input.addEventListener('blur', () => {
-    input.value = formatTaxRateThresholdYen(input.value);
-    input.dispatchEvent(new Event('change', { bubbles: true }));
-  });
-
-  return input;
-}
-
-function createTaxRateInput({ field, value, className, numericKind }) {
-  const input = document.createElement('input');
-  input.type = 'text';
-  input.inputMode = numericKind === 'decimal' ? 'decimal' : 'numeric';
-  input.autocomplete = 'off';
-  input.spellcheck = false;
-  input.className = className;
-  input.dataset.field = field;
-  input.value = String(value);
-
-  input.addEventListener('input', () => {
-    const filtered = numericKind === 'decimal'
-      ? filterTaxRateDecimalInput(input.value)
-      : filterTaxRateIntegerInput(input.value);
-    if (filtered !== input.value) input.value = filtered;
-  });
-
-  return input;
-}
-
-function bindTaxRateTable({ tbody, addBtn, getRates, normalizeRates, onUpdate }) {
-  function readRatesFromTable() {
-    const rows = [];
-    tbody.querySelectorAll('tr').forEach((tr) => {
-      rows.push({
-        year: tr.querySelector('[data-field="year"]')?.value,
-        month: tr.querySelector('[data-field="month"]')?.value,
-        ratePercent: tr.querySelector('[data-field="rate"]')?.value,
-      });
-    });
-    return rows;
-  }
-
-  function saveFromTable() {
-    onUpdate(normalizeRates(readRatesFromTable()));
-  }
-
-  function renderRows() {
-    tbody.replaceChildren();
-    getRates().forEach((row, index) => {
-      const tr = document.createElement('tr');
-      tr.dataset.rateKind = 'consumption';
-      tr.dataset.index = String(index);
-
-      const yearTd = document.createElement('td');
-      yearTd.appendChild(createTaxRateInput({
-        field: 'year',
-        value: row.year,
-        className: 'tax-rate-input',
-        numericKind: 'integer',
-      }));
-
-      const monthTd = document.createElement('td');
-      monthTd.appendChild(createTaxRateInput({
-        field: 'month',
-        value: row.month,
-        className: 'tax-rate-input',
-        numericKind: 'integer',
-      }));
-
-      const rateTd = document.createElement('td');
-      rateTd.appendChild(createTaxRateInput({
-        field: 'rate',
-        value: row.ratePercent,
-        className: 'tax-rate-input tax-rate-input-rate',
-        numericKind: 'decimal',
-      }));
-
-      const actionTd = document.createElement('td');
-      actionTd.className = 'col-tax-rate-actions';
-      const deleteBtn = document.createElement('button');
-      deleteBtn.type = 'button';
-      deleteBtn.className = 'settings-delete-btn';
-      deleteBtn.textContent = '削除';
-      deleteBtn.addEventListener('click', () => {
-        tr.remove();
-        saveFromTable();
-      });
-      actionTd.appendChild(deleteBtn);
-
-      tr.append(yearTd, monthTd, rateTd, actionTd);
-      tr.querySelectorAll('input').forEach((input) => {
-        input.addEventListener('change', saveFromTable);
-      });
-      tbody.appendChild(tr);
-    });
-  }
-
-  addBtn.addEventListener('click', () => {
-    const rates = getRates();
-    const last = rates.length > 0 ? rates[rates.length - 1] : null;
-    const now = new Date();
-    const nextRow = last
-      ? { year: last.year, month: last.month, ratePercent: last.ratePercent }
-      : { year: now.getFullYear(), month: now.getMonth() + 1, ratePercent: 10 };
-    onUpdate(normalizeRates([...rates, nextRow]));
-  });
-
-  return { renderRows };
-}
-
-function bindWithholdingTaxTable({ tbody, addBtn, getRates, onUpdate }) {
-  function readRatesFromTable() {
-    const rows = [];
-    tbody.querySelectorAll('tr').forEach((tr) => {
-      rows.push({
-        year: tr.querySelector('[data-field="year"]')?.value,
-        month: tr.querySelector('[data-field="month"]')?.value,
-        thresholdYen: parseTaxRateThresholdYen(tr.querySelector('[data-field="threshold"]')?.value),
-        baseRatePercent: tr.querySelector('[data-field="base-rate"]')?.value,
-        excessRatePercent: tr.querySelector('[data-field="excess-rate"]')?.value,
-      });
-    });
-    return rows;
-  }
-
-  function saveFromTable() {
-    onUpdate(normalizeWithholdingTaxRates(readRatesFromTable()));
-  }
-
-  function renderRows() {
-    tbody.replaceChildren();
-    getRates().forEach((row, index) => {
-      const tr = document.createElement('tr');
-      tr.dataset.rateKind = 'withholding';
-      tr.dataset.index = String(index);
-
-      const fields = [
-        { name: 'year', value: row.year, className: 'tax-rate-input', numericKind: 'integer' },
-        { name: 'month', value: row.month, className: 'tax-rate-input', numericKind: 'integer' },
-        {
-          name: 'threshold',
-          value: row.thresholdYen,
-          className: 'tax-rate-input tax-rate-input-threshold',
-          numericKind: 'integer',
-        },
-        {
-          name: 'base-rate',
-          value: row.baseRatePercent,
-          className: 'tax-rate-input tax-rate-input-rate',
-          numericKind: 'decimal',
-        },
-        {
-          name: 'excess-rate',
-          value: row.excessRatePercent,
-          className: 'tax-rate-input tax-rate-input-rate',
-          numericKind: 'decimal',
-        },
-      ];
-
-      for (const field of fields) {
-        const td = document.createElement('td');
-        if (field.name === 'threshold') {
-          td.appendChild(createTaxRateThresholdInput({
-            field: field.name,
-            value: field.value,
-            className: field.className,
-          }));
-        } else {
-          td.appendChild(createTaxRateInput({
-            field: field.name,
-            value: field.value,
-            className: field.className,
-            numericKind: field.numericKind,
-          }));
-        }
-        tr.appendChild(td);
-      }
-
-      const actionTd = document.createElement('td');
-      actionTd.className = 'col-tax-rate-actions';
-      const deleteBtn = document.createElement('button');
-      deleteBtn.type = 'button';
-      deleteBtn.className = 'settings-delete-btn';
-      deleteBtn.textContent = '削除';
-      deleteBtn.addEventListener('click', () => {
-        tr.remove();
-        saveFromTable();
-      });
-      actionTd.appendChild(deleteBtn);
-
-      tr.appendChild(actionTd);
-      tr.querySelectorAll('input').forEach((input) => {
-        input.addEventListener('change', saveFromTable);
-      });
-      tbody.appendChild(tr);
-    });
-  }
-
-  addBtn.addEventListener('click', () => {
-    const rates = getRates();
-    const last = rates.length > 0 ? rates[rates.length - 1] : null;
-    const now = new Date();
-    const nextRow = last
-      ? { ...last }
-      : {
-        year: now.getFullYear(),
-        month: now.getMonth() + 1,
-        thresholdYen: DEFAULT_WITHHOLDING_THRESHOLD_YEN,
-        baseRatePercent: 10.21,
-        excessRatePercent: 20.42,
-      };
-    onUpdate(normalizeWithholdingTaxRates([...rates, nextRow]));
-  });
-
-  return { renderRows };
-}
-
-function renderTaxRateSettings() {
-  setPlanKpi(null);
-
-  const wrap = document.createElement('div');
-  wrap.className = 'expand-settings-wrap tax-rate-settings-wrap plan-settings-scalable';
-
-  const header = document.createElement('div');
-  header.className = 'expand-settings-header';
-  header.innerHTML = `
-    <p class="expand-settings-desc tax-rate-settings-desc">
-      消費税税率・源泉所得税（個人事業主）・法定福利費予測率を定義します。源泉所得税は支払額に対する段階税率で、各行はその年月以降に有効です。
-    </p>
-    <div class="expand-settings-header-actions">
-      <button type="button" class="expand-reset-btn" id="tax-rate-reset-btn">デフォルトに戻す</button>
-    </div>
-  `;
-  wrap.appendChild(header);
-
-  const form = document.createElement('div');
-  form.className = 'app-settings-form tax-rate-settings-form';
-  form.innerHTML = `
-    <div class="tax-rate-settings-stack">
-      <div class="app-settings-section tax-rate-section tax-rate-section--consumption">
-        <div class="tax-rate-section-head">
-          <span class="app-settings-label">消費税税率</span>
-          <span class="app-settings-hint tax-rate-section-hint">適用開始年月以降に有効な消費税税率（％）</span>
-        </div>
-        <table class="expand-settings-table tax-rate-table consumption-tax-rate-table">
-          <thead>
-            <tr>
-              <th>年</th>
-              <th>月</th>
-              <th>税率（%）</th>
-              <th class="col-tax-rate-actions"></th>
-            </tr>
-          </thead>
-          <tbody id="consumption-tax-rate-tbody"></tbody>
-        </table>
-        <button type="button" class="expand-reset-btn tax-rate-add-btn" id="consumption-tax-rate-add">行を追加</button>
-      </div>
-      <div class="app-settings-section tax-rate-section tax-rate-section--withholding">
-        <div class="tax-rate-section-head">
-          <span class="app-settings-label">源泉所得税（個人事業主・報酬・料金等）</span>
-          <span class="app-settings-hint tax-rate-section-hint">閾値以下は基準税率、超過分は超過税率。税額 = 閾値以下 × 基準 ＋ 超過 × 超過（1円未満切捨て）。例: 150万・10.21%／20.42% → 204,200円</span>
-        </div>
-        <table class="expand-settings-table tax-rate-table withholding-tax-rate-table">
-          <thead>
-            <tr>
-              <th>年</th>
-              <th>月</th>
-              <th>閾値（円）</th>
-              <th>基準税率（%）</th>
-              <th>超過税率（%）</th>
-              <th class="col-tax-rate-actions"></th>
-            </tr>
-          </thead>
-          <tbody id="withholding-tax-rate-tbody"></tbody>
-        </table>
-        <button type="button" class="expand-reset-btn tax-rate-add-btn" id="withholding-tax-rate-add">行を追加</button>
-      </div>
-      <div class="app-settings-section tax-rate-section tax-rate-section--legal-welfare">
-        <div class="tax-rate-section-head">
-          <span class="app-settings-label">法定福利費（予測）</span>
-          <span class="app-settings-hint tax-rate-section-hint">round((役員報酬月次合計 ＋ 給料手当月次合計) × 率)。CSV実績＋人件費計画のマージ合計（残業手当含む）</span>
-        </div>
-        <div class="legal-welfare-rate-inline">
-          <label class="legal-welfare-rate-field" for="legal-welfare-rate-input">
-            <span class="app-settings-label">率</span>
-            <input
-              type="number"
-              class="app-settings-input tax-rate-input legal-welfare-rate-input"
-              id="legal-welfare-rate-input"
-              min="0"
-              max="1"
-              step="0.01"
-              aria-describedby="legal-welfare-rate-note"
-            />
-          </label>
-          <span class="app-settings-hint tax-rate-section-hint" id="legal-welfare-rate-note"></span>
-        </div>
-      </div>
-    </div>
-  `;
-  wrap.appendChild(form);
-
-  const consumptionTbody = form.querySelector('#consumption-tax-rate-tbody');
-  const consumptionAddBtn = form.querySelector('#consumption-tax-rate-add');
-  const withholdingTbody = form.querySelector('#withholding-tax-rate-tbody');
-  const withholdingAddBtn = form.querySelector('#withholding-tax-rate-add');
-  const legalWelfareRateInput = form.querySelector('#legal-welfare-rate-input');
-  const legalWelfareRateNote = form.querySelector('#legal-welfare-rate-note');
-
-  const syncLegalWelfareRateNote = (rate) => {
-    legalWelfareRateNote.textContent = `（${formatLegalWelfareRatePercent(rate)} に相当）`;
-  };
-
-  legalWelfareRateInput.value = String(appSettings.legalWelfareRate ?? DEFAULT_LEGAL_WELFARE_RATE);
-  syncLegalWelfareRateNote(appSettings.legalWelfareRate ?? DEFAULT_LEGAL_WELFARE_RATE);
-
-  const saveLegalWelfareRate = () => {
-    const nextRate = normalizeLegalWelfareRate(legalWelfareRateInput.value);
-    legalWelfareRateInput.value = String(nextRate);
-    syncLegalWelfareRateNote(nextRate);
-    appSettings = { ...appSettings, legalWelfareRate: nextRate };
-    saveAppSettings(appSettings);
-    if (activeTab === 'plan') refreshPlanTable();
-  };
-
-  legalWelfareRateInput.addEventListener('change', saveLegalWelfareRate);
-  legalWelfareRateInput.addEventListener('blur', saveLegalWelfareRate);
-
-  const consumptionTable = bindTaxRateTable({
-    tbody: consumptionTbody,
-    addBtn: consumptionAddBtn,
-    getRates: () => appSettings.consumptionTaxRates,
-    normalizeRates: normalizeConsumptionTaxRates,
-    onUpdate: (rates) => {
-      appSettings = { ...appSettings, consumptionTaxRates: rates };
-      saveAppSettings(appSettings);
-      consumptionTable.renderRows();
-    },
-  });
-
-  const withholdingTable = bindWithholdingTaxTable({
-    tbody: withholdingTbody,
-    addBtn: withholdingAddBtn,
-    getRates: () => appSettings.withholdingTaxRates,
-    onUpdate: (rates) => {
-      appSettings = { ...appSettings, withholdingTaxRates: rates };
-      saveAppSettings(appSettings);
-      withholdingTable.renderRows();
-    },
-  });
-
-  wrap.querySelector('#tax-rate-reset-btn').addEventListener('click', () => {
-    appSettings = {
-      ...appSettings,
-      consumptionTaxRates: DEFAULT_CONSUMPTION_TAX_RATES.map((r) => ({ ...r })),
-      withholdingTaxRates: DEFAULT_WITHHOLDING_TAX_RATES.map((r) => ({ ...r })),
-      legalWelfareRate: DEFAULT_LEGAL_WELFARE_RATE,
-    };
-    saveAppSettings(appSettings);
-    legalWelfareRateInput.value = String(DEFAULT_LEGAL_WELFARE_RATE);
-    syncLegalWelfareRateNote(DEFAULT_LEGAL_WELFARE_RATE);
-    consumptionTable.renderRows();
-    withholdingTable.renderRows();
-    if (activeTab === 'plan') refreshPlanTable();
-  });
-
-  consumptionTable.renderRows();
-  withholdingTable.renderRows();
-  replaceRootPanel(wrap);
-  // ブラウザ幅へフィットさせる（源泉所得税表の自然幅 ＋ 左右余白 2rem、下限 28rem）
-  bindPlanSettingsScalableLayout(wrap, {
-    measureNaturalWidth: () => {
-      const withholdingW = Math.max(
-        measureElementIntrinsicWidth(wrap.querySelector('.withholding-tax-rate-table')),
-        planSettingsRemToPx(28),
-      );
-      return withholdingW + planSettingsRemToPx(2);
-    },
-  });
-}
-
-function applyTaxPaymentPlanTitleStyle(titleEl) {
-  if (!titleEl) return;
-  titleEl.classList.add('salary-plan-title--section-filter');
-  titleEl.dataset.sectionFilter = 'otherPay';
-  const { background, color } = getFilterButtonColors('otherPay');
-  titleEl.style.setProperty('--filter-btn-bg', background);
-  titleEl.style.color = color;
-}
-
-function renderTaxPaymentSettings() {
-  const wrap = document.createElement('div');
-  wrap.className = 'expand-settings-wrap tax-payment-settings-wrap plan-settings-scalable';
-
-  const header = document.createElement('div');
-  header.className = 'expand-settings-header tax-payment-settings-header';
-  header.innerHTML = `
-    <p class="expand-settings-desc">租税公課・保険積立金・長期未払金・未払消費税・未払法人税等・法人税等・住民税・役員借入金の支払い計画を設定します。法人税等は予実表の「法人税」セクションに反映されます。住民税は市区町村ごとに入力し、合計が予実表に反映されます。当期の実績表示月は仕訳実績を表示します（編集不可）。予実表で計画表示に切り替えた月は編集できます。住民税のみ過去月も入力でき、予実表にもその値が反映されます。Shift+Enter で入力した月以降の同額を後続月に反映します。</p>
-    <div class="tax-payment-settings-controls">
-      <div class="tax-payment-plan-years-row">
-        <span class="app-settings-label">計画年数</span>
-        <input
-          type="number"
-          class="app-settings-input tax-payment-plan-years-input"
-          id="tax-payment-plan-years-input"
-          min="1"
-          max="30"
-          step="1"
-          inputmode="numeric"
-          autocomplete="off"
-          spellcheck="false"
-          aria-label="計画年数"
-        />
-        <p class="tax-payment-plan-years-hint">選択中の期から数えた年数です。デフォルトは ${DEFAULT_PAYMENT_PLAN_YEARS} 年です。</p>
-      </div>
-    </div>
-  `;
-  wrap.appendChild(header);
-
-  const planYearsInput = header.querySelector('#tax-payment-plan-years-input');
-  planYearsInput.value = String(getPaymentPlanYears(paymentPlanSettings));
-  planYearsInput.addEventListener('change', () => {
-    paymentPlanSettings = setPaymentPlanYears(paymentPlanSettings, planYearsInput.value);
-    planYearsInput.value = String(getPaymentPlanYears(paymentPlanSettings));
-    renderPlanSection();
-  });
-  planYearsInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      planYearsInput.blur();
-    }
-  });
-
-  const fiscalMonths = buildFiscalYearMonths(appSettings.fiscalEndMonth);
-  const currentPeriod = appSettings.fiscalPeriod;
-  const planPeriodEntries = () => buildPaymentPlanPeriodEntries(
-    currentPeriod,
-    getPaymentPlanYears(paymentPlanSettings),
-  );
-  const actualAmountsByAccount = rawPlanData
-    ? collectPaymentActualAmountsFromPlanData(rawPlanData, fiscalMonths)
-    : new Map();
-  const { byMunicipality: actualResidentTaxByMunicipality } = rawPlanData
-    ? collectResidentTaxActualByMunicipality(rawPlanData, fiscalMonths)
-    : { byMunicipality: new Map() };
-
-  const municipalityNames = [
-    ...collectResidentTaxMunicipalityNamesFromEmployees(employees),
-    ...collectResidentTaxSubaccountsFromPlanData(rawPlanData).map((item) => item.municipality),
-  ];
-  taxPaymentPlans = mergeResidentTaxMunicipalitiesFromNames(
-    taxPaymentPlans,
-    currentPeriod,
-    municipalityNames,
-    fiscalMonths,
-  );
-  for (const { period } of planPeriodEntries()) {
-    if (period === currentPeriod) continue;
-    taxPaymentPlans = syncResidentTaxMunicipalitiesFromReference(
-      taxPaymentPlans,
-      period,
-      currentPeriod,
-      fiscalMonths,
-    );
-  }
-
-  function refreshPlanTableIfNeeded() {
-    refreshSectionColors();
-    refreshPlanKpi();
-    if (activeTab === 'plan' && data) refreshPlanTable();
-  }
-
-  const monthDisplayUi = createPlanMonthDisplayUi({
-    appSettings,
-    currentPeriod,
-    fiscalMonths,
-    getMonthDisplayConfig: () => monthDisplayConfig,
-    getPastMonthsForPeriod,
-    onToggleMonthDisplay: togglePlanMonthDisplay,
-  });
-  const startNumericCellEdit = createPlanAmountCellEditor({ onEditClose: () => renderPlanSection() });
-
-  function appendPlanAmountCell(tr, {
-    month,
-    monthIndex,
-    fiscalPeriod,
-    value,
-    prevValue,
-    editable,
-    title,
-    formatValue,
-    rawValue,
-    parseValue,
-    onSave,
-    allowShiftFillForward = true,
-    tabScopeId,
-    forcePlanMonthColor = false,
-  }) {
-    const td = document.createElement('td');
-    tr.appendChild(td);
-    monthDisplayUi.setPlanAmountCellContent(td, {
-      month,
-      monthIndex,
-      value,
-      prevValue,
-      editable,
-      fiscalPeriod,
-      title,
-      formatValue,
-      rawValue,
-      parseValue,
-      onSave,
-      allowShiftFillForward,
-      tabScopeId,
-      forcePlanMonthColor,
-      onEditClose: () => renderPlanSection(),
-    }, startNumericCellEdit);
-  }
-
-  function syncTaxPaymentTableMonthDisplay(table, fiscalPeriod) {
-    if (fiscalPeriod !== currentPeriod) return;
-
-    table.querySelectorAll('thead th.salary-plan-col-month').forEach((th, i) => {
-      const month = fiscalMonths[i];
-      if (month) monthDisplayUi.updateMonthHeaderTh(th, month, fiscalPeriod);
-    });
-
-    for (const account of PAYMENT_PLAN_SIMPLE_ACCOUNTS) {
-      const tr = table.querySelector(`tbody tr[data-plan-row-key="${CSS.escape(account)}"]`);
-      if (!tr) continue;
-      const displayMonthly = buildDisplayMonthly(account, fiscalPeriod);
-      const plan = getPlanForPeriod(fiscalPeriod)[account] ?? {};
-      const amountCells = tr.querySelectorAll('td.salary-plan-amount-cell');
-      for (let i = 0; i < fiscalMonths.length; i += 1) {
-        const month = fiscalMonths[i];
-        const td = amountCells[i];
-        if (!td) continue;
-        const prevMonth = i > 0 ? fiscalMonths[i - 1] : null;
-        const prevValue = prevMonth != null ? displayMonthly[prevMonth] : undefined;
-        monthDisplayUi.setPlanAmountCellContent(td, {
-          month,
-          monthIndex: i,
-          value: displayMonthly[month],
-          prevValue,
-          editable: isMonthEditable(fiscalPeriod, month),
-          fiscalPeriod,
-          title: 'ダブルクリックで編集（Shift+Enter で後続月へ同額反映）',
-          formatValue: formatSalaryPlanYen,
-          rawValue: plan[month],
-          parseValue: parseSalaryPlanAmountInput,
-          allowShiftFillForward: true,
-          tabScopeId: `tax-payment-${fiscalPeriod}`,
-          onSave: (parsed, fillForward) => {
-            const pastMonths = getPastMonthsForPeriod(fiscalPeriod);
-            const next = fillForward
-              ? applyAmountFromMonthForwardSkippingPast(
-                plan,
-                fiscalMonths,
-                month,
-                parsed,
-                pastMonths,
-              )
-              : { ...plan, [month]: parsed };
-            persistPlan(account, next, fiscalPeriod);
-          },
-          onEditClose: () => renderPlanSection(),
-        }, startNumericCellEdit);
-      }
-      const totalTd = tr.querySelector('td.salary-plan-col-total');
-      if (totalTd) totalTd.textContent = formatSalaryPlanYen(sumDisplayMonthlyTotal(displayMonthly));
-    }
-
-    for (const entry of getMunicipalitiesForPeriod(fiscalPeriod)) {
-      const tr = table.querySelector(`tbody tr[data-plan-row-key="${CSS.escape(entry.id)}"]`);
-      if (!tr) continue;
-      const displayMonthly = buildMunicipalityDisplayMonthly(entry, fiscalPeriod);
-      const amountCells = tr.querySelectorAll('td.salary-plan-amount-cell');
-      for (let i = 0; i < fiscalMonths.length; i += 1) {
-        const month = fiscalMonths[i];
-        const td = amountCells[i];
-        if (!td) continue;
-        const prevMonth = i > 0 ? fiscalMonths[i - 1] : null;
-        const prevValue = prevMonth != null ? displayMonthly[prevMonth] : undefined;
-        monthDisplayUi.setPlanAmountCellContent(td, {
-          month,
-          monthIndex: i,
-          value: displayMonthly[month],
-          prevValue,
-          editable: isResidentTaxMonthEditable(fiscalPeriod, month),
-          fiscalPeriod,
-          forcePlanMonthColor: true,
-          title: 'ダブルクリックで編集（Shift+Enter で後続月へ同額反映）',
-          formatValue: formatSalaryPlanYen,
-          rawValue: entry.monthly[month],
-          parseValue: parseSalaryPlanAmountInput,
-          allowShiftFillForward: true,
-          tabScopeId: `tax-municipality-${fiscalPeriod}`,
-          onSave: (parsed, fillForward) => {
-            saveMunicipalityMonthly(entry, fiscalPeriod, month, parsed, fillForward);
-          },
-          onEditClose: () => renderPlanSection(),
-        }, startNumericCellEdit);
-      }
-      const totalTd = tr.querySelector('td.salary-plan-col-total');
-      if (totalTd) totalTd.textContent = formatSalaryPlanYen(sumDisplayMonthlyTotal(displayMonthly));
-    }
-
-    const residentTaxTotalDisplay = buildResidentTaxTotalDisplay(fiscalPeriod);
-    const residentTaxTotalTr = table.querySelector('tbody tr[data-plan-row-key="resident-tax-total"]');
-    if (residentTaxTotalTr) {
-      const amountCells = residentTaxTotalTr.querySelectorAll('td.salary-plan-amount-cell');
-      for (let i = 0; i < fiscalMonths.length; i += 1) {
-        const month = fiscalMonths[i];
-        const td = amountCells[i];
-        if (!td) continue;
-        const prevMonth = i > 0 ? fiscalMonths[i - 1] : null;
-        const prevValue = prevMonth != null ? residentTaxTotalDisplay[prevMonth] : undefined;
-        monthDisplayUi.setPlanAmountCellContent(td, {
-          month,
-          monthIndex: i,
-          value: residentTaxTotalDisplay[month],
-          prevValue,
-          editable: false,
-          fiscalPeriod,
-          forcePlanMonthColor: true,
-          formatValue: formatSalaryPlanYen,
-        }, startNumericCellEdit);
-      }
-      const totalTd = residentTaxTotalTr.querySelector('td.salary-plan-col-total');
-      if (totalTd) {
-        totalTd.textContent = formatSalaryPlanYen(sumDisplayMonthlyTotal(residentTaxTotalDisplay));
-      }
-    }
-
-    const grandTotalDisplay = {};
-    for (const month of fiscalMonths) grandTotalDisplay[month] = 0;
-    for (const account of PAYMENT_PLAN_SIMPLE_ACCOUNTS) {
-      const displayMonthly = buildDisplayMonthly(account, fiscalPeriod);
-      for (const month of fiscalMonths) {
-        grandTotalDisplay[month] += displayMonthly[month] ?? 0;
-      }
-    }
-    for (const month of fiscalMonths) {
-      grandTotalDisplay[month] += residentTaxTotalDisplay[month] ?? 0;
-    }
-
-    const grandTr = table.querySelector('tbody tr[data-plan-row-key="grand-total"]');
-    if (grandTr) {
-      const amountCells = grandTr.querySelectorAll('td.salary-plan-amount-cell');
-      for (let i = 0; i < fiscalMonths.length; i += 1) {
-        const month = fiscalMonths[i];
-        const td = amountCells[i];
-        if (!td) continue;
-        monthDisplayUi.setPlanAmountCellContent(td, {
-          month,
-          monthIndex: i,
-          value: grandTotalDisplay[month],
-          prevValue: i > 0 ? grandTotalDisplay[fiscalMonths[i - 1]] : undefined,
-          editable: false,
-          fiscalPeriod,
-          formatValue: formatSalaryPlanYen,
-        }, startNumericCellEdit);
-      }
-      const totalTd = grandTr.querySelector('td.salary-plan-col-total');
-      if (totalTd) totalTd.textContent = formatSalaryPlanYen(sumDisplayMonthlyTotal(grandTotalDisplay));
-    }
-  }
-
-  function measureTaxSettingsNaturalWidth(rootWrap) {
-    // 月列を均等幅に揃えてから自然幅を測る（経費上書き表も同 class のため一緒に揃う）
-    applyUniformPlanMonthColumnWidth(rootWrap, '.tax-payment-plan-table');
-    return measurePlanSettingsTablesIntrinsicWidth(rootWrap);
-  }
-
-  function applyTaxPaymentMonthDisplayToWrap(rootWrap) {
-    if (!rootWrap?.isConnected) return;
-    rootWrap.querySelectorAll('table.tax-payment-plan-table[data-fiscal-period]').forEach((table) => {
-      const fiscalPeriod = Number(table.dataset.fiscalPeriod);
-      if (fiscalPeriod !== currentPeriod) return;
-      syncTaxPaymentTableMonthDisplay(table, fiscalPeriod);
-    });
-    expenseOverrideMonthDisplaySync?.(currentPeriod);
-    // 表示切替で桁数が変わっても月列の均等幅を維持する
-    layoutPlanSettingsScalableWrap(rootWrap, measureTaxSettingsNaturalWidth);
-    refreshPlanSettingsColumnPlates(rootWrap, fiscalMonths, currentPeriod, appSettings);
-  }
-
-  let expenseOverrideMonthDisplaySync = null;
-
-  function getPlanForPeriod(fiscalPeriod) {
-    return getPaymentPlansForPeriod(taxPaymentPlans, fiscalPeriod, fiscalMonths);
-  }
-
-  function getPastMonthsForPeriod(fiscalPeriod) {
-    return getSettingsLockedMonthsForPeriod(fiscalPeriod, fiscalMonths);
-  }
-
-  function getAccountActualMonthly(account, fiscalPeriod) {
-    if (fiscalPeriod !== currentPeriod) return {};
-    return actualAmountsByAccount.get(account) ?? {};
-  }
-
-  function getMunicipalitiesForPeriod(fiscalPeriod) {
-    const entries = getResidentTaxMunicipalityEntries(taxPaymentPlans, fiscalPeriod, fiscalMonths);
-    const actualByMunicipality = fiscalPeriod === currentPeriod
-      ? actualResidentTaxByMunicipality
-      : new Map();
-    return filterVisibleResidentTaxMunicipalities(entries, {
-      employees,
-      fiscalMonths,
-      actualByMunicipality: fiscalPeriod === currentPeriod ? actualResidentTaxByMunicipality : new Map(),
-    });
-  }
-
-  function persistMunicipality(entry, fiscalPeriod) {
-    taxPaymentPlans = setResidentTaxMunicipalityEntry(
-      taxPaymentPlans,
-      fiscalPeriod,
-      entry,
-      fiscalMonths,
-    );
-    refreshPlanTableIfNeeded();
-  }
-
-  function buildMunicipalityDisplayMonthly(entry, fiscalPeriod) {
-    const display = {};
-    for (const month of fiscalMonths) {
-      display[month] = entry.monthly[month];
-    }
-    return display;
-  }
-
-  function buildResidentTaxTotalDisplay(fiscalPeriod) {
-    const municipalities = getMunicipalitiesForPeriod(fiscalPeriod);
-    const display = {};
-    for (const month of fiscalMonths) display[month] = 0;
-    for (const entry of municipalities) {
-      const rowDisplay = buildMunicipalityDisplayMonthly(entry, fiscalPeriod);
-      for (const month of fiscalMonths) {
-        display[month] += rowDisplay[month] ?? 0;
-      }
-    }
-    return display;
-  }
-
-  function buildDisplayMonthly(account, fiscalPeriod) {
-    const pastMonths = getPastMonthsForPeriod(fiscalPeriod);
-    const actualMonthly = getAccountActualMonthly(account, fiscalPeriod);
-    const plan = getPlanForPeriod(fiscalPeriod)[account] ?? {};
-    const display = {};
-    for (const month of fiscalMonths) {
-      if (pastMonths.has(month)) {
-        display[month] = actualMonthly[month] ?? 0;
-      } else {
-        display[month] = plan[month];
-      }
-    }
-    return display;
-  }
-
-  function isMonthEditable(fiscalPeriod, month) {
-    return !getPastMonthsForPeriod(fiscalPeriod).has(month);
-  }
-
-  function isResidentTaxMonthEditable(fiscalPeriod, month) {
-    if (fiscalPeriod !== currentPeriod) return true;
-    const displayMode = getFiscalPeriodDisplayMode(
-      appSettings.businessStartYear,
-      fiscalPeriod,
-    );
-    if (displayMode === 'budget-actual') {
-      return isMonthEditable(fiscalPeriod, month);
-    }
-    return true;
-  }
-
-  function saveMunicipalityMonthly(entry, fiscalPeriod, month, parsed, fillForward) {
-    const pastMonths = getPastMonthsForPeriod(fiscalPeriod);
-    const displayMode = getFiscalPeriodDisplayMode(
-      appSettings.businessStartYear,
-      fiscalPeriod,
-    );
-    const skipPast = fiscalPeriod === currentPeriod && displayMode === 'budget-actual';
-    const nextMonthly = fillForward
-      ? (skipPast
-        ? applyAmountFromMonthForwardSkippingPast(
-          entry.monthly,
-          fiscalMonths,
-          month,
-          parsed,
-          pastMonths,
-        )
-        : applyAmountFromMonthForward(entry.monthly, fiscalMonths, month, parsed))
-      : { ...entry.monthly, [month]: parsed };
-    persistMunicipality({ ...entry, monthly: nextMonthly }, fiscalPeriod);
-  }
-
-  function sumDisplayMonthlyTotal(display) {
-    let total = 0;
-    for (const month of fiscalMonths) {
-      total += display[month] ?? 0;
-    }
-    return total;
-  }
-
-  function persistPlan(account, monthly, fiscalPeriod) {
-    taxPaymentPlans = setPaymentPlanAccount(
-      taxPaymentPlans,
-      fiscalPeriod,
-      account,
-      monthly,
-      fiscalMonths,
-    );
-    refreshPlanTableIfNeeded();
-  }
-
-  function appendAmountCell(tr, { account, month, monthIndex, fiscalPeriod, value, prevValue, editable }) {
-    const plan = getPlanForPeriod(fiscalPeriod)[account] ?? {};
-    appendPlanAmountCell(tr, {
-      month,
-      monthIndex,
-      fiscalPeriod,
-      value,
-      prevValue,
-      editable,
-      title: 'ダブルクリックで編集（Shift+Enter で後続月へ同額反映）',
-      formatValue: formatSalaryPlanYen,
-      rawValue: plan[month],
-      parseValue: parseSalaryPlanAmountInput,
-      tabScopeId: `tax-payment-${fiscalPeriod}`,
-      onSave: (parsed, fillForward) => {
-        const pastMonths = getPastMonthsForPeriod(fiscalPeriod);
-        const next = fillForward
-          ? applyAmountFromMonthForwardSkippingPast(
-            plan,
-            fiscalMonths,
-            month,
-            parsed,
-            pastMonths,
-          )
-          : { ...plan, [month]: parsed };
-        persistPlan(account, next, fiscalPeriod);
-      },
-    });
-  }
-
-  function appendMunicipalityAmountCell(tr, {
-    entry,
-    month,
-    monthIndex,
-    fiscalPeriod,
-    value,
-    prevValue,
-    editable,
-  }) {
-    appendPlanAmountCell(tr, {
-      month,
-      monthIndex,
-      fiscalPeriod,
-      value,
-      prevValue,
-      editable,
-      title: 'ダブルクリックで編集（Shift+Enter で後続月へ同額反映）',
-      formatValue: formatSalaryPlanYen,
-      rawValue: entry.monthly[month],
-      parseValue: parseSalaryPlanAmountInput,
-      tabScopeId: `tax-municipality-${fiscalPeriod}`,
-      forcePlanMonthColor: true,
-      onSave: (parsed, fillForward) => {
-        saveMunicipalityMonthly(entry, fiscalPeriod, month, parsed, fillForward);
-      },
-    });
-  }
-
-  function buildTaxPaymentTable(fiscalPeriod) {
-    const municipalities = getMunicipalitiesForPeriod(fiscalPeriod);
-    const table = document.createElement('table');
-    table.className = 'expand-settings-table salary-plan-table tax-payment-plan-table';
-    table.dataset.fiscalPeriod = String(fiscalPeriod);
-
-    const thead = document.createElement('thead');
-    const headerRow = document.createElement('tr');
-
-    const accountTh = document.createElement('th');
-    accountTh.className = 'salary-plan-col-name';
-    accountTh.textContent = '勘定科目';
-    headerRow.appendChild(accountTh);
-
-    const subTh = document.createElement('th');
-    subTh.className = 'salary-plan-col-sub';
-    subTh.textContent = '市区町村';
-    headerRow.appendChild(subTh);
-
-    for (const month of fiscalMonths) {
-      const th = document.createElement('th');
-      monthDisplayUi.configureMonthHeaderTh(th, month, fiscalPeriod);
-      headerRow.appendChild(th);
-    }
-
-    const totalTh = document.createElement('th');
-    totalTh.className = 'salary-plan-col-total';
-    totalTh.textContent = '合計';
-    headerRow.appendChild(totalTh);
-
-    thead.appendChild(headerRow);
-    table.appendChild(thead);
-
-    const tbody = document.createElement('tbody');
-    for (const account of PAYMENT_PLAN_SIMPLE_ACCOUNTS) {
-      const displayMonthly = buildDisplayMonthly(account, fiscalPeriod);
-      const tr = document.createElement('tr');
-      tr.className = 'salary-plan-row-monthly';
-      tr.dataset.planRowKey = account;
-      tagPlanEditableRow(tr, account);
-
-      const accountTd = document.createElement('td');
-      accountTd.className = 'salary-plan-col-name';
-      const sectionLabel = PAYMENT_PLAN_ACCOUNT_SECTION_LABELS[account];
-      accountTd.textContent = sectionLabel ?? account;
-      tr.appendChild(accountTd);
-
-      const subTd = document.createElement('td');
-      subTd.className = 'salary-plan-col-sub';
-      if (sectionLabel) subTd.textContent = account;
-      tr.appendChild(subTd);
-
-      for (let i = 0; i < fiscalMonths.length; i += 1) {
-        const month = fiscalMonths[i];
-        const editable = isMonthEditable(fiscalPeriod, month);
-        const prevMonth = i > 0 ? fiscalMonths[i - 1] : null;
-        const prevValue = prevMonth != null ? displayMonthly[prevMonth] : undefined;
-        appendAmountCell(tr, {
-          account,
-          month,
-          monthIndex: i,
-          fiscalPeriod,
-          value: displayMonthly[month],
-          prevValue,
-          editable,
-        });
-      }
-
-      const totalTd = document.createElement('td');
-      totalTd.className = 'salary-plan-col-total';
-      totalTd.textContent = formatSalaryPlanYen(sumDisplayMonthlyTotal(displayMonthly));
-      tr.appendChild(totalTd);
-
-      tbody.appendChild(tr);
-    }
-
-    for (const entry of municipalities) {
-      const displayMonthly = buildMunicipalityDisplayMonthly(entry, fiscalPeriod);
-      const tr = document.createElement('tr');
-      tr.className = 'salary-plan-row-monthly salary-plan-row-sub';
-      tr.dataset.planRowKey = entry.id;
-      tagPlanEditableRow(tr, entry.id);
-
-      const accountTd = document.createElement('td');
-      accountTd.className = 'salary-plan-col-name';
-      accountTd.textContent = RESIDENT_TAX_ACCOUNT;
-      tr.appendChild(accountTd);
-
-      const subTd = document.createElement('td');
-      subTd.className = 'salary-plan-col-sub';
-      subTd.textContent = entry.municipality;
-      tr.appendChild(subTd);
-
-      for (let i = 0; i < fiscalMonths.length; i += 1) {
-        const month = fiscalMonths[i];
-        const editable = isResidentTaxMonthEditable(fiscalPeriod, month);
-        const prevMonth = i > 0 ? fiscalMonths[i - 1] : null;
-        const prevValue = prevMonth != null ? displayMonthly[prevMonth] : undefined;
-        appendMunicipalityAmountCell(tr, {
-          entry,
-          month,
-          monthIndex: i,
-          fiscalPeriod,
-          value: displayMonthly[month],
-          prevValue,
-          editable,
-        });
-      }
-
-      const rowTotalTd = document.createElement('td');
-      rowTotalTd.className = 'salary-plan-col-total';
-      rowTotalTd.textContent = formatSalaryPlanYen(sumDisplayMonthlyTotal(displayMonthly));
-      tr.appendChild(rowTotalTd);
-
-      tbody.appendChild(tr);
-    }
-
-    const residentTaxTotalDisplay = buildResidentTaxTotalDisplay(fiscalPeriod);
-    const totalTr = document.createElement('tr');
-    totalTr.className = 'salary-plan-row-monthly salary-plan-row-total salary-plan-total-row';
-    totalTr.dataset.planRowKey = 'resident-tax-total';
-
-    const totalAccountTd = document.createElement('td');
-    totalAccountTd.className = 'salary-plan-col-name';
-    totalAccountTd.textContent = RESIDENT_TAX_ACCOUNT;
-    totalTr.appendChild(totalAccountTd);
-
-    const totalSubTd = document.createElement('td');
-    totalSubTd.className = 'salary-plan-col-sub';
-    totalSubTd.textContent = '合計';
-    totalTr.appendChild(totalSubTd);
-
-    for (let i = 0; i < fiscalMonths.length; i += 1) {
-      const month = fiscalMonths[i];
-      const prevMonth = i > 0 ? fiscalMonths[i - 1] : null;
-      const prevValue = prevMonth != null ? residentTaxTotalDisplay[prevMonth] : undefined;
-      appendPlanAmountCell(totalTr, {
-        month,
-        monthIndex: i,
-        fiscalPeriod,
-        value: residentTaxTotalDisplay[month],
-        prevValue,
-        editable: false,
-        forcePlanMonthColor: true,
-        formatValue: formatSalaryPlanYen,
-      });
-    }
-
-    const residentTaxTotalTd = document.createElement('td');
-    residentTaxTotalTd.className = 'salary-plan-col-total';
-    residentTaxTotalTd.textContent = formatSalaryPlanYen(sumDisplayMonthlyTotal(residentTaxTotalDisplay));
-    totalTr.appendChild(residentTaxTotalTd);
-    tbody.appendChild(totalTr);
-
-    const grandTotalDisplay = {};
-    for (const month of fiscalMonths) grandTotalDisplay[month] = 0;
-    for (const account of PAYMENT_PLAN_SIMPLE_ACCOUNTS) {
-      const displayMonthly = buildDisplayMonthly(account, fiscalPeriod);
-      for (const month of fiscalMonths) {
-        grandTotalDisplay[month] += displayMonthly[month] ?? 0;
-      }
-    }
-    for (const month of fiscalMonths) {
-      grandTotalDisplay[month] += residentTaxTotalDisplay[month] ?? 0;
-    }
-
-    const grandTr = document.createElement('tr');
-    grandTr.className = 'salary-plan-total-row salary-plan-row-monthly';
-    grandTr.dataset.planRowKey = 'grand-total';
-
-    const grandLabelTd = document.createElement('td');
-    grandLabelTd.colSpan = 2;
-    grandLabelTd.className = 'salary-plan-total-label';
-    grandLabelTd.textContent = TAX_PAY_OTHER_PAY_TOTAL_LABEL;
-    grandTr.appendChild(grandLabelTd);
-
-    for (let i = 0; i < fiscalMonths.length; i += 1) {
-      const month = fiscalMonths[i];
-      appendPlanAmountCell(grandTr, {
-        month,
-        monthIndex: i,
-        fiscalPeriod,
-        value: grandTotalDisplay[month],
-        prevValue: i > 0 ? grandTotalDisplay[fiscalMonths[i - 1]] : undefined,
-        editable: false,
-        formatValue: formatSalaryPlanYen,
-      });
-    }
-
-    const grandTotalTd = document.createElement('td');
-    grandTotalTd.className = 'salary-plan-col-total';
-    grandTotalTd.textContent = formatSalaryPlanYen(sumDisplayMonthlyTotal(grandTotalDisplay));
-    grandTr.appendChild(grandTotalTd);
-    tbody.appendChild(grandTr);
-
-    table.appendChild(tbody);
-    return table;
-  }
-
-  function renderPlanSection() {
-    const previousSection = wrap.querySelector('.tax-payment-plan-section');
-    // 再描画で編集中の入力欄が消えないよう、編集状態を退避しておく
-    const activeEdit = capturePlanSectionActiveEdit(previousSection);
-    previousSection?.remove();
-
-    const section = document.createElement('div');
-    section.className = 'salary-plan-section tax-payment-plan-section';
-
-    const planHeader = document.createElement('div');
-    planHeader.className = 'salary-plan-header';
-    const planTitle = document.createElement('h3');
-    planTitle.className = 'salary-plan-title';
-    planTitle.textContent = '支払い計画表';
-    applyTaxPaymentPlanTitleStyle(planTitle);
-    planHeader.appendChild(planTitle);
-    section.appendChild(planHeader);
-
-    for (const { period, label } of planPeriodEntries()) {
-      const block = document.createElement('div');
-      block.className = 'salary-plan-period-block';
-
-      const blockTitle = document.createElement('h4');
-      blockTitle.className = 'salary-plan-period-title';
-      blockTitle.textContent = label;
-      block.appendChild(blockTitle);
-
-      const tableWrap = document.createElement('div');
-      tableWrap.className = 'salary-plan-table-wrap';
-      tableWrap.appendChild(buildTaxPaymentTable(period));
-      block.appendChild(tableWrap);
-
-      resumePlanCellTabEdit(block, `tax-payment-${period}`);
-      resumePlanCellTabEdit(block, `tax-municipality-${period}`);
-
-      section.appendChild(block);
-    }
-
-    wrap.insertBefore(section, wrap.querySelector('.expense-plan-override-section'));
-    restorePlanSectionActiveEdit(section, activeEdit);
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-      layoutPlanSettingsScalableWrap(wrap, measureTaxSettingsNaturalWidth);
-      refreshPlanSettingsColumnPlates(wrap, fiscalMonths, currentPeriod, appSettings);
-    }));
-  }
-
-  renderPlanSection();
-  const overrideSection = mountExpensePlanOverrideSection({
-    wrap,
-    appSettings,
-    rawPlanData,
-    getMonthDisplayConfig: () => monthDisplayConfig,
-    onToggleMonthDisplay: togglePlanMonthDisplay,
-    monthDisplayUi,
-    startNumericCellEdit,
-    getSectionFilterColors: getFilterButtonColors,
-    getExpensePlanOverrides: () => expensePlanOverrides,
-    setExpensePlanOverrides: (next) => {
-      expensePlanOverrides = next;
-    },
-    refreshPlanTableIfNeeded,
-    refreshPlanSettingsColumnPlates: () => refreshPlanSettingsColumnPlates(
-      wrap,
-      fiscalMonths,
-      currentPeriod,
-      appSettings,
-    ),
-  });
-  expenseOverrideMonthDisplaySync = overrideSection?.syncMonthDisplay ?? null;
-  taxPaymentSettingsMonthDisplayApplier = () => applyTaxPaymentMonthDisplayToWrap(wrap);
-  bindPlanSettingsScalableLayout(wrap, {
-    measureNaturalWidth: measureTaxSettingsNaturalWidth,
-    fiscalMonths,
-    currentPeriod,
-    appSettings,
-  });
-  replaceRootPanel(wrap);
-  refreshPlanKpi();
-}
-
-function renderEmployeeSettings() {
-  const fiscalMonths = buildFiscalYearMonths(appSettings.fiscalEndMonth);
-  const currentPeriod = appSettings.fiscalPeriod;
-
-  const monthDisplayUi = createPlanMonthDisplayUi({
-    appSettings,
-    currentPeriod,
-    fiscalMonths,
-    getMonthDisplayConfig: () => monthDisplayConfig,
-    getPastMonthsForPeriod: (fiscalPeriod) => getSettingsLockedMonthsForPeriod(
-      fiscalPeriod,
-      fiscalMonths,
-    ),
-    onToggleMonthDisplay: togglePlanMonthDisplay,
-  });
-
-  function isSalaryPlanMonthEditable(fiscalPeriod, month) {
-    if (fiscalPeriod !== currentPeriod) return true;
-    const displayMode = getFiscalPeriodDisplayMode(
-      appSettings.businessStartYear,
-      fiscalPeriod,
-    );
-    if (displayMode === 'budget-actual') {
-      return !getSettingsLockedMonthsForPeriod(fiscalPeriod, fiscalMonths).has(month);
-    }
-    return true;
-  }
-
-  function refreshSalaryPlanUi() {
-    renderSalaryPlanSection(employees.filter(isSalaryPlanEmployee));
-  }
-
-  const wrap = document.createElement('div');
-  wrap.className = 'expand-settings-wrap employee-settings-wrap plan-settings-scalable';
-
-  const header = document.createElement('div');
-  header.className = 'expand-settings-header';
-  header.innerHTML = `
-    <p class="expand-settings-desc">
-      従業員マスタを管理します。マネーフォワード給与の「従業員情報」CSVを読み込むと一覧を生成できます。
-      同じ従業員識別子の行は上書き更新されます。手動追加・削除も可能で、設定はブラウザに保存されます。
-      「非表示」にチェックした社員は給与支払い計画表に表示されず、住民税の支払対象からも除外されます。
-    </p>
+    <p class="expand-settings-desc">アプリ設定です。事業開始年・決算月は仕訳CSVのファイル名から期ごとに自動判定されます（最古の仕訳CSVを第1期として事業開始年を決定）。選択中の期と組み合わせて、各月の年ラベルを決定します。法人判定文字は外注費の補助科目が法人か個人事業主かを判別する際に使います。ブランド表示はヘッダー左上のアイコン・会社名に反映されます。</p>
   `;
   wrap.appendChild(header);
 
@@ -27399,7 +25778,7 @@ function renderEmployeeSettings() {
     overtimeHeader.appendChild(overtimeTitle);
     const overtimeDesc = document.createElement('p');
     overtimeDesc.className = 'salary-plan-desc';
-    overtimeDesc.textContent = `決算月 ${appSettings.fiscalEndMonth}月 を基準とした12か月分です。各セルをダブルクリックで編集できます。Shift+Enter で入力した月以降の同額を後続月に反映します（0円も可）。Enter はその月のみ反映します。`;
+    overtimeDesc.textContent = `決算月 ${getActiveFiscalEndMonth()}月 を基準とした12か月分です。各セルをダブルクリックで編集できます。Shift+Enter で入力した月以降の同額を後続月に反映します（0円も可）。Enter はその月のみ反映します。`;
     overtimeHeader.appendChild(overtimeDesc);
     applySectionFilterTitleStyle(overtimeTitle, 'personnel', getFilterButtonColors);
     section.appendChild(overtimeHeader);
@@ -27433,7 +25812,7 @@ function renderEmployeeSettings() {
     const salaryDesc = document.createElement('p');
     salaryDesc.className = 'salary-plan-desc';
     salaryDesc.textContent = '決算月 '
-      + `${appSettings.fiscalEndMonth}月 を基準とした12か月分です。`
+      + `${getActiveFiscalEndMonth()}月 を基準とした12か月分です。`
       + '月額・賞与の各セルをダブルクリックで編集できます。月額は Shift+Enter で後続月へ同額を反映します（0円も可）。Enter はその月のみ反映します。'
       + '役員は賞与の入力がありません。'
       + `${formatFiscalPeriodLabel(nextPeriod)}の昇給率は月額合計のみを${formatFiscalPeriodLabel(currentPeriod)}と比較します（賞与は含みません）。`
@@ -27571,7 +25950,7 @@ function renderEmployeeSettings() {
     monthCount: fiscalMonths.length,
     fiscalMonths,
     currentPeriod,
-    appSettings,
+    appSettings: getAppSettingsWithFiscalContext(),
   });
   refreshPlanKpi();
 }
@@ -27592,7 +25971,7 @@ function renderRevenueSettings() {
   mountRevenueSettingsPanel({
     replaceRootPanel,
     refreshPlanKpi,
-    appSettings,
+    appSettings: getAppSettingsWithFiscalContext(),
     rawPlanData,
     getMonthDisplayConfig: () => monthDisplayConfig,
     onToggleMonthDisplay: togglePlanMonthDisplay,
@@ -27611,7 +25990,7 @@ function renderRevenueSettings() {
 }
 
 function renderOutsourcingSettings() {
-  const fiscalMonths = buildFiscalYearMonths(appSettings.fiscalEndMonth);
+  const fiscalMonths = buildFiscalYearMonths(getActiveFiscalEndMonth());
   const currentPeriod = appSettings.fiscalPeriod;
   const nextPeriod = appSettings.fiscalPeriod + 1;
 
@@ -27677,7 +26056,7 @@ function renderOutsourcingSettings() {
   }
 
   const monthDisplayUi = createPlanMonthDisplayUi({
-    appSettings,
+    appSettings: getAppSettingsWithFiscalContext(),
     currentPeriod,
     fiscalMonths,
     getMonthDisplayConfig: () => monthDisplayConfig,
@@ -28213,7 +26592,7 @@ function renderOutsourcingSettings() {
       planHeader.appendChild(planTitle);
       const planDesc = document.createElement('p');
       planDesc.className = 'salary-plan-desc';
-      planDesc.textContent = `決算月 ${appSettings.fiscalEndMonth}月 を基準とした12か月分です。`
+      planDesc.textContent = `決算月 ${getActiveFiscalEndMonth()}月 を基準とした12か月分です。`
         + '今期の実績表示月は仕訳実績を表示します（編集不可）。予実表で計画表示に切り替えた月はダブルクリックで編集できます。'
         + 'Shift+Enter で入力した月以降の同額を後続月に反映します（0円も可）。Enter はその月のみ反映します。';
       planHeader.appendChild(planDesc);
@@ -28265,10 +26644,131 @@ function renderOutsourcingSettings() {
     measureNaturalWidth: measureOutsourcingSettingsNaturalWidth,
     fiscalMonths,
     currentPeriod,
-    appSettings,
+    appSettings: getAppSettingsWithFiscalContext(),
   });
   replaceRootPanel(wrap);
   refreshPlanKpi();
+}
+
+function appendCsvNameSettingsPanel(wrap) {
+  const section = document.createElement('div');
+  section.className = 'app-settings-section csv-name-settings-wrap';
+
+  const title = document.createElement('h2');
+  title.className = 'ui-color-panel-title';
+  title.textContent = 'CSV名定義';
+  section.appendChild(title);
+
+  const desc = document.createElement('p');
+  desc.className = 'app-settings-hint';
+  desc.innerHTML = `
+    フォルダ読み込み時に対象とする CSV ファイル名を、種類ごとに<strong>正規表現</strong>で定義します。
+    例のファイル名でパターンをテストできます。変更後は <strong>CSV再読込</strong> で反映されます。
+  `;
+  section.appendChild(desc);
+
+  const resetRow = document.createElement('div');
+  resetRow.className = 'expand-settings-header-actions';
+  const resetBtn = document.createElement('button');
+  resetBtn.type = 'button';
+  resetBtn.className = 'expand-reset-btn';
+  resetBtn.id = 'csvname-reset-btn';
+  resetBtn.textContent = 'CSV名定義をデフォルトに戻す';
+  resetRow.appendChild(resetBtn);
+  section.appendChild(resetRow);
+
+  const table = document.createElement('table');
+  table.className = 'expand-settings-table csv-name-settings-table';
+  table.innerHTML = `
+    <thead>
+      <tr>
+        <th>種類</th>
+        <th>正規表現パターン</th>
+        <th>例（ファイル名）</th>
+        <th class="col-csvname-test">テスト</th>
+      </tr>
+    </thead>
+  `;
+
+  const tbody = document.createElement('tbody');
+
+  for (const kind of CSV_KINDS) {
+    const entry = csvNameConfig[kind.id];
+    const tr = document.createElement('tr');
+    tr.dataset.csvKind = kind.id;
+
+    const labelTd = document.createElement('td');
+    labelTd.textContent = kind.required ? kind.label : `${kind.label}（任意）`;
+
+    const patternTd = document.createElement('td');
+    patternTd.className = 'col-csvname-pattern';
+    const patternInput = document.createElement('input');
+    patternInput.type = 'text';
+    patternInput.className = 'csvname-pattern-input';
+    patternInput.value = entry.pattern;
+    patternInput.spellcheck = false;
+    patternTd.appendChild(patternInput);
+
+    const exampleTd = document.createElement('td');
+    exampleTd.className = 'col-csvname-example';
+    const exampleInput = document.createElement('input');
+    exampleInput.type = 'text';
+    exampleInput.className = 'csvname-example-input';
+    exampleInput.value = entry.example;
+    exampleInput.spellcheck = false;
+    exampleTd.appendChild(exampleInput);
+
+    const testTd = document.createElement('td');
+    testTd.className = 'col-csvname-test';
+
+    function refreshTestCell() {
+      const result = testCsvNameExample(kind.id, csvNameConfig);
+      testTd.textContent = result.ok ? '一致' : (result.error ?? '—');
+      testTd.className = `col-csvname-test${result.ok ? ' is-ok' : ' is-ng'}`;
+    }
+
+    function persistField(field, value) {
+      csvNameConfig = {
+        ...csvNameConfig,
+        [kind.id]: { ...csvNameConfig[kind.id], [field]: value },
+      };
+      saveCsvNameConfig(csvNameConfig);
+      refreshTestCell();
+    }
+
+    patternInput.addEventListener('input', () => {
+      persistField('pattern', patternInput.value);
+    });
+    exampleInput.addEventListener('input', () => {
+      persistField('example', exampleInput.value);
+    });
+
+    tr.append(labelTd, patternTd, exampleTd, testTd);
+    tbody.appendChild(tr);
+    refreshTestCell();
+  }
+
+  table.appendChild(tbody);
+  section.appendChild(table);
+
+  resetBtn.addEventListener('click', () => {
+    csvNameConfig = resetCsvNameConfig();
+    if (activeTab === 'settings') renderOtherSettings();
+  });
+
+  wrap.appendChild(section);
+}
+
+function filterBrandLogoDecimalInput(value) {
+  const cleaned = String(value ?? '').replace(/[^\d.]/g, '');
+  const dotIndex = cleaned.indexOf('.');
+  if (dotIndex === -1) return cleaned;
+  const intPart = cleaned.slice(0, dotIndex);
+  const fracPart = cleaned.slice(dotIndex + 1).replace(/\./g, '').slice(0, 1);
+  if (fracPart.length > 0 || cleaned.endsWith('.')) {
+    return `${intPart}.${fracPart}`;
+  }
+  return `${intPart}.`;
 }
 
 function renderOtherSettings() {
@@ -28280,7 +26780,7 @@ function renderOtherSettings() {
   const header = document.createElement('div');
   header.className = 'expand-settings-header';
   header.innerHTML = `
-    <p class="expand-settings-desc">アプリ全体の設定です。事業開始年は予実表ヘッダーの年表示（12月〜11月）の算出に使います。選択中の期（例: 第8期）と組み合わせて、各月の年ラベルを決定します。決算月は会計期の最終月（1〜12）です。法人判定文字は外注費の補助科目が法人か個人事業主かを判別する際に使います。ブランド表示はヘッダー左上のアイコン・会社名に反映されます。</p>
+    <p class="expand-settings-desc">アプリ全体の設定です。事業開始年・決算月は予実表ヘッダーの年表示と会計月の並びの算出に使います。選択中の期（例: 第8期）と組み合わせて、各月の年ラベルを決定します。決算月は会計期の最終月（1〜12）です。法人判定文字は外注費の補助科目が法人か個人事業主かを判別する際に使います。ブランド表示はヘッダー左上のアイコン・会社名に反映されます。</p>
   `;
   wrap.appendChild(header);
 
@@ -28359,15 +26859,6 @@ function renderOtherSettings() {
     </div>
     <div class="app-settings-section other-settings-general">
       <div class="app-settings-field-row other-settings-general-row">
-        <label class="app-settings-field">
-          <span class="app-settings-label">事業開始年</span>
-          <input type="text" class="app-settings-input app-settings-input-year" id="business-start-year"
-            inputmode="numeric" autocomplete="off" spellcheck="false" />
-        </label>
-        <label class="app-settings-field">
-          <span class="app-settings-label">決算月</span>
-          <select class="app-settings-input app-settings-input-fiscal-month" id="fiscal-end-month"></select>
-        </label>
         <label class="app-settings-field other-settings-corp-field">
           <span class="app-settings-label">法人判定文字</span>
           <input type="text" class="app-settings-input" id="corp-entity-markers"
@@ -28380,8 +26871,6 @@ function renderOtherSettings() {
 
   appendCsvNameSettingsPanel(wrap);
 
-  const yearInput = form.querySelector('#business-start-year');
-  const fiscalEndMonthSelect = form.querySelector('#fiscal-end-month');
   const corpEntityMarkersInput = form.querySelector('#corp-entity-markers');
   const companyNameInput = form.querySelector('#brand-company-name');
   const brandIconTextInput = form.querySelector('#brand-icon-text');
@@ -28587,15 +27076,7 @@ function renderOtherSettings() {
     refreshBrandSettings();
   });
 
-  for (let m = 1; m <= 12; m += 1) {
-    const opt = document.createElement('option');
-    opt.value = String(m);
-    opt.textContent = `${m}月`;
-    fiscalEndMonthSelect.appendChild(opt);
-  }
 
-  yearInput.value = String(appSettings.businessStartYear);
-  fiscalEndMonthSelect.value = String(appSettings.fiscalEndMonth);
   corpEntityMarkersInput.value = appSettings.corpEntityMarkers;
   companyNameInput.value = appSettings.companyName;
   brandIconTextInput.value = appSettings.brandIconText;
@@ -28650,10 +27131,6 @@ function renderOtherSettings() {
     );
   });
 
-  yearInput.addEventListener('input', () => {
-    const filtered = filterTaxRateIntegerInput(yearInput.value);
-    if (filtered !== yearInput.value) yearInput.value = filtered;
-  });
 
   corpEntityMarkersInput.addEventListener('change', () => {
     appSettings = {
@@ -28664,33 +27141,11 @@ function renderOtherSettings() {
     corpEntityMarkersInput.value = appSettings.corpEntityMarkers;
   });
 
-  fiscalEndMonthSelect.addEventListener('change', () => {
-    appSettings = {
-      ...appSettings,
-      fiscalEndMonth: normalizeFiscalEndMonth(fiscalEndMonthSelect.value),
-    };
-    saveAppSettings(appSettings);
-    fiscalEndMonthSelect.value = String(appSettings.fiscalEndMonth);
-  });
 
-  yearInput.addEventListener('input', () => {
-    const year = parseInt(yearInput.value, 10);
-    if (!Number.isInteger(year) || year < 1900 || year > 2100) return;
-    appSettings = {
-      ...appSettings,
-      businessStartYear: year,
-      fiscalPeriod: normalizeFiscalPeriod(year, appSettings.fiscalPeriod),
-    };
-    saveAppSettings(appSettings);
-    syncPeriodControls();
-    if (activeTab === 'plan' && data) refreshPlanTable();
-  });
 
   wrap.querySelector('#app-settings-reset-btn').addEventListener('click', () => {
     appSettings = resetOtherAppSettings(appSettings);
     saveAppSettings(appSettings);
-    yearInput.value = String(appSettings.businessStartYear);
-    fiscalEndMonthSelect.value = String(appSettings.fiscalEndMonth);
     corpEntityMarkersInput.value = appSettings.corpEntityMarkers;
     companyNameInput.value = appSettings.companyName;
     brandIconTextInput.value = appSettings.brandIconText;
@@ -28757,7 +27212,7 @@ async function handleDropCsvFolder(handle) {
       loadOptions,
       handle,
     );
-    if (isPlanOnlyPeriod(appSettings.businessStartYear, appSettings.fiscalPeriod)) {
+    if (isPlanOnlyPeriod(getActiveBusinessStartYear(), appSettings.fiscalPeriod, undefined, getActiveFiscalEndMonth())) {
       journalText = loaded.journalText;
       bsText = loaded.bsText;
       generalLedgerText = loaded.generalLedgerText ?? null;
@@ -28819,7 +27274,7 @@ async function handleGrantFolderAccess(handle) {
     const loadOptions = getCsvLoadPeriodOptions();
     const loaded = await loadPlanDataWithFolderAccess(handle, expandConfig, loadOptions);
     // 来期表示中はテンプレート用に今期の CSV を読み、選択中の期は計画表示のままにする
-    if (isPlanOnlyPeriod(appSettings.businessStartYear, appSettings.fiscalPeriod)) {
+    if (isPlanOnlyPeriod(getActiveBusinessStartYear(), appSettings.fiscalPeriod, undefined, getActiveFiscalEndMonth())) {
       journalText = loaded.journalText;
       bsText = loaded.bsText;
       generalLedgerText = loaded.generalLedgerText ?? null;
@@ -28887,7 +27342,7 @@ async function handlePickCsvFolder() {
   try {
     const loadOptions = getCsvLoadPeriodOptions();
     const loaded = await loadPlanDataFromPickedFolder(expandConfig, loadOptions);
-    if (isPlanOnlyPeriod(appSettings.businessStartYear, appSettings.fiscalPeriod)) {
+    if (isPlanOnlyPeriod(getActiveBusinessStartYear(), appSettings.fiscalPeriod, undefined, getActiveFiscalEndMonth())) {
       journalText = loaded.journalText;
       bsText = loaded.bsText;
       generalLedgerText = loaded.generalLedgerText ?? null;
@@ -28908,7 +27363,7 @@ async function handlePickCsvFolder() {
 }
 
 async function handleReloadCsv() {
-  if (isPlanOnlyPeriod(appSettings.businessStartYear, appSettings.fiscalPeriod)) {
+  if (isPlanOnlyPeriod(getActiveBusinessStartYear(), appSettings.fiscalPeriod, undefined, getActiveFiscalEndMonth())) {
     showPlanLoadingOverlay({ awaitLayout: true });
     loadPlanOnlyPeriodData();
     switchMainTab('plan');
@@ -29149,7 +27604,7 @@ function loadPlanOnlyPeriodData({ measureColumnWidths = false } = {}) {
   }
   const planData = rawPlanData
     ? zeroOutPlanData(rawPlanData)
-    : buildFullPlan('', null, expandConfig);
+    : buildFullPlan('', null, getExpandConfigWithFiscal());
   rawPlanData = planData;
   data = applyPlanColors(planData);
   if (measureColumnWidths) {
@@ -29208,12 +27663,12 @@ async function init() {
   root.innerHTML = '';
 
   try {
-    if (isPlanOnlyPeriod(appSettings.businessStartYear, appSettings.fiscalPeriod)) {
+    if (isPlanOnlyPeriod(getActiveBusinessStartYear(), appSettings.fiscalPeriod, undefined, getActiveFiscalEndMonth())) {
       const savedPeriod = appSettings.fiscalPeriod;
-      const currentPeriod = getFiscalPeriodForDate(appSettings.businessStartYear);
+      const currentPeriod = getFiscalPeriodForDate(getActiveBusinessStartYear(), undefined, getActiveFiscalEndMonth());
       try {
         const result = await resolvePlanStartup(expandConfig, {
-          businessStartYear: appSettings.businessStartYear,
+          businessStartYear: getActiveBusinessStartYear(),
           fiscalPeriod: currentPeriod,
         });
         if (result.status === 'loaded') {
@@ -29241,7 +27696,7 @@ async function init() {
     if (result.status === 'loaded') {
       root.innerHTML = '';
       showPlanLoadingOverlay({ awaitLayout: true });
-      if (isPlanOnlyPeriod(appSettings.businessStartYear, appSettings.fiscalPeriod)) {
+      if (isPlanOnlyPeriod(getActiveBusinessStartYear(), appSettings.fiscalPeriod, undefined, getActiveFiscalEndMonth())) {
         journalText = result.data.journalText;
         bsText = result.data.bsText;
         generalLedgerText = result.data.generalLedgerText ?? null;

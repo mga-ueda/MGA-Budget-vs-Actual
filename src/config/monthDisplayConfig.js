@@ -1,4 +1,4 @@
-import { FISCAL_MONTHS } from '../parse/parseJournal.js';
+import { FISCAL_MONTHS, SETTLEMENT_MONTH_LABEL } from './fiscalCalendar.js';
 import {
   buildPastFiscalMonthSet,
   getFiscalPeriodDisplayMode,
@@ -196,10 +196,16 @@ export function getSettingsLockedMonths({
   businessStartYear,
   fiscalPeriod,
   fiscalMonths = FISCAL_MONTHS,
+  fiscalEndMonth,
   currentFiscalPeriod,
   date = new Date(),
 }) {
-  const displayMode = getFiscalPeriodDisplayMode(businessStartYear, fiscalPeriod, date);
+  const displayMode = getFiscalPeriodDisplayMode(
+    businessStartYear,
+    fiscalPeriod,
+    date,
+    fiscalEndMonth,
+  );
   if (fiscalPeriod === currentFiscalPeriod && displayMode === 'budget-actual') {
     return buildBudgetActualMonthSets({
       config,
@@ -210,7 +216,13 @@ export function getSettingsLockedMonths({
     }).actualMonthSet;
   }
   if (fiscalPeriod === currentFiscalPeriod) {
-    return buildPastFiscalMonthSet(businessStartYear, fiscalPeriod, fiscalMonths, date);
+    return buildPastFiscalMonthSet(
+      businessStartYear,
+      fiscalPeriod,
+      fiscalMonths,
+      date,
+      fiscalEndMonth,
+    );
   }
   return new Set();
 }

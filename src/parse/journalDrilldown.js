@@ -1,12 +1,12 @@
 import { parseCsvLine } from './parser.js';
 import {
   formatYen,
-  FISCAL_MONTHS,
   EXTRA_COLUMNS,
   BS_SECTION_IDS,
   categorizeAccount,
   isInterAccountCashTransfer,
 } from './parseJournal.js';
+import { FISCAL_MONTHS } from '../config/fiscalCalendar.js';
 import { getPaymentCounterpartsSet } from '../config/journalDefinitionConfig.js';
 
 const PL_SECTION_CATEGORY = {
@@ -225,11 +225,11 @@ export function drilldownCellKey(sectionId, row, month) {
 }
 
 /** 仕訳のあるセルキー一覧（データ読込時に1回構築） */
-export function buildDrilldownIndex(entries, sections) {
+export function buildDrilldownIndex(entries, sections, fiscalMonths = FISCAL_MONTHS) {
   const index = new Set();
   if (!entries.length || !sections?.length) return index;
 
-  const months = [...FISCAL_MONTHS, ...EXTRA_COLUMNS];
+  const months = [...fiscalMonths, ...EXTRA_COLUMNS];
   for (const section of sections) {
     for (const row of section.rows) {
       if (!isDrilldownAvailable(section, row)) continue;

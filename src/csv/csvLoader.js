@@ -1,4 +1,5 @@
 import { buildFullPlan } from '../parse/parseJournal.js';
+import { DEFAULT_FISCAL_END_MONTH } from '../config/fiscalCalendar.js';
 import {
   loadCsvFromSavedFolder,
   loadCsvFromSavedFolderWithAccess,
@@ -6,6 +7,9 @@ import {
   loadCsvFromDroppedFolderHandle,
   getSavedFolderState,
   resolveFolderDataFromCache,
+  resolveFiscalEndMonthFromCache,
+  resolveLatestFiscalEndMonthFromCache,
+  resolveBusinessStartYearFromCache,
 } from './csvFolder.js';
 
 /* classifyCsvFile の定義元は csvNameConfig（csvFolder 経由だと ES モジュールとして解決できない） */
@@ -19,6 +23,9 @@ export {
   getSavedFolderState,
   hasFolderCsvCache,
   resolveFolderDataFromCache,
+  resolveFiscalEndMonthFromCache,
+  resolveLatestFiscalEndMonthFromCache,
+  resolveBusinessStartYearFromCache,
 } from './csvFolder.js';
 
 export {
@@ -33,7 +40,7 @@ export {
   compileCsvPattern,
 } from './csvNameConfig.js';
 
-export function planDataFromFolder(folderData, expandConfig) {
+export function planDataFromFolder(folderData, expandConfig, periodOptions = {}) {
   const {
     folderName,
     journalName,
@@ -42,7 +49,10 @@ export function planDataFromFolder(folderData, expandConfig) {
     bsText,
     generalLedgerName = null,
     generalLedgerText = null,
+    fiscalEndMonth: folderFiscalEndMonth,
   } = folderData;
+
+  const fiscalEndMonth = folderFiscalEndMonth ?? DEFAULT_FISCAL_END_MONTH;
 
   return {
     journalName,
@@ -52,12 +62,12 @@ export function planDataFromFolder(folderData, expandConfig) {
     generalLedgerName,
     generalLedgerText,
     folderName,
-    data: buildFullPlan(journalText, bsText, expandConfig),
+    data: buildFullPlan(journalText, bsText, { ...expandConfig, fiscalEndMonth }),
   };
 }
 
-function toPlanData(folderData, expandConfig) {
-  return planDataFromFolder(folderData, expandConfig);
+function toPlanData(folderData, expandConfig, periodOptions = {}) {
+  return planDataFromFolder(folderData, expandConfig, periodOptions);
 }
 
 /** キャッシュから計画データを生成（期切替用・フォルダアクセス不要） */
@@ -65,7 +75,7 @@ export function planDataFromCache(expandConfig, periodOptions) {
   try {
     const folderData = resolveFolderDataFromCache(periodOptions);
     if (!folderData) return null;
-    return toPlanData(folderData, expandConfig);
+    return toPlanData(folderData, expandConfig, periodOptions);
   } catch {
     // ダッシュボードの複数期参照など、未用意の期は null 扱いにする
     return null;
@@ -117,7 +127,7 @@ export async function reloadPlanDataFromSavedFolder(expandConfig, periodOptions,
     if (!folderData) {
       throw new Error('CSV フォルダが未設定です。フォルダを選択してください。');
     }
-    return toPlanData(folderData, expandConfig);
+    return toPlanData(folderData, expandConfig, periodOptions);
   } catch (err) {
     if (err?.code === 'NEEDS_PERMISSION') throw err;
     throw err;

@@ -1,8 +1,9 @@
-import { FISCAL_MONTHS, formatYen } from '../parse/parseJournal.js';
+import { formatYen } from '../parse/parseJournal.js';
+import { FISCAL_MONTHS, SETTLEMENT_MONTH_LABEL, DEFAULT_FISCAL_END_MONTH } from '../config/fiscalCalendar.js';
 import { buildMonthYearMap, formatFiscalPeriodLabel } from '../config/appSettings.js';
 import { getViewportScale } from '../config/viewportScale.js';
 
-const DASHBOARD_KESSAN = '決算整理';
+const DASHBOARD_KESSAN = SETTLEMENT_MONTH_LABEL;
 const DASHBOARD_GOUKEI = '合計';
 const DASHBOARD_HOJO_NASHI = '補助科目なし';
 const DASHBOARD_GENKIN_TOTAL = '現金及び預金合計';
@@ -84,7 +85,25 @@ function dashBindPeriodRangeControls(
   });
 }
 
-const DASHBOARD_DISPLAY_MONTHS = FISCAL_MONTHS.filter((m) => m !== DASHBOARD_KESSAN);
+function dashGetFiscalMonths(data) {
+  return data?.fiscalMonths ?? FISCAL_MONTHS;
+}
+
+function dashGetFiscalEndMonth(data) {
+  return data?.fiscalEndMonth ?? DEFAULT_FISCAL_END_MONTH;
+}
+
+function dashGetDisplayMonths(data) {
+  return dashGetFiscalMonths(data).filter((m) => m !== DASHBOARD_KESSAN);
+}
+
+let _dashFiscalMonths = FISCAL_MONTHS;
+let _dashDisplayMonths = FISCAL_MONTHS.filter((m) => m !== DASHBOARD_KESSAN);
+
+function dashSetFiscalContext(data) {
+  _dashFiscalMonths = dashGetFiscalMonths(data);
+  _dashDisplayMonths = dashGetDisplayMonths(data);
+}
 const REVENUE_SECTION_IDS = ['revenue', 'nonOperating', 'specialProfit'];
 const EXPENSE_SECTION_IDS = ['personnel', 'expense', 'outsourcing', 'other', 'specialLoss', 'tax', 'nonOperatingExpense'];
 const DASHBOARD_CHART_MODES = [
@@ -315,13 +334,13 @@ function dashAccountGroupKey(sectionId, accountLabel) {
 }
 
 function dashAddRowValues(target, source) {
-  for (const m of FISCAL_MONTHS) {
+  for (const m of _dashFiscalMonths) {
     target[m] = (target[m] ?? 0) + (source[m] ?? 0);
   }
 }
 
 function dashFinalizeRowValues(values) {
-  const total = FISCAL_MONTHS.reduce((s, m) => s + (values[m] ?? 0), 0);
+  const total = _dashFiscalMonths.reduce((s, m) => s + (values[m] ?? 0), 0);
   values[DASHBOARD_GOUKEI] = total;
   return total;
 }
@@ -467,7 +486,7 @@ function dashAllPeriodItemKey(item, mode) {
 
 /** 全期モード: 全期分の内訳を合算し、全期連結の月次系列（seriesValues）を付与する */
 function dashCollectAllPeriodBreakdownItems(allPeriods, sectionIds, mode) {
-  const monthsPerPeriod = DASHBOARD_DISPLAY_MONTHS.length;
+  const monthsPerPeriod = _dashDisplayMonths.length;
   const totalMonths = allPeriods.length * monthsPerPeriod;
   const byKey = new Map();
   allPeriods.forEach(({ data }, periodIndex) => {
@@ -490,7 +509,7 @@ function dashCollectAllPeriodBreakdownItems(allPeriods, sectionIds, mode) {
       merged.row = item.row;
       dashAddRowValues(merged.values, item.values ?? {});
       merged.total += item.total;
-      DASHBOARD_DISPLAY_MONTHS.forEach((month, mi) => {
+      _dashDisplayMonths.forEach((month, mi) => {
         merged.seriesValues[periodIndex * monthsPerPeriod + mi] += item.values?.[month] ?? 0;
       });
     }
@@ -655,7 +674,7 @@ function dashBuildStackedSeries(items, checkedKeys, colorMap) {
       // 全期モードでは全期連結の系列（seriesValues）を使う
       values: item.seriesValues
         ? item.seriesValues.map((v) => Math.abs(v))
-        : DASHBOARD_DISPLAY_MONTHS.map((month) => Math.abs(item.values[month] ?? 0)),
+        : _dashDisplayMonths.map((month) => Math.abs(item.values[month] ?? 0)),
     }));
 }
 
@@ -731,7 +750,7 @@ function dashResolveStackedChartDrilldown(hoverRect, ev, svg, itemByKey, drilldo
   const seg = dashPeekChartElementUnder(hoverRect, ev.clientX, ev.clientY, '.dashboard-chart-segment');
   if (!seg || seg.closest('svg') !== svg) return null;
   const monthIdx = Number(seg.getAttribute('data-month-index'));
-  const month = DASHBOARD_DISPLAY_MONTHS[monthIdx];
+  const month = _dashDisplayMonths[monthIdx];
   const item = itemByKey.get(seg.getAttribute('data-series-key'));
   if (!dashCanShowJournal(drilldownCtx, item, month)) return null;
   return { item, month };
@@ -747,7 +766,7 @@ function dashResolveGroupedChartDrilldown(hoverRect, ev, svg, drilldownCtx) {
   if (!bar || bar.closest('svg') !== svg) return null;
   const monthIdx = Number(bar.getAttribute('data-month-index'));
   const seriesIndex = Number(bar.getAttribute('data-series-index'));
-  const month = DASHBOARD_DISPLAY_MONTHS[monthIdx];
+  const month = _dashDisplayMonths[monthIdx];
   const cf = cfTargets.find((target) => target.seriesIndex === seriesIndex);
   if (!cf || !dashCanShowCfJournal(drilldownCtx, cf.sectionId, cf.rowId, month)) return null;
   return { cfSectionId: cf.sectionId, cfRowId: cf.rowId, month };
@@ -865,7 +884,11 @@ function dashRenderStackedLegendHtml(series) {
 
 function dashBuildMonthlySeries(data, appSettings) {
   const sections = data?.sections ?? [];
-  const monthYearMap = buildMonthYearMap(appSettings.businessStartYear, appSettings.fiscalPeriod);
+  const monthYearMap = buildMonthYearMap(
+    appSettings.businessStartYear,
+    appSettings.fiscalPeriod,
+    dashGetFiscalEndMonth(data),
+  );
   const cfIn = dashFindRow(dashFindSection(sections, 'cfIn'), 'cf-in')?.values ?? {};
   const cfOut = dashFindRow(dashFindSection(sections, 'cfOut'), 'cf-out')?.values ?? {};
   const profitSection = dashFindSection(sections, 'profit');
@@ -876,7 +899,7 @@ function dashBuildMonthlySeries(data, appSettings) {
   );
   const cashValues = cashRow?.values ?? {};
 
-  return DASHBOARD_DISPLAY_MONTHS.map((month) => ({
+  return _dashDisplayMonths.map((month) => ({
     month,
     label: dashFormatMonthAxisLabel(month, monthYearMap),
     inflow: Math.abs(cfIn[month] ?? 0),
@@ -2823,6 +2846,8 @@ export function mountDashboardPanel({
   hasJournalDrilldown = null,
 }) {
   if (!data) return;
+
+  dashSetFiscalContext(data);
 
   const prevCtx = dashboardMountCtx;
   const periodKey = allPeriods?.length

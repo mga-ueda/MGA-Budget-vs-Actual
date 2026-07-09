@@ -6,7 +6,10 @@ import {
 } from './csvNameConfig.js';
 import {
   loadAppSettings,
-  journalFileMatchesFiscalPeriod,
+  journalFileMatchesFiscalPeriodByDates,
+  inferFiscalEndMonthFromJournalFileName,
+  inferBusinessStartYearFromJournalItems,
+  DEFAULT_BUSINESS_START_YEAR,
   csvExportDateMatchesFiscalPeriod,
   csvDirname,
 } from '../config/appSettings.js';
@@ -188,7 +191,7 @@ function pickNewest(items) {
 }
 
 /** 仕訳と同じフォルダ → 出力日時が期の範囲内 → 全体の最新 の順で候補を絞る */
-function pickCsvForPeriod(items, journal, businessStartYear, fiscalPeriod) {
+function pickCsvForPeriod(items, journal, businessStartYear, fiscalPeriod, fiscalEndMonth) {
   if (!items.length) return null;
 
   const sameDir = journal
@@ -196,28 +199,41 @@ function pickCsvForPeriod(items, journal, businessStartYear, fiscalPeriod) {
     : [];
 
   const pool = sameDir.length ? sameDir : items;
-  const periodMatches = pool.filter((item) =>
-    csvExportDateMatchesFiscalPeriod(item.name, businessStartYear, fiscalPeriod),
-  );
+  const periodMatches = fiscalEndMonth != null
+    ? pool.filter((item) =>
+      csvExportDateMatchesFiscalPeriod(item.name, businessStartYear, fiscalPeriod, fiscalEndMonth),
+    )
+    : [];
 
   return pickNewest(periodMatches.length ? periodMatches : pool);
 }
 
+function resolveBusinessStartYear(buckets, periodOptions = {}) {
+  if (periodOptions.businessStartYear != null) {
+    return periodOptions.businessStartYear;
+  }
+  return inferBusinessStartYearFromJournalItems(buckets.journal) ?? DEFAULT_BUSINESS_START_YEAR;
+}
+
 function resolveCsvBuckets(buckets, periodOptions = {}) {
   const settings = loadAppSettings();
-  const businessStartYear = periodOptions.businessStartYear ?? settings.businessStartYear;
+  const businessStartYear = resolveBusinessStartYear(buckets, periodOptions);
   const fiscalPeriod = periodOptions.fiscalPeriod ?? settings.fiscalPeriod;
 
   const journalMatches = buckets.journal.filter((item) =>
-    journalFileMatchesFiscalPeriod(item.name, businessStartYear, fiscalPeriod),
+    journalFileMatchesFiscalPeriodByDates(item.name, businessStartYear, fiscalPeriod),
   );
   const journal = pickNewest(journalMatches);
+  const fiscalEndMonth = journal
+    ? inferFiscalEndMonthFromJournalFileName(journal.name)
+    : null;
 
   return {
     journal,
-    bs: pickCsvForPeriod(buckets.balanceSheet, journal, businessStartYear, fiscalPeriod),
-    generalLedger: pickCsvForPeriod(buckets.generalLedger, journal, businessStartYear, fiscalPeriod),
+    bs: pickCsvForPeriod(buckets.balanceSheet, journal, businessStartYear, fiscalPeriod, fiscalEndMonth),
+    generalLedger: pickCsvForPeriod(buckets.generalLedger, journal, businessStartYear, fiscalPeriod, fiscalEndMonth),
     fiscalPeriod,
+    fiscalEndMonth,
   };
 }
 
@@ -233,7 +249,7 @@ export function clearFolderCsvCache() {
 }
 
 function folderDataFromResolved(resolved, folderName) {
-  const { journal, bs, generalLedger, fiscalPeriod } = resolved;
+  const { journal, bs, generalLedger, fiscalPeriod, fiscalEndMonth } = resolved;
   const examples = getCsvNameExamples();
   if (!journal || !bs || !generalLedger) {
     const missing = [];
@@ -254,6 +270,7 @@ function folderDataFromResolved(resolved, folderName) {
     generalLedgerName: generalLedger.name,
     generalLedgerText: generalLedger.text,
     fiscalPeriod,
+    fiscalEndMonth,
   };
 }
 
@@ -340,4 +357,28 @@ export async function loadCsvFromSavedFolderWithAccess(handle, periodOptions, op
     throw new Error('CSV フォルダへのアクセスが拒否されました。');
   }
   return readCsvFromFolderHandle(handle, periodOptions, options);
+}
+
+/** キャッシュ済み仕訳 CSV から指定の期の決算月を推定する */
+export function resolveFiscalEndMonthFromCache(periodOptions = {}) {
+  if (!folderCsvCache) return null;
+  const resolved = resolveCsvBuckets(folderCsvCache.buckets, periodOptions);
+  return resolved.fiscalEndMonth ?? null;
+}
+
+/** キャッシュ内の最新仕訳 CSV から決算月を推定する（来期など CSV 未登録期のフォールバック用） */
+export function resolveLatestFiscalEndMonthFromCache() {
+  if (!folderCsvCache?.buckets?.journal?.length) return null;
+  const journals = [...folderCsvCache.buckets.journal].sort((a, b) => b.name.localeCompare(a.name, 'ja'));
+  for (const item of journals) {
+    const endMonth = inferFiscalEndMonthFromJournalFileName(item.name);
+    if (endMonth != null) return endMonth;
+  }
+  return null;
+}
+
+/** キャッシュ内の最古仕訳 CSV から事業開始年を推定する */
+export function resolveBusinessStartYearFromCache() {
+  if (!folderCsvCache?.buckets?.journal?.length) return null;
+  return inferBusinessStartYearFromJournalItems(folderCsvCache.buckets.journal);
 }

@@ -4,6 +4,7 @@ import {
   buildFiscalYearMonths,
   applyAmountFromMonthForwardSkippingPast,
 } from '../config/salaryPlanConfig.js';
+import { DEFAULT_FISCAL_END_MONTH } from '../config/fiscalCalendar.js';
 import {
   buildExpensePlanOverridePeriodEntries,
   getExpenseOverrideAccounts,
@@ -43,7 +44,8 @@ export function mountExpensePlanOverrideSection({
   getSectionFilterColors,
   refreshPlanSettingsColumnPlates,
 }) {
-  const fiscalMonths = buildFiscalYearMonths(appSettings.fiscalEndMonth);
+  const fiscalEndMonth = rawPlanData?.fiscalEndMonth ?? DEFAULT_FISCAL_END_MONTH;
+  const fiscalMonths = buildFiscalYearMonths(fiscalEndMonth);
   const currentPeriod = appSettings.fiscalPeriod;
   const periodEntries = buildExpensePlanOverridePeriodEntries(currentPeriod);
 

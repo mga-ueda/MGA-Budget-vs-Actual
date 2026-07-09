@@ -1,14 +1,14 @@
-import { FISCAL_MONTHS } from '../parse/parseJournal.js';
+import { FISCAL_MONTHS } from '../config/fiscalCalendar.js';
 import { planDataFromCache } from '../csv/csvLoader.js';
 
-export function emptyRawMonthValues() {
+export function emptyRawMonthValues(fiscalMonths = FISCAL_MONTHS) {
   const values = {};
-  for (const m of FISCAL_MONTHS) values[m] = 0;
+  for (const m of fiscalMonths) values[m] = 0;
   return values;
 }
 
-export function addRawMonthValues(target, source) {
-  for (const m of FISCAL_MONTHS) {
+export function addRawMonthValues(target, source, fiscalMonths = FISCAL_MONTHS) {
+  for (const m of fiscalMonths) {
     target[m] += source[m] ?? 0;
   }
 }

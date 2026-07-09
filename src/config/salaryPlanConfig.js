@@ -1,34 +1,18 @@
-import { normalizeFiscalEndMonth } from './appSettings.js';
+import {
+  buildFiscalYearMonths,
+  monthLabelToNumber,
+  monthNumberToLabel,
+} from './fiscalCalendar.js';
 import { computeMonthlySalary } from './employeeConfig.js';
 import { normalizeAmount, emptyMonthly } from './planAmountUtils.js';
+
+export { buildFiscalYearMonths, monthLabelToNumber, monthNumberToLabel } from './fiscalCalendar.js';
 
 const SALARY_PLAN_STORAGE_KEY = 'mga-salary-plans';
 const SALARY_PLAN_SETTINGS_STORAGE_KEY = 'mga-salary-plan-settings';
 const MAX_BONUS_COUNT = 2;
 export const DEFAULT_BONUS_PAYMENT_MONTHS = [6, 12];
 export const DEFAULT_TRAVEL_ALLOWANCE_PER_PERSON = 20000;
-
-export function buildFiscalYearMonths(fiscalEndMonth) {
-  const end = normalizeFiscalEndMonth(fiscalEndMonth);
-  // 決算月12月の場合は表示順も12月始まり（12月→11月）
-  const start = end === 12 ? 12 : (end % 12) + 1;
-  const months = [];
-  let m = start;
-  for (let i = 0; i < 12; i += 1) {
-    months.push(`${m}月`);
-    m = (m % 12) + 1;
-  }
-  return months;
-}
-
-export function monthLabelToNumber(label) {
-  const m = String(label).match(/^(\d{1,2})月$/);
-  return m ? parseInt(m[1], 10) : null;
-}
-
-export function monthNumberToLabel(num) {
-  return `${num}月`;
-}
 
 export function normalizeBonusPaymentMonths(raw, fiscalMonths) {
   const validNumbers = new Set(fiscalMonths.map(monthLabelToNumber));

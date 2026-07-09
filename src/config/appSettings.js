@@ -12,13 +12,21 @@ import {
 } from './legalWelfareRateConfig.js';
 
 import { getViewportScale, getContentFitScale } from './viewportScale.js';
+import {
+  DEFAULT_FISCAL_END_MONTH,
+  SETTLEMENT_MONTH_LABEL,
+  buildFiscalYearMonths,
+  getFiscalYearStartMonth,
+  getLastRegularFiscalMonth,
+  monthLabelToNumber,
+  normalizeFiscalEndMonth,
+} from './fiscalCalendar.js';
+
+export { DEFAULT_FISCAL_END_MONTH, normalizeFiscalEndMonth } from './fiscalCalendar.js';
 
 const APP_SETTINGS_STORAGE_KEY = 'mga-app-settings';
 
 export const DEFAULT_BUSINESS_START_YEAR = 2018;
-
-/** 会計期の決算月（1〜12） */
-export const DEFAULT_FISCAL_END_MONTH = 12;
 
 /** 設定 UI で 100% と表示するときの実際の CSS 倍率 */
 export const DESIGN_FONT_BASELINE = 0.85;
@@ -387,8 +395,6 @@ export function applyBrandSettings(settings, mode = 'dark') {
 }
 
 export const DEFAULT_APP_SETTINGS = {
-  businessStartYear: DEFAULT_BUSINESS_START_YEAR,
-  fiscalEndMonth: DEFAULT_FISCAL_END_MONTH,
   fiscalPeriod: null,
   fontScale: DEFAULT_FONT_SCALE,
   rowPaddingScale: DEFAULT_ROW_PADDING_SCALE,
@@ -483,30 +489,27 @@ export function isCorporateSubLabel(subLabel, markers = parseCorpEntityMarkers()
   return markers.some((marker) => text.includes(marker));
 }
 
-/** 第 N 期の月→年ラベル（12月=開始年+N-1、1〜11月・決算整理=その翌年） */
-export function buildMonthYearMap(businessStartYear, fiscalPeriod) {
-  const decYear = businessStartYear + fiscalPeriod - 1;
-  const nextYear = decYear + 1;
-  return {
-    '12月': decYear,
-    '1月': nextYear,
-    '2月': nextYear,
-    '3月': nextYear,
-    '4月': nextYear,
-    '5月': nextYear,
-    '6月': nextYear,
-    '7月': nextYear,
-    '8月': nextYear,
-    '9月': nextYear,
-    '10月': nextYear,
-    '11月': nextYear,
-    '決算整理': nextYear,
-  };
+/** 第 N 期の月→年ラベル */
+export function buildMonthYearMap(businessStartYear, fiscalPeriod, fiscalEndMonth = DEFAULT_FISCAL_END_MONTH) {
+  const startMonth = getFiscalYearStartMonth(fiscalEndMonth);
+  const startYear = businessStartYear + fiscalPeriod - 1;
+  const endYear = businessStartYear + fiscalPeriod;
+  const map = {};
+  for (const label of buildFiscalYearMonths(fiscalEndMonth)) {
+    const num = monthLabelToNumber(label);
+    if (num == null) continue;
+    if (startMonth === 12) {
+      map[label] = num === 12 ? startYear : endYear;
+    } else {
+      map[label] = num >= startMonth ? startYear : endYear;
+    }
+  }
+  map[SETTLEMENT_MONTH_LABEL] = endYear;
+  return map;
 }
 
 function parseMonthLabelNumber(label) {
-  const m = String(label).match(/^(\d{1,2})月$/);
-  return m ? parseInt(m[1], 10) : null;
+  return monthLabelToNumber(label);
 }
 
 /** 今日より前の会計月（fiscalMonths 内の月ラベル） */
@@ -515,8 +518,9 @@ export function buildPastFiscalMonthSet(
   fiscalPeriod,
   fiscalMonths,
   date = new Date(),
+  fiscalEndMonth = DEFAULT_FISCAL_END_MONTH,
 ) {
-  const monthYearMap = buildMonthYearMap(businessStartYear, fiscalPeriod);
+  const monthYearMap = buildMonthYearMap(businessStartYear, fiscalPeriod, fiscalEndMonth);
   const refYear = date.getFullYear();
   const refMonth = date.getMonth() + 1;
   const past = new Set();
@@ -539,8 +543,9 @@ export function getCurrentFiscalMonthLabel(
   fiscalPeriod,
   fiscalMonths,
   date = new Date(),
+  fiscalEndMonth = DEFAULT_FISCAL_END_MONTH,
 ) {
-  const monthYearMap = buildMonthYearMap(businessStartYear, fiscalPeriod);
+  const monthYearMap = buildMonthYearMap(businessStartYear, fiscalPeriod, fiscalEndMonth);
   const refYear = date.getFullYear();
   const refMonth = date.getMonth() + 1;
 
@@ -556,24 +561,47 @@ export function getCurrentFiscalMonthLabel(
   return null;
 }
 
-export function getFiscalPeriodForDate(businessStartYear, date = new Date()) {
+export function getFiscalPeriodForDate(
+  businessStartYear,
+  date = new Date(),
+  fiscalEndMonth = DEFAULT_FISCAL_END_MONTH,
+) {
   const y = date.getFullYear();
   const m = date.getMonth() + 1;
-  const decYear = m === 12 ? y : y - 1;
-  return decYear - businessStartYear + 1;
+  const startMonth = getFiscalYearStartMonth(fiscalEndMonth);
+  if (startMonth === 12) {
+    const anchorYear = m === 12 ? y : y - 1;
+    return anchorYear - businessStartYear + 1;
+  }
+  const endYear = m >= startMonth ? y + 1 : y;
+  return endYear - businessStartYear;
 }
 
-export function getMaxSelectablePeriod(businessStartYear, date = new Date()) {
-  return Math.max(1, getFiscalPeriodForDate(businessStartYear, date) + 1);
+export function getMaxSelectablePeriod(
+  businessStartYear,
+  date = new Date(),
+  fiscalEndMonth = DEFAULT_FISCAL_END_MONTH,
+) {
+  return Math.max(1, getFiscalPeriodForDate(businessStartYear, date, fiscalEndMonth) + 1);
 }
 
 /** 選択期が来期（実績 CSV なし・計画表示のみ）か */
-export function isPlanOnlyPeriod(businessStartYear, fiscalPeriod, date = new Date()) {
-  return fiscalPeriod > getFiscalPeriodForDate(businessStartYear, date);
+export function isPlanOnlyPeriod(
+  businessStartYear,
+  fiscalPeriod,
+  date = new Date(),
+  fiscalEndMonth = DEFAULT_FISCAL_END_MONTH,
+) {
+  return fiscalPeriod > getFiscalPeriodForDate(businessStartYear, date, fiscalEndMonth);
 }
 
-export function getFiscalPeriodDisplayMode(businessStartYear, fiscalPeriod, date = new Date()) {
-  const currentPeriod = getFiscalPeriodForDate(businessStartYear, date);
+export function getFiscalPeriodDisplayMode(
+  businessStartYear,
+  fiscalPeriod,
+  date = new Date(),
+  fiscalEndMonth = DEFAULT_FISCAL_END_MONTH,
+) {
+  const currentPeriod = getFiscalPeriodForDate(businessStartYear, date, fiscalEndMonth);
   if (fiscalPeriod > currentPeriod) return 'plan';
   if (fiscalPeriod === currentPeriod) return 'budget-actual';
   return 'actual';
@@ -592,20 +620,23 @@ export function getFiscalPeriodDisplayModeLabel(mode) {
   }
 }
 
-export function getDefaultFiscalPeriod(businessStartYear, date = new Date()) {
-  return getFiscalPeriodForDate(businessStartYear, date);
+export function getDefaultFiscalPeriod(
+  businessStartYear,
+  date = new Date(),
+  fiscalEndMonth = DEFAULT_FISCAL_END_MONTH,
+) {
+  return getFiscalPeriodForDate(businessStartYear, date, fiscalEndMonth);
 }
 
-export function normalizeFiscalEndMonth(value) {
-  const n = Number(value);
-  if (!Number.isInteger(n) || n < 1 || n > 12) return DEFAULT_FISCAL_END_MONTH;
-  return n;
-}
-
-export function normalizeFiscalPeriod(businessStartYear, fiscalPeriod, date = new Date()) {
-  const max = getMaxSelectablePeriod(businessStartYear, date);
+export function normalizeFiscalPeriod(
+  businessStartYear,
+  fiscalPeriod,
+  date = new Date(),
+  fiscalEndMonth = DEFAULT_FISCAL_END_MONTH,
+) {
+  const max = getMaxSelectablePeriod(businessStartYear, date, fiscalEndMonth);
   const n = Number(fiscalPeriod);
-  if (!Number.isInteger(n) || n < 1) return getDefaultFiscalPeriod(businessStartYear, date);
+  if (!Number.isInteger(n) || n < 1) return getDefaultFiscalPeriod(businessStartYear, date, fiscalEndMonth);
   return Math.min(max, Math.max(1, n));
 }
 
@@ -627,21 +658,105 @@ export function parseFiscalPeriod(label) {
   return m ? parseInt(m[1], 10) : 8;
 }
 
-export function fiscalPeriodJournalBounds(businessStartYear, fiscalPeriod) {
-  const decYear = businessStartYear + fiscalPeriod - 1;
-  const nextYear = decYear + 1;
+export function fiscalPeriodJournalBounds(
+  businessStartYear,
+  fiscalPeriod,
+  fiscalEndMonth = DEFAULT_FISCAL_END_MONTH,
+) {
+  const startMonth = getFiscalYearStartMonth(fiscalEndMonth);
+  const lastMonth = monthLabelToNumber(getLastRegularFiscalMonth(fiscalEndMonth));
+  const startYear = businessStartYear + fiscalPeriod - 1;
+  const endYear = businessStartYear + fiscalPeriod;
   return {
-    startPrefix: `${decYear}-12`,
-    endPrefix: `${nextYear}-11`,
+    startPrefix: `${startYear}-${String(startMonth).padStart(2, '0')}`,
+    endPrefix: `${endYear}-${String(lastMonth).padStart(2, '0')}`,
   };
 }
 
+/** 仕訳データCSVのファイル名から期間の開始・終了日を解析する */
+export function parseJournalCsvFileName(fileName) {
+  const base = fileName.replace(/\\/g, '/').split('/').pop() ?? fileName;
+  const m = base.match(/^仕訳データ_(\d{4})-(\d{2})-\d{2}_(\d{4})-(\d{2})-\d{2}\.csv$/);
+  if (!m) return null;
+  return {
+    startYear: parseInt(m[1], 10),
+    startMonth: parseInt(m[2], 10),
+    endYear: parseInt(m[3], 10),
+    endMonth: parseInt(m[4], 10),
+  };
+}
+
+/** 仕訳CSVの終了日から決算月を推定 */
+export function inferFiscalEndMonthFromJournalFileName(fileName) {
+  const parsed = parseJournalCsvFileName(fileName);
+  if (!parsed) return null;
+  return normalizeFiscalEndMonth(parsed.endMonth);
+}
+
+/** 仕訳CSV群のうち開始日が最古のファイル名を返す */
+export function pickOldestJournalCsvFileName(journalItems) {
+  if (!journalItems?.length) return null;
+  const sorted = [...journalItems].sort((a, b) => {
+    const nameA = typeof a === 'string' ? a : a.name;
+    const nameB = typeof b === 'string' ? b : b.name;
+    const pa = parseJournalCsvFileName(nameA);
+    const pb = parseJournalCsvFileName(nameB);
+    if (!pa && !pb) return nameA.localeCompare(nameB, 'ja');
+    if (!pa) return 1;
+    if (!pb) return -1;
+    if (pa.startYear !== pb.startYear) return pa.startYear - pb.startYear;
+    if (pa.startMonth !== pb.startMonth) return pa.startMonth - pb.startMonth;
+    return nameA.localeCompare(nameB, 'ja');
+  });
+  const first = sorted[0];
+  return typeof first === 'string' ? first : first.name;
+}
+
+/** 最古の仕訳CSVを第1期として事業開始年を推定 */
+export function inferBusinessStartYearFromJournalFileName(fileName) {
+  const parsed = parseJournalCsvFileName(fileName);
+  if (!parsed) return null;
+  const fiscalEndMonth = inferFiscalEndMonthFromJournalFileName(fileName);
+  if (fiscalEndMonth == null) return null;
+  const fromEndYear = parsed.endYear - 1;
+  if (journalFileMatchesFiscalPeriod(fileName, fromEndYear, 1, fiscalEndMonth)) {
+    return fromEndYear;
+  }
+  if (journalFileMatchesFiscalPeriod(fileName, parsed.startYear, 1, fiscalEndMonth)) {
+    return parsed.startYear;
+  }
+  return fromEndYear;
+}
+
+/** 仕訳CSVの配列から事業開始年を推定 */
+export function inferBusinessStartYearFromJournalItems(journalItems) {
+  const fileName = pickOldestJournalCsvFileName(journalItems);
+  if (!fileName) return null;
+  return inferBusinessStartYearFromJournalFileName(fileName);
+}
+
+/** 仕訳CSVの期間が選択期と一致するか（決算月はファイル名から判定） */
+export function journalFileMatchesFiscalPeriodByDates(fileName, businessStartYear, fiscalPeriod) {
+  const fiscalEndMonth = inferFiscalEndMonthFromJournalFileName(fileName);
+  if (fiscalEndMonth == null) return false;
+  return journalFileMatchesFiscalPeriod(fileName, businessStartYear, fiscalPeriod, fiscalEndMonth);
+}
+
 /** 仕訳 CSV の期間が選択期と一致するか */
-export function journalFileMatchesFiscalPeriod(fileName, businessStartYear, fiscalPeriod) {
+export function journalFileMatchesFiscalPeriod(
+  fileName,
+  businessStartYear,
+  fiscalPeriod,
+  fiscalEndMonth = DEFAULT_FISCAL_END_MONTH,
+) {
   const base = fileName.replace(/\\/g, '/').split('/').pop() ?? fileName;
   const m = base.match(/^仕訳データ_(\d{4}-\d{2}-\d{2})_(\d{4}-\d{2}-\d{2})\.csv$/);
   if (!m) return false;
-  const { startPrefix, endPrefix } = fiscalPeriodJournalBounds(businessStartYear, fiscalPeriod);
+  const { startPrefix, endPrefix } = fiscalPeriodJournalBounds(
+    businessStartYear,
+    fiscalPeriod,
+    fiscalEndMonth,
+  );
   return m[1].startsWith(startPrefix) && m[2].startsWith(endPrefix);
 }
 
@@ -652,16 +767,23 @@ export function csvDirname(filePath) {
 }
 
 /** ファイル名の出力日時（_YYYYMMDD_HHMM.csv）が選択期の範囲内か */
-export function csvExportDateMatchesFiscalPeriod(fileName, businessStartYear, fiscalPeriod) {
+export function csvExportDateMatchesFiscalPeriod(
+  fileName,
+  businessStartYear,
+  fiscalPeriod,
+  fiscalEndMonth = DEFAULT_FISCAL_END_MONTH,
+) {
   const base = fileName.replace(/\\/g, '/').split('/').pop() ?? fileName;
   const m = base.match(/_(\d{4})(\d{2})(\d{2})_\d{4}\.csv$/);
   if (!m) return false;
   const y = parseInt(m[1], 10);
   const mo = parseInt(m[2], 10);
-  const decYear = businessStartYear + fiscalPeriod - 1;
-  const nextYear = decYear + 1;
-  if (y === decYear && mo === 12) return true;
-  if (y === nextYear && mo >= 1 && mo <= 11) return true;
+  const startMonth = getFiscalYearStartMonth(fiscalEndMonth);
+  const lastMonth = monthLabelToNumber(getLastRegularFiscalMonth(fiscalEndMonth));
+  const startYear = businessStartYear + fiscalPeriod - 1;
+  const endYear = businessStartYear + fiscalPeriod;
+  if (y === startYear && mo >= startMonth && mo <= 12) return true;
+  if (y === endYear && mo >= 1 && mo <= lastMonth) return true;
   return false;
 }
 
@@ -694,11 +816,8 @@ export function loadAppSettings() {
   try {
     const raw = localStorage.getItem(APP_SETTINGS_STORAGE_KEY);
     if (!raw) {
-      const businessStartYear = DEFAULT_BUSINESS_START_YEAR;
       return {
-        businessStartYear,
-        fiscalEndMonth: DEFAULT_FISCAL_END_MONTH,
-        fiscalPeriod: getDefaultFiscalPeriod(businessStartYear),
+        fiscalPeriod: getDefaultFiscalPeriod(DEFAULT_BUSINESS_START_YEAR),
         fontScale: DEFAULT_FONT_SCALE,
         rowPaddingScale: DEFAULT_ROW_PADDING_SCALE,
         corpEntityMarkers: DEFAULT_CORP_ENTITY_MARKERS,
@@ -709,12 +828,8 @@ export function loadAppSettings() {
       };
     }
     const parsed = JSON.parse(raw);
-    const year = Number(parsed?.businessStartYear);
-    const businessStartYear = Number.isInteger(year) ? year : DEFAULT_BUSINESS_START_YEAR;
     return {
-      businessStartYear,
-      fiscalEndMonth: normalizeFiscalEndMonth(parsed?.fiscalEndMonth),
-      fiscalPeriod: normalizeFiscalPeriod(businessStartYear, parsed?.fiscalPeriod),
+      fiscalPeriod: normalizeFiscalPeriod(DEFAULT_BUSINESS_START_YEAR, parsed?.fiscalPeriod),
       fontScale: loadFontScale(parsed),
       rowPaddingScale: loadRowPaddingScale(parsed),
       corpEntityMarkers: loadCorpEntityMarkers(parsed?.corpEntityMarkers),
@@ -724,11 +839,8 @@ export function loadAppSettings() {
       legalWelfareRate: normalizeLegalWelfareRate(parsed?.legalWelfareRate),
     };
   } catch {
-    const businessStartYear = DEFAULT_BUSINESS_START_YEAR;
     return {
-      businessStartYear,
-      fiscalEndMonth: DEFAULT_FISCAL_END_MONTH,
-      fiscalPeriod: getDefaultFiscalPeriod(businessStartYear),
+      fiscalPeriod: getDefaultFiscalPeriod(DEFAULT_BUSINESS_START_YEAR),
       fontScale: DEFAULT_FONT_SCALE,
       rowPaddingScale: DEFAULT_ROW_PADDING_SCALE,
       corpEntityMarkers: DEFAULT_CORP_ENTITY_MARKERS,
@@ -749,12 +861,9 @@ export function saveAppSettings(settings) {
 
 /** その他設定タブの項目のみデフォルトに戻す（フォント・行パディング等は維持） */
 export function resetOtherAppSettings(current) {
-  const businessStartYear = DEFAULT_BUSINESS_START_YEAR;
   return {
     ...current,
-    businessStartYear,
-    fiscalEndMonth: DEFAULT_FISCAL_END_MONTH,
-    fiscalPeriod: normalizeFiscalPeriod(businessStartYear, current.fiscalPeriod),
+    fiscalPeriod: normalizeFiscalPeriod(DEFAULT_BUSINESS_START_YEAR, current.fiscalPeriod),
     corpEntityMarkers: DEFAULT_CORP_ENTITY_MARKERS,
     companyName: DEFAULT_COMPANY_NAME,
     brandIconText: DEFAULT_BRAND_ICON_TEXT,

@@ -20,15 +20,44 @@ import {
   getPaymentCounterpartsSet,
   isRevenueAccountKey,
 } from '../config/journalDefinitionConfig.js';
+import {
+  DEFAULT_FISCAL_END_MONTH,
+  FISCAL_MONTHS,
+  SETTLEMENT_MONTH_LABEL,
+  buildFiscalMonths,
+  getLastRegularFiscalMonth,
+} from '../config/fiscalCalendar.js';
+
+export { FISCAL_MONTHS } from '../config/fiscalCalendar.js';
 
 export { formatYen };
 
-export const FISCAL_MONTHS = [
-  '12月', '1月', '2月', '3月', '4月', '5月', '6月',
-  '7月', '8月', '9月', '10月', '11月', '決算整理',
-];
-
 export const EXTRA_COLUMNS = ['合計', '平均'];
+
+let _activeFiscalMonths = FISCAL_MONTHS;
+let _activeFiscalEndMonth = DEFAULT_FISCAL_END_MONTH;
+
+function resolveFiscalMonths(expandConfig = {}) {
+  const end = expandConfig.fiscalEndMonth ?? DEFAULT_FISCAL_END_MONTH;
+  return buildFiscalMonths(end);
+}
+
+function useFiscalContext(expandConfig, fn) {
+  const prevMonths = _activeFiscalMonths;
+  const prevEnd = _activeFiscalEndMonth;
+  _activeFiscalEndMonth = expandConfig?.fiscalEndMonth ?? DEFAULT_FISCAL_END_MONTH;
+  _activeFiscalMonths = resolveFiscalMonths(expandConfig);
+  try {
+    return fn();
+  } finally {
+    _activeFiscalMonths = prevMonths;
+    _activeFiscalEndMonth = prevEnd;
+  }
+}
+
+function getActiveFiscalMonths(fiscalMonths) {
+  return fiscalMonths ?? _activeFiscalMonths;
+}
 
 /** 貸借対照表・現預金の大項目（合計・平均列は表示しない） */
 export const BS_SECTION_IDS = new Set([
@@ -67,25 +96,28 @@ function monthKey(dateStr) {
   return m === 12 ? '12月' : `${m}月`;
 }
 
-function emptyMonthValues() {
+function emptyMonthValues(fiscalMonths = _activeFiscalMonths) {
   const v = {};
-  for (const m of FISCAL_MONTHS) v[m] = 0;
+  for (const m of fiscalMonths) v[m] = 0;
   return v;
 }
 
-export function enrichRowValues(values, mode = 'flow') {
-  if (mode === 'balance') return enrichBalanceRowValues(values);
-  const monthsWithData = FISCAL_MONTHS.filter((m) => (values[m] ?? 0) !== 0);
-  const total = FISCAL_MONTHS.reduce((s, m) => s + (values[m] ?? 0), 0);
+export function enrichRowValues(values, mode = 'flow', fiscalMonths = _activeFiscalMonths) {
+  if (mode === 'balance') return enrichBalanceRowValues(values, fiscalMonths);
+  const months = getActiveFiscalMonths(fiscalMonths);
+  const monthsWithData = months.filter((m) => (values[m] ?? 0) !== 0);
+  const total = months.reduce((s, m) => s + (values[m] ?? 0), 0);
   const avg = monthsWithData.length > 0 ? Math.round(total / monthsWithData.length) : 0;
   return { ...values, 合計: total, 平均: avg };
 }
 
 /** BS 残高行: 合計=期末残高、平均=月次残高の平均 */
-function enrichBalanceRowValues(values) {
-  const monthsWithData = FISCAL_MONTHS.filter((m) => (values[m] ?? 0) !== 0);
-  const endBalance = values['決算整理']
-    ?? values['11月']
+function enrichBalanceRowValues(values, fiscalMonths = _activeFiscalMonths) {
+  const months = getActiveFiscalMonths(fiscalMonths);
+  const monthsWithData = months.filter((m) => (values[m] ?? 0) !== 0);
+  const lastRegularMonth = getLastRegularFiscalMonth(_activeFiscalEndMonth);
+  const endBalance = values[SETTLEMENT_MONTH_LABEL]
+    ?? values[lastRegularMonth]
     ?? (monthsWithData.length ? values[monthsWithData[monthsWithData.length - 1]] : 0)
     ?? 0;
   const avg = monthsWithData.length > 0
@@ -114,7 +146,7 @@ function makeRow(id, label, subLabel, values, type = 'item', parentId = null, va
 
 function buildArMinusRevValues(arValues, revValues) {
   const values = emptyMonthValues();
-  for (const m of FISCAL_MONTHS) {
+  for (const m of _activeFiscalMonths) {
     values[m] = (arValues[m] ?? 0) - (revValues[m] ?? 0);
   }
   return values;
@@ -132,7 +164,7 @@ function appendReceivableSubVarianceRows(filteredItems, revenueSection) {
     if (row.type !== 'item' && row.type !== 'sub') continue;
     const rev = revBySub.get(subSortKey(row.subLabel || '')) ?? emptyMonthValues();
     const diff = buildArMinusRevValues(monthValuesOnly(row.values), rev);
-    if (!FISCAL_MONTHS.some((m) => (diff[m] ?? 0) !== 0)) continue;
+    if (!_activeFiscalMonths.some((m) => (diff[m] ?? 0) !== 0)) continue;
     rows.push(makeRow(`${row.id}-saiko`, '', '差額有', diff, 'sub-variance', row.id));
   }
   return rows;
@@ -141,7 +173,7 @@ function appendReceivableSubVarianceRows(filteredItems, revenueSection) {
 function sumRawValues(items) {
   const total = emptyMonthValues();
   for (const item of items) {
-    for (const m of FISCAL_MONTHS) total[m] += item.values[m] ?? 0;
+    for (const m of _activeFiscalMonths) total[m] += item.values[m] ?? 0;
   }
   return total;
 }
@@ -311,21 +343,21 @@ function makeTotalRow(id, label, values, valueMode = 'flow', aggregateFormula = 
 function sumValues(rows) {
   const total = emptyMonthValues();
   for (const row of rows) {
-    for (const m of FISCAL_MONTHS) total[m] += row.values[m] ?? 0;
+    for (const m of _activeFiscalMonths) total[m] += row.values[m] ?? 0;
   }
   return total;
 }
 
 function subtractValues(a, b) {
   const r = emptyMonthValues();
-  for (const m of FISCAL_MONTHS) r[m] = (a[m] ?? 0) - (b[m] ?? 0);
+  for (const m of _activeFiscalMonths) r[m] = (a[m] ?? 0) - (b[m] ?? 0);
   for (const c of EXTRA_COLUMNS) r[c] = (a[c] ?? 0) - (b[c] ?? 0);
   return enrichRowValues(r);
 }
 
 function addValues(a, b) {
   const r = emptyMonthValues();
-  for (const m of FISCAL_MONTHS) r[m] = (a[m] ?? 0) + (b[m] ?? 0);
+  for (const m of _activeFiscalMonths) r[m] = (a[m] ?? 0) + (b[m] ?? 0);
   for (const c of EXTRA_COLUMNS) r[c] = (a[c] ?? 0) + (b[c] ?? 0);
   return enrichRowValues(r);
 }
@@ -364,7 +396,7 @@ function aggregateJournal(text) {
     const memo = cells[19]?.trim();
     if (memo === '開始仕訳') continue;
 
-    const mk = settlement === '決算整理仕訳' ? '決算整理' : monthKey(date);
+    const mk = settlement === '決算整理仕訳' ? SETTLEMENT_MONTH_LABEL : monthKey(date);
 
     const debitAcct = cells[2]?.trim();
     const debitSub = cells[3]?.trim();
@@ -418,7 +450,7 @@ function buildPlSections(aggregated, expandConfig, expandCandidates) {
   };
 
   for (const [key, { category, values }] of aggregated) {
-    const total = FISCAL_MONTHS.reduce((s, m) => s + Math.abs(values[m] ?? 0), 0);
+    const total = _activeFiscalMonths.reduce((s, m) => s + Math.abs(values[m] ?? 0), 0);
     if (total === 0) continue;
     const [account, sub] = key.split('|');
     bySection[category].push({ account, sub: sub ?? '', values });
@@ -468,7 +500,7 @@ function extractReceivableRowsFromBs(bsText) {
 
 function monthValuesOnly(values) {
   const months = {};
-  for (const m of FISCAL_MONTHS) months[m] = values[m] ?? 0;
+  for (const m of _activeFiscalMonths) months[m] = values[m] ?? 0;
   return months;
 }
 
@@ -479,7 +511,7 @@ function revenueBySub(revenueSection) {
     const key = subSortKey(row.subLabel || '');
     if (!bySub.has(key)) bySub.set(key, emptyMonthValues());
     const bucket = bySub.get(key);
-    for (const m of FISCAL_MONTHS) {
+    for (const m of _activeFiscalMonths) {
       bucket[m] = (bucket[m] ?? 0) + (row.values[m] ?? 0);
     }
   }
@@ -490,7 +522,7 @@ function sumRevValues(revBySub, subKeys) {
   const sum = emptyMonthValues();
   for (const key of subKeys) {
     const rev = revBySub.get(key) ?? emptyMonthValues();
-    for (const m of FISCAL_MONTHS) sum[m] += rev[m] ?? 0;
+    for (const m of _activeFiscalMonths) sum[m] += rev[m] ?? 0;
   }
   return sum;
 }
@@ -503,7 +535,7 @@ function sectionValuesBySub(section) {
     const key = subSortKey(row.subLabel || '');
     if (!bySub.has(key)) bySub.set(key, emptyMonthValues());
     const bucket = bySub.get(key);
-    for (const m of FISCAL_MONTHS) {
+    for (const m of _activeFiscalMonths) {
       bucket[m] = (bucket[m] ?? 0) + (row.values[m] ?? 0);
     }
   }
@@ -560,7 +592,7 @@ export function shouldShowCrossVarianceMonth(section, row, month, ctx) {
 }
 
 function hasAnyMonthDifference(aValues, bValues) {
-  return FISCAL_MONTHS.some((m) => (aValues[m] ?? 0) !== (bValues[m] ?? 0));
+  return _activeFiscalMonths.some((m) => (aValues[m] ?? 0) !== (bValues[m] ?? 0));
 }
 
 /** 相手側の補助科目別月次と全月一致する明細行を除外 */
@@ -596,7 +628,7 @@ function extractReceivableRawItems(bsText) {
   return filterBsDuplicateParents(extractReceivableRowsFromBs(bsText))
     .filter((r) => !r.isTotal)
     .map((r) => ({ account: r.account, sub: r.sub ?? '', values: r.values }))
-    .filter((item) => FISCAL_MONTHS.some((m) => (item.values[m] ?? 0) !== 0));
+    .filter((item) => _activeFiscalMonths.some((m) => (item.values[m] ?? 0) !== 0));
 }
 
 function buildReceivablesSection(bsText, revenueSection, expandConfig, expandCandidates) {
@@ -882,7 +914,7 @@ function appendMissingBsAccountRows(rawRows, alwaysVisibleAccounts) {
       .map((r) => r.account),
   );
   const sampleValues = rawRows.find((r) => r.values)?.values;
-  const monthKeys = sampleValues ? Object.keys(sampleValues) : [...FISCAL_MONTHS];
+  const monthKeys = sampleValues ? Object.keys(sampleValues) : [..._activeFiscalMonths];
   const additions = [];
   for (const account of alwaysVisibleAccounts) {
     if (detailAccounts.has(account)) continue;
@@ -1021,47 +1053,52 @@ function buildCashFlowSections(cashFlow, otherPayments, bsText, expandConfig, ex
 
 export function zeroOutPlanData(planData) {
   if (!planData) return buildFullPlan('', null);
+  const fiscalMonths = planData.fiscalMonths ?? _activeFiscalMonths;
   return {
     ...planData,
     sections: planData.sections.map((section) => ({
       ...section,
       rows: section.rows.map((row) => ({
         ...row,
-        values: enrichRowValues(emptyMonthValues(), row.valueMode ?? 'flow'),
+        values: enrichRowValues(emptyMonthValues(fiscalMonths), row.valueMode ?? 'flow', fiscalMonths),
       })),
     })),
   };
 }
 
 export function buildFullPlan(journalText, bsText, expandConfig = {}) {
-  const { aggregated, cashFlow, otherPayments } = aggregateJournal(journalText);
-  const expandCandidates = [];
-  const plSections = buildPlSections(aggregated, expandConfig, expandCandidates);
-  const revenueSection = plSections.find((s) => s.id === 'revenue');
-  const receivablesSection = buildReceivablesSection(
-    bsText, revenueSection, expandConfig, expandCandidates,
-  );
-  const plWithAr = insertReceivablesAfterRevenue(plSections, receivablesSection);
-  const profitSection = buildProfitSection(plWithAr);
-  const bsSections = bsText ? buildBsSections(bsText, expandConfig, expandCandidates) : [];
-  const cfSections = bsText
-    ? buildCashFlowSections(cashFlow, otherPayments, bsText, expandConfig, expandCandidates)
-    : [];
+  return useFiscalContext(expandConfig, () => {
+    const { aggregated, cashFlow, otherPayments } = aggregateJournal(journalText);
+    const expandCandidates = [];
+    const plSections = buildPlSections(aggregated, expandConfig, expandCandidates);
+    const revenueSection = plSections.find((s) => s.id === 'revenue');
+    const receivablesSection = buildReceivablesSection(
+      bsText, revenueSection, expandConfig, expandCandidates,
+    );
+    const plWithAr = insertReceivablesAfterRevenue(plSections, receivablesSection);
+    const profitSection = buildProfitSection(plWithAr);
+    const bsSections = bsText ? buildBsSections(bsText, expandConfig, expandCandidates) : [];
+    const cfSections = bsText
+      ? buildCashFlowSections(cashFlow, otherPayments, bsText, expandConfig, expandCandidates)
+      : [];
 
-  const sections = [
-    ...plWithAr,
-    ...(profitSection ? [profitSection] : []),
-    ...bsSections,
-    ...cfSections,
-  ];
+    const sections = [
+      ...plWithAr,
+      ...(profitSection ? [profitSection] : []),
+      ...bsSections,
+      ...cfSections,
+    ];
 
-  return {
-    months: [...FISCAL_MONTHS, ...EXTRA_COLUMNS],
-    fiscalMonths: FISCAL_MONTHS,
-    sections,
-    expandCandidates,
-    visibilityCandidates: collectVisibilityCandidates(sections),
-  };
+    const fiscalMonths = [..._activeFiscalMonths];
+    return {
+      months: [...fiscalMonths, ...EXTRA_COLUMNS],
+      fiscalMonths,
+      fiscalEndMonth: _activeFiscalEndMonth,
+      sections,
+      expandCandidates,
+      visibilityCandidates: collectVisibilityCandidates(sections),
+    };
+  });
 }
 
 export function parseJournalCsv(text) {

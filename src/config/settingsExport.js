@@ -52,6 +52,8 @@ function stripAppSettingsForExport(appSettings) {
   for (const key of APP_SETTINGS_EXCLUDED_KEYS) {
     delete stripped[key];
   }
+  delete stripped.fiscalEndMonth;
+  delete stripped.businessStartYear;
   return stripped;
 }
 
@@ -75,6 +77,8 @@ function mergeAppSettingsForImport(imported) {
       delete merged[key];
     }
   }
+  delete merged.fiscalEndMonth;
+  delete merged.businessStartYear;
   return merged;
 }
 

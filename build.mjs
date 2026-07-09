@@ -8,6 +8,7 @@ const srcDir = resolve(__dirname, 'src');
 
 const FILES = [
   'parse/parser.js',
+  'config/fiscalCalendar.js',
   'config/planAmountUtils.js',
   'config/expandConfig.js',
   'config/visibilityConfig.js',

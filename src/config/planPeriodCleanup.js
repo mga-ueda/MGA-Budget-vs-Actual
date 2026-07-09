@@ -20,6 +20,7 @@ export function purgePeriodKeyedStorage(storageObject, firstKeptPeriod) {
 /** 終了した期の計画データをまとめて削除する。 */
 export function purgeClosedPeriodPlanStorage({
   businessStartYear,
+  fiscalEndMonth,
   date = new Date(),
   revenuePlans,
   salaryPlans,
@@ -29,7 +30,7 @@ export function purgeClosedPeriodPlanStorage({
   expensePlanOverrides,
   monthDisplayConfig,
 }) {
-  const firstKeptPeriod = getFiscalPeriodForDate(businessStartYear, date);
+  const firstKeptPeriod = getFiscalPeriodForDate(businessStartYear, date, fiscalEndMonth);
   const parts = {
     revenuePlans: purgePeriodKeyedStorage(revenuePlans, firstKeptPeriod),
     salaryPlans: purgePeriodKeyedStorage(salaryPlans, firstKeptPeriod),

@@ -1,5 +1,4 @@
 import {
-  FISCAL_MONTHS,
   EXTRA_COLUMNS,
   enrichRowValues,
   APP_AGGREGATE_LABEL_PREFIX,
@@ -18,6 +17,7 @@ import {
   getOvertimePlan,
   getTravelAllowancePerPerson,
 } from '../config/salaryPlanConfig.js';
+import { SETTLEMENT_MONTH_LABEL } from '../config/fiscalCalendar.js';
 import {
   computeLegalWelfareAmount,
 } from '../config/legalWelfareRateConfig.js';
@@ -38,14 +38,10 @@ const TOTAL_COLUMN = EXTRA_COLUMNS[0];
 
 function combineMonthlyAndBonusValues(plan, fiscalMonths) {
   const values = {};
-  for (const m of FISCAL_MONTHS) {
-    if (!fiscalMonths.includes(m)) {
-      values[m] = 0;
-      continue;
-    }
+  for (const m of fiscalMonths) {
     values[m] = (plan.monthly[m] ?? 0) + (plan.bonusMonthly[m] ?? 0);
   }
-  return enrichRowValues(values, 'flow');
+  return enrichRowValues(values, 'flow', [...fiscalMonths, SETTLEMENT_MONTH_LABEL]);
 }
 
 function makePlanRow(id, label, subLabel, values) {

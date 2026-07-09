@@ -1,6 +1,6 @@
-import { FISCAL_MONTHS, enrichRowValues } from '../parse/parseJournal.js';
+import { enrichRowValues } from '../parse/parseJournal.js';
 import { buildBudgetActualMonthSets } from '../config/monthDisplayConfig.js';
-import { buildFiscalYearMonths } from '../config/salaryPlanConfig.js';
+import { buildFiscalMonths, buildFiscalYearMonths } from '../config/fiscalCalendar.js';
 import { loadReferencePeriodPlanData } from './enrichUtils.js';
 
 const CF_IN_SECTION_ID = 'cfIn';
@@ -84,7 +84,7 @@ export function enrichPlanDataWithCashFlowOpeningInflow(planData, {
     }));
   } else {
     pastMonthSet = displayMode === 'actual'
-      ? new Set(FISCAL_MONTHS)
+      ? new Set(buildFiscalMonths(fiscalEndMonth))
       : new Set();
   }
 
