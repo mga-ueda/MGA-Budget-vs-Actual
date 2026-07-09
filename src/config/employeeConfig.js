@@ -2,16 +2,6 @@ const EMPLOYEE_STORAGE_KEY = 'mga-employees';
 
 const RESIDENT_TAX_MONTH_KEYS = ['6', '7', '8', '9', '10', '11', '12', '1', '2', '3', '4', '5'];
 
-export const EMPLOYEE_ALLOWANCE_COLUMNS = [
-  { key: 'directorSalary', label: '役員報酬' },
-  { key: 'baseSalary', label: '基本給' },
-  { key: 'positionAllowance', label: '役職手当' },
-  { key: 'fixedOvertimePay', label: '固定残業代' },
-  { key: 'childAllowance', label: '子女手当' },
-  { key: 'fixedOvertimeAllowance', label: '固定残業手当' },
-  { key: 'commutingAllowance', label: '通勤手当' },
-];
-
 function normalizeSalary(value) {
   if (value === null || value === undefined || value === '') return null;
   const num = Number(value);
@@ -120,17 +110,6 @@ export function formatEmployeeYen(value) {
   return `\u00a5${value.toLocaleString('ja-JP')}`;
 }
 
-export function hasAllowanceValue(employee, key) {
-  const value = employee[key];
-  return value !== null && value !== undefined && value !== 0;
-}
-
-export function getVisibleAllowanceColumns(employees) {
-  return EMPLOYEE_ALLOWANCE_COLUMNS.filter((col) =>
-    employees.some((emp) => hasAllowanceValue(emp, col.key)),
-  );
-}
-
 export function getEmployeeResidentTaxMunicipality(employee) {
   return String(employee.residentTaxMunicipality ?? '').trim();
 }
@@ -152,23 +131,6 @@ export function collectEmployeeResidentTaxMunicipalityNames(employees) {
     }
   }
   return [...names];
-}
-
-export function hasResidentTaxData(employee) {
-  if (employee.residentTaxMunicipality || employee.residentTaxYear) return true;
-  const monthly = employee.residentTaxMonthly;
-  return monthly != null && Object.keys(monthly).length > 0;
-}
-
-export function employeesHaveResidentTax(employees) {
-  return employees.some(hasResidentTaxData);
-}
-
-export function getCurrentMonthResidentTax(employee, refDate = new Date()) {
-  const monthly = employee.residentTaxMonthly;
-  if (!monthly) return null;
-  const monthKey = String(refDate.getMonth() + 1);
-  return monthly[monthKey] ?? null;
 }
 
 export function parseEmployeeDate(dateStr) {

@@ -1259,7 +1259,3 @@ export function calcPlanKpiMetricsAllPeriods(allPeriodDatas, buildOptionsForPeri
 
   return calcPlanKpiMetricsFromComponents(summed);
 }
-
-export function calcTotalProfitMargin(data) {
-  return calcPlanKpiMetrics(data)?.profitMargin ?? null;
-}

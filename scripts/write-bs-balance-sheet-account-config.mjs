@@ -19,8 +19,6 @@ import {
   getJournalDefinition,
 } from './journalDefinitionConfig.js';
 
-export const BS_PL_SKIP_ACCOUNTS = new Set(DEFAULT_JOURNAL_DEFINITION.bsPlSkipAccounts);
-
 export const BS_CURRENT_ASSET_ALWAYS_VISIBLE = DEFAULT_JOURNAL_DEFINITION.bsCurrentAssetAlwaysVisible;
 
 /** ${jp(0x56fa, 0x5b9a, 0x8cc7, 0x7523, 0x3001, 0x6295, 0x8cc7, 0x305d, 0x306e, 0x4ed6, 0x306e, 0x8cc7, 0x7523)} */
@@ -28,10 +26,6 @@ export const BS_INVESTMENT_OTHER_ALWAYS_VISIBLE = DEFAULT_JOURNAL_DEFINITION.bsI
 
 /** ${jp(0x7e70, 0x5ef6, 0x8cc7, 0x7523)} */
 export const BS_DEFERRED_ASSET_ALWAYS_VISIBLE = DEFAULT_JOURNAL_DEFINITION.bsDeferredAssetAlwaysVisible;
-
-export function getBsPlSkipAccounts() {
-  return getJournalDefinition().bsPlSkipAccounts;
-}
 
 export function getBsCurrentAssetAlwaysVisible() {
   return getJournalDefinition().bsCurrentAssetAlwaysVisible;

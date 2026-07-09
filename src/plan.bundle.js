@@ -1054,8 +1054,6 @@ function mergeExpenseSectionItems(journalItems, emptyMonthValues) {
  * 実行時の一覧は仕訳定義設定（journalDefinitionConfig）を参照します。
  */
 
-const BS_PL_SKIP_ACCOUNTS = new Set(DEFAULT_JOURNAL_DEFINITION.bsPlSkipAccounts);
-
 const BS_CURRENT_ASSET_ALWAYS_VISIBLE = DEFAULT_JOURNAL_DEFINITION.bsCurrentAssetAlwaysVisible;
 
 /** 固定資産、投資その他の資産 */
@@ -1063,10 +1061,6 @@ const BS_INVESTMENT_OTHER_ALWAYS_VISIBLE = DEFAULT_JOURNAL_DEFINITION.bsInvestme
 
 /** 繰延資産 */
 const BS_DEFERRED_ASSET_ALWAYS_VISIBLE = DEFAULT_JOURNAL_DEFINITION.bsDeferredAssetAlwaysVisible;
-
-function getBsPlSkipAccounts() {
-  return getJournalDefinition().bsPlSkipAccounts;
-}
 
 function getBsCurrentAssetAlwaysVisible() {
   return getJournalDefinition().bsCurrentAssetAlwaysVisible;
@@ -3607,10 +3601,6 @@ function calcPlanKpiMetricsAllPeriods(allPeriodDatas, buildOptionsForPeriod = ()
   return calcPlanKpiMetricsFromComponents(summed);
 }
 
-function calcTotalProfitMargin(data) {
-  return calcPlanKpiMetrics(data)?.profitMargin ?? null;
-}
-
 /* parse/aggregateFormula.js */
 const FORMULA_LABELS = {
   sectionSum: 'セクション内の勘定科目行の合計',
@@ -4226,16 +4216,6 @@ const EMPLOYEE_STORAGE_KEY = 'mga-employees';
 
 const RESIDENT_TAX_MONTH_KEYS = ['6', '7', '8', '9', '10', '11', '12', '1', '2', '3', '4', '5'];
 
-const EMPLOYEE_ALLOWANCE_COLUMNS = [
-  { key: 'directorSalary', label: '役員報酬' },
-  { key: 'baseSalary', label: '基本給' },
-  { key: 'positionAllowance', label: '役職手当' },
-  { key: 'fixedOvertimePay', label: '固定残業代' },
-  { key: 'childAllowance', label: '子女手当' },
-  { key: 'fixedOvertimeAllowance', label: '固定残業手当' },
-  { key: 'commutingAllowance', label: '通勤手当' },
-];
-
 function normalizeSalary(value) {
   if (value === null || value === undefined || value === '') return null;
   const num = Number(value);
@@ -4344,17 +4324,6 @@ function formatEmployeeYen(value) {
   return `\u00a5${value.toLocaleString('ja-JP')}`;
 }
 
-function hasAllowanceValue(employee, key) {
-  const value = employee[key];
-  return value !== null && value !== undefined && value !== 0;
-}
-
-function getVisibleAllowanceColumns(employees) {
-  return EMPLOYEE_ALLOWANCE_COLUMNS.filter((col) =>
-    employees.some((emp) => hasAllowanceValue(emp, col.key)),
-  );
-}
-
 function getEmployeeResidentTaxMunicipality(employee) {
   return String(employee.residentTaxMunicipality ?? '').trim();
 }
@@ -4376,23 +4345,6 @@ function collectEmployeeResidentTaxMunicipalityNames(employees) {
     }
   }
   return [...names];
-}
-
-function hasResidentTaxData(employee) {
-  if (employee.residentTaxMunicipality || employee.residentTaxYear) return true;
-  const monthly = employee.residentTaxMonthly;
-  return monthly != null && Object.keys(monthly).length > 0;
-}
-
-function employeesHaveResidentTax(employees) {
-  return employees.some(hasResidentTaxData);
-}
-
-function getCurrentMonthResidentTax(employee, refDate = new Date()) {
-  const monthly = employee.residentTaxMonthly;
-  if (!monthly) return null;
-  const monthKey = String(refDate.getMonth() + 1);
-  return monthly[monthKey] ?? null;
 }
 
 function parseEmployeeDate(dateStr) {
@@ -12575,7 +12527,6 @@ function bindRevenueColumnPlateSync(wrap, fiscalMonths, currentPeriod, appSettin
   window.addEventListener('scroll', sync, true);
   sync();
 }
-
 
 function refreshRevenueSettingsSectionTitles(getSectionFilterColors) {
   if (!getSectionFilterColors) return;

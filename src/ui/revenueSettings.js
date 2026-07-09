@@ -57,6 +57,7 @@ import {
   createPlanAmountCellEditor,
   capturePlanSectionActiveEdit,
   restorePlanSectionActiveEdit,
+  applySectionFilterTitleStyle,
 } from './planSettingsTableUi.js';
 
 const REVENUE_ACCOUNT = '売上高';
@@ -344,8 +345,6 @@ function bindRevenueColumnPlateSync(wrap, fiscalMonths, currentPeriod, appSettin
   window.addEventListener('scroll', sync, true);
   sync();
 }
-
-import { applySectionFilterTitleStyle } from './planSettingsTableUi.js';
 
 function refreshRevenueSettingsSectionTitles(getSectionFilterColors) {
   if (!getSectionFilterColors) return;
