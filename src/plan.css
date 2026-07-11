@@ -630,6 +630,43 @@ body {
   pointer-events: none;
 }
 
+.plan-main-menu-version {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.15rem;
+  margin: 0.05rem 0.25rem 0.35rem;
+  padding: 0.2rem 0.75rem 0.35rem 0.85rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--plan-text-dim);
+  user-select: none;
+}
+
+.plan-main-menu-version-text {
+  pointer-events: none;
+}
+
+.plan-main-menu-version-link {
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--plan-accent);
+  font: inherit;
+  font-weight: 700;
+  letter-spacing: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.12em;
+  cursor: pointer;
+}
+
+.plan-main-menu-version-link:hover,
+.plan-main-menu-version-link:focus-visible {
+  color: var(--plan-text);
+}
+
 .plan-main-menu-item {
   display: flex;
   align-items: center;

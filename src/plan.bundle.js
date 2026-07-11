@@ -25411,6 +25411,12 @@ document.addEventListener('keydown', (ev) => {
   if (ev.key === 'Escape') handleEscapeKey();
 });
 
+/** アプリの表示バージョン */
+const APP_VERSION = 'v 1.00';
+
+/** GitHub 上の更新履歴（コミット履歴） */
+const APP_CHANGELOG_URL = 'https://github.com/mga-ueda/MGA-Budget-vs-Actual/commits/main';
+
 const MAIN_MENU_ENTRIES = [
   { kind: 'item', value: 'plan', label: '予実表', shortcutKey: 'P' },
   { kind: 'item', value: 'dashboard', label: 'ダッシュボード', shortcutKey: 'D' },
@@ -25432,6 +25438,8 @@ const MAIN_MENU_ENTRIES = [
   { kind: 'item', value: 'action:change-folder', label: 'フォルダ変更', indented: true, shortcutKey: 'F' },
   { kind: 'heading', label: 'ヘルプ' },
   { kind: 'item', value: 'action:open-manual', label: '取扱説明書', indented: true, shortcutKey: 'H' },
+  { kind: 'heading', label: 'バージョン' },
+  { kind: 'version', label: APP_VERSION },
 ];
 
 function getMainMenuEntryByShortcut(key) {
@@ -31387,6 +31395,9 @@ function handleMainMenuAction(value) {
       if (win) win.opener = null;
       break;
     }
+    case 'action:open-changelog':
+      window.open(APP_CHANGELOG_URL, '_blank', 'noopener,noreferrer');
+      break;
     case 'colors':
       openColorSettingsWindow();
       break;
@@ -31432,6 +31443,34 @@ function buildMainMenu() {
       heading.className = 'plan-main-menu-heading';
       heading.textContent = entry.label;
       panel.appendChild(heading);
+      continue;
+    }
+
+    // バージョン行（「v 1.00 更新履歴」。更新履歴のみクリック可）
+    if (entry.kind === 'version') {
+      const versionEl = document.createElement('div');
+      versionEl.className = 'plan-main-menu-version';
+      versionEl.setAttribute('role', 'group');
+      versionEl.setAttribute('aria-label', `バージョン ${entry.label}`);
+
+      const versionText = document.createElement('span');
+      versionText.className = 'plan-main-menu-version-text';
+      versionText.textContent = `${entry.label} `;
+      versionEl.appendChild(versionText);
+
+      const changelogBtn = document.createElement('button');
+      changelogBtn.type = 'button';
+      changelogBtn.className = 'plan-main-menu-version-link';
+      changelogBtn.textContent = '更新履歴';
+      changelogBtn.setAttribute('aria-label', '更新履歴を GitHub で開く');
+      changelogBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        handleMainMenuAction('action:open-changelog');
+        closeMainMenu();
+      });
+      versionEl.appendChild(changelogBtn);
+
+      panel.appendChild(versionEl);
       continue;
     }
 
