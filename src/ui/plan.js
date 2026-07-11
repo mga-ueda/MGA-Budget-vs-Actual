@@ -4905,6 +4905,8 @@ const MAIN_MENU_ENTRIES = [
   { kind: 'item', value: 'action:settings-import', label: 'インポート', indented: true, shortcutKey: 'I' },
   { kind: 'item', value: 'action:reload-csv', label: '再読み込み', indented: true, shortcutKey: 'R' },
   { kind: 'item', value: 'action:change-folder', label: 'フォルダ変更', indented: true, shortcutKey: 'F' },
+  { kind: 'heading', label: 'ヘルプ' },
+  { kind: 'item', value: 'action:open-manual', label: '取扱説明書', indented: true, shortcutKey: 'H' },
 ];
 
 function getMainMenuEntryByShortcut(key) {
@@ -10841,6 +10843,25 @@ function handleMainMenuAction(value) {
     case 'action:change-folder':
       handlePickCsvFolder();
       break;
+    case 'action:open-manual': {
+      const manualUrl = new URL('manual.html', window.location.href).href;
+      const width = 960;
+      const height = 840;
+      const left = Math.max(0, Math.round((window.screen.availWidth - width) / 2));
+      const top = Math.max(0, Math.round((window.screen.availHeight - height) / 2));
+      const features = [
+        'popup=yes',
+        `width=${width}`,
+        `height=${height}`,
+        `left=${left}`,
+        `top=${top}`,
+        'resizable=yes',
+        'scrollbars=yes',
+      ].join(',');
+      const win = window.open(manualUrl, 'mga-user-manual', features);
+      if (win) win.opener = null;
+      break;
+    }
     case 'colors':
       openColorSettingsWindow();
       break;

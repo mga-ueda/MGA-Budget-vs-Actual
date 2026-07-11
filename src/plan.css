@@ -3263,11 +3263,6 @@ td.col-amount.aggregate-formula-cell {
   cursor: help;
 }
 
-.aggregate-label-prefix.aggregate-label-has-formula {
-  text-decoration: underline dotted;
-  text-underline-offset: 0.15em;
-}
-
 .row-toggle:hover,
 .row-toggle:hover .toggle-icon {
   color: var(--plan-expandable-highlight);

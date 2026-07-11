@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>取扱説明書 — MGA Budget vs Actual</title>
+<style>
+:root {
+  --bg: #ffffff;
+  --bg2: #ffffff;
+  --ink: #000000;
+  --muted: #8a8a8a;
+  --line: #e0e0e0;
+  --accent: #005aad;
+  --accent-soft: color-mix(in srgb, var(--accent) 18%, var(--bg));
+  --card: #ffffff;
+  --note-text: var(--ink);
+  --note-bg: color-mix(in srgb, var(--ink) 8%, var(--card));
+  --note-title: var(--ink);
+  --note-border: var(--accent);
+  --shadow: 0 10px 30px color-mix(in srgb, var(--ink) 12%, transparent);
+  --radius: 14px;
+  --max: 820px;
+  --font: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", Meiryo, sans-serif;
+  --kbd-bg: #fafafa;
+  --kbd-text: #000000;
+  --kbd-border: #636363;
+  --th-bg: #dedede;
+  --step-bg: color-mix(in srgb, var(--ink) 4%, var(--card));
+  --step-badge-bg: #3b82f6;
+  --step-badge-text: #ffffff;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  font-family: var(--font);
+  color: var(--ink);
+  background: linear-gradient(180deg, var(--bg), var(--bg2));
+  line-height: 1.75;
+}
+.wrap { max-width: var(--max); margin: 0 auto; padding: 28px 20px 80px; }
+.hero {
+  padding: 28px 28px 24px;
+  border: 1px solid var(--line);
+  border-radius: calc(var(--radius) + 4px);
+  background: var(--card);
+  box-shadow: var(--shadow);
+  margin-bottom: 28px;
+}
+.eyebrow {
+  display: inline-block;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  color: var(--accent);
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+h1 {
+  margin: 0 0 10px;
+  font-size: clamp(1.55rem, 3.5vw, 2rem);
+  line-height: 1.35;
+  letter-spacing: 0.02em;
+}
+.lead { margin: 0; color: var(--muted); font-size: 0.98rem; }
+.toc {
+  margin: 22px 0 0;
+  padding: 16px 18px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.toc strong { display: block; margin-bottom: 8px; }
+.toc ol { margin: 0; padding-left: 1.3em; }
+.toc a { color: var(--accent); text-decoration: none; }
+.toc a:hover { text-decoration: underline; }
+section {
+  margin-top: 28px;
+  padding: 22px 22px 18px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+h2 {
+  margin: 0 0 12px;
+  font-size: 1.25rem;
+  padding-bottom: 8px;
+  border-bottom: 2px solid var(--accent-soft);
+  color: var(--accent);
+}
+h3 { margin: 18px 0 8px; font-size: 1.05rem; }
+p { margin: 0 0 12px; }
+ul, ol { margin: 0 0 12px; padding-left: 1.35em; }
+li { margin: 0.25em 0; }
+a { color: var(--accent); }
+.note {
+  margin: 12px 0;
+  padding: 14px 16px;
+  background: var(--note-bg);
+  border: 1px solid var(--line);
+  border-left: 5px solid var(--note-border);
+  border-radius: 8px;
+  color: var(--note-text);
+}
+.note strong {
+  color: var(--note-title);
+  font-weight: 800;
+}
+kbd {
+  display: inline-block;
+  padding: 0.05em 0.4em;
+  border: 1px solid var(--kbd-border);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: var(--kbd-bg);
+  color: var(--kbd-text);
+  font-size: 0.85em;
+  font-family: ui-monospace, Consolas, monospace;
+}
+.steps { counter-reset: step; list-style: none; padding-left: 0; }
+.steps > li {
+  position: relative;
+  margin: 0 0 12px;
+  padding: 12px 12px 12px 52px;
+  background: var(--step-bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.steps > li::before {
+  counter-increment: step;
+  content: counter(step);
+  position: absolute;
+  left: 10px; top: 11px;
+  width: 30px; height: 30px;
+  border-radius: 50%;
+  background: var(--step-badge-bg);
+  color: var(--step-badge-text);
+  border: 2px solid color-mix(in srgb, var(--step-badge-text) 40%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--ink) 28%, transparent);
+  font-size: 0.95rem;
+  font-weight: 800;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+}
+.steps > li > ul {
+  list-style: disc;
+  margin: 8px 0 0;
+  padding-left: 1.35em;
+}
+.steps > li > ul > li {
+  margin: 0.2em 0;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+}
+.steps > li > ul > li::before {
+  content: none;
+  display: none;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 8px 0 14px;
+  font-size: 0.95rem;
+}
+th, td {
+  border: 1px solid var(--line);
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+th { background: var(--th-bg); }
+code {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 0.92em;
+}
+.footer {
+  margin-top: 28px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  text-align: center;
+}
+@media print {
+  body { background: #fff; }
+  .hero, section { box-shadow: none; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="hero">
+    <div class="eyebrow">MGA BUDGET VS ACTUAL</div>
+    <h1>月別収支計画表　取扱説明書</h1>
+    <p class="lead">会計ソフトの仕訳帳だけでは見えない「これから」を、計画として描き、実績と並べて確かめるための手引きです。</p>
+    <nav class="toc" aria-label="目次">
+      <strong>目次</strong>
+      <ol>
+        <li><a href="#license">ライセンス（無料・自由に改変可）</a></li>
+        <li><a href="#privacy">プライバシー（データはローカルのみ）</a></li>
+        <li><a href="#disclaimer">免責事項</a></li>
+        <li><a href="#appeal">このアプリの特色と魅力</a></li>
+        <li><a href="#prereq">前提（マネーフォワード CSV）</a></li>
+        <li><a href="#start">はじめて使う（起動と CSV の準備）</a></li>
+        <li><a href="#screen">画面の見かた</a></li>
+        <li><a href="#plan-input">計画値の入れ方</a></li>
+        <li><a href="#budget-actual">予実の確認方法</a></li>
+        <li><a href="#dashboard">ダッシュボードの操作</a></li>
+        <li><a href="#ops">日常の更新と設定の保全</a></li>
+        <li><a href="#tips">うまく使うためのヒント</a></li>
+      </ol>
+    </nav>
+  </header>
+
+  <section id="license">
+    <h2>ライセンス（無料・自由に改変可）</h2>
+    <p>MGA Budget vs Actual は <strong>MIT License</strong>（Copyright © MIYABI GAME AUDIO INC.）の下で公開している、<strong>無料</strong>のオープンな Web アプリです。</p>
+    <ul>
+      <li><strong>無料</strong> … 利用料はかかりません。ブラウザで開いてすぐ使えます。</li>
+      <li><strong>自由に改変してよい</strong> … ソースのコピー・改変・再配布、自社向けのカスタムや社内ツール化も歓迎です。</li>
+      <li><strong>商用・非商用どちらも可</strong> … MIT の条件（ライセンス表記の保持など）を守れば、用途を問いません。</li>
+    </ul>
+    <div class="note">
+      <strong>お願い</strong><br />
+      不具合の可能性や税務上の責任については、<a href="#disclaimer">免責事項</a>を必ずお読みください。
+    </div>
+    <p>詳細はリポジトリの <code>LICENSE</code> を参照してください。ファビコンの絵文字画像は Twemoji（CC BY 4.0）です。</p>
+  </section>
+  <section id="privacy">
+    <h2>プライバシー（データはローカルのみ）</h2>
+    <p>このアプリは、<strong>一切の利用者情報を収集しません</strong>。アクセス解析・広告トラッキング・外部への利用報告なども行いません。</p>
+    <p>会計 CSV・計画値・税率や仕訳定義などの設定は、<strong>あなたの端末上にしか存在しません</strong>（ブラウザの保存領域と、あなたが選んだ CSV フォルダ）。アプリの処理はブラウザ内だけで完結し、<strong>いかなるデータもネットへアップロードされることはありません</strong>。</p>
+    <div class="note">
+      <strong>補足</strong><br />
+      GitHub Pages などでアプリ画面そのものを開くとき、通常の Web 閲覧と同様に静的ファイルの取得が発生します。またファビコン画像を CDN から読み込む場合があります。いずれも会計データや計画・設定の送信ではありません。
+    </div>
+  </section>
+  <section id="disclaimer">
+    <h2>免責事項</h2>
+    <p>本アプリは、<strong>MIYABI GAME AUDIO INC. での運用を前提に開発・デバッグ</strong>したものです。他社や他の会計運用での十分な検証は行っておらず、<strong>不具合がある可能性が大いにあります</strong>。表示や計算の結果をそのまま正しいものとして扱わないでください。</p>
+    <p>法人税・消費税・源泉所得税・予定納税など、税金まわりの試算や表示に誤りがあった場合でも、<strong>当社は一切の責任を負いません</strong>。納税額の確定や申告・届出の判断には使わず、必要に応じて<strong>税理士など専門家にご相談ください</strong>。</p>
+    <p>本アプリは資金繰りや予実の見通しを助けるための道具であり、会計・税務に関する助言を提供するものではありません。MIT License の無保証にも従い、利用はすべて自己責任でお願いします。</p>
+  </section>
+  <section id="appeal">
+    <h2>1. このアプリの特色と魅力</h2>
+    <p>従来の仕訳帳や総勘定元帳は、あくまで「過去に何が起きたか」を正確に残す道具です。経営判断に本当に必要なのは、そこから一歩進んだ問い——来月・来期に資金と利益はどう推移しそうか——です。本アプリは、マネーフォワード クラウド会計の CSV を取り込み、月別の収支計画表（予実表）として「実績」と「計画」を同じ表で扱えるようにします。</p>
+    <p>市販の経営管理・予実管理パッケージは強力ですが、ライセンス費用や導入・保守の負担が大きく、中小企業や一人経理・少人数の会社では「欲しいが手が届かない」ことが少なくありません。MGA Budget vs Actual は、ブラウザで開くだけで使える無料の予実計画ツールとして、そのギャップを埋めます。サーバー構築も不要です。</p>
+    <p>さらに魅力なのはカスタムの柔軟さです。仕訳の振り分け定義、税率、受注・人件費・外注・納税の計画、行の表示や色、CSV ファイル名のパターンまで、自社の会計運用に合わせて調整できます。設定はブラウザに保存され、エクスポート／インポートで別端末にも移せます。</p>
+    <ul>
+      <li><strong>未来を計画できる</strong> … 仕訳実績の延長ではなく、受注・人件費・外注・税金などを先に置いて予測できます。</li>
+      <li><strong>予実が同じ表で見える</strong> … 月ヘッダーで実績／計画の境界を切り替え、今期の混在表示も可能です。</li>
+      <li><strong>来期の税金・予定納税をシミュレートできる</strong> … 来期納税見込で、翌期に支払う税金や予定納税のスケジュールを試算し、資金繰りの見通しに使えます。</li>
+      <li><strong>無料で、自由に改変できる</strong> … MIT License。高価な予実パッケージなしに始められ、自社向けにソースを直して育てることもできます。</li>
+      <li><strong>自社向けに育てられる</strong> … 科目定義・税率・表示・色を柔軟にカスタムできます。</li>
+      <li><strong>ドリルダウンで納得できる</strong> … 実績セルから仕訳明細へ辿れ、数字の根拠を確認できます。</li>
+    </ul>
+  </section>
+
+  <section id="prereq">
+    <h2>2. 前提（マネーフォワード CSV）</h2>
+    <p>このアプリは <strong>マネーフォワード クラウド会計</strong> のエクスポート CSV があることが前提です。マネーフォワード以外の会計ソフトをご利用の場合は<strong>非対応</strong>です。無理に先へ進む必要はありません。</p>
+    <ul>
+      <li><strong>対応:</strong> マネーフォワード クラウド会計から出力した CSV</li>
+      <li><strong>非対応:</strong> freee・弥生・その他の会計ソフトの CSV（対応予定はありません）</li>
+    </ul>
+    <h3>必ず用意する 3 ファイル</h3>
+    <p>クラウド会計から、次の 3 種類をエクスポートし、<strong>同じフォルダ</strong>に置いてください。</p>
+    <table>
+      <thead><tr><th>種類</th><th>イメージ</th><th>既定のファイル名</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>仕訳データ</td>
+          <td>期間を指定して出力する仕訳の一覧</td>
+          <td><code>仕訳データ_YYYY-MM-DD_YYYY-MM-DD.csv</code></td>
+        </tr>
+        <tr>
+          <td>貸借対照表</td>
+          <td><strong>月次推移</strong>の貸借対照表</td>
+          <td><code>貸借対照表_月次推移_YYYYMMDD_HHMM.csv</code></td>
+        </tr>
+        <tr>
+          <td>総勘定元帳</td>
+          <td>総勘定元帳の CSV</td>
+          <td><code>総勘定元帳_YYYYMMDD_HHMM.csv</code></td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="note">
+      <strong>おすすめ：未実現の仕訳もエクスポート対象に</strong><br />
+      マネーフォワードの推移表などには、会計上まだ未実現の仕訳が含まれることがあります。エクスポート時はこれらも対象に含めておくことをおすすめします。計画や予実の連続性を保ちやすくなります。
+    </div>
+    <div class="note">
+      <strong>つまずきやすい点</strong>
+      <ul>
+        <li>貸借対照表は「月次推移」形式である必要があります（単月だけの表では不足します）。</li>
+        <li>3 種類とも揃っていないと読み込みに失敗します。</li>
+        <li>ファイル名が既定と違う場合は、メニュー「その他」の <strong>CSV名定義</strong> でパターンを合わせられます。ただし中身の形式自体はマネーフォワードであることが前提です。</li>
+        <li>同名が複数あるときは、ファイル名の新しい方を使います。古い出力が残っていると意図しない期が選ばれることがあります。</li>
+      </ul>
+    </div>
+    <h3>任意：人件費マスタ用</h3>
+    <p>メニュー「人件費」で、マネーフォワード給与の <strong>従業員情報</strong> CSV を読み込むと、従業員マスタを一括生成できます。会計 CSV 本体とは別で、必須ではありません。</p>
+  </section>
+
+  <section id="start">
+    <h2>3. はじめて使う（起動と CSV の準備）</h2>
+    <h3>必要なもの</h3>
+    <ul>
+      <li>Google Chrome または Microsoft Edge（フォルダ選択機能のため）</li>
+      <li>前セクションで用意した、マネーフォワード クラウド会計の CSV 3 種類が入ったフォルダ</li>
+    </ul>
+    <h3>起動手順</h3>
+    <ol class="steps">
+      <li>ブラウザでアプリを開きます。<br /><a href="https://mga-ueda.github.io/MGA-Budget-vs-Actual/">https://mga-ueda.github.io/MGA-Budget-vs-Actual/</a></li>
+      <li>初回は「CSV フォルダの選択」画面が表示されます。「フォルダを選択」をクリックするか、フォルダをドロップします。</li>
+      <li>仕訳・貸借対照表・総勘定元帳の CSV が読み込まれると、月別収支計画表（予実表）が表示されます。</li>
+      <li>2回目以降は、前回選んだフォルダから自動で読み込みを試みます。権限確認が出た場合は「読み込む」を押してください。</li>
+    </ol>
+  </section>
+
+  <section id="screen">
+    <h2>4. 画面の見かた</h2>
+    <h3>ヘッダー</h3>
+    <ul>
+      <li><strong>期ナビ</strong>（&lt; / 期選択 / &gt;）… 表示する会計期を切り替えます。</li>
+      <li><strong>表示モードバッジ</strong> … 「予実表示」（今期）・「実績表示」（過去期）・「計画表示」（来期）など、今見ている内容の性質を示します。</li>
+      <li><strong>ダッシュボードを表示</strong> … チャート画面へ。設定画面にいるときは「予実表を表示」に変わります。</li>
+      <li><strong>メニュー <kbd>F10</kbd></strong> … 予実表／ダッシュボード／各種設定／操作（読込・入出力）を開きます。</li>
+    </ul>
+    <h3>ツールバーと KPI</h3>
+    <ul>
+      <li>ツールバーのセクション名をクリックすると、その大項目だけを表示できます（再クリックで通常表示、Ctrl+クリックで個別オン／オフ）。</li>
+      <li>右上付近の KPI（総利益率、労働分配率など）は、今見ている期の健全性を素早く掴むための指標です。ホバーで計算の考え方を確認できます。</li>
+      <li>予実表の行名先頭の <strong>∑</strong> は、アプリが集計した行を示す印です（詳細は「予実の確認方法」を参照）。</li>
+    </ul>
+    <h3>メニュー構成</h3>
+    <table>
+      <thead><tr><th>区分</th><th>項目</th><th>役割</th></tr></thead>
+      <tbody>
+        <tr><td>画面</td><td>予実表 / ダッシュボード</td><td>メインの確認画面</td></tr>
+        <tr><td>設定</td><td>受注 / 税率定義 / 来期納税見込 / 仕訳定義 / 支払い / 人件費 / 外注費 / 表示 / 色 / その他</td><td>計画入力と見た目・定義</td></tr>
+        <tr><td>操作</td><td>エクスポート / インポート / 再読み込み / フォルダ変更</td><td>設定保全と CSV 更新（フォルダ変更は参照先を変えるときのみ）</td></tr>
+        <tr><td>ヘルプ</td><td>取扱説明書</td><td>この文書を新規ウィンドウで開く</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="plan-input">
+    <h2>5. 計画値の入れ方</h2>
+    <p>計画は「メニュー」の設定から先に入れ、予実表へ反映するのが基本の流れです。実績月は仕訳に基づくため編集できず、<strong>計画表示になっている月だけ</strong>が編集対象になります。</p>
+
+    <h3>5-1. 実績と計画の境界を決める</h3>
+    <ol class="steps">
+      <li>予実表の月ヘッダーをクリックし、「この月以降を計画表示に切り替え」などの境界を調整します。</li>
+      <li>今期は途中まで実績・以降を計画、といった混在表示が可能です。過去期は実績、来期は計画が中心です。</li>
+    </ol>
+
+    <h3>5-2. 売上・雑収入（受注）</h3>
+    <ol class="steps">
+      <li>メニュー → <strong>受注</strong> を開きます。</li>
+      <li>必要なら「計画年数」を延ばし、先の会計期まで入力できるようにします。</li>
+      <li>売上高計画表・雑収入計画表で、受注先ごとの人月・人月単価・金額を入力します。</li>
+      <li>セルはダブルクリックで編集。金額・人月は <kbd>Shift</kbd>+<kbd>Enter</kbd> で後続月へ同値を一気に反映できます（0 も可）。</li>
+    </ol>
+
+    <h3>5-3. 人件費</h3>
+    <ol class="steps">
+      <li>メニュー → <strong>人件費</strong> を開きます。</li>
+      <li>従業員マスタを整備します（CSV 読み込みや社員追加）。</li>
+      <li>給与支払い計画表・残業手当支払い計画表に月額を入れます。計画表示月のみ編集できます。</li>
+    </ol>
+
+    <h3>5-4. 外注費と法人判定</h3>
+    <ol class="steps">
+      <li>メニュー → <strong>外注費</strong> を開きます。</li>
+      <li>取引先（補助科目）ごとに月次金額を入力します。</li>
+      <li>法人か個人事業主かの判定は、メニュー「その他」の <strong>法人判定文字</strong>（既定例: ㈱,㈲,(同)）で行います。補助科目名にこれらの文字が含まれると法人として扱います。</li>
+    </ol>
+    <div class="note">
+      <strong>法人判定されない外注費について</strong><br />
+      法人判定文字に一致しない取引先は <strong>個人事業主</strong> として扱われます。その場合、予実表の外注費には源泉所得税まわりの情報行（報酬金額・消費税額・<strong>源泉所得税額</strong>・受け取る金額）が現れます。法人として扱うべき取引先なのに情報行が出る場合は、補助科目名か法人判定文字を見直してください。
+    </div>
+
+    <h3>5-5. 税金・各種支払い</h3>
+    <ol class="steps">
+      <li>メニュー → <strong>税率定義</strong> で消費税・源泉所得税・法定福利費などの率を整えます。</li>
+      <li>メニュー → <strong>支払い</strong> で法人税・住民税・租税公課などの支払い計画を入れます。計画年数もここで延ばせます。</li>
+      <li>メニュー → <strong>来期納税見込</strong> はフローティングウィンドウで、来期に支払う税金や予定納税のシミュレート結果を確認・調整します。</li>
+      <li>諸経費のうち平均補完では足りない科目は、「支払い」画面内の諸経計画オーバーライドで月次値を明示できます。</li>
+    </ol>
+
+    <h3>5-6. 仕訳の振り分けと見た目</h3>
+    <ul>
+      <li><strong>仕訳定義</strong> … PL／諸経費／CF／BS への振り分けを正規表現で定義します。科目の見え方が意図と違うときはここを見直します。</li>
+      <li><strong>表示</strong> … 行の表示／折りたたみ／大きく表示／塗り色／諸経費の並び順を調整します。</li>
+      <li><strong>色</strong> … 画面全体や大項目の色をフローティングウィンドウで変更します（この取扱説明書も、アプリのダーク／ライト色設定を参照します）。</li>
+      <li><strong>その他</strong> … ブランド表示、法人判定文字、CSV名定義などアプリ全体の設定です。</li>
+    </ul>
+
+    <h3>5-7. 予実表上での直接編集</h3>
+    <ul>
+      <li>計画月の金額セルをダブルクリックして編集できます。</li>
+      <li><kbd>Shift</kbd>+<kbd>Enter</kbd> で後続月へ同額反映、<kbd>Enter</kbd> はその月のみです。</li>
+      <li>実績の仕訳セルはダブルクリックで仕訳明細（ドリルダウン）を表示します。</li>
+      <li>行の右クリックから、表示や塗り色などのコンテキスト操作もできます。</li>
+    </ul>
+  </section>
+
+  <section id="budget-actual">
+    <h2>6. 予実の確認方法</h2>
+    <ol class="steps">
+      <li>メニュー → <strong>予実表</strong>（またはヘッダーの「予実表を表示」）でメイン表に戻ります。</li>
+      <li>期ナビで見たい会計期を選びます。今期なら実績と計画が並ぶ「予実表示」になります。</li>
+      <li>ツールバーで売上高・人件費・諸経費など注目セクションだけに絞り込みます。</li>
+      <li>KPI（総利益率・労働分配率など）で全体感を掴み、気になる行を展開して内訳を見ます。</li>
+      <li>実績セルをダブルクリックし、仕訳明細で「なぜその金額か」を確認します。</li>
+      <li>計画側は設定画面または計画セル編集で直し、表を更新して差分の見通しを何度でも見直します。</li>
+    </ol>
+    <div class="note">
+      <strong>読み方のコツ</strong><br />
+      「実績は事実、計画は仮説」です。仮説を置き、実績が増えるたびに境界を進め、差分から次の打ち手を考える——その繰り返しがこのアプリの使いどころです。
+    </div>
+    <div class="note">
+      <strong>∑（シグマ）が付いた行</strong><br />
+      行ラベルの先頭に <strong>∑</strong> が付いている行は、仕訳や貸借対照表の CSV にそのまま存在する科目ではなく、<strong>アプリ側で集計・合成した行</strong>です（例: セクション合計、人件費合計、法人税合計など）。ホバーすると計算式のヒントが出る場合があります。CSV の明細そのものと見間違えないよう、∑ を目印にしてください。
+    </div>
+  </section>
+
+  <section id="dashboard">
+    <h2>7. ダッシュボードの操作</h2>
+    <p>数字の表だけでなく、推移を視覚で掴みたいときに使います。</p>
+    <ol class="steps">
+      <li>ヘッダーの <strong>ダッシュボードを表示</strong>、またはメニューの「ダッシュボード」を選びます。</li>
+      <li>チャートモードを切り替えます。
+        <ul>
+          <li><strong>収支推移</strong> … 収益と支出のバランス</li>
+          <li><strong>収益推移</strong> … 入ってくる側</li>
+          <li><strong>支出推移</strong> … 出ていく側</li>
+        </ul>
+      </li>
+      <li>サイドバーで表示する項目をチェック／解除します。Ctrl+クリックでその項目だけに絞れます。</li>
+      <li>内訳を「勘定科目」または「補助科目」に切り替え、並びを「金額順」「名前順」から選びます。</li>
+      <li>開始期〜終了期を指定するか「全期表示」で、長期の流れを見ます。</li>
+      <li>チャート上で右クリックすると、単体表示・非表示・全てを表示などの操作ができます。</li>
+      <li>終わったら「予実表を表示」で表に戻ります。</li>
+    </ol>
+  </section>
+
+  <section id="ops">
+    <h2>8. 日常の更新と設定の保全</h2>
+    <h3>会計 CSV を更新したとき</h3>
+    <ul>
+      <li>メニュー → <strong>再読み込み</strong> … 同じフォルダから最新 CSV を読み直します。</li>
+      <li>メニュー → <strong>フォルダ変更</strong> … 参照する CSV フォルダ自体を変えたいときだけ使います。同じフォルダを使い続ける場合は不要です（日常の更新は「再読み込み」で足ります）。</li>
+    </ul>
+    <h3>設定のバックアップ</h3>
+    <ul>
+      <li><strong>エクスポート</strong> … 計画・定義・表示などの設定を JSON で保存します。</li>
+      <li><strong>インポート</strong> … 保存した JSON を読み込み、設定を復元します。</li>
+    </ul>
+    <div class="note">
+      計画やカスタム定義はブラウザ内に保存されます。端末変更やブラウザのデータ削除に備え、節目ごとにエクスポートしておくことをおすすめします。
+    </div>
+  </section>
+
+  <section id="tips">
+    <h2>9. うまく使うためのヒント</h2>
+    <ul>
+      <li>まずは受注・人件費・外注など「金額が大きいレバー」から計画を置き、細部は後から詰めると早く全体像が見えます。</li>
+      <li>予実表で <strong>∑</strong> 付きの行はアプリ集計行です。CSV の勘定そのものではありません。</li>
+      <li>科目の分類が意図と違うときは、表示設定より先に<strong>仕訳定義</strong>を疑うと早いです。</li>
+      <li>外注費で源泉の情報行が出る／出ないは、<strong>法人判定文字</strong>と補助科目名の一致で決まります。</li>
+      <li>同じ金額を先の月まで続けるなら、<kbd>Shift</kbd>+<kbd>Enter</kbd> の一括反映を活用してください。</li>
+      <li>注目したい行は「表示」の塗り色、または行の右クリックで目立たせるとレビューが楽になります。</li>
+      <li>メニューのショートカットキー（各項目右端の文字）や <kbd>F10</kbd> で、設定⇔表の往復が速くなります。</li>
+    </ul>
+  </section>
+
+  <p class="footer">MGA Budget vs Actual — MIYABI GAME AUDIO INC.<br />取扱説明書<br />無料・MIT License（改変・再配布可） / Favicon: Twemoji (CC BY 4.0)</p>
+</div>
+<script>
+(function () {
+  var STORAGE_KEY = 'mga-ui-colors';
+  var DEFAULTS = {
+    dark: {
+      browserBg: '#2d2d2d',
+      cellBg: '#262626',
+      monthRowBg: '#424242',
+      textColor: '#ffffff',
+      textDimColor: '#929292',
+      accentColor: '#00ffff',
+      kbdBg: '#373737',
+      kbdTextColor: '#ffffff',
+      kbdBorderColor: '#636363',
+      settingsInputBorder: '#565656',
+      primaryButtonBg: '#3b82f6',
+      primaryButtonTextColor: '#ffffff'
+    },
+    light: {
+      browserBg: '#ffffff',
+      cellBg: '#ffffff',
+      monthRowBg: '#dedede',
+      textColor: '#000000',
+      textDimColor: '#8a8a8a',
+      accentColor: '#005aad',
+      kbdBg: '#fafafa',
+      kbdTextColor: '#000000',
+      kbdBorderColor: '#636363',
+      settingsInputBorder: '#e0e0e0',
+      primaryButtonBg: '#3b82f6',
+      primaryButtonTextColor: '#ffffff'
+    }
+  };
+
+  function systemMode() {
+    try {
+      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    } catch (e) {
+      return 'dark';
+    }
+  }
+
+  function loadConfig() {
+    try {
+      var raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return { colorMode: 'system', dark: {}, light: {} };
+      var parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object') return { colorMode: 'system', dark: {}, light: {} };
+      return {
+        colorMode: parsed.colorMode === 'dark' || parsed.colorMode === 'light' || parsed.colorMode === 'system'
+          ? parsed.colorMode
+          : 'system',
+        dark: parsed.dark && typeof parsed.dark === 'object' ? parsed.dark : {},
+        light: parsed.light && typeof parsed.light === 'object' ? parsed.light : {}
+      };
+    } catch (e) {
+      return { colorMode: 'system', dark: {}, light: {} };
+    }
+  }
+
+  function resolveMode(config) {
+    if (config.colorMode === 'dark' || config.colorMode === 'light') return config.colorMode;
+    return systemMode();
+  }
+
+  function mergeColors(mode, bucket) {
+    var base = DEFAULTS[mode] || DEFAULTS.dark;
+    var out = {};
+    Object.keys(base).forEach(function (key) {
+      out[key] = typeof bucket[key] === 'string' && bucket[key] ? bucket[key] : base[key];
+    });
+    return out;
+  }
+
+  function applyTheme() {
+    var config = loadConfig();
+    var mode = resolveMode(config);
+    var colors = mergeColors(mode, config[mode] || {});
+    var root = document.documentElement;
+    root.style.colorScheme = mode;
+    root.style.setProperty('--bg', colors.browserBg);
+    root.style.setProperty('--bg2', colors.browserBg);
+    root.style.setProperty('--card', colors.cellBg);
+    root.style.setProperty('--ink', colors.textColor);
+    root.style.setProperty('--muted', colors.textDimColor);
+    root.style.setProperty('--accent', colors.accentColor);
+    root.style.setProperty('--line', colors.settingsInputBorder);
+    root.style.setProperty('--th-bg', colors.monthRowBg);
+    root.style.setProperty('--kbd-bg', colors.kbdBg);
+    root.style.setProperty('--kbd-text', colors.kbdTextColor);
+    root.style.setProperty('--kbd-border', colors.kbdBorderColor);
+    root.style.setProperty('--note-text', colors.textColor);
+    root.style.setProperty('--note-title', colors.textColor);
+    root.style.setProperty('--note-border', colors.primaryButtonBg);
+    root.style.setProperty('--note-bg', colors.monthRowBg);
+    root.style.setProperty('--step-badge-bg', colors.primaryButtonBg);
+    root.style.setProperty('--step-badge-text', colors.primaryButtonTextColor);
+    root.dataset.colorMode = mode;
+  }
+
+  applyTheme();
+  window.addEventListener('storage', function (ev) {
+    if (ev.key === STORAGE_KEY) applyTheme();
+  });
+  try {
+    var media = window.matchMedia('(prefers-color-scheme: dark)');
+    var onChange = function () {
+      var config = loadConfig();
+      if (config.colorMode === 'system') applyTheme();
+    };
+    if (typeof media.addEventListener === 'function') media.addEventListener('change', onChange);
+    else if (typeof media.addListener === 'function') media.addListener(onChange);
+  } catch (e) { /* ignore */ }
+})();
+</script>
+</body>
+</html>
