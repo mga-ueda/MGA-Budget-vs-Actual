@@ -80,6 +80,11 @@ export const PLAN_TABLE_TAX_PAYMENT_OTHER_PAY_EDITABLE_ACCOUNTS = [
   '未払法人税等',
 ];
 
+/** 予実表「法人税」セクションで直接編集できる支払い計画勘定 */
+export const PLAN_TABLE_TAX_PAYMENT_TAX_EDITABLE_ACCOUNTS = [
+  CORPORATE_TAX_ACCOUNT,
+];
+
 function isLegacyPeriodPlan(stored) {
   if (!stored || typeof stored !== 'object') return false;
   return Object.keys(stored).some((key) => /^\d+月$/.test(key) || key === '決算整理');

@@ -28,14 +28,15 @@ export const DEFAULT_TAX_SIMULATION = {
   itemizedMunicipalPerCapita: null,
   profitEstimateMethod: 'fullYear',
   provisionalTaxEnabled: true,
-  provisionalTaxInstallments: 2,
+  provisionalTaxInstallments: 'auto',
+  provisionalTaxMaxInstallments: 2,
   corporateTaxSettlementMonthIndex: 1,
-  provisionalTaxMonthIndices: [7, 10],
+  provisionalTaxMonthIndices: [6],
   consumptionTaxMethod: 'general',
   simplifiedDeemedPurchaseRatePercent: 50,
   consumptionTaxInterimEnabled: true,
   consumptionTaxSettlementMonthIndex: 1,
-  consumptionTaxInterimMonthIndex: 7,
+  consumptionTaxInterimMonthIndex: 6,
   lossCarryforwardDeduction: 0,
 };
 
@@ -116,9 +117,9 @@ export function resolveDefaultTaxPaymentMonthIndices(fiscalEndMonth) {
   return {
     fiscalMonths,
     corporateTaxSettlementMonthIndex: 1,
-    provisionalTaxMonthIndices: [7, 10],
+    provisionalTaxMonthIndices: [6],
     consumptionTaxSettlementMonthIndex: 1,
-    consumptionTaxInterimMonthIndex: 7,
+    consumptionTaxInterimMonthIndex: 6,
   };
 }
 
@@ -169,12 +170,18 @@ export function normalizeTaxSimulation(raw, fiscalEndMonth = 12) {
   const corporateTaxMethod = VALID_CORPORATE_TAX_METHODS.has(source.corporateTaxMethod)
     ? source.corporateTaxMethod
     : base.corporateTaxMethod;
-  const provisionalTaxInstallments = source.provisionalTaxInstallments === 1 ? 1 : 2;
+  const provisionalTaxInstallments = source.provisionalTaxInstallments === 1 || source.provisionalTaxInstallments === 2
+    ? source.provisionalTaxInstallments
+    : 'auto';
+  const provisionalTaxMaxInstallments = clampProvisionalMax(
+    source.provisionalTaxMaxInstallments,
+    base.provisionalTaxMaxInstallments ?? 2,
+  );
   const provisionalTaxMonthIndices = normalizeMonthIndexList(
     source.provisionalTaxMonthIndices,
     defaults.provisionalTaxMonthIndices,
     fiscalMonths,
-  ).slice(0, provisionalTaxInstallments);
+  ).slice(0, provisionalTaxMaxInstallments);
   return {
     regionPreset,
     corporateTaxMethod,
@@ -190,6 +197,7 @@ export function normalizeTaxSimulation(raw, fiscalEndMonth = 12) {
     profitEstimateMethod,
     provisionalTaxEnabled: source.provisionalTaxEnabled !== false,
     provisionalTaxInstallments,
+    provisionalTaxMaxInstallments,
     corporateTaxSettlementMonthIndex: normalizeMonthIndex(
       source.corporateTaxSettlementMonthIndex,
       defaults.corporateTaxSettlementMonthIndex,
@@ -225,10 +233,91 @@ export function formatTaxSimulationRatePercent(rate) {
   return `${Math.round(n * 100) / 100}%`;
 }
 
-/** 前年度法人税等の額から予定納税回数を決定する（48万円超は2回） */
-export function resolveProvisionalTaxInstallments(corporateTaxAmount) {
-  const amount = Math.max(0, Math.floor(Number(corporateTaxAmount) || 0));
-  return amount > 480_000 ? 2 : 1;
+function clampProvisionalMax(value, fallback) {
+  const n = Math.floor(Number(value));
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(4, Math.max(1, n));
+}
+
+/** 中間納付が不要になる半期税額の上限（円） */
+export const PROVISIONAL_TAX_MIN_HALF_AMOUNT = 100_000;
+
+/**
+ * 予定納税回数を決定する。
+ * auto: 中小法人は1回、それ以外は最大2回まで。半期税額10万円以下は0回。
+ */
+export function resolveProvisionalTaxInstallments({
+  installments = 'auto',
+  maxInstallments = 2,
+  isSmallCorporation = true,
+  provisionalBase = 0,
+} = {}) {
+  const max = clampProvisionalMax(maxInstallments, 2);
+  const base = Math.max(0, Math.floor(Number(provisionalBase) || 0));
+  const half = Math.round(base / 2);
+  if (base <= 0 || half <= PROVISIONAL_TAX_MIN_HALF_AMOUNT) return 0;
+  if (installments === 1 || installments === 2) return Math.min(installments, max);
+  // auto
+  const auto = isSmallCorporation ? 1 : Math.min(2, max);
+  return Math.min(auto, max);
+}
+
+/** 予定納税月のインデックスを決定する（中間月を基準） */
+export function resolveProvisionalTaxMonthIndices(fiscalMonths, installments, configuredIndices = []) {
+  const count = Math.max(0, Math.floor(Number(installments) || 0));
+  if (count <= 0) return [];
+  const maxIdx = Math.max(0, (fiscalMonths?.length ?? 1) - 2);
+  const mid = Math.min(6, maxIdx);
+  const configured = (Array.isArray(configuredIndices) ? configuredIndices : [])
+    .map((n) => Math.floor(Number(n)))
+    .filter((n) => Number.isFinite(n) && n >= 0 && n <= maxIdx);
+  if (configured.length >= count) return configured.slice(0, count);
+  if (count === 1) return [configured[0] ?? mid];
+  const second = Math.min(mid + 3, maxIdx);
+  const first = configured[0] ?? mid;
+  const fallbackSecond = configured[1] ?? (second === first ? Math.min(first + 1, maxIdx) : second);
+  return [first, fallbackSecond].slice(0, count);
+}
+
+
+
+/** 消費税中間申告の回数判定用閾値（国税分概算） */
+export const CONSUMPTION_TAX_INTERIM_NATIONAL_THRESHOLDS = {
+  noneMax: 480_000,
+  onceMax: 4_000_000,
+  thriceMax: 48_000_000,
+};
+
+/**
+ * 消費税中間納税の回数を決定する。
+ * 年間見込額（国税+地方）から国税分を78/100で概算して判定する。
+ * @returns {0|1|3|11}
+ */
+export function resolveConsumptionTaxInterimInstallments(annualAmount) {
+  const total = Math.max(0, Math.floor(Number(annualAmount) || 0));
+  // 10%時の国税:地方 = 78:22。帳簿の合計納付額から国税分を概算する
+  const national = Math.round(total * 78 / 100);
+  if (national <= CONSUMPTION_TAX_INTERIM_NATIONAL_THRESHOLDS.noneMax) return 0;
+  if (national <= CONSUMPTION_TAX_INTERIM_NATIONAL_THRESHOLDS.onceMax) return 1;
+  if (national <= CONSUMPTION_TAX_INTERIM_NATIONAL_THRESHOLDS.thriceMax) return 3;
+  return 11;
+}
+
+/** 消費税中間納税月のインデックスを決定する */
+export function resolveConsumptionTaxInterimMonthIndices(fiscalMonths, installments, baseMonthIndex = 6) {
+  const maxIdx = Math.max(0, (Array.isArray(fiscalMonths) ? fiscalMonths.length : 1) - 2);
+  const count = Math.floor(Number(installments) || 0);
+  if (count <= 0) return [];
+  const base = Math.min(maxIdx, Math.max(0, Math.floor(Number(baseMonthIndex) || 6)));
+  if (count === 1) return [base];
+  if (count === 3) {
+    // 3か月ごと・各期末の翌々月目安（12月始まりなら4・7・10月）
+    return [4, 7, 10].map((i) => Math.min(i, maxIdx));
+  }
+  // 11回: 決算整理を除く月初寄りから11か月分
+  const months = [];
+  for (let i = 0; i <= maxIdx && months.length < 11; i += 1) months.push(i);
+  return months;
 }
 
 export const TAX_REGION_PRESET_TOOLTIP = '標準税率: 資本金1億円超など一定規模以上の法人向け。中小法人: 資本金1億円以下などの中小法人向け（軽減税率・均等割等が異なります）。';

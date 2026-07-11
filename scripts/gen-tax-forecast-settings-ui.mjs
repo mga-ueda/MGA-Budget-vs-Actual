@@ -2,11 +2,21 @@
  * taxForecastSettingsUi.js generator
  * node scripts/gen-tax-forecast-settings-ui.mjs
  */
-import { writeFileSync } from 'fs';
+import { writeFileSync, readFileSync, existsSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const outPath = resolve(repoRoot, 'src/ui/taxForecastSettingsUi.js');
+
+// Keep modern window UI (mountTaxForecastSettingsForm) intact
+if (existsSync(outPath)) {
+  const existing = readFileSync(outPath, 'utf8');
+  if (existing.includes('mountTaxForecastSettingsForm')) {
+    console.log('Skip gen-tax-forecast-settings-ui: modern taxForecastSettingsUi.js already present');
+    process.exit(0);
+  }
+}
 
 function jp(...codes) {
   return String.fromCodePoint(...codes);

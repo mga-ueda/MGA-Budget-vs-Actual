@@ -3,6 +3,7 @@ import {
   TAX_REGION_PRESETS,
   TAX_REGION_PRESET_TOOLTIP,
   resolveDefaultTaxPaymentMonthIndices,
+  resolveItemizedTaxParams,
 } from '../config/taxSimulationConfig.js';
 import { computeNextPeriodTaxForecast } from '../enrich/nextPeriodTaxForecast.js';
 
@@ -219,15 +220,21 @@ export function buildTaxForecastPanelHtml(forecast, formatYen, { compact = false
     { label: '課税対象利益', value: yen(forecast.taxableProfit, formatYen) },
     { label: '法人税計算', value: methodLabel },
     { label: '地域・税率', value: `${forecast.regionLabel} / ${forecast.corporateTax?.rateLabel ?? ''}` },
-    { label: '参照期見込法人税等', value: yen(forecast.corporateTax?.annualAmount, formatYen) },
+    { label: '確定納付（期末未払）', value: yen(forecast.corporateTax?.settlementAmount ?? forecast.corporateTax?.annualAmount, formatYen) },
+    { label: '年税額（予定・中間の計算基礎）', value: yen(forecast.corporateTax?.annualAmount, formatYen) },
+    { label: '資金基準の出所', value: forecast.corporateTax?.cashSourceLabel ?? '' },
+    { label: '検算税額（参考）', value: yen(forecast.corporateTax?.calculatedAmount, formatYen) },
   ];
   const itemizedBreakdownHtml = isItemized
     ? renderItemizedBreakdownTable(forecast.corporateTax?.itemized, formatYen)
     : '';
   const consumptionBasis = [
+    { label: '確定納付（期末未払）', value: yen(forecast.consumptionTax?.settlementAmount ?? forecast.consumptionTax?.annualAmount, formatYen) },
+    { label: '年税額（予定・中間の計算基礎）', value: yen(forecast.consumptionTax?.annualAmount, formatYen) },
+    { label: '資金基準の出所', value: forecast.consumptionTax?.cashSourceLabel ?? '' },
+    { label: '売上仕入からの概算（参考）', value: yen(forecast.consumptionTax?.estimatedAmount, formatYen) },
     { label: '課税計算方法', value: forecast.consumptionTax?.estimate?.basis ?? '' },
     { label: '補足説明', value: forecast.consumptionTax?.estimate?.detail ?? '' },
-    { label: '参照期見込納税額', value: yen(forecast.consumptionTax?.annualAmount, formatYen) },
   ];
   const summaryHtml = `
     <div class="tax-forecast-summary-grid${compact ? ' tax-forecast-summary-grid--compact' : ''}">
@@ -244,7 +251,7 @@ export function buildTaxForecastPanelHtml(forecast, formatYen, { compact = false
         <span class="tax-forecast-summary-value">${yen(forecast.grandTotalPaymentInNextPeriod, formatYen)}</span>
       </div>
     </div>
-    <p class="app-settings-hint tax-forecast-target-period">${forecast.currentPeriodLabel}の見込をもとに、${forecast.nextPeriodLabel}に支払予定した金額です。</p>
+    <p class="app-settings-hint tax-forecast-target-period">${forecast.currentPeriodLabel}の見込をもとに、${forecast.nextPeriodLabel}に支払うキャッシュ見込です。</p>
   `;
   if (compact) {
     return `
@@ -270,7 +277,7 @@ export function buildTaxForecastPanelHtml(forecast, formatYen, { compact = false
         </div>
         ` : ''}
       </div>
-      <p class="app-settings-hint tax-forecast-note">※　計算用の概算です。税務申告の代替にはなりません。</p>
+      <p class="app-settings-hint tax-forecast-note">※　来期の資金繰り用の見込です。税務申告の代替にはなりません。</p>
     `;
   }
   return `
@@ -291,7 +298,7 @@ export function buildTaxForecastPanelHtml(forecast, formatYen, { compact = false
         ${renderBasisList(consumptionBasis)}
       </div>
     </div>
-    <p class="app-settings-hint tax-forecast-note">※　計算用の概算です。税務申告の代替にはなりません。</p>
+    <p class="app-settings-hint tax-forecast-note">※　来期の資金繰り用の見込です。税務申告の代替にはなりません。</p>
   `;
 }
 
@@ -343,97 +350,102 @@ export function mountTaxForecastSettingsForm(container, {
       <section class="tax-forecast-settings-group">
         <h4 class="tax-forecast-settings-group-title">利益見込</h4>
         <div class="tax-forecast-settings-grid">
-          <label class="tax-forecast-field">
+          <div class="tax-forecast-field">
             <span class="app-settings-label">利益見込方法</span>
             <select class="app-settings-input tax-forecast-select" data-field="profitEstimateMethod">
               <option value="fullYear">通期合計を使用</option>
               <option value="annualize">実績から年間換算</option>
             </select>
-          </label>
-          <label class="tax-forecast-field">
+          </div>
+          <div class="tax-forecast-field">
             <span class="app-settings-label">繰越欠損控除（円）</span>
             <input type="text" class="app-settings-input tax-forecast-input" data-field="lossCarryforwardDeduction" inputmode="numeric" />
-          </label>
+          </div>
         </div>
       </section>
 
       <section class="tax-forecast-settings-group">
         <h4 class="tax-forecast-settings-group-title">法人税</h4>
         <div class="tax-forecast-settings-grid">
-          <label class="tax-forecast-field">
+          <div class="tax-forecast-field">
             <span class="app-settings-label">法人税計算</span>
             <select class="app-settings-input tax-forecast-select" data-field="corporateTaxMethod">
               <option value="itemized">検算（税目別）</option>
               <option value="effectiveRate">簡易（実効税率）</option>
             </select>
-          </label>
-          <label class="tax-forecast-field" title="${TAX_REGION_PRESET_TOOLTIP}">
+          </div>
+          <div class="tax-forecast-field" title="${TAX_REGION_PRESET_TOOLTIP}">
             <span class="app-settings-label tax-forecast-label-with-tip" title="${TAX_REGION_PRESET_TOOLTIP}">地域プリセット</span>
             <select class="app-settings-input tax-forecast-select" data-field="regionPreset" title="${TAX_REGION_PRESET_TOOLTIP}"></select>
-          </label>
-          <label class="tax-forecast-field" data-role="effective-rate-field">
+          </div>
+          <div class="tax-forecast-field" data-role="effective-rate-field">
             <span class="app-settings-label">実効法人税率（%）</span>
             <input type="number" class="app-settings-input tax-forecast-input tax-forecast-input--percent" data-field="effectiveCorporateTaxRatePercent" min="0" max="100" step="0.01" />
-          </label>
-          <label class="tax-forecast-field tax-forecast-field--itemized" data-role="itemized-field">
+          </div>
+          <div class="tax-forecast-field tax-forecast-field--itemized" data-role="itemized-field">
             <span class="app-settings-label">道府県民税・均等割（円）</span>
             <input type="text" class="app-settings-input tax-forecast-input" data-field="itemizedPrefecturalPerCapita" inputmode="numeric" placeholder="プリセット既定" />
-          </label>
-          <label class="tax-forecast-field tax-forecast-field--itemized" data-role="itemized-field">
+          </div>
+          <div class="tax-forecast-field tax-forecast-field--itemized" data-role="itemized-field">
             <span class="app-settings-label">市町村民税・均等割（円）</span>
             <input type="text" class="app-settings-input tax-forecast-input" data-field="itemizedMunicipalPerCapita" inputmode="numeric" placeholder="プリセット既定" />
-          </label>
+          </div>
         </div>
         <p class="tax-forecast-settings-subgroup-title">来期の支払月</p>
         <div class="tax-forecast-settings-grid tax-forecast-settings-grid--schedule">
-          <label class="tax-forecast-field tax-forecast-field--checkbox tax-forecast-field--row-full">
-            <input type="checkbox" data-field="provisionalTaxEnabled" />
-            <span class="app-settings-label">来期の予定納税を含める</span>
-          </label>
-          <label class="tax-forecast-field">
+          <div class="tax-forecast-field tax-forecast-field--checkbox tax-forecast-field--row-full">
+            <label class="tax-forecast-checkbox-hit">
+              <input type="checkbox" data-field="provisionalTaxEnabled" />
+              <span class="app-settings-label">来期の予定納税を含める</span>
+            </label>
+          </div>
+          <div class="tax-forecast-field">
             <span class="app-settings-label">確定月</span>
             <select class="app-settings-input tax-forecast-select" data-field="corporateTaxSettlementMonthIndex"></select>
-          </label>
-          <label class="tax-forecast-field tax-forecast-field--schedule-break" data-role="provisional-tax-month-field">
+          </div>
+          <div class="tax-forecast-field tax-forecast-field--schedule-break" data-role="provisional-tax-month-field">
             <span class="app-settings-label">予定納税月1</span>
             <select class="app-settings-input tax-forecast-select" data-field="provisionalTaxMonthIndices.0"></select>
-          </label>
-          <label class="tax-forecast-field" data-role="provisional-tax-month-field">
+          </div>
+          <div class="tax-forecast-field" data-role="provisional-tax-month-field">
             <span class="app-settings-label">予定納税月2</span>
             <select class="app-settings-input tax-forecast-select" data-field="provisionalTaxMonthIndices.1"></select>
-          </label>
+          </div>
         </div>
       </section>
 
       <section class="tax-forecast-settings-group">
         <h4 class="tax-forecast-settings-group-title">消費税</h4>
         <div class="tax-forecast-settings-grid">
-          <label class="tax-forecast-field">
+          <div class="tax-forecast-field">
             <span class="app-settings-label">消費税計算</span>
             <select class="app-settings-input tax-forecast-select" data-field="consumptionTaxMethod">
               <option value="general">本則課税</option>
               <option value="simplified">簡易課税</option>
             </select>
-          </label>
-          <label class="tax-forecast-field">
+          </div>
+          <div class="tax-forecast-field">
             <span class="app-settings-label">みなし仕入率（%）</span>
             <input type="number" class="app-settings-input tax-forecast-input" data-field="simplifiedDeemedPurchaseRatePercent" min="0" max="100" step="1" data-role="simplified-field" />
-          </label>
+          </div>
         </div>
         <p class="tax-forecast-settings-subgroup-title">来期の支払月</p>
         <div class="tax-forecast-settings-grid tax-forecast-settings-grid--schedule">
-          <label class="tax-forecast-field tax-forecast-field--checkbox tax-forecast-field--row-full">
-            <input type="checkbox" data-field="consumptionTaxInterimEnabled" />
-            <span class="app-settings-label">来期の消費税中間納税を含める</span>
-          </label>
-          <label class="tax-forecast-field">
+          <div class="tax-forecast-field tax-forecast-field--checkbox tax-forecast-field--row-full">
+            <label class="tax-forecast-checkbox-hit">
+              <input type="checkbox" data-field="consumptionTaxInterimEnabled" />
+              <span class="app-settings-label">来期の消費税中間納税を含める</span>
+            </label>
+          </div>
+          <div class="tax-forecast-field">
             <span class="app-settings-label">確定月</span>
             <select class="app-settings-input tax-forecast-select" data-field="consumptionTaxSettlementMonthIndex"></select>
-          </label>
-          <label class="tax-forecast-field" data-role="consumption-interim-month-field">
-            <span class="app-settings-label">中間月</span>
+          </div>
+          <div class="tax-forecast-field" data-role="consumption-interim-month-field">
+            <span class="app-settings-label">中間月（1回時）</span>
             <select class="app-settings-input tax-forecast-select" data-field="consumptionTaxInterimMonthIndex"></select>
-          </label>
+          </div>
+          <p class="app-settings-hint tax-forecast-interim-hint">中間の回数は前年税額から自動（0 / 1 / 3 / 11回）です。3回・11回の月は会計月から自動配置します。</p>
         </div>
       </section>
     </div>
@@ -454,8 +466,10 @@ export function mountTaxForecastSettingsForm(container, {
     'consumptionTaxInterimMonthIndex',
   ];
   const monthIndexMap = {
-    'provisionalTaxMonthIndices.0': simulation.provisionalTaxMonthIndices[0],
-    'provisionalTaxMonthIndices.1': simulation.provisionalTaxMonthIndices[1],
+    'provisionalTaxMonthIndices.0': simulation.provisionalTaxMonthIndices[0] ?? 6,
+    'provisionalTaxMonthIndices.1': simulation.provisionalTaxMonthIndices[1]
+      ?? simulation.provisionalTaxMonthIndices[0]
+      ?? 6,
     corporateTaxSettlementMonthIndex: simulation.corporateTaxSettlementMonthIndex,
     consumptionTaxSettlementMonthIndex: simulation.consumptionTaxSettlementMonthIndex,
     consumptionTaxInterimMonthIndex: simulation.consumptionTaxInterimMonthIndex,
@@ -543,8 +557,22 @@ export function mountTaxForecastSettingsForm(container, {
       else unmaskControl(simplifiedField);
     }
 
-    provisionalTaxMonthFields.forEach((el) => {
-      setFieldGroupInactive(el, !provisionalTaxEnabled);
+    const liveSim = normalizeTaxSimulation(
+      resolveAppSettings()?.taxSimulation ?? simulation,
+      fiscalEndMonth,
+    );
+    const itemizedParams = resolveItemizedTaxParams(liveSim);
+    const isSmallCorp = itemizedParams.isSmallCorporation !== false;
+    const mode = liveSim.provisionalTaxInstallments;
+    const maxInst = liveSim.provisionalTaxMaxInstallments ?? 2;
+    let secondMonthVisible = false;
+    if (provisionalTaxEnabled && maxInst >= 2) {
+      if (mode === 2) secondMonthVisible = true;
+      else if (mode === 'auto' || mode == null) secondMonthVisible = !isSmallCorp;
+    }
+    provisionalTaxMonthFields.forEach((el, idx) => {
+      const inactive = !provisionalTaxEnabled || (idx >= 1 && !secondMonthVisible);
+      setFieldGroupInactive(el, inactive);
     });
     setFieldGroupInactive(consumptionInterimMonthField, !consumptionInterimEnabled);
   };
@@ -570,6 +598,13 @@ export function mountTaxForecastSettingsForm(container, {
       section.querySelector('[data-field="lossCarryforwardDeduction"]'),
     );
     raw.provisionalTaxEnabled = section.querySelector('[data-field="provisionalTaxEnabled"]').checked;
+    {
+      const live = resolveAppSettings()?.taxSimulation ?? simulation;
+      raw.provisionalTaxInstallments = live.provisionalTaxInstallments === 1 || live.provisionalTaxInstallments === 2
+        ? live.provisionalTaxInstallments
+        : 'auto';
+      raw.provisionalTaxMaxInstallments = live.provisionalTaxMaxInstallments ?? 2;
+    }
     raw.corporateTaxSettlementMonthIndex = Number(section.querySelector('[data-field="corporateTaxSettlementMonthIndex"]').value);
     raw.provisionalTaxMonthIndices = [
       Number(readControlValue(section.querySelector('[data-field="provisionalTaxMonthIndices.0"]'))),
@@ -638,10 +673,10 @@ export function mountTaxForecastWindowContent(container, {
   wrap.className = 'tax-forecast-window-content';
   wrap.innerHTML = `
     <div class="tax-forecast-window-toolbar">
-      <label class="tax-forecast-window-source-period">
+      <div class="tax-forecast-window-source-period">
         <span class="app-settings-label">計算元の期</span>
         <select class="app-settings-input tax-forecast-source-period-select"></select>
-      </label>
+      </div>
       <div class="tax-forecast-window-toolbar-actions">
         <button type="button" class="expand-reset-btn tax-forecast-window-reset-btn">デフォルトに戻す</button>
       </div>

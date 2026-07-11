@@ -23,42 +23,22 @@ function getTargetWindowHeight() {
   return Math.max(MIN_WINDOW_HEIGHT, Math.min(target, viewportMax));
 }
 
-function loadWindowPosition() {
+/** 旧仕様の位置記憶を破棄する（位置は記憶しない） */
+function clearStoredWindowPosition() {
   try {
-    const raw = localStorage.getItem(POS_STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (!Number.isFinite(parsed.left) || !Number.isFinite(parsed.top)) return null;
-    return { left: parsed.left, top: parsed.top };
+    localStorage.removeItem(POS_STORAGE_KEY);
   } catch {
-    return null;
+    // ignore
   }
 }
 
-function saveWindowPosition(left, top) {
-  localStorage.setItem(POS_STORAGE_KEY, JSON.stringify({ left, top }));
-}
-
-function applyDefaultPosition(el) {
-  const saved = loadWindowPosition();
-  if (saved) {
-    el.style.left = `${saved.left}px`;
-    el.style.top = `${saved.top}px`;
-    return;
-  }
+/** 開き直すたびに内容全体が見える既定位置へ戻す */
+function applyVisibleDefaultPosition(el) {
+  clearStoredWindowPosition();
   el.style.top = `${DEFAULT_TOP}px`;
   el.style.right = `${DEFAULT_RIGHT}px`;
   el.style.left = 'auto';
-}
-
-function clampWindowPosition(el) {
-  const rect = el.getBoundingClientRect();
-  const left = clamp(rect.left, 8, getLayoutViewportWidth() - rect.width - 8);
-  const top = clamp(rect.top, 8, window.innerHeight - rect.height - 8);
-  el.style.left = `${left}px`;
-  el.style.top = `${top}px`;
-  el.style.right = 'auto';
-  saveWindowPosition(left, top);
+  el.style.bottom = 'auto';
 }
 
 function measureColorSettingsWindowWidth(shell) {
@@ -88,12 +68,15 @@ function fitColorSettingsWindowHeight(shell) {
   shell.style.height = `${targetHeight}px`;
 }
 
-function syncColorSettingsWindowLayout(shell, body) {
+function syncColorSettingsWindowLayout(shell, { resetPosition = false } = {}) {
+  if (resetPosition) {
+    applyVisibleDefaultPosition(shell);
+  }
   fitColorSettingsWindowWidth(shell);
   fitColorSettingsWindowHeight(shell);
-  clampWindowPosition(shell);
 }
 
+/** ドラッグ中はビューポート外へはみ出してよい（サイズは維持） */
 function bindWindowDrag(handle, el) {
   handle.addEventListener('mousedown', (event) => {
     if (event.button !== 0) return;
@@ -104,28 +87,20 @@ function bindWindowDrag(handle, el) {
     const startY = event.clientY;
     const startLeft = rect.left;
     const startTop = rect.top;
+    // right 指定のまま left を切ると一瞬左端へ飛ぶため、先に left/top を固定する
+    el.style.left = `${startLeft}px`;
+    el.style.top = `${startTop}px`;
     el.style.right = 'auto';
+    el.style.bottom = 'auto';
 
     const onMouseMove = (ev) => {
-      const left = clamp(
-        startLeft + ev.clientX - startX,
-        8,
-        getLayoutViewportWidth() - el.offsetWidth - 8,
-      );
-      const top = clamp(
-        startTop + ev.clientY - startY,
-        8,
-        window.innerHeight - el.offsetHeight - 8,
-      );
-      el.style.left = `${left}px`;
-      el.style.top = `${top}px`;
+      el.style.left = `${startLeft + ev.clientX - startX}px`;
+      el.style.top = `${startTop + ev.clientY - startY}px`;
     };
 
     const onMouseUp = () => {
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
-      const nextRect = el.getBoundingClientRect();
-      saveWindowPosition(nextRect.left, nextRect.top);
     };
 
     document.addEventListener('mousemove', onMouseMove);
@@ -134,7 +109,7 @@ function bindWindowDrag(handle, el) {
 }
 
 /**
- * 色設定をドラグ可能な小ウィンドウで表示する。
+ * 色設定をドラッグ可能な小ウィンドウで表示する。
  */
 export function createColorSettingsWindow({
   mountContent,
@@ -174,7 +149,7 @@ export function createColorSettingsWindow({
   const mountTarget = document.querySelector('.plan-app') ?? document.body;
   mountTarget.appendChild(shell);
 
-  applyDefaultPosition(shell);
+  clearStoredWindowPosition();
   bindWindowDrag(header, shell);
 
   let layoutObserver = null;
@@ -184,7 +159,8 @@ export function createColorSettingsWindow({
     if (!content) return;
     layoutObserver = new ResizeObserver(() => {
       if (!open) return;
-      syncColorSettingsWindowLayout(shell, body);
+      // サイズだけ合わせる。はみ出し位置はそのまま
+      syncColorSettingsWindowLayout(shell);
     });
     layoutObserver.observe(content);
   };
@@ -203,7 +179,8 @@ export function createColorSettingsWindow({
     shell.classList.toggle('is-open', open);
     if (open) {
       ensureMounted();
-      requestAnimationFrame(() => syncColorSettingsWindowLayout(shell, body));
+      // 開き直すたびに必ず全体が見える位置へ戻す（位置は記憶しない）
+      requestAnimationFrame(() => syncColorSettingsWindowLayout(shell, { resetPosition: true }));
     }
     onOpenChange?.(open);
   };
@@ -212,7 +189,7 @@ export function createColorSettingsWindow({
 
   window.addEventListener('resize', () => {
     if (!open) return;
-    syncColorSettingsWindowLayout(shell, body);
+    syncColorSettingsWindowLayout(shell);
   });
 
   return {
@@ -226,7 +203,7 @@ export function createColorSettingsWindow({
       mounted = false;
       ensureMounted();
       if (open) {
-        requestAnimationFrame(() => syncColorSettingsWindowLayout(shell, body));
+        requestAnimationFrame(() => syncColorSettingsWindowLayout(shell));
       }
     },
     destroy: () => {

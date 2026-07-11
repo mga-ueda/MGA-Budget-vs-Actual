@@ -2,11 +2,26 @@
  * taxSimulationConfig.js / nextPeriodTaxForecast.js generator
  * node scripts/gen-tax-forecast-sources.mjs
  */
-import { writeFileSync } from 'fs';
+import { writeFileSync, readFileSync, existsSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const nextPeriodPath = resolve(repoRoot, 'src/enrich/nextPeriodTaxForecast.js');
+const taxSimPath = resolve(repoRoot, 'src/config/taxSimulationConfig.js');
+
+// Do not overwrite modern itemized tax sources with this legacy generator
+if (existsSync(nextPeriodPath) && existsSync(taxSimPath)) {
+  const nextPeriod = readFileSync(nextPeriodPath, 'utf8');
+  const taxSim = readFileSync(taxSimPath, 'utf8');
+  if (
+    nextPeriod.includes('computeItemizedCorporateTax')
+    || taxSim.includes('DEFAULT_ITEMIZED_TAX_PARAMS')
+  ) {
+    console.log('Skip gen-tax-forecast-sources: modern itemized tax sources already present');
+    process.exit(0);
+  }
+}
 
 function jp(...codes) {
   return String.fromCodePoint(...codes);

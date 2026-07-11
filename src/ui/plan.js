@@ -292,6 +292,7 @@ import {
   PLAN_TABLE_TAX_PAYMENT_NO_SUB_LABEL,
   PLAN_TABLE_TAX_PAYMENT_OTHER_ACCOUNT,
   PLAN_TABLE_TAX_PAYMENT_OTHER_PAY_EDITABLE_ACCOUNTS,
+  PLAN_TABLE_TAX_PAYMENT_TAX_EDITABLE_ACCOUNTS,
 } from '../config/taxPaymentConfig.js';
 import {
   loadExpensePlanOverrides,
@@ -978,6 +979,10 @@ function refreshTaxForecastSummaryCardColors() {
 }
 
 function openTaxForecastWindow() {
+  if (taxForecastWindow?.isOpen()) {
+    taxForecastWindow.close();
+    return;
+  }
   if (taxForecastSourcePeriod == null) {
     taxForecastSourcePeriod = appSettings.fiscalPeriod;
   }
@@ -987,6 +992,10 @@ function openTaxForecastWindow() {
 }
 
 function openColorSettingsWindow() {
+  if (colorSettingsWindow?.isOpen()) {
+    colorSettingsWindow.close();
+    return;
+  }
   colorSettingsWindow?.open();
 }
 
@@ -1591,10 +1600,24 @@ function planTableOverflowsWrapContent(table) {
   return table.getBoundingClientRect().right > contentRight + 0.5;
 }
 
+let taxForecastScaleSyncRaf = null;
+
+/** 予実表の content-fit（rem）変更後に、納税見込ウィンドウのはみ出しを直す */
+function scheduleTaxForecastWindowScaleSync() {
+  if (!taxForecastWindow?.isOpen()) return;
+  if (taxForecastScaleSyncRaf != null) cancelAnimationFrame(taxForecastScaleSyncRaf);
+  taxForecastScaleSyncRaf = requestAnimationFrame(() => {
+    taxForecastScaleSyncRaf = null;
+    // サイズは rem 固定で自動追従する。位置のはみ出しだけ補正する
+    taxForecastWindow?.syncLayout?.();
+  });
+}
+
 function applyPlanDisplayScales() {
   const fit = getPlanUiContentFitScale();
   applyFontScale(appSettings.fontScale, fit);
   applyRowPaddingScale(appSettings.rowPaddingScale, fit);
+  scheduleTaxForecastWindowScaleSync();
 }
 
 /**
@@ -2756,6 +2779,10 @@ function getTaxPaymentSimpleAccountFromPlanRow(section, row) {
   if (section.id === 'otherPay' && isTaxPaymentPrimaryAccountRow(row)) {
     const label = row.label ?? '';
     if (PLAN_TABLE_TAX_PAYMENT_OTHER_PAY_EDITABLE_ACCOUNTS.includes(label)) return label;
+  }
+  if (section.id === 'tax' && isTaxPaymentPrimaryAccountRow(row)) {
+    const label = row.label ?? '';
+    if (PLAN_TABLE_TAX_PAYMENT_TAX_EDITABLE_ACCOUNTS.includes(label)) return label;
   }
   return null;
 }
@@ -7123,7 +7150,7 @@ function renderTaxPaymentSettings() {
   const header = document.createElement('div');
   header.className = 'expand-settings-header tax-payment-settings-header';
   header.innerHTML = `
-    <p class="expand-settings-desc">租税公課・保険積立金・長期未払金・未払消費税・未払法人税等・法人税等・住民税・役員借入金の支払い計画を設定します。法人税等は予実表の「法人税」セクションに反映されます。住民税は市区町村ごとに入力し、合計が予実表に反映されます。当期の実績表示月は仕訳実績を表示します（編集不可）。予実表で計画表示に切り替えた月は編集できます。住民税のみ過去月も入力でき、予実表にもその値が反映されます。Shift+Enter で入力した月以降の同額を後続月に反映します。</p>
+    <p class="expand-settings-desc">租税公課・保険積立金・長期未払金・未払消費税・未払法人税等・法人税等・住民税・役員借入金の支払い計画を設定します。法人税等は予実表の「法人税」セクションに反映され、計画表示月は予実表上でも編集できます。住民税は市区町村ごとに入力し、合計が予実表に反映されます。当期の実績表示月は仕訳実績を表示します（編集不可）。予実表で計画表示に切り替えた月は編集できます。住民税のみ過去月も入力でき、予実表にもその値が反映されます。Shift+Enter で入力した月以降の同額を後続月に反映します。</p>
     <div class="tax-payment-settings-controls">
       <div class="tax-payment-plan-years-row">
         <span class="app-settings-label">計画年数</span>

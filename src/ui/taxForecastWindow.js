@@ -23,42 +23,22 @@ function getMaxWindowHeight() {
   );
 }
 
-function loadWindowPosition() {
+/** 旧仕様の位置記憶を破棄する（位置は記憶しない） */
+function clearStoredWindowPosition() {
   try {
-    const raw = localStorage.getItem(TAX_FORECAST_POS_STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (!Number.isFinite(parsed.left) || !Number.isFinite(parsed.top)) return null;
-    return { left: parsed.left, top: parsed.top };
+    localStorage.removeItem(TAX_FORECAST_POS_STORAGE_KEY);
   } catch {
-    return null;
+    // ignore
   }
 }
 
-function saveWindowPosition(left, top) {
-  localStorage.setItem(TAX_FORECAST_POS_STORAGE_KEY, JSON.stringify({ left, top }));
-}
-
-function applyDefaultPosition(el) {
-  const saved = loadWindowPosition();
-  if (saved) {
-    el.style.left = `${saved.left}px`;
-    el.style.top = `${saved.top}px`;
-    return;
-  }
+/** 開き直すたびに内容全体が見える既定位置へ戻す */
+function applyVisibleDefaultPosition(el) {
+  clearStoredWindowPosition();
   el.style.top = `${TAX_FORECAST_DEFAULT_TOP}px`;
   el.style.right = `${TAX_FORECAST_DEFAULT_RIGHT}px`;
   el.style.left = 'auto';
-}
-
-function clampWindowPosition(el) {
-  const rect = el.getBoundingClientRect();
-  const left = clamp(rect.left, 8, getLayoutViewportWidth() - rect.width - 8);
-  const top = clamp(rect.top, 8, window.innerHeight - rect.height - 8);
-  el.style.left = `${left}px`;
-  el.style.top = `${top}px`;
-  el.style.right = 'auto';
-  saveWindowPosition(left, top);
+  el.style.bottom = 'auto';
 }
 
 function getRootFontSizePx() {
@@ -66,25 +46,31 @@ function getRootFontSizePx() {
   return Number.isFinite(size) && size > 0 ? size : 16;
 }
 
-function resolveWindowWidth() {
-  return clamp(
-    Math.round(TAX_FORECAST_WINDOW_WIDTH_REM * getRootFontSizePx()),
-    TAX_FORECAST_MIN_WINDOW_WIDTH,
-    getMaxWindowWidth(),
-  );
+/** ルートフォント変更後も比率を保てるよう、幅を rem で求める */
+function resolveWindowWidthRem() {
+  const rootPx = getRootFontSizePx();
+  const preferredPx = TAX_FORECAST_WINDOW_WIDTH_REM * rootPx;
+  const clampedPx = clamp(preferredPx, TAX_FORECAST_MIN_WINDOW_WIDTH, getMaxWindowWidth());
+  return clampedPx / rootPx;
 }
 
-function measureWindowContentHeight(shell, body) {
-  const header = shell.querySelector('.tax-forecast-window-header');
-  const headerHeight = header?.offsetHeight ?? 0;
-  const bodyStyle = getComputedStyle(body);
-  const paddingTop = parseFloat(bodyStyle.paddingTop) || 0;
-  const paddingBottom = parseFloat(bodyStyle.paddingBottom) || 0;
-  const content = body.firstElementChild;
-  const contentHeight = content?.scrollHeight ?? body.scrollHeight;
-  const chromeHeight = shell.offsetHeight - body.offsetHeight;
-  const total = chromeHeight + paddingTop + paddingBottom + contentHeight;
-  return clamp(total, TAX_FORECAST_MIN_WINDOW_HEIGHT, getMaxWindowHeight());
+/**
+ * シェル高さを内容に合わせて測る。
+ * 固定 height の影響を避けるため、計測中だけ height:auto にする。
+ */
+function measureWindowContentHeight(shell) {
+  const prevHeight = shell.style.height;
+  const prevMaxHeight = shell.style.maxHeight;
+  shell.style.height = 'auto';
+  shell.style.maxHeight = 'none';
+  const measured = shell.scrollHeight;
+  shell.style.height = prevHeight;
+  shell.style.maxHeight = prevMaxHeight;
+  return clamp(measured, TAX_FORECAST_MIN_WINDOW_HEIGHT, getMaxWindowHeight());
+}
+
+function pxToRem(px) {
+  return px / getRootFontSizePx();
 }
 
 /** 来期納税見込みを予実表上にドラッグ可能な小ウィンドウで表示する */
@@ -95,8 +81,9 @@ export function createTaxForecastWindow({
   let open = false;
   let mounted = false;
   let layoutLocked = false;
-  let lockedShellWidth = null;
-  let lockedShellHeight = null;
+  // px 固定だと予実表の content-fit（rem）変更で中身と枠がずれるため rem で保持する
+  let lockedShellWidthRem = TAX_FORECAST_WINDOW_WIDTH_REM;
+  let lockedShellHeightRem = null;
 
   const shell = document.createElement('div');
   shell.className = 'tax-forecast-window';
@@ -129,41 +116,42 @@ export function createTaxForecastWindow({
   const mountTarget = document.querySelector('.plan-app') ?? document.body;
   mountTarget.appendChild(shell);
 
-  applyDefaultPosition(shell);
+  clearStoredWindowPosition();
   bindWindowDrag(header, shell);
 
   const applyLockedShellSize = () => {
-    if (lockedShellWidth != null) {
-      shell.style.width = `${lockedShellWidth}px`;
-      shell.style.maxWidth = `${getMaxWindowWidth()}px`;
-    }
-    if (lockedShellHeight != null) {
-      shell.style.height = `${lockedShellHeight}px`;
-      shell.style.maxHeight = `${getMaxWindowHeight()}px`;
+    const maxWidth = getMaxWindowWidth();
+    const maxHeight = getMaxWindowHeight();
+    const rootPx = getRootFontSizePx();
+    const widthRem = Math.min(lockedShellWidthRem, maxWidth / rootPx);
+    shell.style.width = `${widthRem}rem`;
+    shell.style.maxWidth = `${maxWidth}px`;
+    if (lockedShellHeightRem != null) {
+      const heightRem = Math.min(lockedShellHeightRem, maxHeight / rootPx);
+      shell.style.height = `${heightRem}rem`;
+      shell.style.maxHeight = `${maxHeight}px`;
     }
   };
 
   const lockWindowLayout = () => {
-    const maxWidth = getMaxWindowWidth();
-    lockedShellWidth = resolveWindowWidth();
-    shell.style.width = `${lockedShellWidth}px`;
-    shell.style.maxWidth = `${maxWidth}px`;
-
-    const nextHeight = measureWindowContentHeight(shell, body);
-    lockedShellHeight = nextHeight;
-    shell.style.height = `${nextHeight}px`;
-    shell.style.maxHeight = `${getMaxWindowHeight()}px`;
+    lockedShellWidthRem = resolveWindowWidthRem();
+    shell.style.width = `${lockedShellWidthRem}rem`;
+    shell.style.maxWidth = `${getMaxWindowWidth()}px`;
+    lockedShellHeightRem = pxToRem(measureWindowContentHeight(shell));
     layoutLocked = true;
+    applyLockedShellSize();
   };
 
-  const syncWindowLayout = () => {
+  const syncWindowLayout = ({ resetPosition = false } = {}) => {
     if (!open) return;
+    if (resetPosition) {
+      applyVisibleDefaultPosition(shell);
+    }
     if (!layoutLocked) {
       lockWindowLayout();
     } else {
       applyLockedShellSize();
     }
-    clampWindowPosition(shell);
   };
 
   const ensureMounted = () => {
@@ -179,7 +167,8 @@ export function createTaxForecastWindow({
     shell.classList.toggle('is-open', open);
     if (open) {
       ensureMounted();
-      requestAnimationFrame(() => syncWindowLayout());
+      // 開き直すたびに必ず全体が見える位置へ戻す（位置は記憶しない）
+      requestAnimationFrame(() => syncWindowLayout({ resetPosition: true }));
     }
     onOpenChange?.(open);
   };
@@ -188,8 +177,8 @@ export function createTaxForecastWindow({
 
   window.addEventListener('resize', () => {
     if (!open || !layoutLocked) return;
+    // サイズだけ合わせる。はみ出し位置はそのまま（邪魔回避のため）
     applyLockedShellSize();
-    clampWindowPosition(shell);
   });
 
   return {
@@ -198,28 +187,28 @@ export function createTaxForecastWindow({
     toggle: () => setOpen(!open),
     isOpen: () => open,
     getBody: () => body,
-    syncLayout: syncWindowLayout,
+    syncLayout: () => syncWindowLayout(),
     syncContentHeight: () => {
       if (!open) return;
-      lockedShellHeight = measureWindowContentHeight(shell, body);
+      lockedShellHeightRem = pxToRem(measureWindowContentHeight(shell));
       applyLockedShellSize();
-      clampWindowPosition(shell);
     },
     recalculateLayout: () => {
       if (!open) return;
-      lockedShellWidth = resolveWindowWidth();
-      lockedShellHeight = measureWindowContentHeight(shell, body);
+      lockedShellWidthRem = resolveWindowWidthRem();
+      lockedShellHeightRem = pxToRem(measureWindowContentHeight(shell));
       layoutLocked = true;
       applyLockedShellSize();
-      clampWindowPosition(shell);
     },
     refresh: () => {
       if (!mounted) return;
       body.replaceChildren();
       mounted = false;
       layoutLocked = false;
-      lockedShellWidth = null;
-      lockedShellHeight = null;
+      lockedShellWidthRem = TAX_FORECAST_WINDOW_WIDTH_REM;
+      lockedShellHeightRem = null;
+      shell.style.height = '';
+      shell.style.maxHeight = '';
       ensureMounted();
       if (open) {
         requestAnimationFrame(() => syncWindowLayout());
@@ -231,6 +220,7 @@ export function createTaxForecastWindow({
   };
 }
 
+/** ドラッグ中はビューポート外へはみ出してよい（サイズは維持） */
 function bindWindowDrag(handle, el) {
   handle.addEventListener('mousedown', (event) => {
     if (event.button !== 0) return;
@@ -241,28 +231,20 @@ function bindWindowDrag(handle, el) {
     const startY = event.clientY;
     const startLeft = rect.left;
     const startTop = rect.top;
+    // right 指定のまま left を切ると一瞬左端へ飛ぶため、先に left/top を固定する
+    el.style.left = `${startLeft}px`;
+    el.style.top = `${startTop}px`;
     el.style.right = 'auto';
+    el.style.bottom = 'auto';
 
     const onMouseMove = (ev) => {
-      const left = clamp(
-        startLeft + ev.clientX - startX,
-        8,
-        getLayoutViewportWidth() - el.offsetWidth - 8,
-      );
-      const top = clamp(
-        startTop + ev.clientY - startY,
-        8,
-        window.innerHeight - el.offsetHeight - 8,
-      );
-      el.style.left = `${left}px`;
-      el.style.top = `${top}px`;
+      el.style.left = `${startLeft + ev.clientX - startX}px`;
+      el.style.top = `${startTop + ev.clientY - startY}px`;
     };
 
     const onMouseUp = () => {
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
-      const nextRect = el.getBoundingClientRect();
-      saveWindowPosition(nextRect.left, nextRect.top);
     };
 
     document.addEventListener('mousemove', onMouseMove);

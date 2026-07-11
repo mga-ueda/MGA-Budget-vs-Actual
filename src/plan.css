@@ -604,7 +604,8 @@ body {
   top: calc(100% + 0.35rem);
   right: 0;
   z-index: 120;
-  min-width: 10.5rem;
+  min-width: 13.5rem;
+  width: max-content;
   padding: 0.25rem 0;
   background: var(--plan-cell-bg);
   border: 1px solid color-mix(in srgb, var(--plan-border) 80%, var(--plan-text) 8%);
@@ -653,6 +654,7 @@ body {
 .plan-main-menu-item-label {
   flex: 1 1 auto;
   min-width: 0;
+  white-space: nowrap;
 }
 
 .plan-main-menu-item-check {
@@ -1808,6 +1810,15 @@ select.app-settings-input {
   gap: 0.45rem;
 }
 
+.tax-forecast-checkbox-hit {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  width: max-content;
+  max-width: 100%;
+  cursor: pointer;
+}
+
 .tax-forecast-field--checkbox .app-settings-label {
   margin: 0;
 }
@@ -1924,8 +1935,10 @@ select.app-settings-input {
 
 .tax-forecast-window .tax-forecast-select,
 .tax-forecast-window .tax-forecast-input--percent,
-.tax-forecast-window .tax-forecast-input--center {
+.tax-forecast-window .tax-forecast-input--center,
+.tax-forecast-window .tax-forecast-source-period-select {
   text-align: center;
+  text-align-last: center;
 }
 
 .tax-forecast-window .tax-forecast-input--currency {
@@ -5036,15 +5049,16 @@ body.plan-journal-open {
 
 .tax-forecast-window-toolbar {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
   gap: 0.45rem;
 }
 
 .tax-forecast-window-source-period {
   display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.45rem;
   min-width: 0;
   flex: 1 1 auto;
 }
@@ -5052,6 +5066,8 @@ body.plan-journal-open {
 .tax-forecast-window-source-period .app-settings-label {
   font-size: 0.68rem;
   margin: 0;
+  flex-shrink: 0;
+  white-space: nowrap;
   color: var(--plan-text);
 }
 
@@ -5074,7 +5090,11 @@ body.plan-journal-open {
 }
 
 .tax-forecast-window-source-period .app-settings-input {
+  width: auto;
   max-width: 10rem;
+  flex: 0 0 auto;
+  text-align: center;
+  text-align-last: center;
 }
 
 .tax-forecast-window-reset-btn {
@@ -5091,16 +5111,33 @@ body.plan-journal-open {
 }
 
 .tax-forecast-window-settings {
-  border: 1px solid var(--plan-border-muted);
+  border: none;
   border-radius: 0.4rem;
   padding: 0.35rem 0.45rem 0.45rem;
 }
 
-.tax-forecast-window-settings-head {
-  font-size: 0.78rem;
+.tax-forecast-window-settings-head,
+.tax-forecast-window-result-head,
+.tax-forecast-window .tax-forecast-settings-group-title,
+.tax-forecast-window .tax-forecast-detail-grid--compact .tax-forecast-detail-title {
   font-weight: 600;
-  margin-bottom: 0.35rem;
-  color: var(--plan-text);
+  line-height: 1.3;
+  margin: 0 0 10px;
+  padding: 0 5px;
+  border: none;
+  border-bottom: none;
+  background: var(--plan-month-row-bg);
+  color: var(--plan-month-row-text);
+}
+
+.tax-forecast-window-settings-head,
+.tax-forecast-window-result-head {
+  font-size: 14px;
+}
+
+.tax-forecast-window .tax-forecast-settings-group-title,
+.tax-forecast-window .tax-forecast-detail-grid--compact .tax-forecast-detail-title {
+  font-size: 10px;
 }
 
 .tax-forecast-window-settings-host {
@@ -5108,16 +5145,9 @@ body.plan-journal-open {
 }
 
 .tax-forecast-window-result {
-  border: 1px solid var(--plan-border-muted);
+  border: none;
   border-radius: 0.4rem;
   padding: 0.35rem 0.45rem 0.45rem;
-}
-
-.tax-forecast-window-result-head {
-  font-size: 0.78rem;
-  font-weight: 600;
-  margin-bottom: 0.25rem;
-  color: var(--plan-text);
 }
 
 .tax-forecast-window-settings,
@@ -5142,15 +5172,9 @@ body.plan-journal-open {
 
 .tax-forecast-window .tax-forecast-detail-block {
   min-width: 0;
-  border: 1px solid var(--plan-border-muted);
+  border: none;
   border-radius: 0.35rem;
   padding: 0.35rem 0.45rem 0.45rem;
-}
-
-.tax-forecast-window .tax-forecast-detail-grid--compact .tax-forecast-detail-title {
-  font-size: 0.74rem;
-  margin-bottom: 0.1rem;
-  color: var(--plan-text);
 }
 
 .tax-forecast-window .tax-forecast-detail-grid--compact .tax-forecast-detail-title:not(:first-child) {
@@ -5199,14 +5223,8 @@ body.plan-journal-open {
 .tax-forecast-window .tax-forecast-settings-group {
   padding: 0.3rem 0.4rem 0.4rem;
   min-width: 0;
+  border: none;
   background: none;
-}
-
-.tax-forecast-window .tax-forecast-settings-group-title {
-  font-size: 1.25rem;
-  margin-bottom: 0.3rem;
-  padding-bottom: 0;
-  border-bottom: none;
 }
 
 .tax-forecast-window .tax-forecast-settings-subgroup-title {
@@ -5221,6 +5239,23 @@ body.plan-journal-open {
 
 .tax-forecast-window .tax-forecast-settings-grid--schedule {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.tax-forecast-window .tax-forecast-settings-grid--schedule .tax-forecast-field:not(.tax-forecast-field--checkbox) {
+  display: grid;
+  grid-template-columns: 5.5rem minmax(4.5rem, 1fr);
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.tax-forecast-window .tax-forecast-settings-grid--schedule .tax-forecast-field:not(.tax-forecast-field--checkbox) .app-settings-label {
+  margin: 0;
+  white-space: nowrap;
+}
+
+.tax-forecast-window .tax-forecast-settings-grid--schedule .tax-forecast-field:not(.tax-forecast-field--checkbox) :is(select, input).app-settings-input {
+  width: 100%;
+  min-width: 0;
 }
 
 .tax-forecast-window .tax-forecast-settings-grid--schedule .tax-forecast-field--schedule-break {
