@@ -1,5 +1,6 @@
 import { mountDashboardPanel, resetDashboardState } from './dashboard.js';
 import { getPlanKpiTooltip } from '../config/planKpiConfig.js';
+import { APP_VERSION, APP_CHANGELOG_URL } from '../config/appVersion.js';
 import {
   TIP_EDIT_AMOUNT_SHIFT_FILL,
   TIP_EDIT_MAN_MONTH_SHIFT_FILL,
@@ -4885,12 +4886,6 @@ document.addEventListener('keydown', (ev) => {
   }
   if (ev.key === 'Escape') handleEscapeKey();
 });
-
-/** アプリの表示バージョン */
-const APP_VERSION = 'v 1.00';
-
-/** GitHub 上の更新履歴（コミット履歴） */
-const APP_CHANGELOG_URL = 'https://github.com/mga-ueda/MGA-Budget-vs-Actual/commits/main';
 
 const MAIN_MENU_ENTRIES = [
   { kind: 'item', value: 'plan', label: '予実表', shortcutKey: 'P' },
@@ -10921,7 +10916,7 @@ function buildMainMenu() {
       continue;
     }
 
-    // バージョン行（「v 1.00 更新履歴」。更新履歴のみクリック可）
+    // バージョン行（表示バージョン + 更新履歴。更新履歴のみクリック可）
     if (entry.kind === 'version') {
       const versionEl = document.createElement('div');
       versionEl.className = 'plan-main-menu-version';

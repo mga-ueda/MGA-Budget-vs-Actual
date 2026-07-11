@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Screen</title>
+<style>
+html, body { margin: 0; min-height: 100%; background: #111; color: #f0f0f0; font-family: "Hiragino Sans", "Noto Sans JP", Meiryo, sans-serif; }
+body { display: flex; align-items: center; justify-content: center; padding: 24px; box-sizing: border-box; cursor: zoom-out; }
+.panel { max-width: min(96vw, 1400px); text-align: center; cursor: default; }
+img { display: block; max-width: 100%; max-height: calc(92vh - 3.2rem); width: auto; height: auto; margin: 0 auto; border-radius: 8px; box-shadow: 0 12px 40px rgba(0,0,0,.45); }
+.cap { margin: 12px 0 0; font-size: 0.95rem; line-height: 1.5; }
+.hint { margin: 8px 0 0; color: #aaa; font-size: 0.8rem; }
+</style>
+</head>
+<body>
+<div class="panel">
+  <img id="shot" alt="" />
+  <p class="cap" id="cap"></p>
+  <p class="hint">背景をクリック、または Esc で閉じます。</p>
+</div>
+<script>
+const shots = {"budget-table":{"src":"budget-table.png","title":"予実表","cap":"予実表 — 左半分が実績、右半分が予定。水色のセルが計画値"},"dashboard-balance":{"src":"dashboard-balance.png","title":"収支推移","cap":"ダッシュボード（収支推移）— 収益と支出のバランスを月次で比較"},"dashboard-revenue":{"src":"dashboard-revenue.png","title":"収益推移","cap":"ダッシュボード（収益推移）— 入ってくる側の内訳推移"},"dashboard-expense":{"src":"dashboard-expense.png","title":"支出推移","cap":"ダッシュボード（支出推移）— 出ていく側の内訳推移"},"dashboard-all-periods":{"src":"dashboard-all-periods.png","title":"全期表示","cap":"ダッシュボード（全期表示）— 創業期から現在までの長期推移"}};
+(function () {
+  const key = (location.hash || "").replace(/^#/, "");
+  const item = shots[key];
+  if (!item) {
+    document.getElementById("cap").textContent = "Not found";
+    return;
+  }
+  document.title = item.title;
+  const img = document.getElementById("shot");
+  img.src = item.src;
+  img.alt = item.title;
+  document.getElementById("cap").textContent = item.cap;
+  document.body.addEventListener("click", function (ev) {
+    if (ev.target === document.body) history.back();
+  });
+  document.addEventListener("keydown", function (ev) {
+    if (ev.key === "Escape") history.back();
+  });
+})();
+</script>
+</body>
+</html>

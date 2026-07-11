@@ -183,9 +183,77 @@ code {
   font-size: 0.9rem;
   text-align: center;
 }
+.shot-row {
+  display: flex;
+  gap: 8px;
+  margin: 16px 0 4px;
+  align-items: stretch;
+}
+.shot-row button {
+  flex: 1 1 0;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #111;
+  cursor: zoom-in;
+  overflow: hidden;
+  line-height: 0;
+}
+.shot-row button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.shot-row img {
+  display: block;
+  width: 100%;
+  height: auto;
+  vertical-align: top;
+}
+.shot-note {
+  margin: 0 0 4px;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.82);
+  cursor: zoom-out;
+}
+.lightbox.is-open { display: flex; }
+.lightbox-panel {
+  max-width: min(96vw, 1400px);
+  text-align: center;
+  cursor: default;
+}
+.lightbox img {
+  display: block;
+  max-width: 100%;
+  max-height: calc(92vh - 3.2rem);
+  width: auto;
+  height: auto;
+  margin: 0 auto;
+  border-radius: 8px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+}
+.lightbox-cap {
+  margin: 12px 0 0;
+  color: #f0f0f0;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+}
 @media print {
   body { background: #fff; }
   .hero, section { box-shadow: none; }
+  .lightbox { display: none !important; }
 }
 </style>
 </head>
@@ -216,6 +284,24 @@ code {
 
   <section id="appeal">
     <h2>1. このアプリの特色と魅力</h2>
+    <p class="shot-note">画面例（科目名・金額の一部はぼかしています）。クリックで拡大します。</p>
+    <div class="shot-row" role="group" aria-label="画面イメージ">
+      <button type="button" data-lightbox-src="image/budget-table.png" data-lightbox-cap="予実表 — 左半分が実績、右半分が予定。水色のセルが計画値" aria-label="予実表を拡大">
+        <img src="image/budget-table.png" alt="予実表" loading="lazy" />
+      </button>
+      <button type="button" data-lightbox-src="image/dashboard-balance.png" data-lightbox-cap="ダッシュボード（収支推移）— 収益と支出のバランスを月次で比較" aria-label="収支推移を拡大">
+        <img src="image/dashboard-balance.png" alt="収支推移" loading="lazy" />
+      </button>
+      <button type="button" data-lightbox-src="image/dashboard-revenue.png" data-lightbox-cap="ダッシュボード（収益推移）— 入ってくる側の内訳推移" aria-label="収益推移を拡大">
+        <img src="image/dashboard-revenue.png" alt="収益推移" loading="lazy" />
+      </button>
+      <button type="button" data-lightbox-src="image/dashboard-expense.png" data-lightbox-cap="ダッシュボード（支出推移）— 出ていく側の内訳推移" aria-label="支出推移を拡大">
+        <img src="image/dashboard-expense.png" alt="支出推移" loading="lazy" />
+      </button>
+      <button type="button" data-lightbox-src="image/dashboard-all-periods.png" data-lightbox-cap="ダッシュボード（全期表示）— 創業期から現在までの長期推移" aria-label="全期表示を拡大">
+        <img src="image/dashboard-all-periods.png" alt="全期表示" loading="lazy" />
+      </button>
+    </div>
     <p>従来の仕訳帳や総勘定元帳は、あくまで「過去に何が起きたか」を正確に残す道具です。経営判断に本当に必要なのは、そこから一歩進んだ問い——来月・来期に資金と利益はどう推移しそうか——です。本アプリは、マネーフォワード クラウド会計の CSV を取り込み、月別の収支計画表（予実表）として「実績」と「計画」を同じ表で扱えるようにします。</p>
     <p>市販の経営管理・予実管理パッケージは強力ですが、ライセンス費用や導入・保守の負担が大きく、中小企業や一人経理・少人数の会社では「欲しいが手が届かない」ことが少なくありません。MGA Budget vs Actual は、ブラウザで開くだけで使える無料の予実計画ツールとして、そのギャップを埋めます。サーバー構築も不要です。</p>
     <p>さらに魅力なのはカスタムの柔軟さです。仕訳の振り分け定義、税率、受注・人件費・外注・納税の計画、行の表示や色、CSV ファイル名のパターンまで、自社の会計運用に合わせて調整できます。設定はブラウザに保存され、エクスポート／インポートで別端末にも移せます。</p>
@@ -226,6 +312,7 @@ code {
       <li><strong>無料で、自由に改変できる</strong> … MIT License。高価な予実パッケージなしに始められ、自社向けにソースを直して育てることもできます。</li>
       <li><strong>自社向けに育てられる</strong> … 科目定義・税率・表示・色を柔軟にカスタムできます。</li>
       <li><strong>ドリルダウンで納得できる</strong> … 実績セルから仕訳明細へ辿れ、数字の根拠を確認できます。</li>
+      <li><strong>創業から現在までの利益率・預金残高をグラフで見られる</strong> … ダッシュボードは今期だけでなく、「全期表示」や期範囲の指定で長期の流れを描けます。単年の凸凹に振り回されず、収益力が定着しているか・資金余力は厚くなっているかを俯瞰でき、先の計画を置くときの根拠にもなります。</li>
     </ul>
   </section>
 
@@ -323,7 +410,7 @@ code {
         <tr><td>設定</td><td>受注 / 税率定義 / 来期納税見込 / 仕訳定義 / 支払い / 人件費 / 外注費 / 表示 / 色 / その他</td><td>計画入力と見た目・定義</td></tr>
         <tr><td>操作</td><td>エクスポート / インポート / 再読み込み / フォルダ変更</td><td>設定保全と CSV 更新（フォルダ変更は参照先を変えるときのみ）</td></tr>
         <tr><td>ヘルプ</td><td>取扱説明書</td><td>この文書を新規ウィンドウで開く</td></tr>
-        <tr><td>バージョン</td><td>v 1.00 更新履歴</td><td>バージョン表示。「更新履歴」で GitHub のコミット履歴を開く</td></tr>
+        <tr><td>バージョン</td><td><!--APP_VERSION-->v 1.00<!--/APP_VERSION--> 更新履歴</td><td>バージョン表示。「更新履歴」で GitHub のコミット履歴を開く</td></tr>
       </tbody>
     </table>
   </section>
@@ -411,7 +498,7 @@ code {
 
   <section id="dashboard">
     <h2>8. ダッシュボードの操作</h2>
-    <p>数字の表だけでなく、推移を視覚で掴みたいときに使います。</p>
+    <p>数字の表だけでなく、推移を視覚で掴みたいときに使います。今期などの短期だけでなく、<strong>創業から現在までの長期</strong>も同じ画面で見られます。</p>
     <ol class="steps">
       <li>ヘッダーの <strong>ダッシュボードを表示</strong>、またはメニューの「ダッシュボード」を選びます。</li>
       <li>チャートモードを切り替えます。
@@ -421,9 +508,10 @@ code {
           <li><strong>支出推移</strong> … 出ていく側</li>
         </ul>
       </li>
+      <li>下段には <strong>利益率推移</strong> と <strong>預金残高推移</strong> も表示されます。短期の凸凹だけでなく、創業以降の収益力や資金余力の傾向を一目で確かめられます。</li>
       <li>サイドバーで表示する項目をチェック／解除します。Ctrl+クリックでその項目だけに絞れます。</li>
       <li>内訳を「勘定科目」または「補助科目」に切り替え、並びを「金額順」「名前順」から選びます。</li>
-      <li>開始期〜終了期を指定するか「全期表示」で、長期の流れを見ます。</li>
+      <li>開始期〜終了期を指定するか <strong>全期表示</strong> で、創業期から現在までの流れを一気に見ます。単年の良し悪しに振り回されず、構造的な改善・悪化や季節性の繰り返しを把握しやすくなり、先の計画を置く根拠にもなります。</li>
       <li>チャート上で右クリックすると、単体表示・非表示・全てを表示などの操作ができます。</li>
       <li>終わったら「予実表を表示」で表に戻ります。</li>
     </ol>
@@ -604,6 +692,61 @@ code {
     if (typeof media.addEventListener === 'function') media.addEventListener('change', onChange);
     else if (typeof media.addListener === 'function') media.addListener(onChange);
   } catch (e) { /* ignore */ }
+})();
+</script>
+<div class="lightbox" id="shot-lightbox" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-label="画面イメージの拡大表示">
+  <div class="lightbox-panel">
+    <img alt="" />
+    <p class="lightbox-cap"></p>
+  </div>
+</div>
+<script>
+(function () {
+  var box = document.getElementById('shot-lightbox');
+  if (!box) return;
+  var img = box.querySelector('img');
+  var cap = box.querySelector('.lightbox-cap');
+  var lastFocus = null;
+
+  function openLightbox(src, alt, caption) {
+    lastFocus = document.activeElement;
+    img.src = src;
+    img.alt = alt || '';
+    cap.textContent = caption || '';
+    box.hidden = false;
+    box.setAttribute('aria-hidden', 'false');
+    box.classList.add('is-open');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeLightbox() {
+    box.classList.remove('is-open');
+    box.hidden = true;
+    box.setAttribute('aria-hidden', 'true');
+    img.removeAttribute('src');
+    img.alt = '';
+    cap.textContent = '';
+    document.body.style.overflow = '';
+    if (lastFocus && typeof lastFocus.focus === 'function') lastFocus.focus();
+  }
+
+  document.querySelectorAll('[data-lightbox-src]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var thumb = btn.querySelector('img');
+      openLightbox(
+        btn.getAttribute('data-lightbox-src'),
+        thumb ? thumb.alt : '',
+        btn.getAttribute('data-lightbox-cap') || ''
+      );
+    });
+  });
+
+  box.addEventListener('click', function (ev) {
+    if (ev.target === box) closeLightbox();
+  });
+  document.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Escape' && box.classList.contains('is-open')) closeLightbox();
+  });
 })();
 </script>
 </body>

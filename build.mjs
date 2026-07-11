@@ -2,6 +2,7 @@ import { readFile, writeFile } from 'fs/promises';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { execSync } from 'child_process';
+import { APP_VERSION } from './src/config/appVersion.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const srcDir = resolve(__dirname, 'src');
@@ -37,6 +38,7 @@ const FILES = [
   'config/revenuePlanConfig.js',
   'config/planKpiConfig.js',
   'config/uiTooltipConfig.js',
+  'config/appVersion.js',
   'enrich/enrichUtils.js',
   'enrich/planEmployeeSalaryRows.js',
   'enrich/planTaxPaymentRows.js',
@@ -68,6 +70,9 @@ const FILES = [
   'ui/plan.js',
 ];
 
+const VERSION_MARKER_RE = /<!--APP_VERSION-->[\s\S]*?<!--\/APP_VERSION-->/g;
+const VERSION_DOC_FILES = ['README.md', 'manual.html'];
+
 function stripModuleSyntax(code) {
   return code
     .replace(/^import\s[\s\S]*?from\s+['"][^'"]+['"];?\s*$/gm, '')
@@ -77,6 +82,26 @@ function stripModuleSyntax(code) {
     .replace(/^export\s+(const|let|var)\s+/gm, '$1 ')
     .trim();
 }
+
+/** README / 取扱説明書 の <!--APP_VERSION--> マーカーへ表示バージョンを同期する */
+async function syncAppVersionDocs(version) {
+  const replacement = `<!--APP_VERSION-->${version}<!--/APP_VERSION-->`;
+  for (const rel of VERSION_DOC_FILES) {
+    const path = resolve(__dirname, rel);
+    const before = await readFile(path, 'utf8');
+    if (!VERSION_MARKER_RE.test(before)) {
+      throw new Error(`${rel} に <!--APP_VERSION--> マーカーがありません`);
+    }
+    VERSION_MARKER_RE.lastIndex = 0;
+    const after = before.replace(VERSION_MARKER_RE, replacement);
+    if (after !== before) {
+      await writeFile(path, after, 'utf8');
+      console.log(`Synced APP_VERSION (${version}) -> ${rel}`);
+    }
+  }
+}
+
+await syncAppVersionDocs(APP_VERSION);
 
 const parts = [];
 for (const file of FILES) {

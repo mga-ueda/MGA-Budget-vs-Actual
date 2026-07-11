@@ -6792,6 +6792,13 @@ const TIP_COLOR_RESET_SECTION = '大項目色をすべて初期値に戻す';
 const TIP_TAX_RATE_RESET = '税率定義を初期値に戻す';
 const TIP_TAX_RATE_ADD_ROW = '税率定義の行を追加';
 
+/* config/appVersion.js */
+/** アプリの表示バージョン（このファイルだけ更新する） */
+const APP_VERSION = 'v 1.00';
+
+/** GitHub 上の更新履歴（コミット履歴） */
+const APP_CHANGELOG_URL = 'https://github.com/mga-ueda/MGA-Budget-vs-Actual/commits/main';
+
 /* enrich/enrichUtils.js */
 function emptyRawMonthValues(fiscalMonths = FISCAL_MONTHS) {
   const values = {};
@@ -25411,12 +25418,6 @@ document.addEventListener('keydown', (ev) => {
   if (ev.key === 'Escape') handleEscapeKey();
 });
 
-/** アプリの表示バージョン */
-const APP_VERSION = 'v 1.00';
-
-/** GitHub 上の更新履歴（コミット履歴） */
-const APP_CHANGELOG_URL = 'https://github.com/mga-ueda/MGA-Budget-vs-Actual/commits/main';
-
 const MAIN_MENU_ENTRIES = [
   { kind: 'item', value: 'plan', label: '予実表', shortcutKey: 'P' },
   { kind: 'item', value: 'dashboard', label: 'ダッシュボード', shortcutKey: 'D' },
@@ -31446,7 +31447,7 @@ function buildMainMenu() {
       continue;
     }
 
-    // バージョン行（「v 1.00 更新履歴」。更新履歴のみクリック可）
+    // バージョン行（表示バージョン + 更新履歴。更新履歴のみクリック可）
     if (entry.kind === 'version') {
       const versionEl = document.createElement('div');
       versionEl.className = 'plan-main-menu-version';

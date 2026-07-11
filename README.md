@@ -6,11 +6,22 @@
 
 ## 特色と魅力
 
+画面例（科目名・金額の一部はぼかしています）。クリックで拡大します。
+
+<p>
+<a href="https://mga-ueda.github.io/MGA-Budget-vs-Actual/image/view.html#budget-table"><img src="image/budget-table.png" alt="予実表" width="19%" /></a>
+<a href="https://mga-ueda.github.io/MGA-Budget-vs-Actual/image/view.html#dashboard-balance"><img src="image/dashboard-balance.png" alt="収支推移" width="19%" /></a>
+<a href="https://mga-ueda.github.io/MGA-Budget-vs-Actual/image/view.html#dashboard-revenue"><img src="image/dashboard-revenue.png" alt="収益推移" width="19%" /></a>
+<a href="https://mga-ueda.github.io/MGA-Budget-vs-Actual/image/view.html#dashboard-expense"><img src="image/dashboard-expense.png" alt="支出推移" width="19%" /></a>
+<a href="https://mga-ueda.github.io/MGA-Budget-vs-Actual/image/view.html#dashboard-all-periods"><img src="image/dashboard-all-periods.png" alt="全期表示" width="19%" /></a>
+</p>
+
 - **予実を一枚の表で** … 今期は実績と計画を混在表示。月ヘッダーで境界を切り替え、来期は計画、過去期は実績として確認できます
 - **未来の計画を先に置ける** … 受注・人件費・外注・納税などをメニューから入力し、予実表へ反映。高価な予実パッケージなしに見通しを持てます
 - **来期の税金・予定納税をシミュレート** … 来期納税見込で、確定申告後に払う税金や予定納税のスケジュールを試算できます
 - **数字の根拠まで辿れる** … 実績セルをダブルクリックすると仕訳明細へドリルダウン
 - **推移を視覚で掴む** … ダッシュボードで収支・収益・支出のチャート、期範囲や勘定／補助科目の切り替え
+- **創業から現在までの長期推移も見られる** … 今期だけでなく「全期表示」で、利益率や預金残高の推移を創業期から一気にグラフ化。単年の良し悪しに振り回されず、収益力の定着や資金余力の厚みを俯瞰でき、計画の根拠にもなります
 - **自社の科目運用に合わせて育てる** … 仕訳定義・税率・表示・色・CSV 名パターンを柔軟にカスタム。設定はエクスポート／インポート可能
 - **KPI をヘッダーで常時確認** … 総利益率や労働分配率など、健全性の目安をすぐ確認
 
@@ -60,7 +71,7 @@
 
 ## バージョン
 
-現在のバージョンは **v 1.00** です。更新履歴は README には載せず、[GitHub のコミット履歴](https://github.com/mga-ueda/MGA-Budget-vs-Actual/commits/main) で確認できます。アプリのメニュー「バージョン」内の「更新履歴」からも同じページを開けます。
+現在のバージョンは **<!--APP_VERSION-->v 1.00<!--/APP_VERSION-->** です。更新履歴は README には載せず、[GitHub のコミット履歴](https://github.com/mga-ueda/MGA-Budget-vs-Actual/commits/main) で確認できます。アプリのメニュー「バージョン」内の「更新履歴」からも同じページを開けます。
 
 ## CSV の更新
 
@@ -82,6 +93,8 @@
 | `enrich/` | 予実表データへの計画行付加 |
 
 `plan.css` とビルド成果物 `plan.bundle.js` は `src/` 直下です。ソースを変更した場合はバンドルを再生成してください。
+
+表示バージョンは `src/config/appVersion.js` の `APP_VERSION` だけを更新し、`node build.mjs` を実行してください。メニュー・README・取扱説明書へ自動反映されます。
 
 ```powershell
 node build.mjs
