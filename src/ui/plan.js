@@ -1,6 +1,28 @@
 import { mountDashboardPanel, resetDashboardState } from './dashboard.js';
 import { getPlanKpiTooltip } from '../config/planKpiConfig.js';
 import {
+  TIP_EDIT_AMOUNT_SHIFT_FILL,
+  TIP_EDIT_MAN_MONTH_SHIFT_FILL,
+  TIP_EDIT_ONLY,
+  TIP_DRILLDOWN_JOURNAL,
+  TIP_SALARY_EXCLUDE,
+  TIP_FILTER_ALL,
+  TIP_FILTER_SECTION,
+  TIP_ROW_TOGGLE,
+  TIP_DASHBOARD_SHOW,
+  TIP_PLAN_SHOW,
+  TIP_MAIN_MENU,
+  TIP_ROW_PADDING_INC,
+  TIP_ROW_PADDING_DEC,
+  TIP_CLOSE,
+  TIP_VISIBILITY_SHOW_ALL,
+  TIP_VISIBILITY_RESET,
+  TIP_COLOR_RESET_UI,
+  TIP_COLOR_RESET_SECTION,
+  TIP_TAX_RATE_RESET,
+  TIP_TAX_RATE_ADD_ROW,
+} from '../config/uiTooltipConfig.js';
+import {
   getAggregateFormulaLabel,
   getAggregateFormulaDetail,
   isAggregateRow,
@@ -1827,11 +1849,17 @@ function appendAggregateLabelContent(parent, label, formulaLabel = null) {
 }
 
 function applyAggregateCellTooltip(td, row, section, columnKey, drilldownHint = '') {
-  if (!isAggregateRow(row)) return;
-  const detail = getAggregateFormulaDetail(row, section, data, columnKey);
-  if (!detail) return;
-  td.classList.add('aggregate-formula-cell');
-  td.title = drilldownHint ? `${detail}\n${drilldownHint}` : detail;
+  if (isAggregateRow(row)) {
+    const detail = getAggregateFormulaDetail(row, section, data, columnKey);
+    if (detail) {
+      td.classList.add('aggregate-formula-cell');
+      td.title = drilldownHint ? `${detail}\n${drilldownHint}` : detail;
+      return;
+    }
+  }
+  if (drilldownHint) {
+    td.title = drilldownHint;
+  }
 }
 
 function appendSectionCategoryLabel(categoryTd, section) {
@@ -3144,7 +3172,7 @@ function updatePlanTableRevenueAmountRowCells(tr, section, row, amountCtx) {
       continue;
     }
     td.innerHTML = formatAmount(val, amountType);
-    const drilldownHint = hasDrilldown ? 'ダブルクリックで仕訳を表示' : '';
+    const drilldownHint = hasDrilldown ? TIP_DRILLDOWN_JOURNAL : '';
     applyAggregateCellTooltip(td, row, section, m, drilldownHint);
   }
 
@@ -3183,7 +3211,7 @@ function updatePlanTableProfitRowCells(tr, section, row, amountCtx) {
         row,
         section,
         m,
-        td.classList.contains('col-amount-drilldown') ? 'ダブルクリックで仕訳を表示' : '',
+        td.classList.contains('col-amount-drilldown') ? TIP_DRILLDOWN_JOURNAL : '',
       );
     }
   }
@@ -4308,9 +4336,9 @@ function ensurePlanRowPaddingScaleControl() {
   planRowPaddingScaleEl.setAttribute('role', 'group');
   planRowPaddingScaleEl.setAttribute('aria-label', '行の余白');
   planRowPaddingScaleEl.innerHTML = `
-    <button type="button" class="plan-row-padding-scale-btn" data-action="inc" aria-label="余白を広く">${PLAN_ROW_PADDING_BTN_ICON.up}</button>
+    <button type="button" class="plan-row-padding-scale-btn" data-action="inc" aria-label="余白を広く" title="${TIP_ROW_PADDING_INC}">${PLAN_ROW_PADDING_BTN_ICON.up}</button>
     <span class="plan-row-padding-scale-value" aria-live="polite"></span>
-    <button type="button" class="plan-row-padding-scale-btn" data-action="dec" aria-label="余白を狭く">${PLAN_ROW_PADDING_BTN_ICON.down}</button>
+    <button type="button" class="plan-row-padding-scale-btn" data-action="dec" aria-label="余白を狭く" title="${TIP_ROW_PADDING_DEC}">${PLAN_ROW_PADDING_BTN_ICON.down}</button>
   `;
   planRowPaddingScaleEl.addEventListener('click', (e) => {
     const btn = e.target.closest('[data-action]');
@@ -4656,7 +4684,7 @@ function showJournalPopup(section, row, month) {
     <div class="plan-journal-modal" role="dialog" aria-modal="true" aria-labelledby="plan-journal-title">
       <header class="plan-journal-header">
         <h2 class="plan-journal-title" id="plan-journal-title"></h2>
-        <button type="button" class="plan-journal-close" aria-label="閉じる">×</button>
+        <button type="button" class="plan-journal-close" aria-label="閉じる" title="${TIP_CLOSE}">×</button>
       </header>
       <div class="plan-journal-body"></div>
     </div>
@@ -4900,7 +4928,7 @@ function renderMainTabs() {
   const dashboardBtn = document.getElementById('plan-dashboard-btn');
   if (dashboardBtn) {
     dashboardBtn.textContent = showPlanReturn ? '予実表を表示' : 'ダッシュボードを表示';
-    dashboardBtn.title = showPlanReturn ? '予実表を表示' : 'ダッシュボードを表示';
+    dashboardBtn.title = showPlanReturn ? TIP_PLAN_SHOW : TIP_DASHBOARD_SHOW;
     dashboardBtn.classList.toggle('is-active', onDashboard);
     dashboardBtn.classList.toggle('is-settings-return', inSettings);
   }
@@ -4909,7 +4937,7 @@ function renderMainTabs() {
   if (menuTrigger) {
     menuTrigger.classList.remove('is-settings-active');
     menuTrigger.innerHTML = 'メニュー <kbd>F10</kbd>';
-    menuTrigger.removeAttribute('title');
+    menuTrigger.title = TIP_MAIN_MENU;
   }
   if (planRowPaddingScaleEl) refreshPlanRowPaddingScaleControl();
   syncMainMenuChecks();
@@ -4961,8 +4989,10 @@ function renderToolbar() {
   syncSectionFilterConfigToData();
   const buttons = [{ id: 'all', label: '通常表示' }, ...getPlanSectionFilterButtons()];
   toolbar.innerHTML = buttons.map(
-    (f) =>
-      `<button type="button" class="plan-filter-btn${f.id === 'all' ? ' plan-filter-btn-all' : ''}" data-filter="${f.id}" aria-pressed="false">${f.label}</button>`,
+    (f) => {
+      const tip = f.id === 'all' ? TIP_FILTER_ALL : TIP_FILTER_SECTION;
+      return `<button type="button" class="plan-filter-btn${f.id === 'all' ? ' plan-filter-btn-all' : ''}" data-filter="${f.id}" aria-pressed="false" title="${tip}">${f.label}</button>`;
+    },
   ).join('');
 
   toolbar.querySelectorAll('.plan-filter-btn').forEach((btn) => {
@@ -5170,7 +5200,7 @@ function updateGroupRowAmountDisplay(tr, section, row, amountCtx) {
     } else {
       td.innerHTML = formatAmount(val, 'item');
       const drilldownHint = td.classList.contains('col-amount-drilldown')
-        ? 'ダブルクリックで仕訳を表示'
+        ? TIP_DRILLDOWN_JOURNAL
         : '';
       applyAggregateCellTooltip(td, row, section, m, drilldownHint);
     }
@@ -5294,7 +5324,7 @@ function updatePlanTableRowMonthCells(tr, section, row, {
         td.classList.toggle('plan-man-month-editable', editable);
         td.classList.toggle('salary-plan-cell-editable', editable);
         td.title = editable
-          ? 'ダブルクリックで編集（Shift+Enter で後続月へ同値を反映　0 も可）'
+          ? TIP_EDIT_MAN_MONTH_SHIFT_FILL
           : '';
         td.ondblclick = editable
           ? () => startRevenueManMonthCellEdit(td, {
@@ -5340,7 +5370,7 @@ function updatePlanTableRowMonthCells(tr, section, row, {
 
       if (editable) {
         tagPlanEditableCell(td, { rowKey: outsourcingVendorId, month: m });
-        td.title = 'ダブルクリックで編集（Shift+Enter で後続月へ同額反映）';
+        td.title = TIP_EDIT_AMOUNT_SHIFT_FILL;
         td.ondblclick = () => startOutsourcingPlanCellEdit(td, {
           vendorId: outsourcingVendorId,
           month: m,
@@ -5350,7 +5380,7 @@ function updatePlanTableRowMonthCells(tr, section, row, {
       } else if (hasDrilldown) {
         td.removeAttribute('title');
         td.ondblclick = () => showJournalPopup(section, row, m);
-        applyAggregateCellTooltip(td, row, section, m, 'ダブルクリックで仕訳を表示');
+        applyAggregateCellTooltip(td, row, section, m, TIP_DRILLDOWN_JOURNAL);
       } else {
         td.removeAttribute('title');
         td.ondblclick = null;
@@ -5385,7 +5415,7 @@ function updatePlanTableRowMonthCells(tr, section, row, {
 
       if (editable) {
         tagPlanEditableCell(td, { rowKey: 'overtime', month: m });
-        td.title = 'ダブルクリックで編集（Shift+Enter で後続月へ同額反映）';
+        td.title = TIP_EDIT_AMOUNT_SHIFT_FILL;
         td.ondblclick = () => startOvertimePlanTableCellEdit(td, {
           month: m,
           displayMode,
@@ -5394,7 +5424,7 @@ function updatePlanTableRowMonthCells(tr, section, row, {
       } else if (hasDrilldown) {
         td.removeAttribute('title');
         td.ondblclick = () => showJournalPopup(section, row, m);
-        applyAggregateCellTooltip(td, row, section, m, 'ダブルクリックで仕訳を表示');
+        applyAggregateCellTooltip(td, row, section, m, TIP_DRILLDOWN_JOURNAL);
       } else {
         td.removeAttribute('title');
         td.ondblclick = null;
@@ -5430,7 +5460,7 @@ function updatePlanTableRowMonthCells(tr, section, row, {
 
       if (editable) {
         tagPlanEditableCell(td, { rowKey: employeePlanId, month: m });
-        td.title = 'ダブルクリックで編集（Shift+Enter で後続月へ同額反映）';
+        td.title = TIP_EDIT_AMOUNT_SHIFT_FILL;
         td.ondblclick = () => startEmployeeSalaryPlanCellEdit(td, {
           employeeId: employeePlanId,
           month: m,
@@ -5440,7 +5470,7 @@ function updatePlanTableRowMonthCells(tr, section, row, {
       } else if (hasDrilldown) {
         td.removeAttribute('title');
         td.ondblclick = () => showJournalPopup(section, row, m);
-        applyAggregateCellTooltip(td, row, section, m, 'ダブルクリックで仕訳を表示');
+        applyAggregateCellTooltip(td, row, section, m, TIP_DRILLDOWN_JOURNAL);
       } else {
         td.removeAttribute('title');
         td.ondblclick = null;
@@ -5479,7 +5509,7 @@ function updatePlanTableRowMonthCells(tr, section, row, {
           ? taxPaymentEditTarget.account
           : taxPaymentEditTarget.entryId;
         tagPlanEditableCell(td, { rowKey, month: m });
-        td.title = 'ダブルクリックで編集（Shift+Enter で後続月へ同額反映）';
+        td.title = TIP_EDIT_AMOUNT_SHIFT_FILL;
         td.ondblclick = () => startTaxPaymentPlanTableCellEdit(td, {
           target: taxPaymentEditTarget,
           month: m,
@@ -5489,7 +5519,7 @@ function updatePlanTableRowMonthCells(tr, section, row, {
       } else if (hasDrilldown) {
         td.removeAttribute('title');
         td.ondblclick = () => showJournalPopup(section, row, m);
-        applyAggregateCellTooltip(td, row, section, m, 'ダブルクリックで仕訳を表示');
+        applyAggregateCellTooltip(td, row, section, m, TIP_DRILLDOWN_JOURNAL);
       } else {
         td.removeAttribute('title');
         td.ondblclick = null;
@@ -5514,7 +5544,7 @@ function updatePlanTableRowMonthCells(tr, section, row, {
       td.removeAttribute('title');
     } else {
       td.innerHTML = formatAmount(val, amountType);
-      const drilldownHint = hasDrilldown ? 'ダブルクリックで仕訳を表示' : '';
+      const drilldownHint = hasDrilldown ? TIP_DRILLDOWN_JOURNAL : '';
       applyAggregateCellTooltip(td, row, section, m, drilldownHint);
     }
   }
@@ -5766,6 +5796,7 @@ function renderTable({ measureColumnWidths = false } = {}) {
         btn.type = 'button';
         btn.className = 'row-toggle';
         btn.setAttribute('aria-expanded', String(expanded));
+        btn.title = TIP_ROW_TOGGLE;
         const icon = document.createElement('span');
         icon.className = 'toggle-icon';
         icon.setAttribute('aria-hidden', 'true');
@@ -5839,7 +5870,7 @@ function renderTable({ measureColumnWidths = false } = {}) {
             if (isRevenueManMonthMonthEditable(m, displayMode, pastMonthSet)) {
               td.classList.add('plan-man-month-editable', 'salary-plan-cell-editable');
               tagPlanEditableCell(td, { rowKey: row.revenueClientId, month: m });
-              td.title = 'ダブルクリックで編集（Shift+Enter で後続月へ同値を反映　0 も可）';
+              td.title = TIP_EDIT_MAN_MONTH_SHIFT_FILL;
               td.addEventListener('dblclick', () => {
                 startRevenueManMonthCellEdit(td, {
                   clientId: row.revenueClientId,
@@ -5870,7 +5901,7 @@ function renderTable({ measureColumnWidths = false } = {}) {
             if (editable) {
               td.classList.add('salary-plan-cell-editable');
               tagPlanEditableCell(td, { rowKey: outsourcingVendorId, month: m });
-              td.title = 'ダブルクリックで編集（Shift+Enter で後続月へ同額反映）';
+              td.title = TIP_EDIT_AMOUNT_SHIFT_FILL;
               td.addEventListener('dblclick', () => {
                 startOutsourcingPlanCellEdit(td, {
                   vendorId: outsourcingVendorId,
@@ -5884,7 +5915,7 @@ function renderTable({ measureColumnWidths = false } = {}) {
               td.addEventListener('dblclick', () => {
                 showJournalPopup(section, row, m);
               });
-              applyAggregateCellTooltip(td, row, section, m, 'ダブルクリックで仕訳を表示');
+              applyAggregateCellTooltip(td, row, section, m, TIP_DRILLDOWN_JOURNAL);
             } else {
               applyAggregateCellTooltip(td, row, section, m, '');
             }
@@ -5908,7 +5939,7 @@ function renderTable({ measureColumnWidths = false } = {}) {
             if (editable) {
               td.classList.add('salary-plan-cell-editable');
               tagPlanEditableCell(td, { rowKey: 'overtime', month: m });
-              td.title = 'ダブルクリックで編集（Shift+Enter で後続月へ同額反映）';
+              td.title = TIP_EDIT_AMOUNT_SHIFT_FILL;
               td.addEventListener('dblclick', () => {
                 startOvertimePlanTableCellEdit(td, {
                   month: m,
@@ -5921,7 +5952,7 @@ function renderTable({ measureColumnWidths = false } = {}) {
               td.addEventListener('dblclick', () => {
                 showJournalPopup(section, row, m);
               });
-              applyAggregateCellTooltip(td, row, section, m, 'ダブルクリックで仕訳を表示');
+              applyAggregateCellTooltip(td, row, section, m, TIP_DRILLDOWN_JOURNAL);
             } else {
               applyAggregateCellTooltip(td, row, section, m, '');
             }
@@ -5946,7 +5977,7 @@ function renderTable({ measureColumnWidths = false } = {}) {
             if (editable) {
               td.classList.add('salary-plan-cell-editable');
               tagPlanEditableCell(td, { rowKey: employeePlanId, month: m });
-              td.title = 'ダブルクリックで編集（Shift+Enter で後続月へ同額反映）';
+              td.title = TIP_EDIT_AMOUNT_SHIFT_FILL;
               td.addEventListener('dblclick', () => {
                 startEmployeeSalaryPlanCellEdit(td, {
                   employeeId: employeePlanId,
@@ -5960,7 +5991,7 @@ function renderTable({ measureColumnWidths = false } = {}) {
               td.addEventListener('dblclick', () => {
                 showJournalPopup(section, row, m);
               });
-              applyAggregateCellTooltip(td, row, section, m, 'ダブルクリックで仕訳を表示');
+              applyAggregateCellTooltip(td, row, section, m, TIP_DRILLDOWN_JOURNAL);
             } else {
               applyAggregateCellTooltip(td, row, section, m, '');
             }
@@ -5988,7 +6019,7 @@ function renderTable({ measureColumnWidths = false } = {}) {
                 : taxPaymentEditTarget.entryId;
               td.classList.add('salary-plan-cell-editable');
               tagPlanEditableCell(td, { rowKey, month: m });
-              td.title = 'ダブルクリックで編集（Shift+Enter で後続月へ同額反映）';
+              td.title = TIP_EDIT_AMOUNT_SHIFT_FILL;
               td.addEventListener('dblclick', () => {
                 startTaxPaymentPlanTableCellEdit(td, {
                   target: taxPaymentEditTarget,
@@ -6002,7 +6033,7 @@ function renderTable({ measureColumnWidths = false } = {}) {
               td.addEventListener('dblclick', () => {
                 showJournalPopup(section, row, m);
               });
-              applyAggregateCellTooltip(td, row, section, m, 'ダブルクリックで仕訳を表示');
+              applyAggregateCellTooltip(td, row, section, m, TIP_DRILLDOWN_JOURNAL);
             } else {
               applyAggregateCellTooltip(td, row, section, m, '');
             }
@@ -6030,7 +6061,7 @@ function renderTable({ measureColumnWidths = false } = {}) {
             row,
             section,
             m,
-            hasDrilldown ? 'ダブルクリックで仕訳を表示' : '',
+            hasDrilldown ? TIP_DRILLDOWN_JOURNAL : '',
           );
         }
         tr.appendChild(td);
@@ -6149,8 +6180,8 @@ function renderVisibilitySettings() {
   header.innerHTML = `
     <p class="expand-settings-desc">予実表に表示する行と見え方を設定します。オフにした行は予実表に表示されません（補助科目行は親行をオフにすると非表示になります）。<strong>折りたたむ</strong>（オン）の場合はグループ行で畳み、クリックで補助科目を表示します（デフォルトはオフ＝常時表示）。<strong>展開時に合計非表示</strong>（オン）の場合、展開中はグループ行の合計金額を非表示にします。<strong>大きく表示</strong>は通常サイズのフォント・行高で表示します（デフォルトは小さめ）。<strong>塗り色１</strong>は注目したい行、<strong>塗り色２</strong>は注意したい行に着色します（色は色設定で変更可能）。<strong>諸経費</strong>の勘定科目行では<strong>並び順</strong>（数値が小さいほど上）を指定できます。設定はブラウザに保存されます。</p>
     <div class="expand-settings-header-actions">
-      <button type="button" class="expand-reset-btn" id="visibility-show-all-btn">すべて表示</button>
-      <button type="button" class="expand-reset-btn" id="visibility-reset-btn">デフォルトに戻す</button>
+      <button type="button" class="expand-reset-btn" id="visibility-show-all-btn" title="${TIP_VISIBILITY_SHOW_ALL}">すべて表示</button>
+      <button type="button" class="expand-reset-btn" id="visibility-reset-btn" title="${TIP_VISIBILITY_RESET}">デフォルトに戻す</button>
     </div>
   `;
   wrap.appendChild(header);
@@ -6675,8 +6706,8 @@ function buildColorSettingsContent() {
   header.className = 'expand-settings-header color-settings-content-header';
   header.innerHTML = `
     <div class="expand-settings-header-actions color-settings-window-reset-actions">
-      <button type="button" class="expand-reset-btn" id="ui-color-reset-btn">全体をデフォルトに戻す</button>
-      <button type="button" class="expand-reset-btn" id="section-color-reset-btn">大項目をすべてデフォルトに戻す</button>
+      <button type="button" class="expand-reset-btn" id="ui-color-reset-btn" title="${TIP_COLOR_RESET_UI}">全体をデフォルトに戻す</button>
+      <button type="button" class="expand-reset-btn" id="section-color-reset-btn" title="${TIP_COLOR_RESET_SECTION}">大項目をすべてデフォルトに戻す</button>
     </div>
   `;
   wrap.appendChild(header);
@@ -6985,7 +7016,7 @@ function renderTaxRateSettings() {
       消費税税率・源泉所得税（個人事業主）・法定福利費予測率を定義します。源泉所得税は支払額に対する段階税率で、各行はその年月以降に有効です。
     </p>
     <div class="expand-settings-header-actions">
-      <button type="button" class="expand-reset-btn" id="tax-rate-reset-btn">デフォルトに戻す</button>
+      <button type="button" class="expand-reset-btn" id="tax-rate-reset-btn" title="${TIP_TAX_RATE_RESET}">デフォルトに戻す</button>
     </div>
   `;
   wrap.appendChild(header);
@@ -7010,7 +7041,7 @@ function renderTaxRateSettings() {
           </thead>
           <tbody id="consumption-tax-rate-tbody"></tbody>
         </table>
-        <button type="button" class="expand-reset-btn tax-rate-add-btn" id="consumption-tax-rate-add">行を追加</button>
+        <button type="button" class="expand-reset-btn tax-rate-add-btn" id="consumption-tax-rate-add" title="${TIP_TAX_RATE_ADD_ROW}">行を追加</button>
       </div>
       <div class="app-settings-section tax-rate-section tax-rate-section--withholding">
         <div class="tax-rate-section-head">
@@ -7030,7 +7061,7 @@ function renderTaxRateSettings() {
           </thead>
           <tbody id="withholding-tax-rate-tbody"></tbody>
         </table>
-        <button type="button" class="expand-reset-btn tax-rate-add-btn" id="withholding-tax-rate-add">行を追加</button>
+        <button type="button" class="expand-reset-btn tax-rate-add-btn" id="withholding-tax-rate-add" title="${TIP_TAX_RATE_ADD_ROW}">行を追加</button>
       </div>
       <div class="app-settings-section tax-rate-section tax-rate-section--legal-welfare">
         <div class="tax-rate-section-head">
@@ -7299,7 +7330,7 @@ function renderTaxPaymentSettings() {
           prevValue,
           editable: isMonthEditable(fiscalPeriod, month),
           fiscalPeriod,
-          title: 'ダブルクリックで編集（Shift+Enter で後続月へ同額反映）',
+          title: TIP_EDIT_AMOUNT_SHIFT_FILL,
           formatValue: formatSalaryPlanYen,
           rawValue: plan[month],
           parseValue: parseSalaryPlanAmountInput,
@@ -7344,7 +7375,7 @@ function renderTaxPaymentSettings() {
           editable: isResidentTaxMonthEditable(fiscalPeriod, month),
           fiscalPeriod,
           forcePlanMonthColor: true,
-          title: 'ダブルクリックで編集（Shift+Enter で後続月へ同額反映）',
+          title: TIP_EDIT_AMOUNT_SHIFT_FILL,
           formatValue: formatSalaryPlanYen,
           rawValue: entry.monthly[month],
           parseValue: parseSalaryPlanAmountInput,
@@ -7572,7 +7603,7 @@ function renderTaxPaymentSettings() {
       value,
       prevValue,
       editable,
-      title: 'ダブルクリックで編集（Shift+Enter で後続月へ同額反映）',
+      title: TIP_EDIT_AMOUNT_SHIFT_FILL,
       formatValue: formatSalaryPlanYen,
       rawValue: plan[month],
       parseValue: parseSalaryPlanAmountInput,
@@ -7609,7 +7640,7 @@ function renderTaxPaymentSettings() {
       value,
       prevValue,
       editable,
-      title: 'ダブルクリックで編集（Shift+Enter で後続月へ同額反映）',
+      title: TIP_EDIT_AMOUNT_SHIFT_FILL,
       formatValue: formatSalaryPlanYen,
       rawValue: entry.monthly[month],
       parseValue: parseSalaryPlanAmountInput,
@@ -8071,7 +8102,7 @@ function renderEmployeeSettings() {
           const checkbox = document.createElement('input');
           checkbox.type = 'checkbox';
           checkbox.checked = emp.excludedFromSalaryPlan === true;
-          checkbox.title = '給与支払い計画表に表示しない（住民税の支払対象外）';
+          checkbox.title = TIP_SALARY_EXCLUDE;
           checkbox.addEventListener('change', () => {
             employees = saveEmployees(
               employees.map((e) => (
@@ -8277,8 +8308,8 @@ function renderEmployeeSettings() {
       fiscalPeriod,
       forcePlanMonthColor: true,
       title: rowKind === 'monthly'
-        ? 'ダブルクリックで編集（Shift+Enter で後続月へ同額反映）'
-        : 'ダブルクリックで編集',
+        ? TIP_EDIT_AMOUNT_SHIFT_FILL
+        : TIP_EDIT_ONLY,
       formatValue: formatSalaryPlanYen,
       rawValue: value,
       allowShiftFillForward: rowKind === 'monthly',
@@ -8462,7 +8493,7 @@ function renderEmployeeSettings() {
       editable,
       fiscalPeriod,
       forcePlanMonthColor: true,
-      title: 'ダブルクリックで編集（Shift+Enter で後続月へ同額反映）',
+      title: TIP_EDIT_AMOUNT_SHIFT_FILL,
       formatValue: formatSalaryPlanYen,
       rawValue: value,
       allowShiftFillForward: true,
@@ -8950,7 +8981,7 @@ function renderEmployeeSettings() {
         editable: isSalaryPlanMonthEditable(fiscalPeriod, month),
         fiscalPeriod,
         forcePlanMonthColor: true,
-        title: 'ダブルクリックで編集（Shift+Enter で後続月へ同額反映）',
+        title: TIP_EDIT_AMOUNT_SHIFT_FILL,
         formatValue: formatSalaryPlanYen,
         rawValue: overtime[month],
         allowShiftFillForward: true,
@@ -8992,7 +9023,7 @@ function renderEmployeeSettings() {
             editable: isSalaryPlanMonthEditable(fiscalPeriod, month),
             fiscalPeriod,
             forcePlanMonthColor: true,
-            title: 'ダブルクリックで編集（Shift+Enter で後続月へ同額反映）',
+            title: TIP_EDIT_AMOUNT_SHIFT_FILL,
             formatValue: formatSalaryPlanYen,
             rawValue: plan.monthly[month],
             allowShiftFillForward: true,
@@ -9024,7 +9055,7 @@ function renderEmployeeSettings() {
           editable: isEditable,
           fiscalPeriod,
           forcePlanMonthColor: true,
-          title: 'ダブルクリックで編集',
+          title: TIP_EDIT_ONLY,
           formatValue: formatSalaryPlanYen,
           rawValue: plan.bonusMonthly[month],
           allowShiftFillForward: false,
@@ -9534,7 +9565,7 @@ function renderOutsourcingSettings() {
           prevValue,
           editable,
           fiscalPeriod,
-          title: 'ダブルクリックで編集（Shift+Enter で後続月へ同額反映）',
+          title: TIP_EDIT_AMOUNT_SHIFT_FILL,
           formatValue: formatSalaryPlanYen,
           rawValue: vendor.monthly[month],
           parseValue: parseSalaryPlanAmountInput,
@@ -9671,7 +9702,7 @@ function renderOutsourcingSettings() {
       value,
       prevValue,
       editable,
-      title: 'ダブルクリックで編集（Shift+Enter で後続月へ同額反映）',
+      title: TIP_EDIT_AMOUNT_SHIFT_FILL,
       formatValue: formatSalaryPlanYen,
       rawValue: vendor.monthly[month],
       parseValue: parseSalaryPlanAmountInput,

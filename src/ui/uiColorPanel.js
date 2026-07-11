@@ -20,6 +20,7 @@ import {
   getDashboardChartShadowAlpha,
 } from '../config/uiColorConfig.js';
 import { getSectionBarColor } from '../config/sectionColorConfig.js';
+import { TIP_WARNING_BG_REF } from '../config/uiTooltipConfig.js';
 
 function dashTd(className = 'col-color-none') {
   const td = document.createElement('td');
@@ -718,7 +719,7 @@ export function mountUiColorPanel(container, {
   });
   const warningReset = resetBtnTd(keysMatchDefaults(getConfig(), ['warningTextColor']));
   const warningBgTd = dashTd();
-  warningBgTd.title = '背景色は大項目色（売上高差異）を参照';
+  warningBgTd.title = TIP_WARNING_BG_REF;
   addRow('警告文字色', [warningBgTd, warningText.td, warningPreview.td, warningReset.td]);
   bindColorInput(warningText, (value, flush) => {
     const text = opaqueHex(value);

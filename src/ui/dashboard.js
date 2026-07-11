@@ -2,6 +2,23 @@ import { formatYen } from '../parse/parseJournal.js';
 import { FISCAL_MONTHS, SETTLEMENT_MONTH_LABEL, DEFAULT_FISCAL_END_MONTH } from '../config/fiscalCalendar.js';
 import { buildMonthYearMap, formatFiscalPeriodLabel } from '../config/appSettings.js';
 import { getViewportScale } from '../config/viewportScale.js';
+import {
+  TIP_DRILLDOWN_JOURNAL,
+  TIP_DASH_SIDEBAR_ITEM,
+  TIP_DASH_CHECK_ALL,
+  TIP_DASH_UNCHECK_ALL,
+  TIP_DASH_BREAKDOWN_ACCOUNT,
+  TIP_DASH_BREAKDOWN_SUB,
+  TIP_DASH_SORT_AMOUNT,
+  TIP_DASH_SORT_NAME,
+  TIP_DASH_MODE_BALANCE,
+  TIP_DASH_MODE_REVENUE,
+  TIP_DASH_MODE_EXPENSE,
+  TIP_DASH_PERIOD_FROM,
+  TIP_DASH_PERIOD_TO,
+  TIP_DASH_ALL_PERIODS,
+  TIP_DASH_PERIOD_OVERRIDE,
+} from '../config/uiTooltipConfig.js';
 
 const DASHBOARD_KESSAN = SETTLEMENT_MONTH_LABEL;
 const DASHBOARD_GOUKEI = '合計';
@@ -107,22 +124,22 @@ function dashSetFiscalContext(data) {
 const REVENUE_SECTION_IDS = ['revenue', 'nonOperating', 'specialProfit'];
 const EXPENSE_SECTION_IDS = ['personnel', 'expense', 'outsourcing', 'other', 'specialLoss', 'tax', 'nonOperatingExpense'];
 const DASHBOARD_CHART_MODES = [
-  { id: 'balance', label: '収支推移' },
-  { id: 'revenue', label: '収益推移' },
-  { id: 'expense', label: '支出推移' },
+  { id: 'balance', label: '収支推移', title: TIP_DASH_MODE_BALANCE },
+  { id: 'revenue', label: '収益推移', title: TIP_DASH_MODE_REVENUE },
+  { id: 'expense', label: '支出推移', title: TIP_DASH_MODE_EXPENSE },
 ];
 const DASHBOARD_CHECK_STORAGE_KEY = 'mga-dashboard-checks';
 const DASHBOARD_REVENUE_BREAKDOWN_KEY = 'mga-dashboard-revenue-breakdown-mode';
 const DASHBOARD_EXPENSE_BREAKDOWN_KEY = 'mga-dashboard-expense-breakdown-mode';
 const DASHBOARD_BREAKDOWN_MODES = [
-  { id: 'account', label: '勘定科目' },
-  { id: 'sub', label: '補助科目' },
+  { id: 'account', label: '勘定科目', title: TIP_DASH_BREAKDOWN_ACCOUNT },
+  { id: 'sub', label: '補助科目', title: TIP_DASH_BREAKDOWN_SUB },
 ];
 const DASHBOARD_REVENUE_SORT_KEY = 'mga-dashboard-revenue-sort';
 const DASHBOARD_EXPENSE_SORT_KEY = 'mga-dashboard-expense-sort';
 const DASHBOARD_SIDEBAR_SORT_MODES = [
-  { id: 'amount', label: '金額順' },
-  { id: 'name', label: '名前順' },
+  { id: 'amount', label: '金額順', title: TIP_DASH_SORT_AMOUNT },
+  { id: 'name', label: '名前順', title: TIP_DASH_SORT_NAME },
 ];
 const DASHBOARD_DEFAULT_REVENUE_BREAKDOWN_MODE = 'sub';
 const DASHBOARD_DEFAULT_EXPENSE_BREAKDOWN_MODE = 'account';
@@ -2164,8 +2181,8 @@ function dashAppendSidebarRow(list, item, checkedKeys, onToggle, onSolo, {
   row.className = `dashboard-sidebar-row${rowClass ? ` ${rowClass}` : ''}`;
   row.dataset.seriesKey = item.key;
   row.innerHTML = `
-    <input type="checkbox" class="dashboard-sidebar-check" data-key="${item.key}" ${checkedKeys.has(item.key) ? 'checked' : ''} />
-    <span class="dashboard-sidebar-name" title="${dashEscapeHtml(item.name)}">${dashEscapeHtml(item.name)}</span>
+    <input type="checkbox" class="dashboard-sidebar-check" data-key="${item.key}" title="${dashEscapeHtml(TIP_DASH_SIDEBAR_ITEM)}" ${checkedKeys.has(item.key) ? 'checked' : ''} />
+    <span class="dashboard-sidebar-name" title="${dashEscapeHtml(item.name + '\n' + TIP_DASH_SIDEBAR_ITEM)}">${dashEscapeHtml(item.name)}</span>
     <span class="dashboard-sidebar-amount">${dashFormatSidebarYenHtml(item.total)}</span>
     ${showPct
     ? `<span class="dashboard-sidebar-pct-wrap">
@@ -2214,6 +2231,7 @@ function dashAppendSidebarRow(list, item, checkedKeys, onToggle, onSolo, {
   }
   if (dashCanShowJournal(drilldownCtx, item, DASHBOARD_GOUKEI)) {
     amountEl.classList.add('dashboard-has-journal-drilldown');
+    amountEl.title = TIP_DRILLDOWN_JOURNAL;
     amountEl.addEventListener('dblclick', () => {
       dashShowJournal(drilldownCtx, item, DASHBOARD_GOUKEI);
     });
@@ -2250,7 +2268,7 @@ function dashRenderSidebarList(container, items, checkedKeys, totalLabel, header
   const breakdownTabsHtml = showBreakdownToggle
     ? `<div class="dashboard-sidebar-breakdown-tabs" role="tablist">
       ${DASHBOARD_BREAKDOWN_MODES.map(
-    (mode) => `<button type="button" class="dashboard-sidebar-breakdown-btn${breakdownMode === mode.id ? ' is-active' : ''}" data-breakdown-mode="${mode.id}" role="tab">${mode.label}</button>`,
+    (mode) => `<button type="button" class="dashboard-sidebar-breakdown-btn${breakdownMode === mode.id ? ' is-active' : ''}" data-breakdown-mode="${mode.id}" role="tab" title="${mode.title}">${mode.label}</button>`,
   ).join('')}
     </div>`
     : '';
@@ -2258,7 +2276,7 @@ function dashRenderSidebarList(container, items, checkedKeys, totalLabel, header
   const sortTabsHtml = showSortToggle
     ? `<div class="dashboard-sidebar-breakdown-tabs dashboard-sidebar-sort-tabs" role="tablist">
       ${DASHBOARD_SIDEBAR_SORT_MODES.map(
-    (mode) => `<button type="button" class="dashboard-sidebar-breakdown-btn${sortMode === mode.id ? ' is-active' : ''}" data-sort-mode="${mode.id}" role="tab">${mode.label}</button>`,
+    (mode) => `<button type="button" class="dashboard-sidebar-breakdown-btn${sortMode === mode.id ? ' is-active' : ''}" data-sort-mode="${mode.id}" role="tab" title="${mode.title}">${mode.label}</button>`,
   ).join('')}
     </div>`
     : '';
@@ -2269,8 +2287,8 @@ function dashRenderSidebarList(container, items, checkedKeys, totalLabel, header
 
   const allChecked = items.length > 0 && items.every((item) => checkedKeys.has(item.key));
   const bulkActionsHtml = `<div class="dashboard-sidebar-bulk-actions">
-        <button type="button" class="dashboard-sidebar-breakdown-btn dashboard-sidebar-bulk-btn" data-action="check-all"${allChecked ? ' disabled' : ''}>すべてチェック</button>
-        <button type="button" class="dashboard-sidebar-breakdown-btn dashboard-sidebar-bulk-btn" data-action="uncheck-all">すべて外す</button>
+        <button type="button" class="dashboard-sidebar-breakdown-btn dashboard-sidebar-bulk-btn" data-action="check-all" title="${TIP_DASH_CHECK_ALL}"${allChecked ? ' disabled' : ''}>すべてチェック</button>
+        <button type="button" class="dashboard-sidebar-breakdown-btn dashboard-sidebar-bulk-btn" data-action="uncheck-all" title="${TIP_DASH_UNCHECK_ALL}">すべて外す</button>
       </div>`;
 
   const header = document.createElement('div');
@@ -2924,25 +2942,28 @@ export function mountDashboardPanel({
       <div class="dashboard-toolbar-controls">
         <div class="dashboard-mode-tabs" role="tablist">
           ${DASHBOARD_CHART_MODES.map(
-    (mode) => `<button type="button" class="dashboard-mode-btn" data-mode="${mode.id}" role="tab">${mode.label}</button>`,
+    (mode) => `<button type="button" class="dashboard-mode-btn" data-mode="${mode.id}" role="tab" title="${mode.title}">${mode.label}</button>`,
   ).join('')}
         </div>
         <div class="dashboard-period-override-group">
-          <span class="dashboard-period-override-label">${DASHBOARD_PERIOD_OVERRIDE_LABEL}</span>
+          <span class="dashboard-period-override-label" title="${TIP_DASH_PERIOD_OVERRIDE}">${DASHBOARD_PERIOD_OVERRIDE_LABEL}</span>
           <div class="dashboard-period-range-controls">
             <select
               class="app-settings-input dashboard-period-range-select dashboard-period-range-from"
               aria-label="開始期"
+              title="${TIP_DASH_PERIOD_FROM}"
             ></select>
             <span class="dashboard-period-range-sep" aria-hidden="true">〜</span>
             <select
               class="app-settings-input dashboard-period-range-select dashboard-period-range-to"
               aria-label="終了期"
+              title="${TIP_DASH_PERIOD_TO}"
             ></select>
             <button
               type="button"
               class="dashboard-mode-btn dashboard-period-all-btn"
               data-mode="balance"
+              title="${TIP_DASH_ALL_PERIODS}"
             >${DASHBOARD_ALL_PERIODS_BTN_LABEL}</button>
           </div>
         </div>

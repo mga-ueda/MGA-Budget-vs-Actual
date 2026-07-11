@@ -1,4 +1,5 @@
 import { getLayoutViewportWidth } from '../config/viewportScale.js';
+import { TIP_CLOSE } from '../config/uiTooltipConfig.js';
 
 const POS_STORAGE_KEY = 'mga-color-settings-window-pos';
 const DEFAULT_WIDTH = 440;
@@ -138,6 +139,7 @@ export function createColorSettingsWindow({
   closeBtn.type = 'button';
   closeBtn.className = 'color-settings-window-close';
   closeBtn.setAttribute('aria-label', '閉じる');
+  closeBtn.title = TIP_CLOSE;
   closeBtn.textContent = '×';
 
   header.append(title, closeBtn);

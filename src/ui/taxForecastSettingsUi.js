@@ -374,9 +374,9 @@ export function mountTaxForecastSettingsForm(container, {
               <option value="effectiveRate">簡易（実効税率）</option>
             </select>
           </div>
-          <div class="tax-forecast-field" title="${TAX_REGION_PRESET_TOOLTIP}">
+          <div class="tax-forecast-field">
             <span class="app-settings-label tax-forecast-label-with-tip" title="${TAX_REGION_PRESET_TOOLTIP}">地域プリセット</span>
-            <select class="app-settings-input tax-forecast-select" data-field="regionPreset" title="${TAX_REGION_PRESET_TOOLTIP}"></select>
+            <select class="app-settings-input tax-forecast-select" data-field="regionPreset"></select>
           </div>
           <div class="tax-forecast-field" data-role="effective-rate-field">
             <span class="app-settings-label">実効法人税率（%）</span>
@@ -455,7 +455,7 @@ export function mountTaxForecastSettingsForm(container, {
   const regionSelect = section.querySelector('[data-field="regionPreset"]');
   regionSelect.innerHTML = Object.entries(TAX_REGION_PRESETS).map(([key, preset]) => {
     const selected = key === simulation.regionPreset ? ' selected' : '';
-    return `<option value="${key}"${selected} title="${TAX_REGION_PRESET_TOOLTIP}">${preset.label}</option>`;
+    return `<option value="${key}"${selected}>${preset.label}</option>`;
   }).join('');
 
   const monthFields = [

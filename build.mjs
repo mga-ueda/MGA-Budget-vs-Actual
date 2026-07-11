@@ -36,6 +36,7 @@ const FILES = [
   'config/outsourcingPlanConfig.js',
   'config/revenuePlanConfig.js',
   'config/planKpiConfig.js',
+  'config/uiTooltipConfig.js',
   'enrich/enrichUtils.js',
   'enrich/planEmployeeSalaryRows.js',
   'enrich/planTaxPaymentRows.js',

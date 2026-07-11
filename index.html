@@ -17,7 +17,7 @@
         <div class="plan-title-row">
           <h1>月別収支計画表</h1>
           <div class="plan-period-nav">
-            <button type="button" class="plan-period-btn" id="plan-period-prev" aria-label="前期">&lt;</button>
+            <button type="button" class="plan-period-btn" id="plan-period-prev" aria-label="前期" title="前期を表示">&lt;</button>
             <div class="plan-period-menu" id="plan-period-menu">
               <button
                 type="button"
@@ -27,6 +27,7 @@
                 aria-expanded="false"
                 aria-controls="plan-period-select-panel"
                 aria-label="期"
+                title="表示する期を選択"
               ></button>
               <div
                 class="plan-period-select-panel plan-main-menu-panel"
@@ -36,7 +37,7 @@
                 hidden
               ></div>
             </div>
-            <button type="button" class="plan-period-btn" id="plan-period-next" aria-label="翌期">&gt;</button>
+            <button type="button" class="plan-period-btn" id="plan-period-next" aria-label="翌期" title="翌期を表示">&gt;</button>
             <button type="button" class="plan-dashboard-btn" id="plan-dashboard-btn" title="ダッシュボードを表示">ダッシュボードを表示</button>
           </div>
         </div>
@@ -52,6 +53,7 @@
               aria-haspopup="menu"
               aria-expanded="false"
               aria-controls="plan-main-menu-panel"
+              title="設定・操作メニューを開く（F10）"
             >
               メニュー <kbd>F10</kbd>
             </button>

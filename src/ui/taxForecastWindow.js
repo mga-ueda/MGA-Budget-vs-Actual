@@ -1,4 +1,5 @@
 import { getLayoutViewportWidth } from '../config/viewportScale.js';
+import { TIP_CLOSE } from '../config/uiTooltipConfig.js';
 
 const TAX_FORECAST_POS_STORAGE_KEY = 'mga-tax-forecast-window-pos';
 const TAX_FORECAST_WINDOW_WIDTH_REM = 76;
@@ -105,6 +106,7 @@ export function createTaxForecastWindow({
   closeBtn.type = 'button';
   closeBtn.className = 'tax-forecast-window-close';
   closeBtn.setAttribute('aria-label', '閉じる');
+  closeBtn.title = TIP_CLOSE;
   closeBtn.textContent = '×';
 
   header.append(title, closeBtn);

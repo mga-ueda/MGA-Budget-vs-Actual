@@ -12,6 +12,7 @@ import {
   measureElementIntrinsicWidth,
   planSettingsRemToPx,
 } from './planSettingsTableUi.js';
+import { TIP_JOURNAL_ROW_DELETE, TIP_JOURNAL_ROW_ADD } from '../config/uiTooltipConfig.js';
 
 /** 対応する大項目がある項目名は、予実表と同じ大項目色のチップで表示する */
 function buildJournalDefinitionSectionHead(sectionMeta, getSectionFilterColors) {
@@ -79,6 +80,7 @@ function bindJournalDefinitionListSection({
       deleteBtn.type = 'button';
       deleteBtn.className = 'expand-reset-btn journal-definition-delete-btn';
       deleteBtn.textContent = "削除";
+      deleteBtn.title = TIP_JOURNAL_ROW_DELETE;
       actionTd.appendChild(deleteBtn);
 
       tr.append(valueTd, statusTd, actionTd);
@@ -177,6 +179,7 @@ function buildJournalDefinitionSection(sectionMeta, getConfig, onChange, getSect
   addBtn.className = 'expand-reset-btn tax-rate-add-btn';
   addBtn.dataset.journalListAdd = 'true';
   addBtn.textContent = "行を追加";
+  addBtn.title = TIP_JOURNAL_ROW_ADD;
   section.appendChild(addBtn);
 
   bindJournalDefinitionListSection({

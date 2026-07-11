@@ -20,6 +20,12 @@ import {
   tagPlanEditableRow,
 } from '../config/planCellEdit.js';
 import { applySectionFilterTitleStyle } from './planSettingsTableUi.js';
+import {
+  TIP_EDIT_AMOUNT_SHIFT_FILL,
+  TIP_EXPENSE_OVERRIDE_REMOVE,
+  TIP_EXPENSE_OVERRIDE_ADD,
+  TIP_EXPENSE_OVERRIDE_SELECT,
+} from '../config/uiTooltipConfig.js';
 
 const SECTION_CLASS = 'expense-plan-override-section';
 
@@ -88,7 +94,7 @@ export function mountExpensePlanOverrideSection({
       prevValue,
       editable,
       fiscalPeriod,
-      title: 'ダブルクリックで編集（Shift+Enter で後続月へ同額反映）',
+      title: TIP_EDIT_AMOUNT_SHIFT_FILL,
       formatValue: formatSalaryPlanYen,
       rawValue: plan[month],
       parseValue: parseSalaryPlanAmountInput,
@@ -143,7 +149,7 @@ export function mountExpensePlanOverrideSection({
           prevValue,
           editable: isMonthEditable(fiscalPeriod, month),
           fiscalPeriod,
-          title: 'ダブルクリックで編集（Shift+Enter で後続月へ同額反映）',
+          title: TIP_EDIT_AMOUNT_SHIFT_FILL,
           formatValue: formatSalaryPlanYen,
           rawValue: plan[month],
           parseValue: parseSalaryPlanAmountInput,
@@ -259,7 +265,7 @@ export function mountExpensePlanOverrideSection({
       removeBtn.type = 'button';
       removeBtn.className = 'settings-delete-btn';
       removeBtn.textContent = '削除';
-      removeBtn.title = 'この科目のオーバーライドを解除';
+      removeBtn.title = TIP_EXPENSE_OVERRIDE_REMOVE;
       removeBtn.addEventListener('click', () => {
         expensePlanOverrides = removeExpenseOverrideAccount(
           expensePlanOverrides,
@@ -288,7 +294,8 @@ export function mountExpensePlanOverrideSection({
 
     const select = document.createElement('select');
     select.className = 'app-settings-input expense-plan-override-select';
-    select.setAttribute('aria-label', 'オーバーライドする諸経勘定科目');
+    select.setAttribute('aria-label', TIP_EXPENSE_OVERRIDE_SELECT);
+    select.title = TIP_EXPENSE_OVERRIDE_SELECT;
 
     const placeholder = document.createElement('option');
     placeholder.value = '';
@@ -310,6 +317,7 @@ export function mountExpensePlanOverrideSection({
     addBtn.type = 'button';
     addBtn.className = 'expense-plan-override-add-btn';
     addBtn.textContent = '追加';
+    addBtn.title = TIP_EXPENSE_OVERRIDE_ADD;
     addBtn.disabled = candidates.length === 0;
     addBtn.addEventListener('click', () => {
       const account = select.value;

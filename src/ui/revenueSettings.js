@@ -37,6 +37,14 @@ import {
   tagPlanEditableRow,
 } from '../config/planCellEdit.js';
 import {
+  TIP_EDIT_AMOUNT_SHIFT_FILL,
+  TIP_EDIT_MAN_MONTH_SHIFT_FILL,
+  TIP_EDIT_UNIT_PRICE,
+  TIP_EDIT_NAME,
+  TIP_MOVE_UP,
+  TIP_MOVE_DOWN,
+} from '../config/uiTooltipConfig.js';
+import {
   collectRevenueSubaccountsFromPlanData,
   collectRevenueActualAmountsFromPlanData,
 } from '../enrich/planRevenueRows.js';
@@ -672,7 +680,7 @@ export function mountRevenueSettingsPanel({
             prevValue,
             editable: isMonthEditable(fiscalPeriod, month),
             fiscalPeriod,
-            title: 'ダブルクリックで編集（Shift+Enter で後続月へ同値を反映　0 も可）',
+            title: TIP_EDIT_MAN_MONTH_SHIFT_FILL,
             formatValue: formatManMonths,
             rawValue: client.manMonths[month],
             parseValue: parseManMonthInput,
@@ -716,7 +724,7 @@ export function mountRevenueSettingsPanel({
             prevValue: prevUnitPrice,
             editable: isMonthEditable(fiscalPeriod, month),
             fiscalPeriod,
-            title: 'ダブルクリックで編集（人月単価）',
+            title: TIP_EDIT_UNIT_PRICE,
             formatValue: formatSalaryPlanYen,
             rawValue: getEffectiveUnitPrice(client, month),
             parseValue: parseSalaryPlanAmountInput,
@@ -845,7 +853,7 @@ export function mountRevenueSettingsPanel({
         prevValue,
         editable: isMonthEditable(fiscalPeriod, month),
         fiscalPeriod,
-        title: 'ダブルクリックで編集（Shift+Enter で後続月へ同額を反映）',
+        title: TIP_EDIT_AMOUNT_SHIFT_FILL,
         formatValue: formatSalaryPlanYen,
         rawValue: displayMonthly[month],
         parseValue: parseSalaryPlanAmountInput,
@@ -1036,7 +1044,7 @@ export function mountRevenueSettingsPanel({
     upBtn.type = 'button';
     upBtn.className = 'revenue-client-order-btn';
     upBtn.textContent = '\u2191';
-    upBtn.title = '上に移動';
+    upBtn.title = TIP_MOVE_UP;
     upBtn.disabled = clientIndex <= 0;
     upBtn.addEventListener('click', () => moveClient(client, fiscalPeriod, -1));
 
@@ -1044,7 +1052,7 @@ export function mountRevenueSettingsPanel({
     downBtn.type = 'button';
     downBtn.className = 'revenue-client-order-btn';
     downBtn.textContent = '\u2193';
-    downBtn.title = '下に移動';
+    downBtn.title = TIP_MOVE_DOWN;
     downBtn.disabled = clientIndex >= clientCount - 1;
     downBtn.addEventListener('click', () => moveClient(client, fiscalPeriod, 1));
 
@@ -1233,7 +1241,7 @@ export function mountRevenueSettingsPanel({
     nameLabel.textContent = client.subLabel;
     if (client.manual) {
       nameLabel.classList.add('revenue-client-name-editable', 'salary-plan-cell-editable');
-      nameLabel.title = 'ダブルクリックで名前を編集';
+      nameLabel.title = TIP_EDIT_NAME;
       nameLabel.addEventListener('dblclick', () => {
         startClientNameEdit(nameLabel, client, fiscalPeriod);
       });
@@ -1285,7 +1293,7 @@ export function mountRevenueSettingsPanel({
             fiscalPeriod,
             rawValue: client.manMonths[month],
             tabScopeId: `revenue-settings-${fiscalPeriod}`,
-            title: 'ダブルクリックで編集（Shift+Enter で後続月へ同値を反映　0 も可）',
+            title: TIP_EDIT_MAN_MONTH_SHIFT_FILL,
             formatValue: formatManMonths,
             parseValue: parseManMonthInput,
             allowShiftFillForward: true,
@@ -1314,7 +1322,7 @@ export function mountRevenueSettingsPanel({
             fiscalPeriod,
             rawValue: getEffectiveUnitPrice(client, month),
             tabScopeId: `revenue-settings-${fiscalPeriod}`,
-            title: 'ダブルクリックで編集（人月単価）',
+            title: TIP_EDIT_UNIT_PRICE,
             formatValue: formatSalaryPlanYen,
             parseValue: parseSalaryPlanAmountInput,
             onSave: (parsed) => {
@@ -1651,7 +1659,7 @@ export function mountRevenueSettingsPanel({
         prevValue,
         editable,
         fiscalPeriod,
-        title: 'ダブルクリックで編集（Shift+Enter で後続月へ同額を反映）',
+        title: TIP_EDIT_AMOUNT_SHIFT_FILL,
         formatValue: formatSalaryPlanYen,
         rawValue: displayMonthly[month],
         parseValue: parseSalaryPlanAmountInput,
