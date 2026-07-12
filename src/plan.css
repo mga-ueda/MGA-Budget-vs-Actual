@@ -5194,6 +5194,46 @@ body.plan-journal-open {
   color: var(--plan-month-row-text);
 }
 
+.tax-forecast-window-settings-head {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.4rem;
+  width: 100%;
+  box-sizing: border-box;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+
+.tax-forecast-window-settings-head-label {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.tax-forecast-window-settings-chevron {
+  flex-shrink: 0;
+  width: 0.4rem;
+  height: 0.4rem;
+  margin-left: 0.1rem;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  /* 展開中は下向き */
+  transform: rotate(45deg);
+  transition: transform 0.15s ease;
+  opacity: 0.9;
+}
+
+.tax-forecast-window-settings.is-collapsed .tax-forecast-window-settings-head {
+  margin-bottom: 0;
+}
+
+.tax-forecast-window-settings.is-collapsed .tax-forecast-window-settings-chevron {
+  /* 折りたたみ中は右向き */
+  transform: rotate(-45deg);
+}
+
 .tax-forecast-window-settings-head,
 .tax-forecast-window-result-head {
   /* content-fit（rem）に追従させ、期切替時の縦スクロール点灯を防ぐ */

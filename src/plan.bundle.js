@@ -4337,6 +4337,12 @@ const DEFAULT_TAX_SIMULATION = {
   consumptionTaxSettlementMonthIndex: 1,
   consumptionTaxInterimMonthIndex: 6,
   lossCarryforwardDeduction: 0,
+  /** 当期支払事業税のうち前期末申告納付分（課税所得の減算） */
+  enterpriseTaxSettlementDeduction: 0,
+  /** 当期支払事業税のうち予定納税分（課税所得の減算） */
+  enterpriseTaxProvisionalDeduction: 0,
+  /** 所得税額の還付（課税所得の加算。会計未反映分の調整用） */
+  incomeTaxRefundAddition: 0,
 };
 
 const TAX_REGION_PRESETS = {
@@ -4523,6 +4529,18 @@ function normalizeTaxSimulation(raw, fiscalEndMonth = 12) {
     lossCarryforwardDeduction: clampNonNegativeInt(
       source.lossCarryforwardDeduction,
       base.lossCarryforwardDeduction,
+    ),
+    enterpriseTaxSettlementDeduction: clampNonNegativeInt(
+      source.enterpriseTaxSettlementDeduction,
+      base.enterpriseTaxSettlementDeduction,
+    ),
+    enterpriseTaxProvisionalDeduction: clampNonNegativeInt(
+      source.enterpriseTaxProvisionalDeduction,
+      base.enterpriseTaxProvisionalDeduction,
+    ),
+    incomeTaxRefundAddition: clampNonNegativeInt(
+      source.incomeTaxRefundAddition,
+      base.incomeTaxRefundAddition,
     ),
   };
 }
@@ -10142,9 +10160,21 @@ function computeNextPeriodTaxForecast({
     pastMonths ?? new Set(),
     simulation.profitEstimateMethod,
   );
+  const enterpriseTaxPaidDeduction = Math.max(
+    0,
+    (Number(simulation.enterpriseTaxSettlementDeduction) || 0)
+      + (Number(simulation.enterpriseTaxProvisionalDeduction) || 0),
+  );
+  const incomeTaxRefundAddition = Math.max(
+    0,
+    Number(simulation.incomeTaxRefundAddition) || 0,
+  );
   const taxableProfit = Math.max(
     0,
-    profitEstimate.amount - simulation.lossCarryforwardDeduction,
+    profitEstimate.amount
+      - simulation.lossCarryforwardDeduction
+      - enterpriseTaxPaidDeduction
+      + incomeTaxRefundAddition,
   );
   let corporateTaxAmount;
   let corporateTaxRatePercent;
@@ -10265,6 +10295,10 @@ function computeNextPeriodTaxForecast({
       rateLabel: corporateTaxRateLabel,
       method: simulation.corporateTaxMethod,
       lossDeduction: simulation.lossCarryforwardDeduction,
+      enterpriseTaxSettlementDeduction: simulation.enterpriseTaxSettlementDeduction,
+      enterpriseTaxProvisionalDeduction: simulation.enterpriseTaxProvisionalDeduction,
+      enterpriseTaxPaidDeduction,
+      incomeTaxRefundAddition,
       itemized: itemizedResult
         ? {
             taxableIncome: itemizedResult.taxableIncome,
@@ -20178,6 +20212,18 @@ function buildTaxForecastPanelHtml(forecast, formatYen, { compact = false } = {}
     { label: '計算方法', value: forecast.profitEstimate?.basis ?? '' },
     { label: '補足説明', value: forecast.profitEstimate?.detail ?? '' },
     { label: '繰越欠損控除', value: yen(forecast.corporateTax?.lossDeduction, formatYen) },
+    {
+      label: '事業税・確定納付減算',
+      value: yen(forecast.corporateTax?.enterpriseTaxSettlementDeduction, formatYen),
+    },
+    {
+      label: '事業税・予定納税減算',
+      value: yen(forecast.corporateTax?.enterpriseTaxProvisionalDeduction, formatYen),
+    },
+    {
+      label: '所得税額の還付（加算）',
+      value: yen(forecast.corporateTax?.incomeTaxRefundAddition, formatYen),
+    },
     { label: '課税対象利益', value: yen(forecast.taxableProfit, formatYen, { computed: true }) },
     { label: '法人税計算', value: methodLabel },
     { label: '地域・税率', value: `${forecast.regionLabel} / ${forecast.corporateTax?.rateLabel ?? ''}` },
@@ -20376,6 +20422,18 @@ function mountTaxForecastSettingsForm(container, {
             <span class="app-settings-label">繰越欠損控除（円）</span>
             <input type="text" class="app-settings-input tax-forecast-input" data-field="lossCarryforwardDeduction" inputmode="numeric" />
           </div>
+          <div class="tax-forecast-field">
+            <span class="app-settings-label tax-forecast-label-with-tip" title="前期の確定申告で納付した事業税（当期の損金算入）。課税所得計算で税引前利益から減算します。">事業税・確定納付減算（円）</span>
+            <input type="text" class="app-settings-input tax-forecast-input" data-field="enterpriseTaxSettlementDeduction" inputmode="numeric" />
+          </div>
+          <div class="tax-forecast-field">
+            <span class="app-settings-label tax-forecast-label-with-tip" title="当期に支払った事業税の予定納税。課税所得計算で税引前利益から減算します。">事業税・予定納税減算（円）</span>
+            <input type="text" class="app-settings-input tax-forecast-input" data-field="enterpriseTaxProvisionalDeduction" inputmode="numeric" />
+          </div>
+          <div class="tax-forecast-field">
+            <span class="app-settings-label tax-forecast-label-with-tip" title="源泉所得税などの還付のうち、課税所得の加算調整が必要な金額。会計上すでに利益に含まれている場合は0のままで構いません。">所得税額の還付・加算（円）</span>
+            <input type="text" class="app-settings-input tax-forecast-input" data-field="incomeTaxRefundAddition" inputmode="numeric" />
+          </div>
         </div>
       </section>
 
@@ -20521,6 +20579,18 @@ function mountTaxForecastSettingsForm(container, {
     section.querySelector('[data-field="lossCarryforwardDeduction"]'),
     simulation.lossCarryforwardDeduction,
   );
+  setYenInputValue(
+    section.querySelector('[data-field="enterpriseTaxSettlementDeduction"]'),
+    simulation.enterpriseTaxSettlementDeduction,
+  );
+  setYenInputValue(
+    section.querySelector('[data-field="enterpriseTaxProvisionalDeduction"]'),
+    simulation.enterpriseTaxProvisionalDeduction,
+  );
+  setYenInputValue(
+    section.querySelector('[data-field="incomeTaxRefundAddition"]'),
+    simulation.incomeTaxRefundAddition,
+  );
   setFieldValue('provisionalTaxEnabled', simulation.provisionalTaxEnabled);
   setFieldValue('consumptionTaxMethod', simulation.consumptionTaxMethod);
   setFieldValue('simplifiedDeemedPurchaseRatePercent', simulation.simplifiedDeemedPurchaseRatePercent);
@@ -20533,6 +20603,9 @@ function mountTaxForecastSettingsForm(container, {
   const itemizedFields = section.querySelectorAll('[data-role="itemized-field"]');
   const yenFields = [
     'lossCarryforwardDeduction',
+    'enterpriseTaxSettlementDeduction',
+    'enterpriseTaxProvisionalDeduction',
+    'incomeTaxRefundAddition',
     'itemizedPrefecturalPerCapita',
     'itemizedMunicipalPerCapita',
   ].map((field) => section.querySelector(`[data-field="${field}"]`));
@@ -20634,6 +20707,15 @@ function mountTaxForecastSettingsForm(container, {
     raw.lossCarryforwardDeduction = readYenInputValue(
       section.querySelector('[data-field="lossCarryforwardDeduction"]'),
     );
+    raw.enterpriseTaxSettlementDeduction = readYenInputValue(
+      section.querySelector('[data-field="enterpriseTaxSettlementDeduction"]'),
+    );
+    raw.enterpriseTaxProvisionalDeduction = readYenInputValue(
+      section.querySelector('[data-field="enterpriseTaxProvisionalDeduction"]'),
+    );
+    raw.incomeTaxRefundAddition = readYenInputValue(
+      section.querySelector('[data-field="incomeTaxRefundAddition"]'),
+    );
     raw.provisionalTaxEnabled = section.querySelector('[data-field="provisionalTaxEnabled"]').checked;
     {
       const live = resolveAppSettings()?.taxSimulation ?? simulation;
@@ -20723,8 +20805,11 @@ function mountTaxForecastWindowContent(container, {
       </div>
     </div>
     <div class="tax-forecast-window-settings">
-      <div class="tax-forecast-window-settings-head">試算ルール</div>
-      <div class="tax-forecast-window-settings-host"></div>
+      <button type="button" class="tax-forecast-window-settings-head" aria-expanded="true" aria-controls="tax-forecast-settings-host">
+        <span class="tax-forecast-window-settings-chevron" aria-hidden="true"></span>
+        <span class="tax-forecast-window-settings-head-label">試算ルール</span>
+      </button>
+      <div class="tax-forecast-window-settings-host" id="tax-forecast-settings-host"></div>
     </div>
     <div class="tax-forecast-window-result">
       <div class="tax-forecast-window-result-head">見込み結果</div>
@@ -20733,11 +20818,48 @@ function mountTaxForecastWindowContent(container, {
   `;
   container.appendChild(wrap);
 
+  const settingsSection = wrap.querySelector('.tax-forecast-window-settings');
+  const settingsHead = wrap.querySelector('.tax-forecast-window-settings-head');
   const settingsHost = wrap.querySelector('.tax-forecast-window-settings-host');
   const resultEl = wrap.querySelector('[data-role="forecast-result"]');
   const sourcePeriodSelect = wrap.querySelector('.tax-forecast-source-period-select');
   const targetPeriodHint = wrap.querySelector('[data-role="target-period-hint"]');
 
+  const TAX_FORECAST_SETTINGS_COLLAPSED_KEY = 'mga-tax-forecast-settings-collapsed';
+
+  const readSettingsCollapsed = () => {
+    try {
+      return localStorage.getItem(TAX_FORECAST_SETTINGS_COLLAPSED_KEY) === '1';
+    } catch {
+      return false;
+    }
+  };
+
+  const writeSettingsCollapsed = (collapsed) => {
+    try {
+      localStorage.setItem(TAX_FORECAST_SETTINGS_COLLAPSED_KEY, collapsed ? '1' : '0');
+    } catch {
+      // ignore
+    }
+  };
+
+  const applySettingsCollapsed = (collapsed) => {
+    settingsSection?.classList.toggle('is-collapsed', collapsed);
+    if (settingsHead) {
+      settingsHead.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    }
+    if (settingsHost) {
+      settingsHost.hidden = collapsed;
+    }
+  };
+
+  applySettingsCollapsed(readSettingsCollapsed());
+  settingsHead?.addEventListener('click', () => {
+    const nextCollapsed = !settingsSection?.classList.contains('is-collapsed');
+    applySettingsCollapsed(nextCollapsed);
+    writeSettingsCollapsed(nextCollapsed);
+    onLayoutChange?.();
+  });
   const syncSourcePeriodSelect = () => {
     if (!sourcePeriodSelect) return;
     const options = getSourcePeriodOptions?.() ?? [];

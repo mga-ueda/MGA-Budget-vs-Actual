@@ -415,9 +415,21 @@ export function computeNextPeriodTaxForecast({
     pastMonths ?? new Set(),
     simulation.profitEstimateMethod,
   );
+  const enterpriseTaxPaidDeduction = Math.max(
+    0,
+    (Number(simulation.enterpriseTaxSettlementDeduction) || 0)
+      + (Number(simulation.enterpriseTaxProvisionalDeduction) || 0),
+  );
+  const incomeTaxRefundAddition = Math.max(
+    0,
+    Number(simulation.incomeTaxRefundAddition) || 0,
+  );
   const taxableProfit = Math.max(
     0,
-    profitEstimate.amount - simulation.lossCarryforwardDeduction,
+    profitEstimate.amount
+      - simulation.lossCarryforwardDeduction
+      - enterpriseTaxPaidDeduction
+      + incomeTaxRefundAddition,
   );
   let corporateTaxAmount;
   let corporateTaxRatePercent;
@@ -538,6 +550,10 @@ export function computeNextPeriodTaxForecast({
       rateLabel: corporateTaxRateLabel,
       method: simulation.corporateTaxMethod,
       lossDeduction: simulation.lossCarryforwardDeduction,
+      enterpriseTaxSettlementDeduction: simulation.enterpriseTaxSettlementDeduction,
+      enterpriseTaxProvisionalDeduction: simulation.enterpriseTaxProvisionalDeduction,
+      enterpriseTaxPaidDeduction,
+      incomeTaxRefundAddition,
       itemized: itemizedResult
         ? {
             taxableIncome: itemizedResult.taxableIncome,

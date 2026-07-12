@@ -39,6 +39,12 @@ export const DEFAULT_TAX_SIMULATION = {
   consumptionTaxSettlementMonthIndex: 1,
   consumptionTaxInterimMonthIndex: 6,
   lossCarryforwardDeduction: 0,
+  /** 当期支払事業税のうち前期末申告納付分（課税所得の減算） */
+  enterpriseTaxSettlementDeduction: 0,
+  /** 当期支払事業税のうち予定納税分（課税所得の減算） */
+  enterpriseTaxProvisionalDeduction: 0,
+  /** 所得税額の還付（課税所得の加算。会計未反映分の調整用） */
+  incomeTaxRefundAddition: 0,
 };
 
 export const TAX_REGION_PRESETS = {
@@ -225,6 +231,18 @@ export function normalizeTaxSimulation(raw, fiscalEndMonth = 12) {
     lossCarryforwardDeduction: clampNonNegativeInt(
       source.lossCarryforwardDeduction,
       base.lossCarryforwardDeduction,
+    ),
+    enterpriseTaxSettlementDeduction: clampNonNegativeInt(
+      source.enterpriseTaxSettlementDeduction,
+      base.enterpriseTaxSettlementDeduction,
+    ),
+    enterpriseTaxProvisionalDeduction: clampNonNegativeInt(
+      source.enterpriseTaxProvisionalDeduction,
+      base.enterpriseTaxProvisionalDeduction,
+    ),
+    incomeTaxRefundAddition: clampNonNegativeInt(
+      source.incomeTaxRefundAddition,
+      base.incomeTaxRefundAddition,
     ),
   };
 }
