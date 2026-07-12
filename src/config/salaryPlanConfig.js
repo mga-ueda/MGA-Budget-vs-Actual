@@ -326,5 +326,3 @@ export function formatSalaryIncreaseRate(ratePercent) {
   const sign = rounded > 0 ? '+' : '';
   return `${sign}${rounded.toLocaleString('ja-JP', { maximumFractionDigits: 1 })}%`;
 }
-
-export { MAX_BONUS_COUNT };

@@ -858,9 +858,6 @@ export function applyTaxForecastSectionColors(container, getSectionFilterColors)
   });
 }
 
-/** @deprecated applyTaxForecastSectionColors を使用 */
-export const applyTaxForecastSummaryCardColors = applyTaxForecastSectionColors;
-
 /** 設定と見込み結果を同一ウィンドウ内にマウントする */
 export function mountTaxForecastWindowContent(container, {
   appSettings,

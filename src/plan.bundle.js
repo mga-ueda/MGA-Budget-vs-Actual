@@ -1107,14 +1107,6 @@ function mergeExpenseSectionItems(journalItems, emptyMonthValues) {
  * 実行時の一覧は仕訳定義設定（journalDefinitionConfig）を参照します。
  */
 
-const BS_CURRENT_ASSET_ALWAYS_VISIBLE = DEFAULT_JOURNAL_DEFINITION.bsCurrentAssetAlwaysVisible;
-
-/** 固定資産、投資その他の資産 */
-const BS_INVESTMENT_OTHER_ALWAYS_VISIBLE = DEFAULT_JOURNAL_DEFINITION.bsInvestmentOtherAlwaysVisible;
-
-/** 繰延資産 */
-const BS_DEFERRED_ASSET_ALWAYS_VISIBLE = DEFAULT_JOURNAL_DEFINITION.bsDeferredAssetAlwaysVisible;
-
 function getBsCurrentAssetAlwaysVisible() {
   return getJournalDefinition().bsCurrentAssetAlwaysVisible;
 }
@@ -21186,9 +21178,6 @@ function applyTaxForecastSectionColors(container, getSectionFilterColors) {
     el.style.color = color;
   });
 }
-
-/** @deprecated applyTaxForecastSectionColors を使用 */
-const applyTaxForecastSummaryCardColors = applyTaxForecastSectionColors;
 
 /** 設定と見込み結果を同一ウィンドウ内にマウントする */
 function mountTaxForecastWindowContent(container, {

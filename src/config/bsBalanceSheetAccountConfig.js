@@ -3,18 +3,7 @@
  * CSVに行がない場合も常時表示する。
  * 実行時の一覧は仕訳定義設定（journalDefinitionConfig）を参照します。
  */
-import {
-  DEFAULT_JOURNAL_DEFINITION,
-  getJournalDefinition,
-} from './journalDefinitionConfig.js';
-
-export const BS_CURRENT_ASSET_ALWAYS_VISIBLE = DEFAULT_JOURNAL_DEFINITION.bsCurrentAssetAlwaysVisible;
-
-/** 固定資産、投資その他の資産 */
-export const BS_INVESTMENT_OTHER_ALWAYS_VISIBLE = DEFAULT_JOURNAL_DEFINITION.bsInvestmentOtherAlwaysVisible;
-
-/** 繰延資産 */
-export const BS_DEFERRED_ASSET_ALWAYS_VISIBLE = DEFAULT_JOURNAL_DEFINITION.bsDeferredAssetAlwaysVisible;
+import { getJournalDefinition } from './journalDefinitionConfig.js';
 
 export function getBsCurrentAssetAlwaysVisible() {
   return getJournalDefinition().bsCurrentAssetAlwaysVisible;

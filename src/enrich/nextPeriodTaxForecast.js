@@ -596,5 +596,3 @@ export function computeNextPeriodTaxForecast({
     computedAt: date.toISOString(),
   };
 }
-
-export { formatTaxSimulationRatePercent };
