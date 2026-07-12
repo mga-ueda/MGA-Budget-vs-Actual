@@ -63,7 +63,8 @@ export const DEFAULT_UI_COLORS_DARK = {
   kbdBorderColor: '#636363',
   fillColor1: '#363636',
   fillColor2: '#521414',
-  warningTextColor: '#FFFF00',
+  revArTextColor: '#ffff00',
+  warningTextColor: '#ffff00',
   expandableHighlight: '#00ffff',
   rowHoverBorder: '#00ffff',
   rowSelectionRing: '#ffff00',
@@ -94,13 +95,13 @@ export const DEFAULT_UI_COLORS_LIGHT = {
   settingsInputBg: '#ededed',
   settingsInputBorder: '#e0e0e0',
   settingsButtonBg: '#dedede',
-  settingsButtonTextColor: '#000000',
+  settingsButtonTextColor: '#404040',
   monthRowBg: '#dedede',
-  monthRowText: '#000000',
+  monthRowText: '#404040',
   currentMonthBorder: '#ff8a8a',
   settlementMonthBg: '#c2c2c2',
   cellBg: '#ffffff',
-  textColor: '#000000',
+  textColor: '#404040',
   textDimColor: '#8a8a8a',
   planAmountColor: '#00a5e0',
   planEditableCellHoverBg: '#52bfc7',
@@ -121,12 +122,13 @@ export const DEFAULT_UI_COLORS_LIGHT = {
   dashboardCashLineHigh: '#5ef394',
   dashboardChartShadowColor: '#000000',
   kbdBg: '#fafafa',
-  kbdTextColor: '#000000',
+  kbdTextColor: '#404040',
   kbdBorderColor: '#636363',
   fillColor1: '#e8e8e8',
   fillColor2: '#ffdbdb',
-  warningTextColor: '#FFFF00',
-  expandableHighlight: '#005aad',
+  revArTextColor: '#ffff00',
+  warningTextColor: '#ff0000',
+  expandableHighlight: '#f09c47',
   rowHoverBorder: '#005aad',
   rowSelectionRing: '#ff8000',
   journalOverlayBg: '#ffffff',
@@ -236,12 +238,34 @@ export function getDefaultUiColors(mode = 'dark') {
   return { ...DEFAULTS_BY_MODE[key] };
 }
 
-/** 現行キーのみ残す */
-function sanitizeUiColorBucket(bucket = {}) {
+/**
+ * 旧 warningTextColor は売上高－売掛金行用だったため revArTextColor へ移す。
+ * 新しい警告文字色はデフォルトに戻す。
+ */
+function migrateUiColorBucket(bucket = {}) {
+  if (!bucket || typeof bucket !== 'object') return {};
+  const next = { ...bucket };
+  if (next.warningTextColor != null && next.revArTextColor == null) {
+    next.revArTextColor = next.warningTextColor;
+    delete next.warningTextColor;
+  }
+  return next;
+}
+
+function sameUiColor(a, b) {
+  if (a == null || b == null) return a == null && b == null;
+  return opaqueHex(a) === opaqueHex(b);
+}
+
+function sanitizeUiColorBucket(bucket = {}, mode = 'dark') {
   const next = {};
-  if (!bucket || typeof bucket !== 'object') return next;
+  const migrated = migrateUiColorBucket(bucket);
+  const defaults = getDefaultUiColors(mode);
   for (const key of UI_COLOR_KEYS) {
-    if (bucket[key] != null) next[key] = bucket[key];
+    if (migrated[key] == null) continue;
+    const normalized = opaqueHex(migrated[key]);
+    if (sameUiColor(normalized, defaults[key])) continue;
+    next[key] = normalized;
   }
   return next;
 }
@@ -255,9 +279,11 @@ export function normalizeUiColorConfig(config = {}) {
   const colorMode = getUiColorModeSetting(config);
   const dark = sanitizeUiColorBucket(
     typeof config.dark === 'object' && config.dark !== null ? config.dark : {},
+    'dark',
   );
   const light = sanitizeUiColorBucket(
     typeof config.light === 'object' && config.light !== null ? config.light : {},
+    'light',
   );
 
   const normalized = { colorMode, dark, light };
@@ -384,7 +410,13 @@ export function isUiColorKeyCustom(config, key) {
   const mode = getUiColorMode(normalized);
   const bucket = getUiColorModeBucket(normalized, mode);
   if (bucket[key] == null) return false;
-  return bucket[key] !== getDefaultUiColors(mode)[key];
+  return !sameUiColor(bucket[key], getDefaultUiColors(mode)[key]);
+}
+
+/** 指定モードに UI 色の上書きが1つでもあるか */
+export function hasUiColorModeOverrides(config = {}, mode = getUiColorMode(config)) {
+  const bucket = getUiColorModeBucket(config, mode);
+  return Object.keys(bucket).length > 0;
 }
 
 export function applyUiColors(config = {}) {
@@ -422,6 +454,7 @@ export function applyUiColors(config = {}) {
     dashboardCashLineLow, dashboardCashLineHigh,
     dashboardChartShadowColor,
     kbdBg, kbdTextColor, kbdBorderColor,
+    revArTextColor,
     warningTextColor,
   } = colors;
 
@@ -544,5 +577,6 @@ export function applyUiColors(config = {}) {
     hexToRgba(planEditableCellHoverBg, PLAN_EDITABLE_CELL_HOVER_ALPHA),
   );
   root.style.setProperty('--plan-amount-variance-color', opaqueHex(amountVarianceColor));
+  root.style.setProperty('--plan-rev-ar-text', opaqueHex(revArTextColor));
   root.style.setProperty('--plan-warning-text', opaqueHex(warningTextColor));
 }

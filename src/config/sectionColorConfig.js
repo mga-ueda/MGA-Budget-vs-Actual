@@ -44,16 +44,16 @@ export const DEFAULT_SECTION_COLORS_LIGHT = {
   other: { color: '#488023', barColor: '#488023', textColor: DEFAULT_TEXT_COLOR },
   outsourcing: { color: '#7aa225', barColor: '#7aa225', textColor: DEFAULT_TEXT_COLOR },
   tax: { color: '#9f5138', barColor: '#9f5138', textColor: DEFAULT_TEXT_COLOR },
-  profit: { color: '#ffc000', barColor: '#ffc000', textColor: DEFAULT_DARK_TEXT_COLOR },
+  profit: { color: '#ffc000', barColor: '#ffc000', textColor: '#404040' },
   currentAssets: { color: '#3e6b93', barColor: '#3e6b93', textColor: DEFAULT_TEXT_COLOR },
   fixedAssets: { color: '#3e6b93', barColor: '#3e6b93', textColor: DEFAULT_TEXT_COLOR },
   deferredAssets: { color: '#3e6b93', barColor: '#3e6b93', textColor: DEFAULT_TEXT_COLOR },
   currentLiab: { color: '#878787', barColor: '#878787', textColor: DEFAULT_TEXT_COLOR },
   fixedLiab: { color: '#878787', barColor: '#878787', textColor: DEFAULT_TEXT_COLOR },
-  equity: { color: '#ffc000', barColor: '#ffc000', textColor: DEFAULT_DARK_TEXT_COLOR },
+  equity: { color: '#ffc000', barColor: '#ffc000', textColor: '#404040' },
   otherPay: { color: '#3285cd', barColor: '#3285cd', textColor: DEFAULT_TEXT_COLOR },
-  cfIn: { color: '#5fa72f', barColor: '#5fa72f', textColor: DEFAULT_TEXT_COLOR },
-  cfOut: { color: '#d77433', barColor: '#d77433', textColor: DEFAULT_TEXT_COLOR },
+  cfIn: { color: '#89cb5d', barColor: '#89cb5d', textColor: DEFAULT_TEXT_COLOR },
+  cfOut: { color: '#e69c6b', barColor: '#e69c6b', textColor: DEFAULT_TEXT_COLOR },
   cashBalance: { color: '#3258a4', barColor: '#3258a4', textColor: DEFAULT_TEXT_COLOR },
   sgaTaxable: { color: '#488023', barColor: '#488023', textColor: DEFAULT_TEXT_COLOR },
   sgaTotal: { color: '#488023', barColor: '#488023', textColor: DEFAULT_TEXT_COLOR },
@@ -146,10 +146,18 @@ function getEffectiveSectionOverrideColors(sectionId, override, mode = 'dark') {
   };
 }
 
+function sameSectionColor(a, b) {
+  if (a == null || b == null) return a == null && b == null;
+  const na = String(a).replace(/^#/, '').toLowerCase();
+  const nb = String(b).replace(/^#/, '').toLowerCase();
+  return na === nb;
+}
+
 function sectionOverrideMatchesDefault(sectionId, override, mode = 'dark') {
   const defaults = getDefaultSectionColor(sectionId, mode);
   const effective = getEffectiveSectionOverrideColors(sectionId, override, mode);
-  return effective.barColor === defaults.barColor && effective.textColor === defaults.textColor;
+  return sameSectionColor(effective.barColor, defaults.barColor)
+    && sameSectionColor(effective.textColor, defaults.textColor);
 }
 
 export function isSectionColorCustom(config, mode, sectionId) {
@@ -157,6 +165,12 @@ export function isSectionColorCustom(config, mode, sectionId) {
   const override = bucket[sectionId];
   if (override == null) return false;
   return !sectionOverrideMatchesDefault(sectionId, override, mode);
+}
+
+/** 指定モードに大項目色の上書きが1つでもあるか */
+export function hasSectionColorModeOverrides(config = {}, mode = 'dark') {
+  const bucket = getSectionColorModeBucket(config, mode);
+  return Object.keys(bucket).length > 0;
 }
 
 function normalizeSectionOverrides(raw = {}, mode = 'dark') {
@@ -290,14 +304,12 @@ export function collectSectionColorDefs(sections = [], config = {}, mode = 'dark
   return defs;
 }
 
-export function getSectionBarColor(sectionId, sections, config = {}, mode = 'dark') {
-  const section = sections?.find((s) => s.id === sectionId);
-  if (section?.barColor) return section.barColor;
+/** 大項目の塗り色。常に指定モードの設定（未設定時はデフォルト）を返す */
+export function getSectionBarColor(sectionId, _sections, config = {}, mode = 'dark') {
   return getSectionColors(sectionId, config, mode).barColor;
 }
 
-export function getSectionTextColor(sectionId, sections, config = {}, mode = 'dark') {
-  const section = sections?.find((s) => s.id === sectionId);
-  if (section?.textColor) return section.textColor;
+/** 大項目の文字色。常に指定モードの設定（未設定時はデフォルト）を返す */
+export function getSectionTextColor(sectionId, _sections, config = {}, mode = 'dark') {
   return getSectionColors(sectionId, config, mode).textColor;
 }

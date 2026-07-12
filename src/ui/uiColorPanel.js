@@ -99,7 +99,9 @@ function resetBtnTd(disabled) {
 
 function keysMatchDefaults(config, keys) {
   const defaults = getDefaultUiColors(getUiColorMode(config));
-  return keys.every((key) => !isUiColorKeyCustom(config, key) && getUiColors(config)[key] === defaults[key]);
+  const colors = getUiColors(config);
+  return keys.every((key) => !isUiColorKeyCustom(config, key)
+    && String(colors[key] || '').toLowerCase() === String(defaults[key] || '').toLowerCase());
 }
 
 function applyKeys(config, keys, values) {
@@ -111,11 +113,15 @@ export function mountUiColorPanel(container, {
   setConfig,
   data,
   sectionColorConfig,
+  getSectionColorConfig,
   onRefreshPlanView,
   onRefreshToolbar,
   onRefreshDashboard,
   onReRender,
 }) {
+  const resolveSectionColorConfig = () => (
+    typeof getSectionColorConfig === 'function' ? getSectionColorConfig() : sectionColorConfig
+  );
   const panel = document.createElement('div');
   panel.className = 'ui-color-panel';
 
@@ -710,33 +716,35 @@ export function mountUiColorPanel(container, {
   registerFillRow('塗り色1（注目）', 'fillColor1', '注目行');
   registerFillRow('塗り色2（注意）', 'fillColor2', '注意行');
 
-  const warningColors = getUiColors(getConfig());
-  const warningText = colorInputTd(warningColors.warningTextColor);
-  const warningPreview = previewTd({
-    background: getSectionBarColor('revenueVariance', data?.sections, sectionColorConfig, getUiColorMode(getConfig())),
-    color: warningColors.warningTextColor,
+  const revArColors = getUiColors(getConfig());
+  const revArText = colorInputTd(revArColors.revArTextColor);
+  const revArPreview = previewTd({
+    background: getSectionBarColor('revenueVariance', data?.sections, resolveSectionColorConfig(), getUiColorMode(getConfig())),
+    color: revArColors.revArTextColor,
     text: '売上高－売掛金',
   });
-  const warningReset = resetBtnTd(keysMatchDefaults(getConfig(), ['warningTextColor']));
-  const warningBgTd = dashTd();
-  warningBgTd.title = TIP_WARNING_BG_REF;
-  addRow('警告文字色', [warningBgTd, warningText.td, warningPreview.td, warningReset.td]);
-  bindColorInput(warningText, (value, flush) => {
+  const revArReset = resetBtnTd(keysMatchDefaults(getConfig(), ['revArTextColor']));
+  const revArBgTd = dashTd();
+  revArBgTd.title = TIP_WARNING_BG_REF;
+  revArPreview.span.dataset.sectionBarRef = 'revenueVariance';
+  addRow('売上高－売掛金', [revArBgTd, revArText.td, revArPreview.td, revArReset.td]);
+  bindColorInput(revArText, (value, flush) => {
     const text = opaqueHex(value);
-    setConfig(setUiColorKey(getConfig(), 'warningTextColor', text));
+    setConfig(setUiColorKey(getConfig(), 'revArTextColor', text));
     persist({ flush });
-    setColorInput(warningText,text);
-    warningPreview.span.style.color = text;
-    warningReset.btn.disabled = keysMatchDefaults(getConfig(), ['warningTextColor']);
+    setColorInput(revArText,text);
+    revArPreview.span.style.color = text;
+    revArReset.btn.disabled = keysMatchDefaults(getConfig(), ['revArTextColor']);
   });
-  warningReset.btn.addEventListener('click', () => {
-    setConfig(resetUiColorKey(getConfig(), 'warningTextColor'));
+  revArReset.btn.addEventListener('click', () => {
+    setConfig(resetUiColorKey(getConfig(), 'revArTextColor'));
     persist({ flush: true });
-    const text = getDefaultUiColors(getUiColorMode(getConfig())).warningTextColor;
-    setColorInput(warningText,text);
-    warningPreview.span.style.color = text;
-    warningReset.btn.disabled = true;
+    const text = getDefaultUiColors(getUiColorMode(getConfig())).revArTextColor;
+    setColorInput(revArText,text);
+    revArPreview.span.style.color = text;
+    revArReset.btn.disabled = true;
   });
+  registerTextRow('警告文字色', 'warningTextColor', '警告');
 
   registerAccentRow('展開可能項目・仕訳セル（ハイライト）', 'expandableHighlight', '▶ 勘定科目', { noBorder: true });
   registerAccentRow('マウスオーバー（行）', 'rowHoverBorder', '勘定科目', { previewTextColorKey: 'textColor' });

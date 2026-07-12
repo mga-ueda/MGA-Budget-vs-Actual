@@ -149,6 +149,7 @@ body {
   --plan-fill-color-2: #3F1B1B;
   --plan-amount-color: #00b0f0;
   --plan-amount-variance-color: #c65911;
+  --plan-rev-ar-text: #ffff00;
   --plan-warning-text: #ffff00;
   --plan-colored-cell-font-weight: bold;
   --plan-header-h: calc(120px * var(--plan-viewport-scale, 1));
@@ -470,16 +471,37 @@ body {
   cursor: default;
 }
 
-.plan-period-select {
-  min-width: 4.75rem;
-  max-width: 6.5rem;
+.plan-period-select.plan-main-tab-select {
+  /* 第１００期（全角3桁）＋▼余白を常に確保（余白過多にならない程度） */
+  width: 7.75rem;
+  min-width: 7.75rem;
+  max-width: 7.75rem;
   padding-left: 0.55rem;
+  padding-right: 1.75rem;
+  white-space: nowrap;
 }
 
-.plan-period-select-panel {
+.plan-period-select-panel.plan-main-menu-panel {
   left: 0;
   right: auto;
+  /* メインメニュー用の広い min-width を打ち消し、トリガー幅以上・内容幅に抑える */
   min-width: 100%;
+  width: max-content;
+}
+
+.plan-period-select-panel .plan-period-select-item.plan-main-menu-item {
+  justify-content: flex-start;
+  text-align: left;
+  gap: 0.35rem;
+}
+
+.plan-period-select-panel .plan-period-select-item .plan-main-menu-item-label {
+  flex: 1 1 auto;
+  text-align: left;
+}
+
+.plan-period-select-panel .plan-period-select-item .plan-main-menu-item-check {
+  color: var(--plan-menu-check-color);
 }
 
 .plan-period-select-item[aria-selected='true'] {
@@ -548,6 +570,11 @@ body {
   letter-spacing: -0.02em;
 }
 
+.plan-kpi-main {
+  /* 値なし時も 1 行ぶんの高さを確保し、画面切替でヘッダー高が変わらないようにする */
+  min-height: 1.25em;
+}
+
 .plan-kpi-main.plan-kpi-negative {
   color: var(--plan-negative-amount);
 }
@@ -576,7 +603,7 @@ body {
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
   line-height: 1.35;
-  /* KPI を出さない設定画面（—表示）でも 1 行ぶんの高さを確保し、
+  /* KPI を出さない設定画面でも 1 行ぶんの高さを確保し、
      画面切替でヘッダー高が変わらないようにする */
   min-height: 1.35em;
 }
@@ -734,28 +761,36 @@ body {
   text-align: center;
 }
 
-.plan-main-menu-item-key {
-  flex: 0 0 auto;
-}
-
 .plan-main-menu kbd {
-  display: inline-block;
-  padding: 0.06em 0.4em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-width: 1.55em;
+  padding: 0.06em 0.28em;
   margin-left: 0.35em;
   border: 1px solid var(--plan-kbd-border);
   border-radius: var(--plan-radius-sm);
-  font-family: inherit;
+  font-family: "Cascadia Mono", Consolas, "Courier New", ui-monospace, monospace;
   font-size: 0.85em;
   font-weight: 700;
   line-height: 1.25;
   color: var(--plan-kbd-text);
   background: var(--plan-kbd-bg);
   font-variant-numeric: tabular-nums;
-  letter-spacing: 0.04em;
+  letter-spacing: 0;
+  text-align: center;
+}
+
+.plan-main-menu-item-key {
+  flex: 0 0 1.55em;
+  display: inline-flex;
+  justify-content: center;
 }
 
 .plan-main-menu-item-key kbd {
   margin-left: 0;
+  min-width: 100%;
 }
 
 .plan-main-menu-item--top {
@@ -1383,8 +1418,64 @@ body {
   cursor: not-allowed;
 }
 
-select.app-settings-input {
+.plan-app select.app-settings-input,
+.plan-app select.ui-color-mode-select {
   cursor: pointer;
+  appearance: base-select;
+  -webkit-appearance: base-select;
+}
+
+.plan-app select.app-settings-input::picker(select),
+.plan-app select.ui-color-mode-select::picker(select) {
+  appearance: base-select;
+  -webkit-appearance: base-select;
+  background-color: var(--plan-browser-bg);
+  color: var(--plan-text);
+  border: none;
+  outline: none;
+  border-radius: var(--plan-radius-md);
+  box-shadow: var(--plan-shadow-md);
+  padding: 0.2rem 0;
+}
+
+.plan-app select.app-settings-input option,
+.plan-app select.ui-color-mode-select option {
+  background-color: var(--plan-browser-bg);
+  color: var(--plan-text);
+  border: none;
+  outline: none;
+  box-shadow: none;
+  padding: 0.3rem 0.65rem;
+  border-radius: var(--plan-radius-sm);
+}
+
+.plan-app select.app-settings-input option:hover,
+.plan-app select.ui-color-mode-select option:hover,
+.plan-app select.app-settings-input option:focus,
+.plan-app select.ui-color-mode-select option:focus {
+  background-color: var(--plan-hover-surface);
+  color: var(--plan-text);
+}
+
+.plan-app select.app-settings-input option:checked,
+.plan-app select.ui-color-mode-select option:checked {
+  background-color: var(--plan-popup-row-hover);
+  color: var(--plan-text);
+}
+
+.plan-app select.app-settings-input option::checkmark,
+.plan-app select.ui-color-mode-select option::checkmark {
+  color: var(--plan-menu-check-color);
+}
+
+html[data-plan-color-mode='dark'] .plan-app select.app-settings-input,
+html[data-plan-color-mode='dark'] .plan-app select.ui-color-mode-select {
+  color-scheme: dark;
+}
+
+html[data-plan-color-mode='light'] .plan-app select.app-settings-input,
+html[data-plan-color-mode='light'] .plan-app select.ui-color-mode-select {
+  color-scheme: light;
 }
 
 .app-settings-input {
@@ -1666,7 +1757,8 @@ select.app-settings-input {
   width: auto;
   min-width: var(--plan-brand-logo-preview-height);
   height: var(--plan-brand-logo-preview-height);
-  padding: 0 20px;
+  padding: 0.75rem 1.25rem;
+  overflow: visible;
   background: transparent;
   box-shadow: none;
   border-radius: var(--plan-radius-sm);
@@ -1676,6 +1768,11 @@ select.app-settings-input {
   width: calc(var(--plan-brand-logo-preview-height) * 120 / 36 + 40px);
   border: 1px dashed var(--plan-editor-border);
   background: var(--plan-editor-bg);
+  overflow: hidden;
+}
+
+.brand-logo-settings-preview.plan-logo-image {
+  overflow: visible;
 }
 
 .brand-logo-settings-preview img {
@@ -2089,8 +2186,7 @@ select.app-settings-input {
 
 .tax-forecast-window .tax-forecast-select,
 .tax-forecast-window .tax-forecast-input--percent,
-.tax-forecast-window .tax-forecast-input--center,
-.tax-forecast-window .tax-forecast-source-period-select {
+.tax-forecast-window .tax-forecast-input--center {
   text-align: center;
   text-align-last: center;
 }
@@ -2367,6 +2463,10 @@ select.app-settings-input {
   vertical-align: middle;
 }
 
+.section-color-table .col-section-label {
+  text-align: center;
+}
+
 .section-color-table .col-color-input,
 .ui-color-table .col-color-input {
   width: auto;
@@ -2539,19 +2639,24 @@ select.app-settings-input {
 }
 
 .ui-color-preview-cell kbd {
-  display: inline-block;
-  padding: 0.06em 0.4em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-width: 1.55em;
+  padding: 0.06em 0.28em;
   margin-left: 0.35em;
   border: 1px solid var(--plan-kbd-border);
   border-radius: var(--plan-radius-sm);
-  font-family: inherit;
+  font-family: "Cascadia Mono", Consolas, "Courier New", ui-monospace, monospace;
   font-size: 0.85em;
   font-weight: 700;
   line-height: 1.25;
   color: var(--plan-kbd-text);
   background: var(--plan-kbd-bg);
   font-variant-numeric: tabular-nums;
-  letter-spacing: 0.04em;
+  letter-spacing: 0;
+  text-align: center;
 }
 
 .ui-color-preview-nav-btn {
@@ -3477,7 +3582,7 @@ tr.row-warning-summary .col-amount .amount-yen,
 tr.row-warning-summary .col-amount .amount-yen.amount-negative,
 tr.row-warning-summary .col-amount .amount-prefix {
   background: var(--section-bg) !important;
-  color: var(--plan-warning-text) !important;
+  color: var(--plan-rev-ar-text) !important;
 }
 
 tr.row-sub-variance td {
@@ -3563,10 +3668,6 @@ tr.row-sub-variance .col-amount.has-variance {
   font-size: 1.05rem;
   font-weight: 600;
   letter-spacing: 0.04em;
-}
-
-html[data-plan-color-mode="light"] .plan-loading-overlay-panel {
-  color: var(--plan-text-dim);
 }
 
 .plan-loading-overlay-dots {
@@ -5332,12 +5433,121 @@ body.plan-journal-open {
   text-align: right;
 }
 
-.tax-forecast-window-source-period .app-settings-input {
-  width: auto;
-  max-width: 10rem;
+.tax-forecast-source-period-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  flex: 0 0 auto;
+}
+
+.tax-forecast-source-period-menu {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.tax-forecast-source-period-btn {
+  box-sizing: border-box;
+  width: 1.55rem;
+  min-width: 1.55rem;
+  height: 1.55rem;
+  padding: 0;
+  border: 1px solid var(--plan-button-border);
+  border-radius: var(--plan-radius-sm);
+  background-color: var(--plan-header-control-bg);
+  color: var(--plan-text);
+  font-size: 0.72rem;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition:
+    background-color var(--plan-duration) var(--plan-ease),
+    border-color var(--plan-duration) var(--plan-ease),
+    box-shadow var(--plan-duration) var(--plan-ease);
+}
+
+.tax-forecast-source-period-btn:hover:not(:disabled) {
+  background-color: color-mix(in srgb, var(--plan-header-control-bg) calc(100% - var(--plan-hover-boost)), white var(--plan-hover-boost));
+}
+
+.tax-forecast-source-period-btn:focus-visible {
+  outline: none;
+  border-color: var(--plan-header-control-border-active);
+  box-shadow: 0 0 0 2px var(--plan-header-control-focus-ring);
+}
+
+.tax-forecast-source-period-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.tax-forecast-source-period-trigger {
+  appearance: none;
+  -webkit-appearance: none;
+  box-sizing: border-box;
+  /* 第１００期（全角3桁）分を常に確保 */
+  width: 6.5rem;
+  min-width: 6.5rem;
+  max-width: 6.5rem;
+  height: 1.55rem;
+  padding: 0 1.35rem 0 0.35rem;
+  border: 1px solid var(--plan-button-border);
+  border-radius: var(--plan-radius-sm);
+  background-color: var(--plan-header-control-bg);
+  color: var(--plan-text);
+  font-size: 0.72rem;
+  font-weight: 600;
+  font-family: inherit;
+  line-height: 1.55rem;
+  text-align: center;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: var(--plan-shadow-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23a0a0a0' d='M2.5 4.5 6 8l3.5-3.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.35rem center;
+  background-size: 0.65rem;
+  transition:
+    background-color var(--plan-duration) var(--plan-ease),
+    border-color var(--plan-duration) var(--plan-ease),
+    box-shadow var(--plan-duration) var(--plan-ease);
+}
+
+.tax-forecast-source-period-trigger:hover {
+  background-color: color-mix(in srgb, var(--plan-header-control-bg) calc(100% - var(--plan-hover-boost)), white var(--plan-hover-boost));
+}
+
+.tax-forecast-source-period-trigger[aria-expanded='true'],
+.tax-forecast-source-period-trigger:focus-visible {
+  outline: none;
+  background-color: color-mix(in srgb, var(--plan-header-control-bg) calc(100% - var(--plan-hover-boost)), white var(--plan-hover-boost));
+  border-color: var(--plan-header-control-border-active);
+  box-shadow: 0 0 0 2px var(--plan-header-control-focus-ring);
+}
+
+.tax-forecast-source-period-panel.plan-main-menu-panel {
+  left: 0;
+  right: auto;
+  min-width: 100%;
+  width: 100%;
+  z-index: 40;
+}
+
+.tax-forecast-source-period-panel .tax-forecast-source-period-item.plan-main-menu-item {
+  justify-content: center;
+  text-align: center;
+  gap: 0;
+  font-size: 0.72rem;
+}
+
+.tax-forecast-source-period-panel .tax-forecast-source-period-item .plan-main-menu-item-label {
   flex: 0 0 auto;
   text-align: center;
-  text-align-last: center;
 }
 
 .tax-forecast-window-source-period .tax-forecast-target-period {
@@ -6618,13 +6828,14 @@ body.plan-journal-open {
   gap: 0.1rem;
   padding: 0.3rem 0.5rem;
   border-radius: 4px;
-  background: var(--plan-text);
-  color: var(--plan-browser-bg);
+  border: 1px solid var(--plan-editor-border);
+  background: var(--plan-browser-bg);
+  color: var(--plan-text);
   font-size: 0.65rem;
   line-height: 1.3;
   white-space: nowrap;
   transform: translate(-50%, calc(-100% - 10px));
-  box-shadow: 0 2px 8px color-mix(in srgb, var(--plan-text) 25%, transparent);
+  box-shadow: var(--plan-shadow-md);
 }
 
 .dashboard-line-chart-tooltip[hidden],

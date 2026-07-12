@@ -886,7 +886,30 @@ export function mountTaxForecastWindowContent(container, {
     <div class="tax-forecast-window-toolbar">
       <div class="tax-forecast-window-source-period">
         <span class="app-settings-label">計算元の期</span>
-        <select class="app-settings-input tax-forecast-source-period-select"></select>
+        <div class="tax-forecast-source-period-nav">
+          <button type="button" class="tax-forecast-source-period-btn" data-role="source-period-prev" aria-label="前期" title="前期">&lt;</button>
+          <div class="tax-forecast-source-period-menu">
+            <button
+              type="button"
+              class="tax-forecast-source-period-trigger"
+              data-role="source-period-trigger"
+              aria-haspopup="listbox"
+              aria-expanded="false"
+              aria-controls="tax-forecast-source-period-panel"
+              aria-label="計算元の期"
+              title="計算元の期"
+            ></button>
+            <div
+              class="tax-forecast-source-period-panel plan-period-select-panel plan-main-menu-panel"
+              id="tax-forecast-source-period-panel"
+              data-role="source-period-panel"
+              role="listbox"
+              aria-label="計算元の期"
+              hidden
+            ></div>
+          </div>
+          <button type="button" class="tax-forecast-source-period-btn" data-role="source-period-next" aria-label="翌期" title="翌期">&gt;</button>
+        </div>
         <p class="app-settings-hint tax-forecast-target-period" data-role="target-period-hint" hidden></p>
       </div>
       <div class="tax-forecast-window-toolbar-actions">
@@ -911,8 +934,12 @@ export function mountTaxForecastWindowContent(container, {
   const settingsHead = wrap.querySelector('.tax-forecast-window-settings-head');
   const settingsHost = wrap.querySelector('.tax-forecast-window-settings-host');
   const resultEl = wrap.querySelector('[data-role="forecast-result"]');
-  const sourcePeriodSelect = wrap.querySelector('.tax-forecast-source-period-select');
+  const sourcePeriodTrigger = wrap.querySelector('[data-role="source-period-trigger"]');
+  const sourcePeriodPanel = wrap.querySelector('[data-role="source-period-panel"]');
+  const sourcePeriodPrevBtn = wrap.querySelector('[data-role="source-period-prev"]');
+  const sourcePeriodNextBtn = wrap.querySelector('[data-role="source-period-next"]');
   const targetPeriodHint = wrap.querySelector('[data-role="target-period-hint"]');
+  let sourcePeriodValue = null;
 
   const TAX_FORECAST_SETTINGS_COLLAPSED_KEY = 'mga-tax-forecast-settings-collapsed';
 
@@ -949,15 +976,97 @@ export function mountTaxForecastWindowContent(container, {
     writeSettingsCollapsed(nextCollapsed);
     onLayoutChange?.();
   });
-  const syncSourcePeriodSelect = () => {
-    if (!sourcePeriodSelect) return;
+  const getSourcePeriodItems = () => (
+    sourcePeriodPanel
+      ? [...sourcePeriodPanel.querySelectorAll('.tax-forecast-source-period-item')]
+      : []
+  );
+
+  const closeSourcePeriodPanel = ({ returnFocus = false } = {}) => {
+    if (!sourcePeriodPanel || !sourcePeriodTrigger) return;
+    sourcePeriodPanel.hidden = true;
+    sourcePeriodTrigger.setAttribute('aria-expanded', 'false');
+    if (returnFocus) sourcePeriodTrigger.focus();
+  };
+
+  const openSourcePeriodPanel = () => {
+    if (!sourcePeriodPanel || !sourcePeriodTrigger) return;
+    sourcePeriodPanel.hidden = false;
+    sourcePeriodTrigger.setAttribute('aria-expanded', 'true');
+    const current = sourcePeriodPanel.querySelector('[aria-selected="true"]');
+    (current ?? getSourcePeriodItems()[0])?.focus();
+  };
+
+  const syncSourcePeriodNav = () => {
     const options = getSourcePeriodOptions?.() ?? [];
-    const selected = getSourcePeriod?.() ?? options[0]?.period;
-    sourcePeriodSelect.innerHTML = options.map(({ period, label }) => {
-      const isSelected = period === selected ? ' selected' : '';
-      return `<option value="${period}"${isSelected}>${label}</option>`;
-    }).join('');
-    if (selected != null) sourcePeriodSelect.value = String(selected);
+    const selected = Number(sourcePeriodValue);
+    const idx = options.findIndex((o) => o.period === selected);
+    if (sourcePeriodPrevBtn) sourcePeriodPrevBtn.disabled = idx <= 0;
+    if (sourcePeriodNextBtn) sourcePeriodNextBtn.disabled = idx < 0 || idx >= options.length - 1;
+  };
+
+  const applySourcePeriod = (period, { notify = true } = {}) => {
+    const options = getSourcePeriodOptions?.() ?? [];
+    const matched = options.find((o) => o.period === period) ?? options[0];
+    if (!matched) return;
+    sourcePeriodValue = matched.period;
+    if (sourcePeriodTrigger) sourcePeriodTrigger.textContent = matched.label;
+    for (const btn of getSourcePeriodItems()) {
+      const isSelected = Number(btn.dataset.period) === matched.period;
+      btn.setAttribute('aria-selected', isSelected ? 'true' : 'false');
+      const check = btn.querySelector('.plan-main-menu-item-check');
+      if (check) check.textContent = isSelected ? '✓' : '';
+    }
+    syncSourcePeriodNav();
+    if (notify) {
+      onSourcePeriodChange?.(matched.period);
+      refreshForecast();
+    }
+  };
+
+  const syncSourcePeriodSelect = () => {
+    if (!sourcePeriodTrigger || !sourcePeriodPanel) return;
+    const options = getSourcePeriodOptions?.() ?? [];
+    const selected = getSourcePeriod?.() ?? options[0]?.period ?? null;
+    sourcePeriodPanel.replaceChildren();
+    for (const { period, label } of options) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'plan-main-menu-item plan-period-select-item tax-forecast-source-period-item';
+      btn.role = 'option';
+      btn.dataset.period = String(period);
+      btn.setAttribute('aria-selected', period === selected ? 'true' : 'false');
+      const checkSpan = document.createElement('span');
+      checkSpan.className = 'plan-main-menu-item-check';
+      checkSpan.setAttribute('aria-hidden', 'true');
+      checkSpan.textContent = period === selected ? '✓' : '';
+      btn.appendChild(checkSpan);
+      const labelSpan = document.createElement('span');
+      labelSpan.className = 'plan-main-menu-item-label';
+      labelSpan.textContent = label;
+      btn.appendChild(labelSpan);
+      btn.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+      });
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        closeSourcePeriodPanel({ returnFocus: true });
+        applySourcePeriod(period);
+      });
+      sourcePeriodPanel.appendChild(btn);
+    }
+    applySourcePeriod(selected, { notify: false });
+  };
+
+  const stepSourcePeriod = (delta) => {
+    const options = getSourcePeriodOptions?.() ?? [];
+    const selected = Number(sourcePeriodValue);
+    const idx = options.findIndex((o) => o.period === selected);
+    const next = options[idx + delta];
+    if (!next) return;
+    closeSourcePeriodPanel();
+    applySourcePeriod(next.period);
   };
 
   const applySectionColors = () => {
@@ -990,11 +1099,25 @@ export function mountTaxForecastWindowContent(container, {
   };
 
   syncSourcePeriodSelect();
-  sourcePeriodSelect?.addEventListener('change', () => {
-    const period = Number(sourcePeriodSelect.value);
-    if (!Number.isFinite(period)) return;
-    onSourcePeriodChange?.(period);
-    refreshForecast();
+  sourcePeriodTrigger?.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (sourcePeriodPanel?.hidden) openSourcePeriodPanel();
+    else closeSourcePeriodPanel();
+  });
+  sourcePeriodPrevBtn?.addEventListener('click', () => stepSourcePeriod(-1));
+  sourcePeriodNextBtn?.addEventListener('click', () => stepSourcePeriod(1));
+  document.addEventListener('mousedown', (e) => {
+    if (!sourcePeriodPanel || sourcePeriodPanel.hidden) return;
+    const nav = wrap.querySelector('.tax-forecast-source-period-nav');
+    if (nav?.contains(e.target)) return;
+    closeSourcePeriodPanel();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    if (!sourcePeriodPanel || sourcePeriodPanel.hidden) return;
+    e.preventDefault();
+    closeSourcePeriodPanel({ returnFocus: true });
   });
 
   settingsApi = mountTaxForecastSettingsForm(settingsHost, {

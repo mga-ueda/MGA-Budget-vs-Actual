@@ -1319,16 +1319,16 @@ const DEFAULT_SECTION_COLORS_LIGHT = {
   other: { color: '#488023', barColor: '#488023', textColor: DEFAULT_TEXT_COLOR },
   outsourcing: { color: '#7aa225', barColor: '#7aa225', textColor: DEFAULT_TEXT_COLOR },
   tax: { color: '#9f5138', barColor: '#9f5138', textColor: DEFAULT_TEXT_COLOR },
-  profit: { color: '#ffc000', barColor: '#ffc000', textColor: DEFAULT_DARK_TEXT_COLOR },
+  profit: { color: '#ffc000', barColor: '#ffc000', textColor: '#404040' },
   currentAssets: { color: '#3e6b93', barColor: '#3e6b93', textColor: DEFAULT_TEXT_COLOR },
   fixedAssets: { color: '#3e6b93', barColor: '#3e6b93', textColor: DEFAULT_TEXT_COLOR },
   deferredAssets: { color: '#3e6b93', barColor: '#3e6b93', textColor: DEFAULT_TEXT_COLOR },
   currentLiab: { color: '#878787', barColor: '#878787', textColor: DEFAULT_TEXT_COLOR },
   fixedLiab: { color: '#878787', barColor: '#878787', textColor: DEFAULT_TEXT_COLOR },
-  equity: { color: '#ffc000', barColor: '#ffc000', textColor: DEFAULT_DARK_TEXT_COLOR },
+  equity: { color: '#ffc000', barColor: '#ffc000', textColor: '#404040' },
   otherPay: { color: '#3285cd', barColor: '#3285cd', textColor: DEFAULT_TEXT_COLOR },
-  cfIn: { color: '#5fa72f', barColor: '#5fa72f', textColor: DEFAULT_TEXT_COLOR },
-  cfOut: { color: '#d77433', barColor: '#d77433', textColor: DEFAULT_TEXT_COLOR },
+  cfIn: { color: '#89cb5d', barColor: '#89cb5d', textColor: DEFAULT_TEXT_COLOR },
+  cfOut: { color: '#e69c6b', barColor: '#e69c6b', textColor: DEFAULT_TEXT_COLOR },
   cashBalance: { color: '#3258a4', barColor: '#3258a4', textColor: DEFAULT_TEXT_COLOR },
   sgaTaxable: { color: '#488023', barColor: '#488023', textColor: DEFAULT_TEXT_COLOR },
   sgaTotal: { color: '#488023', barColor: '#488023', textColor: DEFAULT_TEXT_COLOR },
@@ -1421,10 +1421,18 @@ function getEffectiveSectionOverrideColors(sectionId, override, mode = 'dark') {
   };
 }
 
+function sameSectionColor(a, b) {
+  if (a == null || b == null) return a == null && b == null;
+  const na = String(a).replace(/^#/, '').toLowerCase();
+  const nb = String(b).replace(/^#/, '').toLowerCase();
+  return na === nb;
+}
+
 function sectionOverrideMatchesDefault(sectionId, override, mode = 'dark') {
   const defaults = getDefaultSectionColor(sectionId, mode);
   const effective = getEffectiveSectionOverrideColors(sectionId, override, mode);
-  return effective.barColor === defaults.barColor && effective.textColor === defaults.textColor;
+  return sameSectionColor(effective.barColor, defaults.barColor)
+    && sameSectionColor(effective.textColor, defaults.textColor);
 }
 
 function isSectionColorCustom(config, mode, sectionId) {
@@ -1432,6 +1440,12 @@ function isSectionColorCustom(config, mode, sectionId) {
   const override = bucket[sectionId];
   if (override == null) return false;
   return !sectionOverrideMatchesDefault(sectionId, override, mode);
+}
+
+/** 指定モードに大項目色の上書きが1つでもあるか */
+function hasSectionColorModeOverrides(config = {}, mode = 'dark') {
+  const bucket = getSectionColorModeBucket(config, mode);
+  return Object.keys(bucket).length > 0;
 }
 
 function normalizeSectionOverrides(raw = {}, mode = 'dark') {
@@ -1565,15 +1579,13 @@ function collectSectionColorDefs(sections = [], config = {}, mode = 'dark') {
   return defs;
 }
 
-function getSectionBarColor(sectionId, sections, config = {}, mode = 'dark') {
-  const section = sections?.find((s) => s.id === sectionId);
-  if (section?.barColor) return section.barColor;
+/** 大項目の塗り色。常に指定モードの設定（未設定時はデフォルト）を返す */
+function getSectionBarColor(sectionId, _sections, config = {}, mode = 'dark') {
   return getSectionColors(sectionId, config, mode).barColor;
 }
 
-function getSectionTextColor(sectionId, sections, config = {}, mode = 'dark') {
-  const section = sections?.find((s) => s.id === sectionId);
-  if (section?.textColor) return section.textColor;
+/** 大項目の文字色。常に指定モードの設定（未設定時はデフォルト）を返す */
+function getSectionTextColor(sectionId, _sections, config = {}, mode = 'dark') {
   return getSectionColors(sectionId, config, mode).textColor;
 }
 
@@ -1709,7 +1721,8 @@ const DEFAULT_UI_COLORS_DARK = {
   kbdBorderColor: '#636363',
   fillColor1: '#363636',
   fillColor2: '#521414',
-  warningTextColor: '#FFFF00',
+  revArTextColor: '#ffff00',
+  warningTextColor: '#ffff00',
   expandableHighlight: '#00ffff',
   rowHoverBorder: '#00ffff',
   rowSelectionRing: '#ffff00',
@@ -1740,13 +1753,13 @@ const DEFAULT_UI_COLORS_LIGHT = {
   settingsInputBg: '#ededed',
   settingsInputBorder: '#e0e0e0',
   settingsButtonBg: '#dedede',
-  settingsButtonTextColor: '#000000',
+  settingsButtonTextColor: '#404040',
   monthRowBg: '#dedede',
-  monthRowText: '#000000',
+  monthRowText: '#404040',
   currentMonthBorder: '#ff8a8a',
   settlementMonthBg: '#c2c2c2',
   cellBg: '#ffffff',
-  textColor: '#000000',
+  textColor: '#404040',
   textDimColor: '#8a8a8a',
   planAmountColor: '#00a5e0',
   planEditableCellHoverBg: '#52bfc7',
@@ -1767,12 +1780,13 @@ const DEFAULT_UI_COLORS_LIGHT = {
   dashboardCashLineHigh: '#5ef394',
   dashboardChartShadowColor: '#000000',
   kbdBg: '#fafafa',
-  kbdTextColor: '#000000',
+  kbdTextColor: '#404040',
   kbdBorderColor: '#636363',
   fillColor1: '#e8e8e8',
   fillColor2: '#ffdbdb',
-  warningTextColor: '#FFFF00',
-  expandableHighlight: '#005aad',
+  revArTextColor: '#ffff00',
+  warningTextColor: '#ff0000',
+  expandableHighlight: '#f09c47',
   rowHoverBorder: '#005aad',
   rowSelectionRing: '#ff8000',
   journalOverlayBg: '#ffffff',
@@ -1882,12 +1896,34 @@ function getDefaultUiColors(mode = 'dark') {
   return { ...DEFAULTS_BY_MODE[key] };
 }
 
-/** 現行キーのみ残す */
-function sanitizeUiColorBucket(bucket = {}) {
+/**
+ * 旧 warningTextColor は売上高－売掛金行用だったため revArTextColor へ移す。
+ * 新しい警告文字色はデフォルトに戻す。
+ */
+function migrateUiColorBucket(bucket = {}) {
+  if (!bucket || typeof bucket !== 'object') return {};
+  const next = { ...bucket };
+  if (next.warningTextColor != null && next.revArTextColor == null) {
+    next.revArTextColor = next.warningTextColor;
+    delete next.warningTextColor;
+  }
+  return next;
+}
+
+function sameUiColor(a, b) {
+  if (a == null || b == null) return a == null && b == null;
+  return opaqueHex(a) === opaqueHex(b);
+}
+
+function sanitizeUiColorBucket(bucket = {}, mode = 'dark') {
   const next = {};
-  if (!bucket || typeof bucket !== 'object') return next;
+  const migrated = migrateUiColorBucket(bucket);
+  const defaults = getDefaultUiColors(mode);
   for (const key of UI_COLOR_KEYS) {
-    if (bucket[key] != null) next[key] = bucket[key];
+    if (migrated[key] == null) continue;
+    const normalized = opaqueHex(migrated[key]);
+    if (sameUiColor(normalized, defaults[key])) continue;
+    next[key] = normalized;
   }
   return next;
 }
@@ -1901,9 +1937,11 @@ function normalizeUiColorConfig(config = {}) {
   const colorMode = getUiColorModeSetting(config);
   const dark = sanitizeUiColorBucket(
     typeof config.dark === 'object' && config.dark !== null ? config.dark : {},
+    'dark',
   );
   const light = sanitizeUiColorBucket(
     typeof config.light === 'object' && config.light !== null ? config.light : {},
+    'light',
   );
 
   const normalized = { colorMode, dark, light };
@@ -2030,7 +2068,13 @@ function isUiColorKeyCustom(config, key) {
   const mode = getUiColorMode(normalized);
   const bucket = getUiColorModeBucket(normalized, mode);
   if (bucket[key] == null) return false;
-  return bucket[key] !== getDefaultUiColors(mode)[key];
+  return !sameUiColor(bucket[key], getDefaultUiColors(mode)[key]);
+}
+
+/** 指定モードに UI 色の上書きが1つでもあるか */
+function hasUiColorModeOverrides(config = {}, mode = getUiColorMode(config)) {
+  const bucket = getUiColorModeBucket(config, mode);
+  return Object.keys(bucket).length > 0;
 }
 
 function applyUiColors(config = {}) {
@@ -2068,6 +2112,7 @@ function applyUiColors(config = {}) {
     dashboardCashLineLow, dashboardCashLineHigh,
     dashboardChartShadowColor,
     kbdBg, kbdTextColor, kbdBorderColor,
+    revArTextColor,
     warningTextColor,
   } = colors;
 
@@ -2190,6 +2235,7 @@ function applyUiColors(config = {}) {
     hexToRgba(planEditableCellHoverBg, PLAN_EDITABLE_CELL_HOVER_ALPHA),
   );
   root.style.setProperty('--plan-amount-variance-color', opaqueHex(amountVarianceColor));
+  root.style.setProperty('--plan-rev-ar-text', opaqueHex(revArTextColor));
   root.style.setProperty('--plan-warning-text', opaqueHex(warningTextColor));
 }
 
@@ -11193,7 +11239,7 @@ const DEFAULT_BRAND_LOGO_IMAGE_DARK = {
 
 /** ライトモード用ロゴ画像スタイルの初期値 */
 const DEFAULT_BRAND_LOGO_IMAGE_LIGHT = {
-  outlineColor: '#a6a6a6',
+  outlineColor: '#6b6b6b',
   outlineWidth: 0.4,
   shadowEnabled: true,
   shadowColor: '#000000',
@@ -11352,24 +11398,27 @@ function buildBrandLogoShadowFilter(settings, viewportScale = getViewportScale()
   return `drop-shadow(${offset}px ${offset}px ${blur}px ${color})`;
 }
 
-function buildBrandLogoImageFilter(settings, viewportScale = getViewportScale()) {
-  const parts = [];
-  const outline = buildBrandLogoOutlineFilter(settings, viewportScale);
-  if (outline !== 'none') parts.push(outline);
-  const shadow = buildBrandLogoShadowFilter(settings, viewportScale);
-  if (shadow) parts.push(shadow);
-  return parts.length ? parts.join(' ') : 'none';
-}
-
 const PLAN_LOGO_OUTLINE_FILTER_ID = 'plan-logo-outline-filter';
-const PLAN_LOGO_OUTLINE_MORPH_ID = 'plan-logo-outline-morph';
-const PLAN_LOGO_OUTLINE_FLOOD_ID = 'plan-logo-outline-flood';
+const PLAN_LOGO_OUTLINE_FILTER_ID_PREVIEW = 'plan-logo-outline-filter-preview';
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
-function ensurePlanLogoOutlineSvgFilter() {
-  if (typeof document === 'undefined') return PLAN_LOGO_OUTLINE_FILTER_ID;
-  if (document.getElementById(PLAN_LOGO_OUTLINE_FILTER_ID)) {
-    return PLAN_LOGO_OUTLINE_FILTER_ID;
+/** 設定画面のロゴプレビューはヘッダーロゴの 2.5 倍高さ */
+const BRAND_LOGO_SETTINGS_PREVIEW_SCALE = 2.5;
+
+function outlineFilterMorphId(filterId) {
+  return `${filterId}-morph`;
+}
+
+function outlineFilterFloodId(filterId) {
+  return `${filterId}-flood`;
+}
+
+function ensurePlanLogoOutlineSvgFilter(filterId = PLAN_LOGO_OUTLINE_FILTER_ID) {
+  if (typeof document === 'undefined') return filterId;
+  const existing = document.getElementById(filterId);
+  if (existing) {
+    if (document.getElementById(outlineFilterMorphId(filterId))) return filterId;
+    existing.closest('svg')?.remove();
   }
 
   const svg = document.createElementNS(SVG_NS, 'svg');
@@ -11380,7 +11429,7 @@ function ensurePlanLogoOutlineSvgFilter() {
 
   const defs = document.createElementNS(SVG_NS, 'defs');
   const filter = document.createElementNS(SVG_NS, 'filter');
-  filter.id = PLAN_LOGO_OUTLINE_FILTER_ID;
+  filter.id = filterId;
   filter.setAttribute('x', '-50%');
   filter.setAttribute('y', '-50%');
   filter.setAttribute('width', '200%');
@@ -11389,14 +11438,14 @@ function ensurePlanLogoOutlineSvgFilter() {
   filter.setAttribute('primitiveUnits', 'userSpaceOnUse');
 
   const morph = document.createElementNS(SVG_NS, 'feMorphology');
-  morph.id = PLAN_LOGO_OUTLINE_MORPH_ID;
+  morph.id = outlineFilterMorphId(filterId);
   morph.setAttribute('in', 'SourceAlpha');
   morph.setAttribute('operator', 'dilate');
   morph.setAttribute('radius', '1');
   morph.setAttribute('result', 'dilated');
 
   const flood = document.createElementNS(SVG_NS, 'feFlood');
-  flood.id = PLAN_LOGO_OUTLINE_FLOOD_ID;
+  flood.id = outlineFilterFloodId(filterId);
   flood.setAttribute('flood-color', DEFAULT_BRAND_LOGO_OUTLINE_COLOR);
   flood.setAttribute('result', 'flood');
 
@@ -11421,16 +11470,20 @@ function ensurePlanLogoOutlineSvgFilter() {
   defs.appendChild(filter);
   svg.appendChild(defs);
   document.body.appendChild(svg);
-  return PLAN_LOGO_OUTLINE_FILTER_ID;
+  return filterId;
 }
 
-function updatePlanLogoOutlineSvgFilter(radius, color) {
-  ensurePlanLogoOutlineSvgFilter();
-  document.getElementById(PLAN_LOGO_OUTLINE_MORPH_ID)?.setAttribute('radius', String(radius));
-  document.getElementById(PLAN_LOGO_OUTLINE_FLOOD_ID)?.setAttribute('flood-color', color);
+function updatePlanLogoOutlineSvgFilter(radius, color, filterId = PLAN_LOGO_OUTLINE_FILTER_ID) {
+  ensurePlanLogoOutlineSvgFilter(filterId);
+  document.getElementById(outlineFilterMorphId(filterId))?.setAttribute('radius', String(radius));
+  document.getElementById(outlineFilterFloodId(filterId))?.setAttribute('flood-color', color);
 }
 
-function buildBrandLogoOutlineFilter(settings, viewportScale = getViewportScale()) {
+function buildBrandLogoOutlineFilter(
+  settings,
+  viewportScale = getViewportScale(),
+  filterId = PLAN_LOGO_OUTLINE_FILTER_ID,
+) {
   const width = normalizeBrandLogoOutlineWidth(settings?.brandLogoOutlineWidth);
   if (width <= 0) return 'none';
   const color = normalizeBrandColor(
@@ -11438,8 +11491,21 @@ function buildBrandLogoOutlineFilter(settings, viewportScale = getViewportScale(
     DEFAULT_BRAND_LOGO_OUTLINE_COLOR,
   );
   const radius = Math.round(width * viewportScale * 100) / 100;
-  updatePlanLogoOutlineSvgFilter(radius, color);
-  return `url(#${PLAN_LOGO_OUTLINE_FILTER_ID})`;
+  updatePlanLogoOutlineSvgFilter(radius, color, filterId);
+  return `url(#${filterId})`;
+}
+
+function buildBrandLogoImageFilter(
+  settings,
+  viewportScale = getViewportScale(),
+  filterId = PLAN_LOGO_OUTLINE_FILTER_ID,
+) {
+  const parts = [];
+  const outline = buildBrandLogoOutlineFilter(settings, viewportScale, filterId);
+  if (outline !== 'none') parts.push(outline);
+  const shadow = buildBrandLogoShadowFilter(settings, viewportScale);
+  if (shadow) parts.push(shadow);
+  return parts.length ? parts.join(' ') : 'none';
 }
 
 function applyBrandLogoImageFilterToElement(img, filter) {
@@ -11456,9 +11522,18 @@ function applyBrandLogoImageFilterToElement(img, filter) {
 function applyBrandLogoImageFilters(settings, mode = 'dark') {
   if (!hasBrandLogo(settings)) return;
   const withVisual = { ...settings, ...resolveBrandLogoVisualSettings(settings, mode) };
-  const filter = buildBrandLogoImageFilter(withVisual);
-  document.querySelectorAll('.plan-logo-image img').forEach((img) => {
-    applyBrandLogoImageFilterToElement(img, filter);
+  const headerFilter = buildBrandLogoImageFilter(withVisual);
+  document.querySelectorAll('.plan-logo.plan-logo-image img').forEach((img) => {
+    applyBrandLogoImageFilterToElement(img, headerFilter);
+  });
+  const previewScale = getViewportScale() * BRAND_LOGO_SETTINGS_PREVIEW_SCALE;
+  const previewFilter = buildBrandLogoImageFilter(
+    withVisual,
+    previewScale,
+    PLAN_LOGO_OUTLINE_FILTER_ID_PREVIEW,
+  );
+  document.querySelectorAll('.brand-logo-settings-preview.plan-logo-image img').forEach((img) => {
+    applyBrandLogoImageFilterToElement(img, previewFilter);
   });
 }
 
@@ -16008,7 +16083,9 @@ function resetBtnTd(disabled) {
 
 function keysMatchDefaults(config, keys) {
   const defaults = getDefaultUiColors(getUiColorMode(config));
-  return keys.every((key) => !isUiColorKeyCustom(config, key) && getUiColors(config)[key] === defaults[key]);
+  const colors = getUiColors(config);
+  return keys.every((key) => !isUiColorKeyCustom(config, key)
+    && String(colors[key] || '').toLowerCase() === String(defaults[key] || '').toLowerCase());
 }
 
 function applyKeys(config, keys, values) {
@@ -16020,11 +16097,15 @@ function mountUiColorPanel(container, {
   setConfig,
   data,
   sectionColorConfig,
+  getSectionColorConfig,
   onRefreshPlanView,
   onRefreshToolbar,
   onRefreshDashboard,
   onReRender,
 }) {
+  const resolveSectionColorConfig = () => (
+    typeof getSectionColorConfig === 'function' ? getSectionColorConfig() : sectionColorConfig
+  );
   const panel = document.createElement('div');
   panel.className = 'ui-color-panel';
 
@@ -16619,33 +16700,35 @@ function mountUiColorPanel(container, {
   registerFillRow('塗り色1（注目）', 'fillColor1', '注目行');
   registerFillRow('塗り色2（注意）', 'fillColor2', '注意行');
 
-  const warningColors = getUiColors(getConfig());
-  const warningText = colorInputTd(warningColors.warningTextColor);
-  const warningPreview = previewTd({
-    background: getSectionBarColor('revenueVariance', data?.sections, sectionColorConfig, getUiColorMode(getConfig())),
-    color: warningColors.warningTextColor,
+  const revArColors = getUiColors(getConfig());
+  const revArText = colorInputTd(revArColors.revArTextColor);
+  const revArPreview = previewTd({
+    background: getSectionBarColor('revenueVariance', data?.sections, resolveSectionColorConfig(), getUiColorMode(getConfig())),
+    color: revArColors.revArTextColor,
     text: '売上高－売掛金',
   });
-  const warningReset = resetBtnTd(keysMatchDefaults(getConfig(), ['warningTextColor']));
-  const warningBgTd = dashTd();
-  warningBgTd.title = TIP_WARNING_BG_REF;
-  addRow('警告文字色', [warningBgTd, warningText.td, warningPreview.td, warningReset.td]);
-  bindColorInput(warningText, (value, flush) => {
+  const revArReset = resetBtnTd(keysMatchDefaults(getConfig(), ['revArTextColor']));
+  const revArBgTd = dashTd();
+  revArBgTd.title = TIP_WARNING_BG_REF;
+  revArPreview.span.dataset.sectionBarRef = 'revenueVariance';
+  addRow('売上高－売掛金', [revArBgTd, revArText.td, revArPreview.td, revArReset.td]);
+  bindColorInput(revArText, (value, flush) => {
     const text = opaqueHex(value);
-    setConfig(setUiColorKey(getConfig(), 'warningTextColor', text));
+    setConfig(setUiColorKey(getConfig(), 'revArTextColor', text));
     persist({ flush });
-    setColorInput(warningText,text);
-    warningPreview.span.style.color = text;
-    warningReset.btn.disabled = keysMatchDefaults(getConfig(), ['warningTextColor']);
+    setColorInput(revArText,text);
+    revArPreview.span.style.color = text;
+    revArReset.btn.disabled = keysMatchDefaults(getConfig(), ['revArTextColor']);
   });
-  warningReset.btn.addEventListener('click', () => {
-    setConfig(resetUiColorKey(getConfig(), 'warningTextColor'));
+  revArReset.btn.addEventListener('click', () => {
+    setConfig(resetUiColorKey(getConfig(), 'revArTextColor'));
     persist({ flush: true });
-    const text = getDefaultUiColors(getUiColorMode(getConfig())).warningTextColor;
-    setColorInput(warningText,text);
-    warningPreview.span.style.color = text;
-    warningReset.btn.disabled = true;
+    const text = getDefaultUiColors(getUiColorMode(getConfig())).revArTextColor;
+    setColorInput(revArText,text);
+    revArPreview.span.style.color = text;
+    revArReset.btn.disabled = true;
   });
+  registerTextRow('警告文字色', 'warningTextColor', '警告');
 
   registerAccentRow('展開可能項目・仕訳セル（ハイライト）', 'expandableHighlight', '▶ 勘定科目', { noBorder: true });
   registerAccentRow('マウスオーバー（行）', 'rowHoverBorder', '勘定科目', { previewTextColorKey: 'textColor' });
@@ -21132,7 +21215,30 @@ function mountTaxForecastWindowContent(container, {
     <div class="tax-forecast-window-toolbar">
       <div class="tax-forecast-window-source-period">
         <span class="app-settings-label">計算元の期</span>
-        <select class="app-settings-input tax-forecast-source-period-select"></select>
+        <div class="tax-forecast-source-period-nav">
+          <button type="button" class="tax-forecast-source-period-btn" data-role="source-period-prev" aria-label="前期" title="前期">&lt;</button>
+          <div class="tax-forecast-source-period-menu">
+            <button
+              type="button"
+              class="tax-forecast-source-period-trigger"
+              data-role="source-period-trigger"
+              aria-haspopup="listbox"
+              aria-expanded="false"
+              aria-controls="tax-forecast-source-period-panel"
+              aria-label="計算元の期"
+              title="計算元の期"
+            ></button>
+            <div
+              class="tax-forecast-source-period-panel plan-period-select-panel plan-main-menu-panel"
+              id="tax-forecast-source-period-panel"
+              data-role="source-period-panel"
+              role="listbox"
+              aria-label="計算元の期"
+              hidden
+            ></div>
+          </div>
+          <button type="button" class="tax-forecast-source-period-btn" data-role="source-period-next" aria-label="翌期" title="翌期">&gt;</button>
+        </div>
         <p class="app-settings-hint tax-forecast-target-period" data-role="target-period-hint" hidden></p>
       </div>
       <div class="tax-forecast-window-toolbar-actions">
@@ -21157,8 +21263,12 @@ function mountTaxForecastWindowContent(container, {
   const settingsHead = wrap.querySelector('.tax-forecast-window-settings-head');
   const settingsHost = wrap.querySelector('.tax-forecast-window-settings-host');
   const resultEl = wrap.querySelector('[data-role="forecast-result"]');
-  const sourcePeriodSelect = wrap.querySelector('.tax-forecast-source-period-select');
+  const sourcePeriodTrigger = wrap.querySelector('[data-role="source-period-trigger"]');
+  const sourcePeriodPanel = wrap.querySelector('[data-role="source-period-panel"]');
+  const sourcePeriodPrevBtn = wrap.querySelector('[data-role="source-period-prev"]');
+  const sourcePeriodNextBtn = wrap.querySelector('[data-role="source-period-next"]');
   const targetPeriodHint = wrap.querySelector('[data-role="target-period-hint"]');
+  let sourcePeriodValue = null;
 
   const TAX_FORECAST_SETTINGS_COLLAPSED_KEY = 'mga-tax-forecast-settings-collapsed';
 
@@ -21195,15 +21305,97 @@ function mountTaxForecastWindowContent(container, {
     writeSettingsCollapsed(nextCollapsed);
     onLayoutChange?.();
   });
-  const syncSourcePeriodSelect = () => {
-    if (!sourcePeriodSelect) return;
+  const getSourcePeriodItems = () => (
+    sourcePeriodPanel
+      ? [...sourcePeriodPanel.querySelectorAll('.tax-forecast-source-period-item')]
+      : []
+  );
+
+  const closeSourcePeriodPanel = ({ returnFocus = false } = {}) => {
+    if (!sourcePeriodPanel || !sourcePeriodTrigger) return;
+    sourcePeriodPanel.hidden = true;
+    sourcePeriodTrigger.setAttribute('aria-expanded', 'false');
+    if (returnFocus) sourcePeriodTrigger.focus();
+  };
+
+  const openSourcePeriodPanel = () => {
+    if (!sourcePeriodPanel || !sourcePeriodTrigger) return;
+    sourcePeriodPanel.hidden = false;
+    sourcePeriodTrigger.setAttribute('aria-expanded', 'true');
+    const current = sourcePeriodPanel.querySelector('[aria-selected="true"]');
+    (current ?? getSourcePeriodItems()[0])?.focus();
+  };
+
+  const syncSourcePeriodNav = () => {
     const options = getSourcePeriodOptions?.() ?? [];
-    const selected = getSourcePeriod?.() ?? options[0]?.period;
-    sourcePeriodSelect.innerHTML = options.map(({ period, label }) => {
-      const isSelected = period === selected ? ' selected' : '';
-      return `<option value="${period}"${isSelected}>${label}</option>`;
-    }).join('');
-    if (selected != null) sourcePeriodSelect.value = String(selected);
+    const selected = Number(sourcePeriodValue);
+    const idx = options.findIndex((o) => o.period === selected);
+    if (sourcePeriodPrevBtn) sourcePeriodPrevBtn.disabled = idx <= 0;
+    if (sourcePeriodNextBtn) sourcePeriodNextBtn.disabled = idx < 0 || idx >= options.length - 1;
+  };
+
+  const applySourcePeriod = (period, { notify = true } = {}) => {
+    const options = getSourcePeriodOptions?.() ?? [];
+    const matched = options.find((o) => o.period === period) ?? options[0];
+    if (!matched) return;
+    sourcePeriodValue = matched.period;
+    if (sourcePeriodTrigger) sourcePeriodTrigger.textContent = matched.label;
+    for (const btn of getSourcePeriodItems()) {
+      const isSelected = Number(btn.dataset.period) === matched.period;
+      btn.setAttribute('aria-selected', isSelected ? 'true' : 'false');
+      const check = btn.querySelector('.plan-main-menu-item-check');
+      if (check) check.textContent = isSelected ? '✓' : '';
+    }
+    syncSourcePeriodNav();
+    if (notify) {
+      onSourcePeriodChange?.(matched.period);
+      refreshForecast();
+    }
+  };
+
+  const syncSourcePeriodSelect = () => {
+    if (!sourcePeriodTrigger || !sourcePeriodPanel) return;
+    const options = getSourcePeriodOptions?.() ?? [];
+    const selected = getSourcePeriod?.() ?? options[0]?.period ?? null;
+    sourcePeriodPanel.replaceChildren();
+    for (const { period, label } of options) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'plan-main-menu-item plan-period-select-item tax-forecast-source-period-item';
+      btn.role = 'option';
+      btn.dataset.period = String(period);
+      btn.setAttribute('aria-selected', period === selected ? 'true' : 'false');
+      const checkSpan = document.createElement('span');
+      checkSpan.className = 'plan-main-menu-item-check';
+      checkSpan.setAttribute('aria-hidden', 'true');
+      checkSpan.textContent = period === selected ? '✓' : '';
+      btn.appendChild(checkSpan);
+      const labelSpan = document.createElement('span');
+      labelSpan.className = 'plan-main-menu-item-label';
+      labelSpan.textContent = label;
+      btn.appendChild(labelSpan);
+      btn.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+      });
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        closeSourcePeriodPanel({ returnFocus: true });
+        applySourcePeriod(period);
+      });
+      sourcePeriodPanel.appendChild(btn);
+    }
+    applySourcePeriod(selected, { notify: false });
+  };
+
+  const stepSourcePeriod = (delta) => {
+    const options = getSourcePeriodOptions?.() ?? [];
+    const selected = Number(sourcePeriodValue);
+    const idx = options.findIndex((o) => o.period === selected);
+    const next = options[idx + delta];
+    if (!next) return;
+    closeSourcePeriodPanel();
+    applySourcePeriod(next.period);
   };
 
   const applySectionColors = () => {
@@ -21236,11 +21428,25 @@ function mountTaxForecastWindowContent(container, {
   };
 
   syncSourcePeriodSelect();
-  sourcePeriodSelect?.addEventListener('change', () => {
-    const period = Number(sourcePeriodSelect.value);
-    if (!Number.isFinite(period)) return;
-    onSourcePeriodChange?.(period);
-    refreshForecast();
+  sourcePeriodTrigger?.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (sourcePeriodPanel?.hidden) openSourcePeriodPanel();
+    else closeSourcePeriodPanel();
+  });
+  sourcePeriodPrevBtn?.addEventListener('click', () => stepSourcePeriod(-1));
+  sourcePeriodNextBtn?.addEventListener('click', () => stepSourcePeriod(1));
+  document.addEventListener('mousedown', (e) => {
+    if (!sourcePeriodPanel || sourcePeriodPanel.hidden) return;
+    const nav = wrap.querySelector('.tax-forecast-source-period-nav');
+    if (nav?.contains(e.target)) return;
+    closeSourcePeriodPanel();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    if (!sourcePeriodPanel || sourcePeriodPanel.hidden) return;
+    e.preventDefault();
+    closeSourcePeriodPanel({ returnFocus: true });
   });
 
   settingsApi = mountTaxForecastSettingsForm(settingsHost, {
@@ -21792,7 +21998,7 @@ function buildPeriodSelectPanel() {
   const existing = getPeriodSelectItems();
   if (
     existing.length === maxPeriod
-    && existing.every((btn) => btn.dataset.period)
+    && existing.every((btn) => btn.dataset.period && btn.querySelector('.plan-main-menu-item-check'))
   ) {
     refreshPeriodSelectPanelSelection();
     return;
@@ -21811,6 +22017,12 @@ function buildPeriodSelectPanel() {
       'aria-selected',
       p === appSettings.fiscalPeriod ? 'true' : 'false',
     );
+
+    const checkSpan = document.createElement('span');
+    checkSpan.className = 'plan-main-menu-item-check';
+    checkSpan.setAttribute('aria-hidden', 'true');
+    checkSpan.textContent = p === appSettings.fiscalPeriod ? '✓' : '';
+    btn.appendChild(checkSpan);
 
     const labelSpan = document.createElement('span');
     labelSpan.className = 'plan-main-menu-item-label';
@@ -21836,10 +22048,10 @@ function refreshPeriodSelectPanelSelection() {
   for (const btn of getPeriodSelectItems()) {
     const period = Number(btn.dataset.period);
     if (!period) continue;
-    btn.setAttribute(
-      'aria-selected',
-      period === appSettings.fiscalPeriod ? 'true' : 'false',
-    );
+    const selected = period === appSettings.fiscalPeriod;
+    btn.setAttribute('aria-selected', selected ? 'true' : 'false');
+    const check = btn.querySelector('.plan-main-menu-item-check');
+    if (check) check.textContent = selected ? '✓' : '';
   }
 }
 
@@ -22355,20 +22567,21 @@ function setPlanKpi(metrics) {
   if (!kpiMainEl || !kpiSubEl) return;
   if (metrics === null || metrics === undefined) {
     kpiMainEl.replaceChildren();
-    kpiMainEl.textContent = '—';
     kpiSubEl.replaceChildren();
     kpiMainEl.classList.remove('plan-kpi-negative');
     return;
   }
   const margin = metrics.profitMargin;
   kpiMainEl.replaceChildren();
-  kpiMainEl.appendChild(createKpiItem(
-    '総利益率',
-    margin != null ? formatKpiRate(margin) : '—',
-    'profitMargin',
-    'plan-kpi-main-item',
-    margin,
-  ));
+  if (margin != null) {
+    kpiMainEl.appendChild(createKpiItem(
+      '総利益率',
+      formatKpiRate(margin),
+      'profitMargin',
+      'plan-kpi-main-item',
+      margin,
+    ));
+  }
   kpiMainEl.classList.toggle('plan-kpi-negative', margin != null && margin < 0);
 
   kpiSubEl.replaceChildren();
@@ -27647,8 +27860,8 @@ function renderUiColorPanel(container) {
     getConfig: () => uiColorConfig,
     setConfig: (next) => { uiColorConfig = next; },
     data,
-    sectionColorConfig,
-    onRefreshPlanView: () => refreshColorDependentViews({ rebuildData: false }),
+    getSectionColorConfig: () => sectionColorConfig,
+    onRefreshPlanView: () => refreshColorDependentViews({ rebuildData: true }),
     onRefreshToolbar: refreshToolbarFilterStyles,
     onRefreshDashboard: renderDashboardView,
     onReRender: refreshColorSettingsPanels,
@@ -27716,6 +27929,14 @@ function mountSectionColorPanel(sectionPanel) {
     });
   };
 
+  /** UI色パネルなど、大項目塗り色を参照するプレビューを同期する */
+  const syncSectionBarRefPreviews = (sectionId, barColor) => {
+    const root = sectionPanel.closest('.color-settings-content') ?? document;
+    root.querySelectorAll(`[data-section-bar-ref="${sectionId}"]`).forEach((el) => {
+      el.style.background = barColor;
+    });
+  };
+
   for (const def of defs) {
     const tr = document.createElement('tr');
 
@@ -27779,7 +28000,12 @@ function mountSectionColorPanel(sectionPanel) {
       preview.style.background = barColor;
       preview.style.color = textColor;
       styleSectionLabelCell(labelTd, def.sectionId);
-      resetBtn.disabled = false;
+      syncSectionBarRefPreviews(def.sectionId, barColor);
+      resetBtn.disabled = !isSectionColorCustom(
+        sectionColorConfig,
+        getPlanColorMode(),
+        def.sectionId,
+      );
     };
 
     const emitSectionColorOverride = (flush) => {
@@ -27807,6 +28033,7 @@ function mountSectionColorPanel(sectionPanel) {
       preview.style.background = colors.barColor;
       preview.style.color = colors.textColor;
       styleSectionLabelCell(labelTd, def.sectionId);
+      syncSectionBarRefPreviews(def.sectionId, colors.barColor);
       resetBtn.disabled = true;
     });
   }
@@ -27838,7 +28065,21 @@ function buildColorSettingsColumns() {
 }
 
 function bindColorSettingsResetActions(container) {
-  container.querySelector('#ui-color-reset-btn')?.addEventListener('click', () => {
+  const uiResetBtn = container.querySelector('#ui-color-reset-btn');
+  const sectionResetBtn = container.querySelector('#section-color-reset-btn');
+
+  const syncResetButtons = () => {
+    const mode = getPlanColorMode();
+    if (uiResetBtn) {
+      uiResetBtn.disabled = !hasUiColorModeOverrides(uiColorConfig, mode);
+    }
+    if (sectionResetBtn) {
+      sectionResetBtn.disabled = !hasSectionColorModeOverrides(sectionColorConfig, mode);
+    }
+  };
+  syncResetButtons();
+
+  uiResetBtn?.addEventListener('click', () => {
     uiColorConfig = resetUiColorModeOverrides(uiColorConfig, getPlanColorMode());
     saveUiColorConfig(uiColorConfig);
     applyUiColors(uiColorConfig);
@@ -27846,7 +28087,7 @@ function bindColorSettingsResetActions(container) {
     refreshColorDependentViews();
   });
 
-  container.querySelector('#section-color-reset-btn')?.addEventListener('click', () => {
+  sectionResetBtn?.addEventListener('click', () => {
     sectionColorConfig = resetSectionColorModeOverrides(sectionColorConfig, getPlanColorMode());
     saveSectionColorConfig(sectionColorConfig);
     refreshSectionColors();
@@ -31700,26 +31941,37 @@ function renderOtherSettings() {
   function syncBrandLogoSettingsPreview(settings = appSettings) {
     if (!brandLogoPreview) return;
     const dataUrl = normalizeBrandLogoDataUrl(settings.brandLogoDataUrl);
+    const mode = getPlanColorMode();
     brandLogoPreview.classList.toggle('brand-logo-settings-preview--empty', !dataUrl);
     brandLogoPreview.classList.toggle('plan-logo-image', !!dataUrl);
-    brandLogoPreview.textContent = '';
     brandLogoPreview.style.background = '';
     brandLogoPreview.style.color = '';
     brandLogoPreview.style.boxShadow = 'none';
+    brandLogoPreview.style.filter = 'none';
 
     let img = brandLogoPreview.querySelector('img');
-    if (dataUrl) {
-      if (!img) {
-        img = document.createElement('img');
-        img.alt = '';
-        brandLogoPreview.appendChild(img);
-      }
-      if (img.src !== dataUrl) img.src = dataUrl;
-      applyBrandLogoImageFilters(settings, getPlanColorMode());
+    if (!dataUrl) {
+      if (img) img.remove();
       return;
     }
-    if (img) img.remove();
-    brandLogoPreview.style.filter = 'none';
+
+    if (!img) {
+      img = document.createElement('img');
+      img.alt = '';
+      brandLogoPreview.appendChild(img);
+    }
+    for (const node of [...brandLogoPreview.childNodes]) {
+      if (node !== img) node.remove();
+    }
+
+    const applyPreviewFilters = () => {
+      applyBrandLogoImageFilters(settings, mode);
+    };
+    img.onload = applyPreviewFilters;
+    if (img.getAttribute('src') !== dataUrl) {
+      img.src = dataUrl;
+    }
+    if (img.complete) applyPreviewFilters();
   }
 
   function syncBrandFieldsVisibility(settings = appSettings) {

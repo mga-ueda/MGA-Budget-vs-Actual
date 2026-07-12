@@ -193,6 +193,8 @@ import {
   setSectionColorOverride,
   resetSectionColorOverride,
   resetSectionColorModeOverrides,
+  isSectionColorCustom,
+  hasSectionColorModeOverrides,
 } from '../config/sectionColorConfig.js';
 import {
   loadSectionFilterConfig,
@@ -216,6 +218,7 @@ import {
   applyUiColors,
   hexToRgba,
   opaqueHex,
+  hasUiColorModeOverrides,
 } from '../config/uiColorConfig.js';
 import {
   loadMonthDisplayConfig,
@@ -651,7 +654,7 @@ function buildPeriodSelectPanel() {
   const existing = getPeriodSelectItems();
   if (
     existing.length === maxPeriod
-    && existing.every((btn) => btn.dataset.period)
+    && existing.every((btn) => btn.dataset.period && btn.querySelector('.plan-main-menu-item-check'))
   ) {
     refreshPeriodSelectPanelSelection();
     return;
@@ -670,6 +673,12 @@ function buildPeriodSelectPanel() {
       'aria-selected',
       p === appSettings.fiscalPeriod ? 'true' : 'false',
     );
+
+    const checkSpan = document.createElement('span');
+    checkSpan.className = 'plan-main-menu-item-check';
+    checkSpan.setAttribute('aria-hidden', 'true');
+    checkSpan.textContent = p === appSettings.fiscalPeriod ? '✓' : '';
+    btn.appendChild(checkSpan);
 
     const labelSpan = document.createElement('span');
     labelSpan.className = 'plan-main-menu-item-label';
@@ -695,10 +704,10 @@ function refreshPeriodSelectPanelSelection() {
   for (const btn of getPeriodSelectItems()) {
     const period = Number(btn.dataset.period);
     if (!period) continue;
-    btn.setAttribute(
-      'aria-selected',
-      period === appSettings.fiscalPeriod ? 'true' : 'false',
-    );
+    const selected = period === appSettings.fiscalPeriod;
+    btn.setAttribute('aria-selected', selected ? 'true' : 'false');
+    const check = btn.querySelector('.plan-main-menu-item-check');
+    if (check) check.textContent = selected ? '✓' : '';
   }
 }
 
@@ -1214,20 +1223,21 @@ function setPlanKpi(metrics) {
   if (!kpiMainEl || !kpiSubEl) return;
   if (metrics === null || metrics === undefined) {
     kpiMainEl.replaceChildren();
-    kpiMainEl.textContent = '—';
     kpiSubEl.replaceChildren();
     kpiMainEl.classList.remove('plan-kpi-negative');
     return;
   }
   const margin = metrics.profitMargin;
   kpiMainEl.replaceChildren();
-  kpiMainEl.appendChild(createKpiItem(
-    '総利益率',
-    margin != null ? formatKpiRate(margin) : '—',
-    'profitMargin',
-    'plan-kpi-main-item',
-    margin,
-  ));
+  if (margin != null) {
+    kpiMainEl.appendChild(createKpiItem(
+      '総利益率',
+      formatKpiRate(margin),
+      'profitMargin',
+      'plan-kpi-main-item',
+      margin,
+    ));
+  }
   kpiMainEl.classList.toggle('plan-kpi-negative', margin != null && margin < 0);
 
   kpiSubEl.replaceChildren();
@@ -6506,8 +6516,8 @@ function renderUiColorPanel(container) {
     getConfig: () => uiColorConfig,
     setConfig: (next) => { uiColorConfig = next; },
     data,
-    sectionColorConfig,
-    onRefreshPlanView: () => refreshColorDependentViews({ rebuildData: false }),
+    getSectionColorConfig: () => sectionColorConfig,
+    onRefreshPlanView: () => refreshColorDependentViews({ rebuildData: true }),
     onRefreshToolbar: refreshToolbarFilterStyles,
     onRefreshDashboard: renderDashboardView,
     onReRender: refreshColorSettingsPanels,
@@ -6575,6 +6585,14 @@ function mountSectionColorPanel(sectionPanel) {
     });
   };
 
+  /** UI色パネルなど、大項目塗り色を参照するプレビューを同期する */
+  const syncSectionBarRefPreviews = (sectionId, barColor) => {
+    const root = sectionPanel.closest('.color-settings-content') ?? document;
+    root.querySelectorAll(`[data-section-bar-ref="${sectionId}"]`).forEach((el) => {
+      el.style.background = barColor;
+    });
+  };
+
   for (const def of defs) {
     const tr = document.createElement('tr');
 
@@ -6638,7 +6656,12 @@ function mountSectionColorPanel(sectionPanel) {
       preview.style.background = barColor;
       preview.style.color = textColor;
       styleSectionLabelCell(labelTd, def.sectionId);
-      resetBtn.disabled = false;
+      syncSectionBarRefPreviews(def.sectionId, barColor);
+      resetBtn.disabled = !isSectionColorCustom(
+        sectionColorConfig,
+        getPlanColorMode(),
+        def.sectionId,
+      );
     };
 
     const emitSectionColorOverride = (flush) => {
@@ -6666,6 +6689,7 @@ function mountSectionColorPanel(sectionPanel) {
       preview.style.background = colors.barColor;
       preview.style.color = colors.textColor;
       styleSectionLabelCell(labelTd, def.sectionId);
+      syncSectionBarRefPreviews(def.sectionId, colors.barColor);
       resetBtn.disabled = true;
     });
   }
@@ -6697,7 +6721,21 @@ function buildColorSettingsColumns() {
 }
 
 function bindColorSettingsResetActions(container) {
-  container.querySelector('#ui-color-reset-btn')?.addEventListener('click', () => {
+  const uiResetBtn = container.querySelector('#ui-color-reset-btn');
+  const sectionResetBtn = container.querySelector('#section-color-reset-btn');
+
+  const syncResetButtons = () => {
+    const mode = getPlanColorMode();
+    if (uiResetBtn) {
+      uiResetBtn.disabled = !hasUiColorModeOverrides(uiColorConfig, mode);
+    }
+    if (sectionResetBtn) {
+      sectionResetBtn.disabled = !hasSectionColorModeOverrides(sectionColorConfig, mode);
+    }
+  };
+  syncResetButtons();
+
+  uiResetBtn?.addEventListener('click', () => {
     uiColorConfig = resetUiColorModeOverrides(uiColorConfig, getPlanColorMode());
     saveUiColorConfig(uiColorConfig);
     applyUiColors(uiColorConfig);
@@ -6705,7 +6743,7 @@ function bindColorSettingsResetActions(container) {
     refreshColorDependentViews();
   });
 
-  container.querySelector('#section-color-reset-btn')?.addEventListener('click', () => {
+  sectionResetBtn?.addEventListener('click', () => {
     sectionColorConfig = resetSectionColorModeOverrides(sectionColorConfig, getPlanColorMode());
     saveSectionColorConfig(sectionColorConfig);
     refreshSectionColors();
@@ -10559,26 +10597,37 @@ function renderOtherSettings() {
   function syncBrandLogoSettingsPreview(settings = appSettings) {
     if (!brandLogoPreview) return;
     const dataUrl = normalizeBrandLogoDataUrl(settings.brandLogoDataUrl);
+    const mode = getPlanColorMode();
     brandLogoPreview.classList.toggle('brand-logo-settings-preview--empty', !dataUrl);
     brandLogoPreview.classList.toggle('plan-logo-image', !!dataUrl);
-    brandLogoPreview.textContent = '';
     brandLogoPreview.style.background = '';
     brandLogoPreview.style.color = '';
     brandLogoPreview.style.boxShadow = 'none';
+    brandLogoPreview.style.filter = 'none';
 
     let img = brandLogoPreview.querySelector('img');
-    if (dataUrl) {
-      if (!img) {
-        img = document.createElement('img');
-        img.alt = '';
-        brandLogoPreview.appendChild(img);
-      }
-      if (img.src !== dataUrl) img.src = dataUrl;
-      applyBrandLogoImageFilters(settings, getPlanColorMode());
+    if (!dataUrl) {
+      if (img) img.remove();
       return;
     }
-    if (img) img.remove();
-    brandLogoPreview.style.filter = 'none';
+
+    if (!img) {
+      img = document.createElement('img');
+      img.alt = '';
+      brandLogoPreview.appendChild(img);
+    }
+    for (const node of [...brandLogoPreview.childNodes]) {
+      if (node !== img) node.remove();
+    }
+
+    const applyPreviewFilters = () => {
+      applyBrandLogoImageFilters(settings, mode);
+    };
+    img.onload = applyPreviewFilters;
+    if (img.getAttribute('src') !== dataUrl) {
+      img.src = dataUrl;
+    }
+    if (img.complete) applyPreviewFilters();
   }
 
   function syncBrandFieldsVisibility(settings = appSettings) {

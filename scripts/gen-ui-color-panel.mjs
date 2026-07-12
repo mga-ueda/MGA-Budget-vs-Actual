@@ -53,11 +53,12 @@ const L = {
   fill1Preview: jp(0x6ce8, 0x76ee, 0x884c),
   fill2: jp(0x5857, 0x308a, 0x8272, 0x32, 0xff08, 0x6ce8, 0x610f, 0xff09),
   fill2Preview: jp(0x6ce8, 0x610f, 0x884c),
-  warning: jp(0x8b66, 0x544a, 0x6587, 0x5b57, 0x8272),
-  warningBgTitle: jp(
+  revAr: jp(0x58f2, 0x4e0a, 0x9ad8, 0xff0d, 0x58f2, 0x639b, 0x91d1),
+  revArBgTitle: jp(
     0x80cc, 0x666f, 0x8272, 0x306f, 0x5927, 0x9805, 0x76ee, 0x8272, 0xff08, 0x58f2, 0x4e0a, 0x9ad8, 0x5dee, 0x7570, 0xff09, 0x3092, 0x53c2, 0x7167,
   ),
-  warningPreview: jp(0x58f2, 0x4e0a, 0x9ad8, 0xff0d, 0x58f2, 0x639b, 0x91d1),
+  warning: jp(0x8b66, 0x544a, 0x6587, 0x5b57, 0x8272),
+  warningPreview: jp(0x8b66, 0x544a),
   expandable: jp(0x5c55, 0x958b, 0x53ef, 0x80fd, 0x9805, 0x76ee, 0x30fb, 0x4ed5, 0x8a33, 0x30bb, 0x30eb, 0xff08, 0x30cf, 0x30a4, 0x30e9, 0x30a4, 0x30c8, 0xff09),
   expandablePreview: jp(0x25b6, 0x20, 0x52d8, 0x5b9a, 0x79d1, 0x76ee),
   hover: jp(0x30de, 0x30a6, 0x30b9, 0x30aa, 0x30fc, 0x30d0, 0x30fc, 0xff08, 0x884c, 0xff09),
@@ -239,10 +240,14 @@ export function mountUiColorPanel(container, {
   setConfig,
   data,
   sectionColorConfig,
+  getSectionColorConfig,
   onRefreshPlanView,
   onRefreshToolbar,
   onReRender,
 }) {
+  const resolveSectionColorConfig = () => (
+    typeof getSectionColorConfig === 'function' ? getSectionColorConfig() : sectionColorConfig
+  );
   const panel = document.createElement('div');
   panel.className = 'ui-color-panel';
 
@@ -816,33 +821,35 @@ export function mountUiColorPanel(container, {
   registerFillRow('${L.fill1}', 'fillColor1', '${L.fill1Preview}');
   registerFillRow('${L.fill2}', 'fillColor2', '${L.fill2Preview}');
 
-  const warningColors = getUiColors(getConfig());
-  const warningText = colorInputTd(warningColors.warningTextColor);
-  const warningPreview = previewTd({
-    background: getSectionBarColor('revenueVariance', data?.sections, sectionColorConfig, getUiColorMode(getConfig())),
-    color: warningColors.warningTextColor,
-    text: '${L.warningPreview}',
+  const revArColors = getUiColors(getConfig());
+  const revArText = colorInputTd(revArColors.revArTextColor);
+  const revArPreview = previewTd({
+    background: getSectionBarColor('revenueVariance', data?.sections, resolveSectionColorConfig(), getUiColorMode(getConfig())),
+    color: revArColors.revArTextColor,
+    text: '${L.revAr}',
   });
-  const warningReset = resetBtnTd(keysMatchDefaults(getConfig(), ['warningTextColor']));
-  const warningBgTd = dashTd();
-  warningBgTd.title = '${L.warningBgTitle}';
-  addRow('${L.warning}', [warningBgTd, warningText.td, warningPreview.td, warningReset.td]);
-  bindColorInput(warningText, (value, flush) => {
+  const revArReset = resetBtnTd(keysMatchDefaults(getConfig(), ['revArTextColor']));
+  const revArBgTd = dashTd();
+  revArBgTd.title = '${L.revArBgTitle}';
+  revArPreview.span.dataset.sectionBarRef = 'revenueVariance';
+  addRow('${L.revAr}', [revArBgTd, revArText.td, revArPreview.td, revArReset.td]);
+  bindColorInput(revArText, (value, flush) => {
     const text = opaqueHex(value);
-    setConfig(setUiColorKey(getConfig(), 'warningTextColor', text));
+    setConfig(setUiColorKey(getConfig(), 'revArTextColor', text));
     persist({ flush });
-    setColorInput(warningText,text);
-    warningPreview.span.style.color = text;
-    warningReset.btn.disabled = keysMatchDefaults(getConfig(), ['warningTextColor']);
+    setColorInput(revArText,text);
+    revArPreview.span.style.color = text;
+    revArReset.btn.disabled = keysMatchDefaults(getConfig(), ['revArTextColor']);
   });
-  warningReset.btn.addEventListener('click', () => {
-    setConfig(resetUiColorKey(getConfig(), 'warningTextColor'));
+  revArReset.btn.addEventListener('click', () => {
+    setConfig(resetUiColorKey(getConfig(), 'revArTextColor'));
     persist({ flush: true });
-    const text = getDefaultUiColors(getUiColorMode(getConfig())).warningTextColor;
-    setColorInput(warningText,text);
-    warningPreview.span.style.color = text;
-    warningReset.btn.disabled = true;
+    const text = getDefaultUiColors(getUiColorMode(getConfig())).revArTextColor;
+    setColorInput(revArText,text);
+    revArPreview.span.style.color = text;
+    revArReset.btn.disabled = true;
   });
+  registerTextRow('${L.warning}', 'warningTextColor', '${L.warningPreview}');
 
   registerAccentRow('${L.expandable}', 'expandableHighlight', '${L.expandablePreview}', { noBorder: true });
   registerAccentRow('${L.hover}', 'rowHoverBorder', '${L.hoverPreview}', { previewTextColorKey: 'textColor' });

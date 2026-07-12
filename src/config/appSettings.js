@@ -73,7 +73,7 @@ const DEFAULT_BRAND_LOGO_IMAGE_DARK = {
 
 /** ライトモード用ロゴ画像スタイルの初期値 */
 const DEFAULT_BRAND_LOGO_IMAGE_LIGHT = {
-  outlineColor: '#a6a6a6',
+  outlineColor: '#6b6b6b',
   outlineWidth: 0.4,
   shadowEnabled: true,
   shadowColor: '#000000',
@@ -232,24 +232,27 @@ export function buildBrandLogoShadowFilter(settings, viewportScale = getViewport
   return `drop-shadow(${offset}px ${offset}px ${blur}px ${color})`;
 }
 
-export function buildBrandLogoImageFilter(settings, viewportScale = getViewportScale()) {
-  const parts = [];
-  const outline = buildBrandLogoOutlineFilter(settings, viewportScale);
-  if (outline !== 'none') parts.push(outline);
-  const shadow = buildBrandLogoShadowFilter(settings, viewportScale);
-  if (shadow) parts.push(shadow);
-  return parts.length ? parts.join(' ') : 'none';
-}
-
 const PLAN_LOGO_OUTLINE_FILTER_ID = 'plan-logo-outline-filter';
-const PLAN_LOGO_OUTLINE_MORPH_ID = 'plan-logo-outline-morph';
-const PLAN_LOGO_OUTLINE_FLOOD_ID = 'plan-logo-outline-flood';
+const PLAN_LOGO_OUTLINE_FILTER_ID_PREVIEW = 'plan-logo-outline-filter-preview';
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
-function ensurePlanLogoOutlineSvgFilter() {
-  if (typeof document === 'undefined') return PLAN_LOGO_OUTLINE_FILTER_ID;
-  if (document.getElementById(PLAN_LOGO_OUTLINE_FILTER_ID)) {
-    return PLAN_LOGO_OUTLINE_FILTER_ID;
+/** 設定画面のロゴプレビューはヘッダーロゴの 2.5 倍高さ */
+export const BRAND_LOGO_SETTINGS_PREVIEW_SCALE = 2.5;
+
+function outlineFilterMorphId(filterId) {
+  return `${filterId}-morph`;
+}
+
+function outlineFilterFloodId(filterId) {
+  return `${filterId}-flood`;
+}
+
+function ensurePlanLogoOutlineSvgFilter(filterId = PLAN_LOGO_OUTLINE_FILTER_ID) {
+  if (typeof document === 'undefined') return filterId;
+  const existing = document.getElementById(filterId);
+  if (existing) {
+    if (document.getElementById(outlineFilterMorphId(filterId))) return filterId;
+    existing.closest('svg')?.remove();
   }
 
   const svg = document.createElementNS(SVG_NS, 'svg');
@@ -260,7 +263,7 @@ function ensurePlanLogoOutlineSvgFilter() {
 
   const defs = document.createElementNS(SVG_NS, 'defs');
   const filter = document.createElementNS(SVG_NS, 'filter');
-  filter.id = PLAN_LOGO_OUTLINE_FILTER_ID;
+  filter.id = filterId;
   filter.setAttribute('x', '-50%');
   filter.setAttribute('y', '-50%');
   filter.setAttribute('width', '200%');
@@ -269,14 +272,14 @@ function ensurePlanLogoOutlineSvgFilter() {
   filter.setAttribute('primitiveUnits', 'userSpaceOnUse');
 
   const morph = document.createElementNS(SVG_NS, 'feMorphology');
-  morph.id = PLAN_LOGO_OUTLINE_MORPH_ID;
+  morph.id = outlineFilterMorphId(filterId);
   morph.setAttribute('in', 'SourceAlpha');
   morph.setAttribute('operator', 'dilate');
   morph.setAttribute('radius', '1');
   morph.setAttribute('result', 'dilated');
 
   const flood = document.createElementNS(SVG_NS, 'feFlood');
-  flood.id = PLAN_LOGO_OUTLINE_FLOOD_ID;
+  flood.id = outlineFilterFloodId(filterId);
   flood.setAttribute('flood-color', DEFAULT_BRAND_LOGO_OUTLINE_COLOR);
   flood.setAttribute('result', 'flood');
 
@@ -301,16 +304,20 @@ function ensurePlanLogoOutlineSvgFilter() {
   defs.appendChild(filter);
   svg.appendChild(defs);
   document.body.appendChild(svg);
-  return PLAN_LOGO_OUTLINE_FILTER_ID;
+  return filterId;
 }
 
-function updatePlanLogoOutlineSvgFilter(radius, color) {
-  ensurePlanLogoOutlineSvgFilter();
-  document.getElementById(PLAN_LOGO_OUTLINE_MORPH_ID)?.setAttribute('radius', String(radius));
-  document.getElementById(PLAN_LOGO_OUTLINE_FLOOD_ID)?.setAttribute('flood-color', color);
+function updatePlanLogoOutlineSvgFilter(radius, color, filterId = PLAN_LOGO_OUTLINE_FILTER_ID) {
+  ensurePlanLogoOutlineSvgFilter(filterId);
+  document.getElementById(outlineFilterMorphId(filterId))?.setAttribute('radius', String(radius));
+  document.getElementById(outlineFilterFloodId(filterId))?.setAttribute('flood-color', color);
 }
 
-export function buildBrandLogoOutlineFilter(settings, viewportScale = getViewportScale()) {
+export function buildBrandLogoOutlineFilter(
+  settings,
+  viewportScale = getViewportScale(),
+  filterId = PLAN_LOGO_OUTLINE_FILTER_ID,
+) {
   const width = normalizeBrandLogoOutlineWidth(settings?.brandLogoOutlineWidth);
   if (width <= 0) return 'none';
   const color = normalizeBrandColor(
@@ -318,8 +325,21 @@ export function buildBrandLogoOutlineFilter(settings, viewportScale = getViewpor
     DEFAULT_BRAND_LOGO_OUTLINE_COLOR,
   );
   const radius = Math.round(width * viewportScale * 100) / 100;
-  updatePlanLogoOutlineSvgFilter(radius, color);
-  return `url(#${PLAN_LOGO_OUTLINE_FILTER_ID})`;
+  updatePlanLogoOutlineSvgFilter(radius, color, filterId);
+  return `url(#${filterId})`;
+}
+
+export function buildBrandLogoImageFilter(
+  settings,
+  viewportScale = getViewportScale(),
+  filterId = PLAN_LOGO_OUTLINE_FILTER_ID,
+) {
+  const parts = [];
+  const outline = buildBrandLogoOutlineFilter(settings, viewportScale, filterId);
+  if (outline !== 'none') parts.push(outline);
+  const shadow = buildBrandLogoShadowFilter(settings, viewportScale);
+  if (shadow) parts.push(shadow);
+  return parts.length ? parts.join(' ') : 'none';
 }
 
 function applyBrandLogoImageFilterToElement(img, filter) {
@@ -336,9 +356,18 @@ function applyBrandLogoImageFilterToElement(img, filter) {
 export function applyBrandLogoImageFilters(settings, mode = 'dark') {
   if (!hasBrandLogo(settings)) return;
   const withVisual = { ...settings, ...resolveBrandLogoVisualSettings(settings, mode) };
-  const filter = buildBrandLogoImageFilter(withVisual);
-  document.querySelectorAll('.plan-logo-image img').forEach((img) => {
-    applyBrandLogoImageFilterToElement(img, filter);
+  const headerFilter = buildBrandLogoImageFilter(withVisual);
+  document.querySelectorAll('.plan-logo.plan-logo-image img').forEach((img) => {
+    applyBrandLogoImageFilterToElement(img, headerFilter);
+  });
+  const previewScale = getViewportScale() * BRAND_LOGO_SETTINGS_PREVIEW_SCALE;
+  const previewFilter = buildBrandLogoImageFilter(
+    withVisual,
+    previewScale,
+    PLAN_LOGO_OUTLINE_FILTER_ID_PREVIEW,
+  );
+  document.querySelectorAll('.brand-logo-settings-preview.plan-logo-image img').forEach((img) => {
+    applyBrandLogoImageFilterToElement(img, previewFilter);
   });
 }
 
