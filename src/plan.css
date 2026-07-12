@@ -6584,3 +6584,23 @@ body.plan-journal-open {
     grid-template-columns: 1fr;
   }
 }
+
+.tax-rate-section--accounting-basis {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.tax-rate-accounting-basis-select {
+  max-width: 16rem;
+  width: 100%;
+}
+
+.tax-rate-section--readonly {
+  opacity: 0.72;
+}
+
+.tax-rate-section--readonly .tax-rate-input:disabled {
+  cursor: not-allowed;
+  background: color-mix(in srgb, var(--plan-surface, #fff) 85%, #94a3b8);
+}

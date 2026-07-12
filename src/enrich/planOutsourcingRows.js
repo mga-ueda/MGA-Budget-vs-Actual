@@ -10,7 +10,10 @@ import {
 } from '../config/appSettings.js';
 import { buildFiscalYearMonths } from '../config/salaryPlanConfig.js';
 import { getPeriodVendorEntries } from '../config/outsourcingPlanConfig.js';
-import { getConsumptionTaxRatePercent } from '../config/consumptionTaxRateConfig.js';
+import {
+  getConsumptionTaxRatePercent,
+  isAccountingTaxExclusive,
+} from '../config/consumptionTaxRateConfig.js';
 import { calcWithholdingTax } from '../config/withholdingTaxRateConfig.js';
 import { visibilityRowKey, rowTypeLabel } from '../config/visibilityConfig.js';
 import {
@@ -177,13 +180,14 @@ function outCalcRemunerationFromTaxInclusiveTotal(totalYen, ratePercent) {
   return Math.floor(total * 100 / (100 + ratePercent));
 }
 
-/** 税込支払額から個人事業主向け源泉内訳を算出 */
+/** 支払額から個人事業主向け源泉内訳を算出（税込／税抜に対応） */
 export function calcOutsourcingBreakdownForMonth(
   totalYen,
   calendarYear,
   calendarMonth,
   consumptionTaxRates,
   withholdingTaxRates,
+  accountingTaxBasis,
 ) {
   const total = Math.max(0, Math.floor(Number(totalYen) || 0));
   if (total === 0) {
@@ -200,15 +204,30 @@ export function calcOutsourcingBreakdownForMonth(
     calendarMonth,
     consumptionTaxRates,
   ) ?? 0;
-  const remuneration = outCalcRemunerationFromTaxInclusiveTotal(total, ratePercent);
-  const consumptionTax = total - remuneration;
+
+  let remuneration;
+  let consumptionTax;
+  let paymentGross;
+  if (isAccountingTaxExclusive(accountingTaxBasis)) {
+    // 税抜: 本体額＝報酬、消費税は別計算（源泉対象は報酬のみ）
+    remuneration = total;
+    consumptionTax = ratePercent > 0
+      ? Math.round(total * ratePercent / 100)
+      : 0;
+    paymentGross = total + consumptionTax;
+  } else {
+    remuneration = outCalcRemunerationFromTaxInclusiveTotal(total, ratePercent);
+    consumptionTax = total - remuneration;
+    paymentGross = total;
+  }
+
   const withholdingTax = calcWithholdingTax(
     remuneration,
     calendarYear,
     calendarMonth,
     withholdingTaxRates,
   );
-  const netReceived = total - withholdingTax;
+  const netReceived = paymentGross - withholdingTax;
 
   return { remuneration, consumptionTax, withholdingTax, netReceived };
 }
@@ -220,6 +239,7 @@ function outBuildBreakdownMonthlyValues(
   fiscalEndMonth,
   consumptionTaxRates,
   withholdingTaxRates,
+  accountingTaxBasis,
   field,
 ) {
   const values = emptyRawMonthValues();
@@ -234,6 +254,7 @@ function outBuildBreakdownMonthlyValues(
       ym.month,
       consumptionTaxRates,
       withholdingTaxRates,
+      accountingTaxBasis,
     );
     values[m] = breakdown[field];
   }
@@ -271,6 +292,7 @@ function outInsertIndividualBreakdownRows(rows, {
   corpEntityMarkers,
   consumptionTaxRates,
   withholdingTaxRates,
+  accountingTaxBasis,
 }) {
   const markers = parseCorpEntityMarkers(corpEntityMarkers);
   const bodyWithoutBreakdown = rows.filter((r) => r.type !== 'breakdown');
@@ -294,6 +316,7 @@ function outInsertIndividualBreakdownRows(rows, {
           fiscalEndMonth,
           consumptionTaxRates,
           withholdingTaxRates,
+          accountingTaxBasis,
           def.key,
         ),
       ));
@@ -325,6 +348,7 @@ export function enrichPlanDataWithOutsourcingRows(planData, {
   corpEntityMarkers,
   consumptionTaxRates,
   withholdingTaxRates,
+  accountingTaxBasis,
   monthDisplayConfig,
 }) {
   const fiscalMonths = buildFiscalYearMonths(fiscalEndMonth);
@@ -338,6 +362,7 @@ export function enrichPlanDataWithOutsourcingRows(planData, {
     corpEntityMarkers,
     consumptionTaxRates,
     withholdingTaxRates,
+    accountingTaxBasis,
   });
 
   if (displayMode !== 'plan' && displayMode !== 'budget-actual') {

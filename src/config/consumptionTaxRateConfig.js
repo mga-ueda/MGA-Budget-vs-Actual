@@ -1,3 +1,39 @@
+
+/** 消費税の経理方式（税込み会計 / 税抜き会計） */
+export const ACCOUNTING_TAX_BASIS_INCLUSIVE = 'inclusive';
+export const ACCOUNTING_TAX_BASIS_EXCLUSIVE = 'exclusive';
+export const DEFAULT_ACCOUNTING_TAX_BASIS = ACCOUNTING_TAX_BASIS_INCLUSIVE;
+
+/** 経理方式を正規化（未知値は税込み） */
+export function normalizeAccountingTaxBasis(value) {
+  return value === ACCOUNTING_TAX_BASIS_EXCLUSIVE
+    ? ACCOUNTING_TAX_BASIS_EXCLUSIVE
+    : ACCOUNTING_TAX_BASIS_INCLUSIVE;
+}
+
+/** 税抜き会計かどうか */
+export function isAccountingTaxExclusive(basis) {
+  return normalizeAccountingTaxBasis(basis) === ACCOUNTING_TAX_BASIS_EXCLUSIVE;
+}
+
+/** 経理方式の表示名 */
+export function getAccountingTaxBasisLabel(basis) {
+  return isAccountingTaxExclusive(basis)
+    ? "税抜き会計"
+    : "税込み会計";
+}
+
+/** 本体金額から消費税額を算出（税込み / 税抜き） */
+export function calcConsumptionTaxYenFromAmount(amountYen, ratePercent, accountingTaxBasis) {
+  const amount = Math.max(0, Number(amountYen) || 0);
+  const rate = Number(ratePercent);
+  if (amount === 0 || !Number.isFinite(rate) || rate <= 0) return 0;
+  if (isAccountingTaxExclusive(accountingTaxBasis)) {
+    return Math.round(amount * rate / 100);
+  }
+  return Math.round(amount * rate / (100 + rate));
+}
+
 /** 適用開始日（年月）ごとの消費税率（％）。昇順で並べ、該当日以降に有効。 */
 export const DEFAULT_CONSUMPTION_TAX_RATES = [
   { year: 1989, month: 4, ratePercent: 3 },

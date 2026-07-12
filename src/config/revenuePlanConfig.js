@@ -1,4 +1,7 @@
-import { calcTaxInclusiveFromTaxExclusiveAmount } from './consumptionTaxRateConfig.js';
+import {
+  calcTaxInclusiveFromTaxExclusiveAmount,
+  isAccountingTaxExclusive,
+} from './consumptionTaxRateConfig.js';
 import { normalizeAmount, emptyMonthly } from './planAmountUtils.js';
 
 const REVENUE_PLAN_STORAGE_KEY = 'mga-revenue-plans';
@@ -65,6 +68,10 @@ function applyConsumptionTaxToMonthlyAmount(
   taxOptions,
 ) {
   if (taxExclusiveAmount == null || taxExclusiveAmount === 0) return taxExclusiveAmount;
+  // 税抜経理では仕訳実績と揃えるため上乗せしない
+  if (isAccountingTaxExclusive(taxOptions?.accountingTaxBasis)) {
+    return taxExclusiveAmount;
+  }
   if (!taxOptions?.consumptionTaxRates || !taxOptions?.monthYearMap) {
     return taxExclusiveAmount;
   }

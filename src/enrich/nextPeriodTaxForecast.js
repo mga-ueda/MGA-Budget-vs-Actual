@@ -1,5 +1,10 @@
 import { buildFiscalMonths } from '../config/fiscalCalendar.js';
-import { getConsumptionTaxRatePercent } from '../config/consumptionTaxRateConfig.js';
+import {
+  getConsumptionTaxRatePercent,
+  isAccountingTaxExclusive,
+  getAccountingTaxBasisLabel,
+  calcConsumptionTaxYenFromAmount,
+} from '../config/consumptionTaxRateConfig.js';
 import {
   monthLabelFromIndex,
   normalizeTaxSimulation,
@@ -88,7 +93,9 @@ function estimateAnnualConsumptionTax({
   simplifiedDeemedPurchaseRatePercent,
   monthYearMap,
   consumptionTaxRates,
+  accountingTaxBasis,
 }) {
+  const exclusive = isAccountingTaxExclusive(accountingTaxBasis);
   const regularMonths = fiscalMonths.filter((m) => m !== '決算整理');
   let outputTax = 0;
   let inputTax = 0;
@@ -106,8 +113,9 @@ function estimateAnnualConsumptionTax({
     if (pastMonths.has(month) || pastMonths.size === 0) {
       taxableSales += revenue;
       taxablePurchases += purchases;
-      outputTax += Math.round(revenue * rate / (100 + rate));
-      inputTax += Math.round(purchases * rate / (100 + rate));
+      // 税抜: 本体×税率。税込: 税込額から税額を抽出
+      outputTax += calcConsumptionTaxYenFromAmount(revenue, rate, accountingTaxBasis);
+      inputTax += calcConsumptionTaxYenFromAmount(purchases, rate, accountingTaxBasis);
     }
   }
   if (pastMonths.size > 0) {
@@ -125,25 +133,35 @@ function estimateAnnualConsumptionTax({
   }
   if (method === 'simplified') {
     const deemedRate = Number(simplifiedDeemedPurchaseRatePercent) || 0;
-    const taxableBase = Math.max(0, Math.round(taxableSales / 1.1));
+    const taxableBase = exclusive
+      ? Math.max(0, Math.round(taxableSales))
+      : Math.max(0, Math.round(taxableSales / 1.1));
     const netTax = Math.round(taxableBase * 0.1 * (1 - deemedRate / 100));
     return {
       amount: Math.max(0, netTax),
       basis: '簡易課税（みなし仕入率）',
-      detail: `課税売上×10%×（1-みなし仕入率）、年間換算して扱います`,
+      detail: exclusive
+        ? "課税売上（税抜）×税率×（1-みなし仕入率）、年間換算して扱います"
+        : `課税売上×10%×（1-みなし仕入率）、年間換算して扱います`,
       taxableSales,
       deemedRate,
+      accountingTaxBasis: exclusive ? 'exclusive' : 'inclusive',
+      accountingTaxBasisLabel: getAccountingTaxBasisLabel(accountingTaxBasis),
     };
   }
   const amount = Math.max(0, outputTax - inputTax);
   return {
     amount,
     basis: '本則課税（仮受消費税-仮払消費税）',
-    detail: '売上は税込み、仕入は消費税対象仕入として概算、年間換算して扱います',
+    detail: exclusive
+      ? "売上は税抜き、仕入は消費税対象仕入として概算、年間換算して扱います"
+      : "売上は税込み、仕入は消費税対象仕入として概算、年間換算して扱います",
     taxableSales,
     taxablePurchases,
     outputTax,
     inputTax,
+    accountingTaxBasis: exclusive ? 'exclusive' : 'inclusive',
+    accountingTaxBasisLabel: getAccountingTaxBasisLabel(accountingTaxBasis),
   };
 }
 
@@ -397,6 +415,7 @@ export function computeNextPeriodTaxForecast({
   fiscalEndMonth,
   taxSimulation,
   consumptionTaxRates,
+  accountingTaxBasis,
   monthYearMap,
   pastMonths,
   date = new Date(),
@@ -477,6 +496,7 @@ export function computeNextPeriodTaxForecast({
         simplifiedDeemedPurchaseRatePercent: simulation.simplifiedDeemedPurchaseRatePercent,
         monthYearMap,
         consumptionTaxRates,
+        accountingTaxBasis,
       });
   const consumptionCash = simulation.consumptionTaxExempt
     ? {

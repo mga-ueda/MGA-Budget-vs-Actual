@@ -69,10 +69,17 @@ function revMergePlanIntoCsvRow(
   };
 }
 
-function revBuildTaxOptions(businessStartYear, fiscalPeriod, fiscalEndMonth, consumptionTaxRates) {
+function revBuildTaxOptions(
+  businessStartYear,
+  fiscalPeriod,
+  fiscalEndMonth,
+  consumptionTaxRates,
+  accountingTaxBasis,
+) {
   if (!consumptionTaxRates) return null;
   return {
     consumptionTaxRates,
+    accountingTaxBasis,
     monthYearMap: buildMonthYearMap(businessStartYear, fiscalPeriod),
     fiscalEndMonth,
   };
@@ -258,6 +265,7 @@ export function enrichPlanDataWithRevenueRows(planData, {
   fiscalEndMonth,
   displayMode,
   consumptionTaxRates,
+  accountingTaxBasis,
   monthDisplayConfig,
 }) {
   const fiscalMonths = buildFiscalYearMonths(fiscalEndMonth);
@@ -267,6 +275,7 @@ export function enrichPlanDataWithRevenueRows(planData, {
     fiscalPeriod,
     fiscalEndMonth,
     consumptionTaxRates,
+    accountingTaxBasis,
   );
 
   if (displayMode !== 'plan' && displayMode !== 'budget-actual') {

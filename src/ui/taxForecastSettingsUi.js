@@ -315,6 +315,10 @@ export function buildTaxForecastPanelHtml(forecast, formatYen, { compact = false
     },
     { label: '課税計算方法', value: forecast.consumptionTax?.estimate?.basis ?? '' },
     {
+      label: "経理方式",
+      value: forecast.consumptionTax?.estimate?.accountingTaxBasisLabel ?? '',
+    },
+    {
       label: '補足説明',
       value: isConsumptionExempt
         ? `免税事業者のため消費税の支払見込は${yen(0, formatYen, { computed: true })}です`
@@ -434,6 +438,7 @@ export function computeTaxForecastForDisplay({
     ...ctx,
     taxSimulation: normalizeTaxSimulation(settings?.taxSimulation, fiscalEndMonth),
     consumptionTaxRates: settings?.consumptionTaxRates,
+    accountingTaxBasis: settings?.accountingTaxBasis,
   });
 }
 

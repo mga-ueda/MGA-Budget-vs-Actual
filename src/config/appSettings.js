@@ -1,6 +1,8 @@
 import {
   DEFAULT_CONSUMPTION_TAX_RATES,
+  DEFAULT_ACCOUNTING_TAX_BASIS,
   normalizeConsumptionTaxRates,
+  normalizeAccountingTaxBasis,
 } from './consumptionTaxRateConfig.js';
 import {
   DEFAULT_WITHHOLDING_TAX_RATES,
@@ -408,6 +410,7 @@ export const DEFAULT_APP_SETTINGS = {
   brandFillColor: DEFAULT_BRAND_FILL_COLOR,
   brandTextColor: DEFAULT_BRAND_TEXT_COLOR,
   brandLogoImage: createDefaultBrandLogoImageByMode(),
+  accountingTaxBasis: DEFAULT_ACCOUNTING_TAX_BASIS,
   consumptionTaxRates: DEFAULT_CONSUMPTION_TAX_RATES.map((r) => ({ ...r })),
   withholdingTaxRates: DEFAULT_WITHHOLDING_TAX_RATES.map((r) => ({ ...r })),
   legalWelfareRate: DEFAULT_LEGAL_WELFARE_RATE,
@@ -827,6 +830,7 @@ export function loadAppSettings() {
         rowPaddingScale: DEFAULT_ROW_PADDING_SCALE,
         corpEntityMarkers: DEFAULT_CORP_ENTITY_MARKERS,
         ...loadBrandSettings(null),
+        accountingTaxBasis: DEFAULT_ACCOUNTING_TAX_BASIS,
         consumptionTaxRates: DEFAULT_CONSUMPTION_TAX_RATES.map((r) => ({ ...r })),
         withholdingTaxRates: DEFAULT_WITHHOLDING_TAX_RATES.map((r) => ({ ...r })),
         legalWelfareRate: DEFAULT_LEGAL_WELFARE_RATE,
@@ -840,6 +844,7 @@ export function loadAppSettings() {
       rowPaddingScale: loadRowPaddingScale(parsed),
       corpEntityMarkers: loadCorpEntityMarkers(parsed?.corpEntityMarkers),
       ...loadBrandSettings(parsed),
+      accountingTaxBasis: normalizeAccountingTaxBasis(parsed?.accountingTaxBasis),
       consumptionTaxRates: normalizeConsumptionTaxRates(parsed?.consumptionTaxRates),
       withholdingTaxRates: normalizeWithholdingTaxRates(parsed?.withholdingTaxRates),
       legalWelfareRate: normalizeLegalWelfareRate(parsed?.legalWelfareRate),
@@ -852,6 +857,7 @@ export function loadAppSettings() {
       rowPaddingScale: DEFAULT_ROW_PADDING_SCALE,
       corpEntityMarkers: DEFAULT_CORP_ENTITY_MARKERS,
       ...loadBrandSettings(null),
+      accountingTaxBasis: DEFAULT_ACCOUNTING_TAX_BASIS,
       consumptionTaxRates: DEFAULT_CONSUMPTION_TAX_RATES.map((r) => ({ ...r })),
       withholdingTaxRates: DEFAULT_WITHHOLDING_TAX_RATES.map((r) => ({ ...r })),
       legalWelfareRate: DEFAULT_LEGAL_WELFARE_RATE,

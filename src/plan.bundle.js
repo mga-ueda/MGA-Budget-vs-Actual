@@ -4095,6 +4095,41 @@ function formatCsvNameHintLines(config = loadCsvNameConfig()) {
 }
 
 /* config/consumptionTaxRateConfig.js */
+/** 消費税の経理方式（税込み会計 / 税抜き会計） */
+const ACCOUNTING_TAX_BASIS_INCLUSIVE = 'inclusive';
+const ACCOUNTING_TAX_BASIS_EXCLUSIVE = 'exclusive';
+const DEFAULT_ACCOUNTING_TAX_BASIS = ACCOUNTING_TAX_BASIS_INCLUSIVE;
+
+/** 経理方式を正規化（未知値は税込み） */
+function normalizeAccountingTaxBasis(value) {
+  return value === ACCOUNTING_TAX_BASIS_EXCLUSIVE
+    ? ACCOUNTING_TAX_BASIS_EXCLUSIVE
+    : ACCOUNTING_TAX_BASIS_INCLUSIVE;
+}
+
+/** 税抜き会計かどうか */
+function isAccountingTaxExclusive(basis) {
+  return normalizeAccountingTaxBasis(basis) === ACCOUNTING_TAX_BASIS_EXCLUSIVE;
+}
+
+/** 経理方式の表示名 */
+function getAccountingTaxBasisLabel(basis) {
+  return isAccountingTaxExclusive(basis)
+    ? "税抜き会計"
+    : "税込み会計";
+}
+
+/** 本体金額から消費税額を算出（税込み / 税抜き） */
+function calcConsumptionTaxYenFromAmount(amountYen, ratePercent, accountingTaxBasis) {
+  const amount = Math.max(0, Number(amountYen) || 0);
+  const rate = Number(ratePercent);
+  if (amount === 0 || !Number.isFinite(rate) || rate <= 0) return 0;
+  if (isAccountingTaxExclusive(accountingTaxBasis)) {
+    return Math.round(amount * rate / 100);
+  }
+  return Math.round(amount * rate / (100 + rate));
+}
+
 /** 適用開始日（年月）ごとの消費税率（％）。昇順で並べ、該当日以降に有効。 */
 const DEFAULT_CONSUMPTION_TAX_RATES = [
   { year: 1989, month: 4, ratePercent: 3 },
@@ -6160,6 +6195,10 @@ function applyConsumptionTaxToMonthlyAmount(
   taxOptions,
 ) {
   if (taxExclusiveAmount == null || taxExclusiveAmount === 0) return taxExclusiveAmount;
+  // 税抜経理では仕訳実績と揃えるため上乗せしない
+  if (isAccountingTaxExclusive(taxOptions?.accountingTaxBasis)) {
+    return taxExclusiveAmount;
+  }
   if (!taxOptions?.consumptionTaxRates || !taxOptions?.monthYearMap) {
     return taxExclusiveAmount;
   }
@@ -8549,13 +8588,14 @@ function outCalcRemunerationFromTaxInclusiveTotal(totalYen, ratePercent) {
   return Math.floor(total * 100 / (100 + ratePercent));
 }
 
-/** 税込支払額から個人事業主向け源泉内訳を算出 */
+/** 支払額から個人事業主向け源泉内訳を算出（税込／税抜に対応） */
 function calcOutsourcingBreakdownForMonth(
   totalYen,
   calendarYear,
   calendarMonth,
   consumptionTaxRates,
   withholdingTaxRates,
+  accountingTaxBasis,
 ) {
   const total = Math.max(0, Math.floor(Number(totalYen) || 0));
   if (total === 0) {
@@ -8572,15 +8612,30 @@ function calcOutsourcingBreakdownForMonth(
     calendarMonth,
     consumptionTaxRates,
   ) ?? 0;
-  const remuneration = outCalcRemunerationFromTaxInclusiveTotal(total, ratePercent);
-  const consumptionTax = total - remuneration;
+
+  let remuneration;
+  let consumptionTax;
+  let paymentGross;
+  if (isAccountingTaxExclusive(accountingTaxBasis)) {
+    // 税抜: 本体額＝報酬、消費税は別計算（源泉対象は報酬のみ）
+    remuneration = total;
+    consumptionTax = ratePercent > 0
+      ? Math.round(total * ratePercent / 100)
+      : 0;
+    paymentGross = total + consumptionTax;
+  } else {
+    remuneration = outCalcRemunerationFromTaxInclusiveTotal(total, ratePercent);
+    consumptionTax = total - remuneration;
+    paymentGross = total;
+  }
+
   const withholdingTax = calcWithholdingTax(
     remuneration,
     calendarYear,
     calendarMonth,
     withholdingTaxRates,
   );
-  const netReceived = total - withholdingTax;
+  const netReceived = paymentGross - withholdingTax;
 
   return { remuneration, consumptionTax, withholdingTax, netReceived };
 }
@@ -8592,6 +8647,7 @@ function outBuildBreakdownMonthlyValues(
   fiscalEndMonth,
   consumptionTaxRates,
   withholdingTaxRates,
+  accountingTaxBasis,
   field,
 ) {
   const values = emptyRawMonthValues();
@@ -8606,6 +8662,7 @@ function outBuildBreakdownMonthlyValues(
       ym.month,
       consumptionTaxRates,
       withholdingTaxRates,
+      accountingTaxBasis,
     );
     values[m] = breakdown[field];
   }
@@ -8643,6 +8700,7 @@ function outInsertIndividualBreakdownRows(rows, {
   corpEntityMarkers,
   consumptionTaxRates,
   withholdingTaxRates,
+  accountingTaxBasis,
 }) {
   const markers = parseCorpEntityMarkers(corpEntityMarkers);
   const bodyWithoutBreakdown = rows.filter((r) => r.type !== 'breakdown');
@@ -8666,6 +8724,7 @@ function outInsertIndividualBreakdownRows(rows, {
           fiscalEndMonth,
           consumptionTaxRates,
           withholdingTaxRates,
+          accountingTaxBasis,
           def.key,
         ),
       ));
@@ -8697,6 +8756,7 @@ function enrichPlanDataWithOutsourcingRows(planData, {
   corpEntityMarkers,
   consumptionTaxRates,
   withholdingTaxRates,
+  accountingTaxBasis,
   monthDisplayConfig,
 }) {
   const fiscalMonths = buildFiscalYearMonths(fiscalEndMonth);
@@ -8710,6 +8770,7 @@ function enrichPlanDataWithOutsourcingRows(planData, {
     corpEntityMarkers,
     consumptionTaxRates,
     withholdingTaxRates,
+    accountingTaxBasis,
   });
 
   if (displayMode !== 'plan' && displayMode !== 'budget-actual') {
@@ -8862,10 +8923,17 @@ function revMergePlanIntoCsvRow(
   };
 }
 
-function revBuildTaxOptions(businessStartYear, fiscalPeriod, fiscalEndMonth, consumptionTaxRates) {
+function revBuildTaxOptions(
+  businessStartYear,
+  fiscalPeriod,
+  fiscalEndMonth,
+  consumptionTaxRates,
+  accountingTaxBasis,
+) {
   if (!consumptionTaxRates) return null;
   return {
     consumptionTaxRates,
+    accountingTaxBasis,
     monthYearMap: buildMonthYearMap(businessStartYear, fiscalPeriod),
     fiscalEndMonth,
   };
@@ -9051,6 +9119,7 @@ function enrichPlanDataWithRevenueRows(planData, {
   fiscalEndMonth,
   displayMode,
   consumptionTaxRates,
+  accountingTaxBasis,
   monthDisplayConfig,
 }) {
   const fiscalMonths = buildFiscalYearMonths(fiscalEndMonth);
@@ -9060,6 +9129,7 @@ function enrichPlanDataWithRevenueRows(planData, {
     fiscalPeriod,
     fiscalEndMonth,
     consumptionTaxRates,
+    accountingTaxBasis,
   );
 
   if (displayMode !== 'plan' && displayMode !== 'budget-actual') {
@@ -9829,7 +9899,9 @@ function estimateAnnualConsumptionTax({
   simplifiedDeemedPurchaseRatePercent,
   monthYearMap,
   consumptionTaxRates,
+  accountingTaxBasis,
 }) {
+  const exclusive = isAccountingTaxExclusive(accountingTaxBasis);
   const regularMonths = fiscalMonths.filter((m) => m !== '決算整理');
   let outputTax = 0;
   let inputTax = 0;
@@ -9847,8 +9919,9 @@ function estimateAnnualConsumptionTax({
     if (pastMonths.has(month) || pastMonths.size === 0) {
       taxableSales += revenue;
       taxablePurchases += purchases;
-      outputTax += Math.round(revenue * rate / (100 + rate));
-      inputTax += Math.round(purchases * rate / (100 + rate));
+      // 税抜: 本体×税率。税込: 税込額から税額を抽出
+      outputTax += calcConsumptionTaxYenFromAmount(revenue, rate, accountingTaxBasis);
+      inputTax += calcConsumptionTaxYenFromAmount(purchases, rate, accountingTaxBasis);
     }
   }
   if (pastMonths.size > 0) {
@@ -9866,25 +9939,35 @@ function estimateAnnualConsumptionTax({
   }
   if (method === 'simplified') {
     const deemedRate = Number(simplifiedDeemedPurchaseRatePercent) || 0;
-    const taxableBase = Math.max(0, Math.round(taxableSales / 1.1));
+    const taxableBase = exclusive
+      ? Math.max(0, Math.round(taxableSales))
+      : Math.max(0, Math.round(taxableSales / 1.1));
     const netTax = Math.round(taxableBase * 0.1 * (1 - deemedRate / 100));
     return {
       amount: Math.max(0, netTax),
       basis: '簡易課税（みなし仕入率）',
-      detail: `課税売上×10%×（1-みなし仕入率）、年間換算して扱います`,
+      detail: exclusive
+        ? "課税売上（税抜）×税率×（1-みなし仕入率）、年間換算して扱います"
+        : `課税売上×10%×（1-みなし仕入率）、年間換算して扱います`,
       taxableSales,
       deemedRate,
+      accountingTaxBasis: exclusive ? 'exclusive' : 'inclusive',
+      accountingTaxBasisLabel: getAccountingTaxBasisLabel(accountingTaxBasis),
     };
   }
   const amount = Math.max(0, outputTax - inputTax);
   return {
     amount,
     basis: '本則課税（仮受消費税-仮払消費税）',
-    detail: '売上は税込み、仕入は消費税対象仕入として概算、年間換算して扱います',
+    detail: exclusive
+      ? "売上は税抜き、仕入は消費税対象仕入として概算、年間換算して扱います"
+      : "売上は税込み、仕入は消費税対象仕入として概算、年間換算して扱います",
     taxableSales,
     taxablePurchases,
     outputTax,
     inputTax,
+    accountingTaxBasis: exclusive ? 'exclusive' : 'inclusive',
+    accountingTaxBasisLabel: getAccountingTaxBasisLabel(accountingTaxBasis),
   };
 }
 
@@ -10138,6 +10221,7 @@ function computeNextPeriodTaxForecast({
   fiscalEndMonth,
   taxSimulation,
   consumptionTaxRates,
+  accountingTaxBasis,
   monthYearMap,
   pastMonths,
   date = new Date(),
@@ -10218,6 +10302,7 @@ function computeNextPeriodTaxForecast({
         simplifiedDeemedPurchaseRatePercent: simulation.simplifiedDeemedPurchaseRatePercent,
         monthYearMap,
         consumptionTaxRates,
+        accountingTaxBasis,
       });
   const consumptionCash = simulation.consumptionTaxExempt
     ? {
@@ -11571,6 +11656,7 @@ const DEFAULT_APP_SETTINGS = {
   brandFillColor: DEFAULT_BRAND_FILL_COLOR,
   brandTextColor: DEFAULT_BRAND_TEXT_COLOR,
   brandLogoImage: createDefaultBrandLogoImageByMode(),
+  accountingTaxBasis: DEFAULT_ACCOUNTING_TAX_BASIS,
   consumptionTaxRates: DEFAULT_CONSUMPTION_TAX_RATES.map((r) => ({ ...r })),
   withholdingTaxRates: DEFAULT_WITHHOLDING_TAX_RATES.map((r) => ({ ...r })),
   legalWelfareRate: DEFAULT_LEGAL_WELFARE_RATE,
@@ -11990,6 +12076,7 @@ function loadAppSettings() {
         rowPaddingScale: DEFAULT_ROW_PADDING_SCALE,
         corpEntityMarkers: DEFAULT_CORP_ENTITY_MARKERS,
         ...loadBrandSettings(null),
+        accountingTaxBasis: DEFAULT_ACCOUNTING_TAX_BASIS,
         consumptionTaxRates: DEFAULT_CONSUMPTION_TAX_RATES.map((r) => ({ ...r })),
         withholdingTaxRates: DEFAULT_WITHHOLDING_TAX_RATES.map((r) => ({ ...r })),
         legalWelfareRate: DEFAULT_LEGAL_WELFARE_RATE,
@@ -12003,6 +12090,7 @@ function loadAppSettings() {
       rowPaddingScale: loadRowPaddingScale(parsed),
       corpEntityMarkers: loadCorpEntityMarkers(parsed?.corpEntityMarkers),
       ...loadBrandSettings(parsed),
+      accountingTaxBasis: normalizeAccountingTaxBasis(parsed?.accountingTaxBasis),
       consumptionTaxRates: normalizeConsumptionTaxRates(parsed?.consumptionTaxRates),
       withholdingTaxRates: normalizeWithholdingTaxRates(parsed?.withholdingTaxRates),
       legalWelfareRate: normalizeLegalWelfareRate(parsed?.legalWelfareRate),
@@ -12015,6 +12103,7 @@ function loadAppSettings() {
       rowPaddingScale: DEFAULT_ROW_PADDING_SCALE,
       corpEntityMarkers: DEFAULT_CORP_ENTITY_MARKERS,
       ...loadBrandSettings(null),
+      accountingTaxBasis: DEFAULT_ACCOUNTING_TAX_BASIS,
       consumptionTaxRates: DEFAULT_CONSUMPTION_TAX_RATES.map((r) => ({ ...r })),
       withholdingTaxRates: DEFAULT_WITHHOLDING_TAX_RATES.map((r) => ({ ...r })),
       legalWelfareRate: DEFAULT_LEGAL_WELFARE_RATE,
@@ -13947,7 +14036,7 @@ function mountRevenueSettingsPanel({
   header.className = 'expand-settings-header tax-payment-settings-header';
   header.innerHTML = `
     <p class="expand-settings-desc">
-      売上高の受注計画を人月で入力します。受注先ごとに月ごとの人月単価を入力します。売上は実績月は仕訳CSVの実績、それ以外は人月\u00d7単価の計画（消費税込）です。人月は Shift+Enter で入力月以降に同値を引き継ぎます（0 も可）。Enter はその月のみ反映します。今期の実績月は仕訳実績月として編集不可です。設定はブラウザに保存され、予実表の「売上高」に反映されます。
+      売上高の受注計画を人月で入力します。受注先ごとに月ごとの人月単価を入力します。売上は実績月は仕訳CSVの実績、それ以外は人月\u00d7単価の計画（${isAccountingTaxExclusive(appSettings.accountingTaxBasis) ? "消費税抜（上乗せなし）" : "消費税込"}）です。人月は Shift+Enter で入力月以降に同値を引き継ぎます（0 も可）。Enter はその月のみ反映します。今期の実績月は仕訳実績月として編集不可です。設定はブラウザに保存され、予実表の「売上高」に反映されます。
     </p>
     <div class="tax-payment-settings-controls">
       <div class="tax-payment-plan-years-row">
@@ -14415,6 +14504,7 @@ function mountRevenueSettingsPanel({
     if (!appSettings.consumptionTaxRates) return null;
     return {
       consumptionTaxRates: appSettings.consumptionTaxRates,
+      accountingTaxBasis: appSettings.accountingTaxBasis,
       monthYearMap: buildMonthYearMap(appSettings.businessStartYear, fiscalPeriod),
       fiscalEndMonth: appSettings.fiscalEndMonth,
     };
@@ -20621,6 +20711,10 @@ function buildTaxForecastPanelHtml(forecast, formatYen, { compact = false } = {}
     },
     { label: '課税計算方法', value: forecast.consumptionTax?.estimate?.basis ?? '' },
     {
+      label: "経理方式",
+      value: forecast.consumptionTax?.estimate?.accountingTaxBasisLabel ?? '',
+    },
+    {
       label: '補足説明',
       value: isConsumptionExempt
         ? `免税事業者のため消費税の支払見込は${yen(0, formatYen, { computed: true })}です`
@@ -20740,6 +20834,7 @@ function computeTaxForecastForDisplay({
     ...ctx,
     taxSimulation: normalizeTaxSimulation(settings?.taxSimulation, fiscalEndMonth),
     consumptionTaxRates: settings?.consumptionTaxRates,
+    accountingTaxBasis: settings?.accountingTaxBasis,
   });
 }
 
@@ -25753,6 +25848,7 @@ function applyPlanColors(planData, fiscalPeriod = appSettings.fiscalPeriod) {
     corpEntityMarkers: appSettings.corpEntityMarkers,
     consumptionTaxRates: appSettings.consumptionTaxRates,
     withholdingTaxRates: appSettings.withholdingTaxRates,
+    accountingTaxBasis: appSettings.accountingTaxBasis,
     monthDisplayConfig,
   });
   const withRevenue = enrichPlanDataWithRevenueRows(withOutsourcing, {
@@ -25762,6 +25858,7 @@ function applyPlanColors(planData, fiscalPeriod = appSettings.fiscalPeriod) {
     fiscalEndMonth: getActiveFiscalEndMonth(),
     displayMode,
     consumptionTaxRates: appSettings.consumptionTaxRates,
+    accountingTaxBasis: appSettings.accountingTaxBasis,
     monthDisplayConfig,
   });
   const withMiscIncome = enrichPlanDataWithMiscIncomeRows(withRevenue, {
@@ -28007,7 +28104,7 @@ function createTaxRateInput({ field, value, className, numericKind }) {
   return input;
 }
 
-function bindTaxRateTable({ tbody, addBtn, getRates, normalizeRates, onUpdate }) {
+function bindTaxRateTable({ tbody, addBtn, getRates, normalizeRates, onUpdate, readOnly = false }) {
   function readRatesFromTable() {
     const rows = [];
     tbody.querySelectorAll('tr').forEach((tr) => {
@@ -28032,58 +28129,73 @@ function bindTaxRateTable({ tbody, addBtn, getRates, normalizeRates, onUpdate })
       tr.dataset.index = String(index);
 
       const yearTd = document.createElement('td');
-      yearTd.appendChild(createTaxRateInput({
+      const yearInput = createTaxRateInput({
         field: 'year',
         value: row.year,
         className: 'tax-rate-input',
         numericKind: 'integer',
-      }));
+      });
+      yearInput.disabled = readOnly;
+      yearTd.appendChild(yearInput);
 
       const monthTd = document.createElement('td');
-      monthTd.appendChild(createTaxRateInput({
+      const monthInput = createTaxRateInput({
         field: 'month',
         value: row.month,
         className: 'tax-rate-input',
         numericKind: 'integer',
-      }));
+      });
+      monthInput.disabled = readOnly;
+      monthTd.appendChild(monthInput);
 
       const rateTd = document.createElement('td');
-      rateTd.appendChild(createTaxRateInput({
+      const rateInput = createTaxRateInput({
         field: 'rate',
         value: row.ratePercent,
         className: 'tax-rate-input tax-rate-input-rate',
         numericKind: 'decimal',
-      }));
+      });
+      rateInput.disabled = readOnly;
+      rateTd.appendChild(rateInput);
 
       const actionTd = document.createElement('td');
       actionTd.className = 'col-tax-rate-actions';
-      const deleteBtn = document.createElement('button');
-      deleteBtn.type = 'button';
-      deleteBtn.className = 'settings-delete-btn';
-      deleteBtn.textContent = '削除';
-      deleteBtn.addEventListener('click', () => {
-        tr.remove();
-        saveFromTable();
-      });
-      actionTd.appendChild(deleteBtn);
+      if (!readOnly) {
+        const deleteBtn = document.createElement('button');
+        deleteBtn.type = 'button';
+        deleteBtn.className = 'settings-delete-btn';
+        deleteBtn.textContent = '削除';
+        deleteBtn.addEventListener('click', () => {
+          tr.remove();
+          saveFromTable();
+        });
+        actionTd.appendChild(deleteBtn);
+      }
 
       tr.append(yearTd, monthTd, rateTd, actionTd);
-      tr.querySelectorAll('input').forEach((input) => {
-        input.addEventListener('change', saveFromTable);
-      });
+      if (!readOnly) {
+        tr.querySelectorAll('input').forEach((input) => {
+          input.addEventListener('change', saveFromTable);
+        });
+      }
       tbody.appendChild(tr);
     });
   }
 
-  addBtn.addEventListener('click', () => {
-    const rates = getRates();
-    const last = rates.length > 0 ? rates[rates.length - 1] : null;
-    const now = new Date();
-    const nextRow = last
-      ? { year: last.year, month: last.month, ratePercent: last.ratePercent }
-      : { year: now.getFullYear(), month: now.getMonth() + 1, ratePercent: 10 };
-    onUpdate(normalizeRates([...rates, nextRow]));
-  });
+  if (!readOnly) {
+    addBtn.addEventListener('click', () => {
+      const rates = getRates();
+      const last = rates.length > 0 ? rates[rates.length - 1] : null;
+      const now = new Date();
+      const nextRow = last
+        ? { year: last.year, month: last.month, ratePercent: last.ratePercent }
+        : { year: now.getFullYear(), month: now.getMonth() + 1, ratePercent: 10 };
+      onUpdate(normalizeRates([...rates, nextRow]));
+    });
+  } else {
+    addBtn.disabled = true;
+    addBtn.hidden = true;
+  }
 
   return { renderRows };
 }
@@ -28231,7 +28343,7 @@ function renderTaxRateSettings() {
   header.className = 'expand-settings-header';
   header.innerHTML = `
     <p class="expand-settings-desc tax-rate-settings-desc">
-      消費税税率・源泉所得税（個人事業主）・法定福利費予測率を定義します。源泉所得税は支払額に対する段階税率で、各行はその年月以降に有効です。
+      消費税の経理方式（税込み / 税抜き）、消費税税率・源泉所得税（個人事業主）・法定福利費予測率を定義します。経理方式はマネーフォワード等の仕訳基準に合わせて選んでください。源泉所得税は支払額に対する段階税率で、各行はその年月以降に有効です。
     </p>
     <div class="expand-settings-header-actions">
       <button type="button" class="expand-reset-btn" id="tax-rate-reset-btn" title="${TIP_TAX_RATE_RESET}">デフォルトに戻す</button>
@@ -28243,10 +28355,24 @@ function renderTaxRateSettings() {
   form.className = 'app-settings-form tax-rate-settings-form';
   form.innerHTML = `
     <div class="tax-rate-settings-stack">
+      <div class="app-settings-section tax-rate-section tax-rate-section--accounting-basis">
+        <div class="tax-rate-section-head">
+          <label class="app-settings-label" for="accounting-tax-basis-select">消費税の経理方式</label>
+          <span class="app-settings-hint tax-rate-section-hint" id="accounting-tax-basis-hint"></span>
+        </div>
+        <select
+          class="app-settings-input tax-rate-accounting-basis-select"
+          id="accounting-tax-basis-select"
+          aria-label="消費税の経理方式"
+        >
+          <option value="${ACCOUNTING_TAX_BASIS_INCLUSIVE}">税込み会計</option>
+          <option value="${ACCOUNTING_TAX_BASIS_EXCLUSIVE}">税抜き会計</option>
+        </select>
+      </div>
       <div class="app-settings-section tax-rate-section tax-rate-section--consumption">
         <div class="tax-rate-section-head">
           <span class="app-settings-label">消費税税率</span>
-          <span class="app-settings-hint tax-rate-section-hint">適用開始年月以降に有効な消費税税率（％）</span>
+          <span class="app-settings-hint tax-rate-section-hint" id="consumption-tax-rate-section-hint"></span>
         </div>
         <table class="expand-settings-table tax-rate-table consumption-tax-rate-table">
           <thead>
@@ -28306,12 +28432,26 @@ function renderTaxRateSettings() {
   `;
   wrap.appendChild(form);
 
+  const accountingBasisSelect = form.querySelector('#accounting-tax-basis-select');
   const consumptionTbody = form.querySelector('#consumption-tax-rate-tbody');
   const consumptionAddBtn = form.querySelector('#consumption-tax-rate-add');
   const withholdingTbody = form.querySelector('#withholding-tax-rate-tbody');
   const withholdingAddBtn = form.querySelector('#withholding-tax-rate-add');
   const legalWelfareRateInput = form.querySelector('#legal-welfare-rate-input');
   const legalWelfareRateNote = form.querySelector('#legal-welfare-rate-note');
+
+  const accountingBasisHint = form.querySelector('#accounting-tax-basis-hint');
+  const consumptionRateHint = form.querySelector('#consumption-tax-rate-section-hint');
+  const currentAccountingBasis = normalizeAccountingTaxBasis(appSettings.accountingTaxBasis);
+  accountingBasisSelect.value = currentAccountingBasis;
+  const exclusive = isAccountingTaxExclusive(currentAccountingBasis);
+  // 税抜利用者向け: 税率は納税概算・外注内訳に必要なので編集可のまま
+  accountingBasisHint.textContent = exclusive
+    ? "予実表・計画の金額を税抜き（本体）として扱います。売上計画に消費税は上乗せせず、仕訳実績と同基準で比較できます"
+    : "予実表・計画の金額を税込みとして扱います。売上計画は人月×単価に消費税を上乗せします";
+  consumptionRateHint.textContent = exclusive
+    ? "適用開始年月以降に有効。税抜きでも来期納税見込の概算と外注の消費税額内訳に使います（編集可）"
+    : "適用開始年月以降に有効。売上計画の税込換算・来期納税見込・外注内訳に使います";
 
   const syncLegalWelfareRateNote = (rate) => {
     legalWelfareRateNote.textContent = `（${formatLegalWelfareRatePercent(rate)} に相当）`;
@@ -28332,6 +28472,21 @@ function renderTaxRateSettings() {
   legalWelfareRateInput.addEventListener('change', saveLegalWelfareRate);
   legalWelfareRateInput.addEventListener('blur', saveLegalWelfareRate);
 
+  /** 経理方式・税率変更後: 予実を再構築し、開いている納税見込も更新する */
+  const afterTaxRateSettingsAffectingPlan = () => {
+    if (rawPlanData) data = applyPlanColors(rawPlanData);
+    if (activeTab === 'plan') refreshPlanTable();
+    refreshTaxForecastWindow();
+  };
+
+  accountingBasisSelect.addEventListener('change', () => {
+    const nextBasis = normalizeAccountingTaxBasis(accountingBasisSelect.value);
+    appSettings = { ...appSettings, accountingTaxBasis: nextBasis };
+    saveAppSettings(appSettings);
+    renderTaxRateSettings();
+    afterTaxRateSettingsAffectingPlan();
+  });
+
   const consumptionTable = bindTaxRateTable({
     tbody: consumptionTbody,
     addBtn: consumptionAddBtn,
@@ -28341,6 +28496,7 @@ function renderTaxRateSettings() {
       appSettings = { ...appSettings, consumptionTaxRates: rates };
       saveAppSettings(appSettings);
       consumptionTable.renderRows();
+      afterTaxRateSettingsAffectingPlan();
     },
   });
 
@@ -28352,19 +28508,23 @@ function renderTaxRateSettings() {
       appSettings = { ...appSettings, withholdingTaxRates: rates };
       saveAppSettings(appSettings);
       withholdingTable.renderRows();
+      // 源泉税率は外注内訳に影響するため予実を再構築
+      if (rawPlanData) data = applyPlanColors(rawPlanData);
+      if (activeTab === 'plan') refreshPlanTable();
     },
   });
 
   wrap.querySelector('#tax-rate-reset-btn').addEventListener('click', () => {
     appSettings = {
       ...appSettings,
+      accountingTaxBasis: DEFAULT_ACCOUNTING_TAX_BASIS,
       consumptionTaxRates: DEFAULT_CONSUMPTION_TAX_RATES.map((r) => ({ ...r })),
       withholdingTaxRates: DEFAULT_WITHHOLDING_TAX_RATES.map((r) => ({ ...r })),
       legalWelfareRate: DEFAULT_LEGAL_WELFARE_RATE,
     };
     saveAppSettings(appSettings);
     renderTaxRateSettings();
-    if (activeTab === 'plan') refreshPlanTable();
+    afterTaxRateSettingsAffectingPlan();
   });
 
   consumptionTable.renderRows();
@@ -30690,6 +30850,9 @@ function renderOutsourcingSettings() {
   header.innerHTML = `
     <p class="expand-settings-desc">
       外注費の支払い計画を設定します。今期の仕訳に存在する補助科目は自動で一覧に追加されます。
+      ${isAccountingTaxExclusive(appSettings.accountingTaxBasis)
+        ? "入力金額は税抜き本体額（仕訳と同基準）として扱い、個人事業主は報酬・消費税・源泉に分解します。"
+        : "入力金額は税込み支払額として扱い、個人事業主は報酬・消費税・源泉に分解します。"}
       今期の実績表示月は仕訳実績を表示します（編集不可）。予実表で計画表示に切り替えた月はダブルクリックで編集できます。Shift+Enter で入力した月以降の同額を後続月に反映します（0円も可）。Enter はその月のみ反映します。設定はブラウザに保存され、予実表の「外注費」セクションに反映されます。
     </p>
   `;
