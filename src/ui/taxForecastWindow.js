@@ -1,7 +1,6 @@
 import { getLayoutViewportWidth } from '../config/viewportScale.js';
 import { TIP_CLOSE } from '../config/uiTooltipConfig.js';
 
-const TAX_FORECAST_POS_STORAGE_KEY = 'mga-tax-forecast-window-pos';
 const TAX_FORECAST_WINDOW_WIDTH_REM = 76;
 const TAX_FORECAST_DEFAULT_TOP = 96;
 const TAX_FORECAST_DEFAULT_RIGHT = 16;
@@ -26,18 +25,8 @@ function getMaxWindowHeight() {
   );
 }
 
-/** 旧仕様の位置記憶を破棄する（位置は記憶しない） */
-function clearStoredWindowPosition() {
-  try {
-    localStorage.removeItem(TAX_FORECAST_POS_STORAGE_KEY);
-  } catch {
-    // ignore
-  }
-}
-
 /** 開き直すたびに内容全体が見える既定位置へ戻す */
 function applyVisibleDefaultPosition(el) {
-  clearStoredWindowPosition();
   el.style.top = `${TAX_FORECAST_DEFAULT_TOP}px`;
   el.style.right = `${TAX_FORECAST_DEFAULT_RIGHT}px`;
   el.style.left = 'auto';
@@ -123,7 +112,6 @@ export function createTaxForecastWindow({
   const mountTarget = document.querySelector('.plan-app') ?? document.body;
   mountTarget.appendChild(shell);
 
-  clearStoredWindowPosition();
   bindWindowDrag(header, shell);
 
   const applyLockedShellSize = () => {

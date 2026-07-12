@@ -21,7 +21,7 @@ function prepareSettingsValueForImport(key, value) {
 }
 
 /** エクスポート／インポート対象外（端末ごとのフォント倍率・行余白）。 */
-const APP_SETTINGS_EXCLUDED_KEYS = ['fontScale', 'rowPaddingScale', 'fontScaleUi'];
+const APP_SETTINGS_EXCLUDED_KEYS = ['fontScale', 'rowPaddingScale'];
 
 export const ALL_SETTINGS_STORAGE_KEYS = [
   SETTINGS_EXPORT_APP_KEY,
@@ -52,8 +52,6 @@ function stripAppSettingsForExport(appSettings) {
   for (const key of APP_SETTINGS_EXCLUDED_KEYS) {
     delete stripped[key];
   }
-  delete stripped.fiscalEndMonth;
-  delete stripped.businessStartYear;
   return stripped;
 }
 
@@ -77,8 +75,6 @@ function mergeAppSettingsForImport(imported) {
       delete merged[key];
     }
   }
-  delete merged.fiscalEndMonth;
-  delete merged.businessStartYear;
   return merged;
 }
 

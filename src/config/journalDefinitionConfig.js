@@ -356,15 +356,9 @@ function cloneDefaultDefinition() {
   return result;
 }
 
-function repairLegacyKanji(text) {
-  return text
-    .replace(/稅/g, "税")
-    .replace(/居民/g, "住民");
-}
-
 function normalizePatternString(raw, fallback) {
   if (typeof raw !== 'string' || !raw.trim()) return fallback;
-  return repairLegacyKanji(raw.trim());
+  return raw.trim();
 }
 
 function normalizeStringList(raw, fallback) {
@@ -390,7 +384,7 @@ export function normalizeJournalDefinition(raw) {
       normalized[key] = normalizePatternString(raw?.[key], fallback);
       continue;
     }
-    normalized[key] = normalizeStringList(raw?.[key], fallback).map((item) => repairLegacyKanji(item));
+    normalized[key] = normalizeStringList(raw?.[key], fallback);
   }
   return normalized;
 }

@@ -137,11 +137,8 @@ function getDefaultSectionColor(sectionId, mode = 'dark') {
 
 function getEffectiveSectionOverrideColors(sectionId, override, mode = 'dark') {
   const defaults = getDefaultSectionColor(sectionId, mode);
-  if (!override) {
+  if (!override || typeof override !== 'object') {
     return { barColor: defaults.barColor, textColor: defaults.textColor };
-  }
-  if (typeof override === 'string') {
-    return { barColor: override, textColor: defaults.textColor };
   }
   return {
     barColor: override.barColor ?? defaults.barColor,
@@ -164,21 +161,14 @@ export function isSectionColorCustom(config, mode, sectionId) {
 
 function normalizeSectionOverrides(raw = {}, mode = 'dark') {
   const normalized = {};
-  const migrated = { ...raw };
-  if (migrated.receivables && !migrated.revenueVariance) {
-    migrated.revenueVariance = migrated.receivables;
-  }
-  delete migrated.receivables;
-  for (const [id, val] of Object.entries(migrated)) {
-    if (typeof val === 'string') {
-      if (!sectionOverrideMatchesDefault(id, val, mode)) normalized[id] = val;
-    } else if (val) {
-      const entry = {};
-      if (typeof val.barColor === 'string') entry.barColor = val.barColor;
-      if (typeof val.textColor === 'string') entry.textColor = val.textColor;
-      if (Object.keys(entry).length && !sectionOverrideMatchesDefault(id, entry, mode)) {
-        normalized[id] = entry;
-      }
+  if (!raw || typeof raw !== 'object') return normalized;
+  for (const [id, val] of Object.entries(raw)) {
+    if (!val || typeof val !== 'object') continue;
+    const entry = {};
+    if (typeof val.barColor === 'string') entry.barColor = val.barColor;
+    if (typeof val.textColor === 'string') entry.textColor = val.textColor;
+    if (Object.keys(entry).length && !sectionOverrideMatchesDefault(id, entry, mode)) {
+      normalized[id] = entry;
     }
   }
   return normalized;
@@ -188,15 +178,12 @@ export function normalizeSectionColorConfig(config = {}) {
   if (!config || typeof config !== 'object') {
     return { dark: {}, light: {} };
   }
-  if (isPerModeSectionColorConfig(config)) {
-    return {
-      dark: normalizeSectionOverrides(config.dark, 'dark'),
-      light: normalizeSectionOverrides(config.light, 'light'),
-    };
+  if (!isPerModeSectionColorConfig(config)) {
+    return { dark: {}, light: {} };
   }
   return {
-    dark: normalizeSectionOverrides(config, 'dark'),
-    light: {},
+    dark: normalizeSectionOverrides(config.dark, 'dark'),
+    light: normalizeSectionOverrides(config.light, 'light'),
   };
 }
 
@@ -235,10 +222,8 @@ export function resetSectionColorModeOverrides(config, mode = 'dark') {
 export function getSectionColors(sectionId, config = {}, mode = 'dark') {
   const defaults = getDefaultSectionColor(sectionId, mode);
   const bucket = getSectionColorModeBucket(config, mode);
-  const override = bucket[sectionId]
-    ?? (sectionId === 'revenueVariance' ? bucket.receivables : undefined);
-  if (!override) return { ...defaults };
-  if (typeof override === 'string') return { ...defaults, barColor: override };
+  const override = bucket[sectionId];
+  if (!override || typeof override !== 'object') return { ...defaults };
   return {
     ...defaults,
     barColor: override.barColor ?? defaults.barColor,

@@ -2,69 +2,6 @@ const UI_COLOR_STORAGE_KEY = 'mga-ui-colors';
 
 export const DEFAULT_HOVER_BOOST_PERCENT = 20;
 
-const REMOVED_HOVER_COLOR_KEYS = [
-  'dashboardNavHoverBg',
-  'dashboardNavActiveHoverBg',
-  'settingsNavActiveHoverBg',
-  'deleteBtnBgHover',
-  'headerControlHoverBg',
-];
-
-const REMOVED_COLOR_KEYS = [
-  'deleteBtnBorder',
-  'interactiveAccentColor',
-  'kbdShadowColor',
-  'statusInvalidColor',
-  'journalCloseHoverBg',
-  'headerControlBorder',
-];
-
-const MERGED_SIDEBAR_BAR_SOURCE_KEYS = [
-  'dashboardSidebarRevenueBarBg',
-  'dashboardSidebarExpenseBarBg',
-];
-
-const MERGED_SETTINGS_ACTIVE_KEYS = {
-  settingsNavActiveBg: 'dashboardNavActiveBg',
-  settingsNavActiveText: 'dashboardNavActiveText',
-};
-
-const BORDER_TO_TEXT_KEYS = {
-  dashboardNavBorder: 'dashboardNavText',
-  dashboardNavActiveBorder: 'dashboardNavActiveText',
-  settingsNavActiveBorder: 'dashboardNavActiveText',
-  headerControlText: 'textColor',
-};
-
-const MERGED_DIM_TEXT_SOURCE_KEYS = [
-  'noteTextColor',
-  'hintTextColor',
-  'journalHintTextColor',
-];
-
-const MERGED_PRIMARY_BUTTON_BG_KEYS = [
-  'primaryButtonBgStart',
-  'primaryButtonBgEnd',
-];
-
-const MERGED_POPUP_BG_SOURCE_KEYS = [
-  'journalModalBg',
-];
-
-const MERGED_POPUP_SHADOW_SOURCE_KEYS = [
-  'journalModalShadowBg',
-];
-
-const MERGED_POPUP_ROW_HOVER_SOURCE_KEYS = [
-  'journalRowHoverBg',
-  'settingsRowHoverBg',
-];
-
-const MERGED_HEADER_ROW_BG_SOURCE_KEYS = [
-  'settingsSurfaceBg',
-  'journalTableHeaderBg',
-];
-
 const SETTLEMENT_MONTH_OVERLAY_ALPHA = 0.28;
 const SETTLEMENT_MONTH_RING_ALPHA = 0.45;
 const SETTLEMENT_MONTH_OVERLAY_HEAD_ALPHA = 0.34;
@@ -299,147 +236,14 @@ export function getDefaultUiColors(mode = 'dark') {
   return { ...DEFAULTS_BY_MODE[key] };
 }
 
-const UI_COLOR_LEGACY_KEYS = [...UI_COLOR_KEYS, 'textFaintColor', 'appBg', 'bonusMonthColumnBg', 'journalTextColor', 'journalModalBg', 'journalModalShadowBg', 'journalRowHoverBg', 'settingsRowHoverBg', 'settingsSurfaceBg', 'journalTableHeaderBg', 'journalCloseHoverBg', 'headerControlBorder', 'yearRowBg', 'yearRowText'];
-
-function migrateUiColorBucket(bucket = {}) {
-  const next = { ...bucket };
-  if (next.yearRowBg != null && next.periodHeaderBg == null) {
-    next.periodHeaderBg = next.yearRowBg;
-  }
-  if (next.yearRowText != null && next.periodHeaderText == null) {
-    next.periodHeaderText = next.yearRowText;
-  }
-  delete next.yearRowBg;
-  delete next.yearRowText;
-  if (next.textFaintColor != null && next.textDimColor == null) {
-    next.textDimColor = next.textFaintColor;
-  }
-  delete next.textFaintColor;
-  if (next.appBg != null && next.settingsInputBg == null) {
-    next.settingsInputBg = next.appBg;
-  }
-  delete next.appBg;
-  if (next.planEditableCellHoverColor != null && next.planEditableCellHoverBg == null) {
-    next.planEditableCellHoverBg = next.planEditableCellHoverColor;
-  }
-  delete next.planEditableCellHoverColor;
-  if (next.periodModeTextColor != null) {
-    if (next.periodModeBudgetActualText == null) {
-      next.periodModeBudgetActualText = next.periodModeTextColor;
-    }
-    if (next.periodModeActualText == null) {
-      next.periodModeActualText = next.periodModeTextColor;
-    }
-    if (next.periodModePlanText == null) {
-      next.periodModePlanText = next.periodModeTextColor;
-    }
-  }
-  delete next.periodModeTextColor;
-  delete next.currentMonthBg;
-  delete next.bonusMonthColumnBg;
-  if (next.journalTextColor != null && next.textColor == null) {
-    next.textColor = next.journalTextColor;
-  }
-  delete next.journalTextColor;
-  for (const [fromKey, toKey] of Object.entries(MERGED_SETTINGS_ACTIVE_KEYS)) {
-    if (next[fromKey] != null && next[toKey] == null) {
-      next[toKey] = next[fromKey];
-    }
-    delete next[fromKey];
-  }
-  for (const [fromKey, toKey] of Object.entries(BORDER_TO_TEXT_KEYS)) {
-    if (next[fromKey] != null && next[toKey] == null) {
-      next[toKey] = next[fromKey];
-    }
-    delete next[fromKey];
-  }
-  if (next.textDimColor == null) {
-    for (const key of MERGED_DIM_TEXT_SOURCE_KEYS) {
-      if (next[key] != null) {
-        next.textDimColor = next[key];
-        break;
-      }
-    }
-  }
-  for (const key of MERGED_DIM_TEXT_SOURCE_KEYS) {
-    delete next[key];
-  }
-  if (next.primaryButtonBg == null) {
-    if (next.primaryButtonBgStart != null) {
-      next.primaryButtonBg = next.primaryButtonBgStart;
-    } else if (next.primaryButtonBgEnd != null) {
-      next.primaryButtonBg = next.primaryButtonBgEnd;
-    }
-  }
-  for (const key of MERGED_PRIMARY_BUTTON_BG_KEYS) {
-    delete next[key];
-  }
-  if (next.contextMenuBg == null) {
-    for (const key of MERGED_POPUP_BG_SOURCE_KEYS) {
-      if (next[key] != null) {
-        next.contextMenuBg = next[key];
-        break;
-      }
-    }
-  }
-  for (const key of MERGED_POPUP_BG_SOURCE_KEYS) {
-    delete next[key];
-  }
-  if (next.contextMenuShadowBg == null) {
-    for (const key of MERGED_POPUP_SHADOW_SOURCE_KEYS) {
-      if (next[key] != null) {
-        next.contextMenuShadowBg = next[key];
-        break;
-      }
-    }
-  }
-  for (const key of MERGED_POPUP_SHADOW_SOURCE_KEYS) {
-    delete next[key];
-  }
-  if (next.contextMenuItemHoverBg == null) {
-    for (const key of MERGED_POPUP_ROW_HOVER_SOURCE_KEYS) {
-      if (next[key] != null) {
-        next.contextMenuItemHoverBg = next[key];
-        break;
-      }
-    }
-  }
-  for (const key of MERGED_POPUP_ROW_HOVER_SOURCE_KEYS) {
-    delete next[key];
-  }
-  if (next.monthRowBg == null) {
-    for (const key of MERGED_HEADER_ROW_BG_SOURCE_KEYS) {
-      if (next[key] != null) {
-        next.monthRowBg = next[key];
-        break;
-      }
-    }
-  }
-  for (const key of MERGED_HEADER_ROW_BG_SOURCE_KEYS) {
-    delete next[key];
-  }
-  if (next.dashboardSidebarBarBg == null) {
-    for (const key of MERGED_SIDEBAR_BAR_SOURCE_KEYS) {
-      if (next[key] != null) {
-        next.dashboardSidebarBarBg = next[key];
-        break;
-      }
-    }
-  }
-  for (const key of MERGED_SIDEBAR_BAR_SOURCE_KEYS) {
-    delete next[key];
-  }
-  for (const key of REMOVED_HOVER_COLOR_KEYS) {
-    delete next[key];
-  }
-  for (const key of REMOVED_COLOR_KEYS) {
-    delete next[key];
+/** 現行キーのみ残す */
+function sanitizeUiColorBucket(bucket = {}) {
+  const next = {};
+  if (!bucket || typeof bucket !== 'object') return next;
+  for (const key of UI_COLOR_KEYS) {
+    if (bucket[key] != null) next[key] = bucket[key];
   }
   return next;
-}
-
-function hasLegacyUiColorFlatKeys(config) {
-  return UI_COLOR_LEGACY_KEYS.some((key) => config[key] != null);
 }
 
 /** localStorage / エクスポート用の正規形（モード別上書き） */
@@ -449,24 +253,12 @@ export function normalizeUiColorConfig(config = {}) {
   }
 
   const colorMode = getUiColorModeSetting(config);
-  let dark = migrateUiColorBucket(
-    typeof config.dark === 'object' && config.dark !== null ? { ...config.dark } : {},
+  const dark = sanitizeUiColorBucket(
+    typeof config.dark === 'object' && config.dark !== null ? config.dark : {},
   );
-  let light = migrateUiColorBucket(
-    typeof config.light === 'object' && config.light !== null ? { ...config.light } : {},
+  const light = sanitizeUiColorBucket(
+    typeof config.light === 'object' && config.light !== null ? config.light : {},
   );
-
-  if (hasLegacyUiColorFlatKeys(config)) {
-    const bucket = getUiColorMode({ colorMode, dark, light }) === 'light' ? light : dark;
-    for (const key of UI_COLOR_LEGACY_KEYS) {
-      if (config[key] != null) bucket[key] = config[key];
-    }
-    if (getUiColorMode({ colorMode, dark, light }) === 'light') {
-      light = migrateUiColorBucket(bucket);
-    } else {
-      dark = migrateUiColorBucket(bucket);
-    }
-  }
 
   const normalized = { colorMode, dark, light };
   if (typeof config.hoverBoostPercent === 'number' && Number.isFinite(config.hoverBoostPercent)) {

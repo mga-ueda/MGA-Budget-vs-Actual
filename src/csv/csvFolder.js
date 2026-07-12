@@ -25,7 +25,6 @@ function openDb() {
     req.onerror = () => reject(req.error);
     req.onupgradeneeded = () => {
       const db = req.result;
-      if (db.objectStoreNames.contains('csv')) db.deleteObjectStore('csv');
       if (!db.objectStoreNames.contains(STORE_NAME)) {
         db.createObjectStore(STORE_NAME);
       }

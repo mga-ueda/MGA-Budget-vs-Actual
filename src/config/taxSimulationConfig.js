@@ -61,22 +61,10 @@ export const TAX_REGION_PRESETS = {
   },
 };
 
-/** 旧キー → 法人区分への移行 */
-const LEGACY_REGION_PRESET_MAP = {
-  custom: 'small',
-  tokyo_standard: 'standard',
-  osaka_standard: 'standard',
-  nagoya_standard: 'standard',
-  fukuoka_standard: 'standard',
-  tokyo_small: 'small',
-  osaka_small: 'small',
-};
-
 const VALID_REGION_PRESETS = new Set(Object.keys(TAX_REGION_PRESETS));
 
 function resolveRegionPresetKey(rawKey, fallback) {
   if (VALID_REGION_PRESETS.has(rawKey)) return rawKey;
-  if (LEGACY_REGION_PRESET_MAP[rawKey]) return LEGACY_REGION_PRESET_MAP[rawKey];
   return fallback;
 }
 const VALID_PROFIT_METHODS = new Set(['annualize', 'fullYear']);

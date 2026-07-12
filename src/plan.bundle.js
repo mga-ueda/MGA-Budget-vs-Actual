@@ -843,15 +843,9 @@ function cloneDefaultDefinition() {
   return result;
 }
 
-function repairLegacyKanji(text) {
-  return text
-    .replace(/稅/g, "税")
-    .replace(/居民/g, "住民");
-}
-
 function normalizePatternString(raw, fallback) {
   if (typeof raw !== 'string' || !raw.trim()) return fallback;
-  return repairLegacyKanji(raw.trim());
+  return raw.trim();
 }
 
 function normalizeStringList(raw, fallback) {
@@ -877,7 +871,7 @@ function normalizeJournalDefinition(raw) {
       normalized[key] = normalizePatternString(raw?.[key], fallback);
       continue;
     }
-    normalized[key] = normalizeStringList(raw?.[key], fallback).map((item) => repairLegacyKanji(item));
+    normalized[key] = normalizeStringList(raw?.[key], fallback);
   }
   return normalized;
 }
@@ -1417,11 +1411,8 @@ function getDefaultSectionColor(sectionId, mode = 'dark') {
 
 function getEffectiveSectionOverrideColors(sectionId, override, mode = 'dark') {
   const defaults = getDefaultSectionColor(sectionId, mode);
-  if (!override) {
+  if (!override || typeof override !== 'object') {
     return { barColor: defaults.barColor, textColor: defaults.textColor };
-  }
-  if (typeof override === 'string') {
-    return { barColor: override, textColor: defaults.textColor };
   }
   return {
     barColor: override.barColor ?? defaults.barColor,
@@ -1444,21 +1435,14 @@ function isSectionColorCustom(config, mode, sectionId) {
 
 function normalizeSectionOverrides(raw = {}, mode = 'dark') {
   const normalized = {};
-  const migrated = { ...raw };
-  if (migrated.receivables && !migrated.revenueVariance) {
-    migrated.revenueVariance = migrated.receivables;
-  }
-  delete migrated.receivables;
-  for (const [id, val] of Object.entries(migrated)) {
-    if (typeof val === 'string') {
-      if (!sectionOverrideMatchesDefault(id, val, mode)) normalized[id] = val;
-    } else if (val) {
-      const entry = {};
-      if (typeof val.barColor === 'string') entry.barColor = val.barColor;
-      if (typeof val.textColor === 'string') entry.textColor = val.textColor;
-      if (Object.keys(entry).length && !sectionOverrideMatchesDefault(id, entry, mode)) {
-        normalized[id] = entry;
-      }
+  if (!raw || typeof raw !== 'object') return normalized;
+  for (const [id, val] of Object.entries(raw)) {
+    if (!val || typeof val !== 'object') continue;
+    const entry = {};
+    if (typeof val.barColor === 'string') entry.barColor = val.barColor;
+    if (typeof val.textColor === 'string') entry.textColor = val.textColor;
+    if (Object.keys(entry).length && !sectionOverrideMatchesDefault(id, entry, mode)) {
+      normalized[id] = entry;
     }
   }
   return normalized;
@@ -1468,15 +1452,12 @@ function normalizeSectionColorConfig(config = {}) {
   if (!config || typeof config !== 'object') {
     return { dark: {}, light: {} };
   }
-  if (isPerModeSectionColorConfig(config)) {
-    return {
-      dark: normalizeSectionOverrides(config.dark, 'dark'),
-      light: normalizeSectionOverrides(config.light, 'light'),
-    };
+  if (!isPerModeSectionColorConfig(config)) {
+    return { dark: {}, light: {} };
   }
   return {
-    dark: normalizeSectionOverrides(config, 'dark'),
-    light: {},
+    dark: normalizeSectionOverrides(config.dark, 'dark'),
+    light: normalizeSectionOverrides(config.light, 'light'),
   };
 }
 
@@ -1515,10 +1496,8 @@ function resetSectionColorModeOverrides(config, mode = 'dark') {
 function getSectionColors(sectionId, config = {}, mode = 'dark') {
   const defaults = getDefaultSectionColor(sectionId, mode);
   const bucket = getSectionColorModeBucket(config, mode);
-  const override = bucket[sectionId]
-    ?? (sectionId === 'revenueVariance' ? bucket.receivables : undefined);
-  if (!override) return { ...defaults };
-  if (typeof override === 'string') return { ...defaults, barColor: override };
+  const override = bucket[sectionId];
+  if (!override || typeof override !== 'object') return { ...defaults };
   return {
     ...defaults,
     barColor: override.barColor ?? defaults.barColor,
@@ -1667,69 +1646,6 @@ function sectionMatchesFilter(section, config, sectionIds = []) {
 const UI_COLOR_STORAGE_KEY = 'mga-ui-colors';
 
 const DEFAULT_HOVER_BOOST_PERCENT = 20;
-
-const REMOVED_HOVER_COLOR_KEYS = [
-  'dashboardNavHoverBg',
-  'dashboardNavActiveHoverBg',
-  'settingsNavActiveHoverBg',
-  'deleteBtnBgHover',
-  'headerControlHoverBg',
-];
-
-const REMOVED_COLOR_KEYS = [
-  'deleteBtnBorder',
-  'interactiveAccentColor',
-  'kbdShadowColor',
-  'statusInvalidColor',
-  'journalCloseHoverBg',
-  'headerControlBorder',
-];
-
-const MERGED_SIDEBAR_BAR_SOURCE_KEYS = [
-  'dashboardSidebarRevenueBarBg',
-  'dashboardSidebarExpenseBarBg',
-];
-
-const MERGED_SETTINGS_ACTIVE_KEYS = {
-  settingsNavActiveBg: 'dashboardNavActiveBg',
-  settingsNavActiveText: 'dashboardNavActiveText',
-};
-
-const BORDER_TO_TEXT_KEYS = {
-  dashboardNavBorder: 'dashboardNavText',
-  dashboardNavActiveBorder: 'dashboardNavActiveText',
-  settingsNavActiveBorder: 'dashboardNavActiveText',
-  headerControlText: 'textColor',
-};
-
-const MERGED_DIM_TEXT_SOURCE_KEYS = [
-  'noteTextColor',
-  'hintTextColor',
-  'journalHintTextColor',
-];
-
-const MERGED_PRIMARY_BUTTON_BG_KEYS = [
-  'primaryButtonBgStart',
-  'primaryButtonBgEnd',
-];
-
-const MERGED_POPUP_BG_SOURCE_KEYS = [
-  'journalModalBg',
-];
-
-const MERGED_POPUP_SHADOW_SOURCE_KEYS = [
-  'journalModalShadowBg',
-];
-
-const MERGED_POPUP_ROW_HOVER_SOURCE_KEYS = [
-  'journalRowHoverBg',
-  'settingsRowHoverBg',
-];
-
-const MERGED_HEADER_ROW_BG_SOURCE_KEYS = [
-  'settingsSurfaceBg',
-  'journalTableHeaderBg',
-];
 
 const SETTLEMENT_MONTH_OVERLAY_ALPHA = 0.28;
 const SETTLEMENT_MONTH_RING_ALPHA = 0.45;
@@ -1965,147 +1881,14 @@ function getDefaultUiColors(mode = 'dark') {
   return { ...DEFAULTS_BY_MODE[key] };
 }
 
-const UI_COLOR_LEGACY_KEYS = [...UI_COLOR_KEYS, 'textFaintColor', 'appBg', 'bonusMonthColumnBg', 'journalTextColor', 'journalModalBg', 'journalModalShadowBg', 'journalRowHoverBg', 'settingsRowHoverBg', 'settingsSurfaceBg', 'journalTableHeaderBg', 'journalCloseHoverBg', 'headerControlBorder', 'yearRowBg', 'yearRowText'];
-
-function migrateUiColorBucket(bucket = {}) {
-  const next = { ...bucket };
-  if (next.yearRowBg != null && next.periodHeaderBg == null) {
-    next.periodHeaderBg = next.yearRowBg;
-  }
-  if (next.yearRowText != null && next.periodHeaderText == null) {
-    next.periodHeaderText = next.yearRowText;
-  }
-  delete next.yearRowBg;
-  delete next.yearRowText;
-  if (next.textFaintColor != null && next.textDimColor == null) {
-    next.textDimColor = next.textFaintColor;
-  }
-  delete next.textFaintColor;
-  if (next.appBg != null && next.settingsInputBg == null) {
-    next.settingsInputBg = next.appBg;
-  }
-  delete next.appBg;
-  if (next.planEditableCellHoverColor != null && next.planEditableCellHoverBg == null) {
-    next.planEditableCellHoverBg = next.planEditableCellHoverColor;
-  }
-  delete next.planEditableCellHoverColor;
-  if (next.periodModeTextColor != null) {
-    if (next.periodModeBudgetActualText == null) {
-      next.periodModeBudgetActualText = next.periodModeTextColor;
-    }
-    if (next.periodModeActualText == null) {
-      next.periodModeActualText = next.periodModeTextColor;
-    }
-    if (next.periodModePlanText == null) {
-      next.periodModePlanText = next.periodModeTextColor;
-    }
-  }
-  delete next.periodModeTextColor;
-  delete next.currentMonthBg;
-  delete next.bonusMonthColumnBg;
-  if (next.journalTextColor != null && next.textColor == null) {
-    next.textColor = next.journalTextColor;
-  }
-  delete next.journalTextColor;
-  for (const [fromKey, toKey] of Object.entries(MERGED_SETTINGS_ACTIVE_KEYS)) {
-    if (next[fromKey] != null && next[toKey] == null) {
-      next[toKey] = next[fromKey];
-    }
-    delete next[fromKey];
-  }
-  for (const [fromKey, toKey] of Object.entries(BORDER_TO_TEXT_KEYS)) {
-    if (next[fromKey] != null && next[toKey] == null) {
-      next[toKey] = next[fromKey];
-    }
-    delete next[fromKey];
-  }
-  if (next.textDimColor == null) {
-    for (const key of MERGED_DIM_TEXT_SOURCE_KEYS) {
-      if (next[key] != null) {
-        next.textDimColor = next[key];
-        break;
-      }
-    }
-  }
-  for (const key of MERGED_DIM_TEXT_SOURCE_KEYS) {
-    delete next[key];
-  }
-  if (next.primaryButtonBg == null) {
-    if (next.primaryButtonBgStart != null) {
-      next.primaryButtonBg = next.primaryButtonBgStart;
-    } else if (next.primaryButtonBgEnd != null) {
-      next.primaryButtonBg = next.primaryButtonBgEnd;
-    }
-  }
-  for (const key of MERGED_PRIMARY_BUTTON_BG_KEYS) {
-    delete next[key];
-  }
-  if (next.contextMenuBg == null) {
-    for (const key of MERGED_POPUP_BG_SOURCE_KEYS) {
-      if (next[key] != null) {
-        next.contextMenuBg = next[key];
-        break;
-      }
-    }
-  }
-  for (const key of MERGED_POPUP_BG_SOURCE_KEYS) {
-    delete next[key];
-  }
-  if (next.contextMenuShadowBg == null) {
-    for (const key of MERGED_POPUP_SHADOW_SOURCE_KEYS) {
-      if (next[key] != null) {
-        next.contextMenuShadowBg = next[key];
-        break;
-      }
-    }
-  }
-  for (const key of MERGED_POPUP_SHADOW_SOURCE_KEYS) {
-    delete next[key];
-  }
-  if (next.contextMenuItemHoverBg == null) {
-    for (const key of MERGED_POPUP_ROW_HOVER_SOURCE_KEYS) {
-      if (next[key] != null) {
-        next.contextMenuItemHoverBg = next[key];
-        break;
-      }
-    }
-  }
-  for (const key of MERGED_POPUP_ROW_HOVER_SOURCE_KEYS) {
-    delete next[key];
-  }
-  if (next.monthRowBg == null) {
-    for (const key of MERGED_HEADER_ROW_BG_SOURCE_KEYS) {
-      if (next[key] != null) {
-        next.monthRowBg = next[key];
-        break;
-      }
-    }
-  }
-  for (const key of MERGED_HEADER_ROW_BG_SOURCE_KEYS) {
-    delete next[key];
-  }
-  if (next.dashboardSidebarBarBg == null) {
-    for (const key of MERGED_SIDEBAR_BAR_SOURCE_KEYS) {
-      if (next[key] != null) {
-        next.dashboardSidebarBarBg = next[key];
-        break;
-      }
-    }
-  }
-  for (const key of MERGED_SIDEBAR_BAR_SOURCE_KEYS) {
-    delete next[key];
-  }
-  for (const key of REMOVED_HOVER_COLOR_KEYS) {
-    delete next[key];
-  }
-  for (const key of REMOVED_COLOR_KEYS) {
-    delete next[key];
+/** 現行キーのみ残す */
+function sanitizeUiColorBucket(bucket = {}) {
+  const next = {};
+  if (!bucket || typeof bucket !== 'object') return next;
+  for (const key of UI_COLOR_KEYS) {
+    if (bucket[key] != null) next[key] = bucket[key];
   }
   return next;
-}
-
-function hasLegacyUiColorFlatKeys(config) {
-  return UI_COLOR_LEGACY_KEYS.some((key) => config[key] != null);
 }
 
 /** localStorage / エクスポート用の正規形（モード別上書き） */
@@ -2115,24 +1898,12 @@ function normalizeUiColorConfig(config = {}) {
   }
 
   const colorMode = getUiColorModeSetting(config);
-  let dark = migrateUiColorBucket(
-    typeof config.dark === 'object' && config.dark !== null ? { ...config.dark } : {},
+  const dark = sanitizeUiColorBucket(
+    typeof config.dark === 'object' && config.dark !== null ? config.dark : {},
   );
-  let light = migrateUiColorBucket(
-    typeof config.light === 'object' && config.light !== null ? { ...config.light } : {},
+  const light = sanitizeUiColorBucket(
+    typeof config.light === 'object' && config.light !== null ? config.light : {},
   );
-
-  if (hasLegacyUiColorFlatKeys(config)) {
-    const bucket = getUiColorMode({ colorMode, dark, light }) === 'light' ? light : dark;
-    for (const key of UI_COLOR_LEGACY_KEYS) {
-      if (config[key] != null) bucket[key] = config[key];
-    }
-    if (getUiColorMode({ colorMode, dark, light }) === 'light') {
-      light = migrateUiColorBucket(bucket);
-    } else {
-      dark = migrateUiColorBucket(bucket);
-    }
-  }
 
   const normalized = { colorMode, dark, light };
   if (typeof config.hoverBoostPercent === 'number' && Number.isFinite(config.hoverBoostPercent)) {
@@ -4394,22 +4165,10 @@ const TAX_REGION_PRESETS = {
   },
 };
 
-/** 旧キー → 法人区分への移行 */
-const LEGACY_REGION_PRESET_MAP = {
-  custom: 'small',
-  tokyo_standard: 'standard',
-  osaka_standard: 'standard',
-  nagoya_standard: 'standard',
-  fukuoka_standard: 'standard',
-  tokyo_small: 'small',
-  osaka_small: 'small',
-};
-
 const VALID_REGION_PRESETS = new Set(Object.keys(TAX_REGION_PRESETS));
 
 function resolveRegionPresetKey(rawKey, fallback) {
   if (VALID_REGION_PRESETS.has(rawKey)) return rawKey;
-  if (LEGACY_REGION_PRESET_MAP[rawKey]) return LEGACY_REGION_PRESET_MAP[rawKey];
   return fallback;
 }
 const VALID_PROFIT_METHODS = new Set(['annualize', 'fullYear']);
@@ -5421,11 +5180,6 @@ const PLAN_TABLE_TAX_PAYMENT_TAX_EDITABLE_ACCOUNTS = [
   CORPORATE_TAX_ACCOUNT,
 ];
 
-function isLegacyPeriodPlan(stored) {
-  if (!stored || typeof stored !== 'object') return false;
-  return Object.keys(stored).some((key) => /^\d+月$/.test(key) || key === '決算整理');
-}
-
 function normalizeTaxPaymentPlan(plan, fiscalMonths) {
   const monthly = emptyMonthly(fiscalMonths);
   if (plan && typeof plan === 'object') {
@@ -5438,9 +5192,6 @@ function normalizeTaxPaymentPlan(plan, fiscalMonths) {
 
 function normalizePeriodPlans(stored, fiscalMonths) {
   if (!stored || typeof stored !== 'object') return {};
-  if (isLegacyPeriodPlan(stored)) {
-    return { 租税公課: normalizeTaxPaymentPlan(stored, fiscalMonths) };
-  }
   const result = {};
   for (const account of PAYMENT_PLAN_SIMPLE_ACCOUNTS) {
     result[account] = normalizeTaxPaymentPlan(stored[account], fiscalMonths);
@@ -5451,13 +5202,7 @@ function normalizePeriodPlans(stored, fiscalMonths) {
 function getPeriodStorageRaw(plans, fiscalPeriod) {
   const stored = plans[String(fiscalPeriod)];
   if (!stored || typeof stored !== 'object') return {};
-  if (isLegacyPeriodPlan(stored)) return stored;
   return stored;
-}
-
-function hasLegacyResidentTaxMonthly(stored, fiscalMonths) {
-  const legacy = normalizeTaxPaymentPlan(stored[RESIDENT_TAX_ACCOUNT], fiscalMonths);
-  return fiscalMonths.some((m) => (legacy[m] ?? 0) !== 0);
 }
 
 function createResidentTaxMunicipalityId(municipality) {
@@ -5492,13 +5237,6 @@ function getResidentTaxMunicipalityEntries(plans, fiscalPeriod, fiscalMonths) {
     return true;
   });
   if (unique.length > 0) return unique;
-  if (hasLegacyResidentTaxMonthly(raw, fiscalMonths)) {
-    return [{
-      id: 'legacy-resident-tax',
-      municipality: '未設定',
-      monthly: normalizeTaxPaymentPlan(raw[RESIDENT_TAX_ACCOUNT], fiscalMonths),
-    }];
-  }
   return [];
 }
 
@@ -11421,23 +11159,6 @@ function createDefaultBrandLogoImageByMode() {
   };
 }
 
-function migrateBrandLogoImageFromParsed(parsed) {
-  if (parsed?.brandLogoImage && (parsed.brandLogoImage.dark || parsed.brandLogoImage.light)) {
-    return normalizeBrandLogoImageByMode(parsed.brandLogoImage);
-  }
-  const legacyBucket = normalizeBrandLogoImageModeBucket({
-    outlineColor: parsed?.brandLogoOutlineColor,
-    outlineWidth: parsed?.brandLogoOutlineWidth,
-    shadowEnabled: parsed?.brandLogoShadowEnabled,
-    shadowColor: parsed?.brandLogoShadowColor,
-    shadowStrength: parsed?.brandLogoShadowStrength,
-  });
-  return {
-    dark: { ...legacyBucket },
-    light: { ...legacyBucket },
-  };
-}
-
 function getBrandLogoImageSettings(settings, mode = 'dark') {
   const normalized = normalizeBrandLogoImageByMode(settings?.brandLogoImage ?? {});
   return normalized[mode === 'light' ? 'light' : 'dark'];
@@ -11709,13 +11430,7 @@ function applyRowPaddingScale(uiScale, contentFitScale = getContentFitScale()) {
 }
 
 function loadFontScale(parsed) {
-  const raw = parsed?.fontScale;
-  if (parsed?.fontScaleUi) {
-    return normalizeFontScale(raw);
-  }
-  const actual = Number(raw);
-  if (!Number.isFinite(actual)) return DEFAULT_FONT_SCALE;
-  return normalizeFontScale(actual / DESIGN_FONT_BASELINE);
+  return normalizeFontScale(parsed?.fontScale);
 }
 
 function loadRowPaddingScale(parsed) {
@@ -12045,10 +11760,6 @@ function loadCorpEntityMarkers(stored) {
   if (stored == null || String(stored).trim() === '') {
     return DEFAULT_CORP_ENTITY_MARKERS;
   }
-  const s = String(stored);
-  if (s.includes('??')) {
-    return DEFAULT_CORP_ENTITY_MARKERS;
-  }
   return normalizeCorpEntityMarkers(stored);
 }
 
@@ -12056,12 +11767,16 @@ function loadBrandSettings(parsed) {
   const companyName = parsed && Object.prototype.hasOwnProperty.call(parsed, 'companyName')
     ? normalizeCompanyName(parsed.companyName)
     : DEFAULT_COMPANY_NAME;
+  const hasBrandLogoImage = parsed?.brandLogoImage
+    && (parsed.brandLogoImage.dark || parsed.brandLogoImage.light);
   return {
     companyName,
     brandIconText: normalizeBrandIconText(parsed?.brandIconText),
     brandFillColor: normalizeBrandColor(parsed?.brandFillColor, DEFAULT_BRAND_FILL_COLOR),
     brandTextColor: normalizeBrandColor(parsed?.brandTextColor, DEFAULT_BRAND_TEXT_COLOR),
-    brandLogoImage: migrateBrandLogoImageFromParsed(parsed),
+    brandLogoImage: hasBrandLogoImage
+      ? normalizeBrandLogoImageByMode(parsed.brandLogoImage)
+      : createDefaultBrandLogoImageByMode(),
     brandLogoDataUrl: normalizeBrandLogoDataUrl(parsed?.brandLogoDataUrl),
   };
 }
@@ -12113,10 +11828,7 @@ function loadAppSettings() {
 }
 
 function saveAppSettings(settings) {
-  localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({
-    ...settings,
-    fontScaleUi: true,
-  }));
+  localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify(settings));
 }
 
 /** その他設定タブの項目のみデフォルトに戻す（フォント・行パディング等は維持） */
@@ -12155,7 +11867,7 @@ function prepareSettingsValueForImport(key, value) {
 }
 
 /** エクスポート／インポート対象外（端末ごとのフォント倍率・行余白）。 */
-const APP_SETTINGS_EXCLUDED_KEYS = ['fontScale', 'rowPaddingScale', 'fontScaleUi'];
+const APP_SETTINGS_EXCLUDED_KEYS = ['fontScale', 'rowPaddingScale'];
 
 const ALL_SETTINGS_STORAGE_KEYS = [
   SETTINGS_EXPORT_APP_KEY,
@@ -12186,8 +11898,6 @@ function stripAppSettingsForExport(appSettings) {
   for (const key of APP_SETTINGS_EXCLUDED_KEYS) {
     delete stripped[key];
   }
-  delete stripped.fiscalEndMonth;
-  delete stripped.businessStartYear;
   return stripped;
 }
 
@@ -12211,8 +11921,6 @@ function mergeAppSettingsForImport(imported) {
       delete merged[key];
     }
   }
-  delete merged.fiscalEndMonth;
-  delete merged.businessStartYear;
   return merged;
 }
 
@@ -12331,7 +12039,6 @@ function openDb() {
     req.onerror = () => reject(req.error);
     req.onupgradeneeded = () => {
       const db = req.result;
-      if (db.objectStoreNames.contains('csv')) db.deleteObjectStore('csv');
       if (!db.objectStoreNames.contains(STORE_NAME)) {
         db.createObjectStore(STORE_NAME);
       }
@@ -16801,7 +16508,6 @@ function mountUiColorPanel(container, {
 }
 
 /* ui/colorSettingsWindow.js */
-const POS_STORAGE_KEY = 'mga-color-settings-window-pos';
 const DEFAULT_WIDTH = 440;
 const DEFAULT_TOP = 72;
 const DEFAULT_RIGHT = 16;
@@ -16824,18 +16530,8 @@ function getTargetWindowHeight() {
   return Math.max(MIN_WINDOW_HEIGHT, Math.min(target, viewportMax));
 }
 
-/** 旧仕様の位置記憶を破棄する（位置は記憶しない） */
-function clearStoredWindowPosition() {
-  try {
-    localStorage.removeItem(POS_STORAGE_KEY);
-  } catch {
-    // ignore
-  }
-}
-
 /** 開き直すたびに内容全体が見える既定位置へ戻す */
 function applyVisibleDefaultPosition(el) {
-  clearStoredWindowPosition();
   el.style.top = `${DEFAULT_TOP}px`;
   el.style.right = `${DEFAULT_RIGHT}px`;
   el.style.left = 'auto';
@@ -16951,7 +16647,6 @@ function createColorSettingsWindow({
   const mountTarget = document.querySelector('.plan-app') ?? document.body;
   mountTarget.appendChild(shell);
 
-  clearStoredWindowPosition();
   bindWindowDrag(header, shell);
 
   let layoutObserver = null;
@@ -17125,14 +16820,10 @@ const DASHBOARD_CHART_MODES = [
   { id: 'expense', label: '支出推移', title: TIP_DASH_MODE_EXPENSE },
 ];
 const DASHBOARD_CHECK_STORAGE_KEY = 'mga-dashboard-checks';
-const DASHBOARD_REVENUE_BREAKDOWN_KEY = 'mga-dashboard-revenue-breakdown-mode';
-const DASHBOARD_EXPENSE_BREAKDOWN_KEY = 'mga-dashboard-expense-breakdown-mode';
 const DASHBOARD_BREAKDOWN_MODES = [
   { id: 'account', label: '勘定科目', title: TIP_DASH_BREAKDOWN_ACCOUNT },
   { id: 'sub', label: '補助科目', title: TIP_DASH_BREAKDOWN_SUB },
 ];
-const DASHBOARD_REVENUE_SORT_KEY = 'mga-dashboard-revenue-sort';
-const DASHBOARD_EXPENSE_SORT_KEY = 'mga-dashboard-expense-sort';
 const DASHBOARD_SIDEBAR_SORT_MODES = [
   { id: 'amount', label: '金額順', title: TIP_DASH_SORT_AMOUNT },
   { id: 'name', label: '名前順', title: TIP_DASH_SORT_NAME },
@@ -17532,18 +17223,6 @@ function dashCollectAllPeriodBreakdownItems(allPeriods, sectionIds, mode) {
   for (const item of mergedItems) dashFinalizeRowValues(item.values);
   mergedItems.sort((a, b) => b.total - a.total);
   return mergedItems;
-}
-
-function dashClearSidebarPreferences() {
-  try {
-    localStorage.removeItem(DASHBOARD_REVENUE_BREAKDOWN_KEY);
-    localStorage.removeItem(DASHBOARD_EXPENSE_BREAKDOWN_KEY);
-    localStorage.removeItem('mga-dashboard-breakdown-mode');
-    localStorage.removeItem(DASHBOARD_REVENUE_SORT_KEY);
-    localStorage.removeItem(DASHBOARD_EXPENSE_SORT_KEY);
-  } catch {
-    /* ignore */
-  }
 }
 
 function dashSortBreakdownItems(items, sortMode = 'amount') {
@@ -20395,7 +20074,6 @@ function mountDashboardPanel({
 function resetDashboardState({ fiscalPeriod = null, multiPeriodRange = null } = {}) {
   dashUnbindDashboardClickRouting();
   dashboardMountCtx = null;
-  dashClearSidebarPreferences();
   if (fiscalPeriod != null) dashClearCheckedKeys(fiscalPeriod);
   if (multiPeriodRange) {
     dashClearCheckedKeys(dashMultiPeriodStorageKey(multiPeriodRange.from, multiPeriodRange.to));
@@ -21415,7 +21093,6 @@ function mountTaxForecastWindowContent(container, {
 }
 
 /* ui/taxForecastWindow.js */
-const TAX_FORECAST_POS_STORAGE_KEY = 'mga-tax-forecast-window-pos';
 const TAX_FORECAST_WINDOW_WIDTH_REM = 76;
 const TAX_FORECAST_DEFAULT_TOP = 96;
 const TAX_FORECAST_DEFAULT_RIGHT = 16;
@@ -21440,18 +21117,8 @@ function getMaxWindowHeight() {
   );
 }
 
-/** 旧仕様の位置記憶を破棄する（位置は記憶しない） */
-function clearStoredWindowPosition() {
-  try {
-    localStorage.removeItem(TAX_FORECAST_POS_STORAGE_KEY);
-  } catch {
-    // ignore
-  }
-}
-
 /** 開き直すたびに内容全体が見える既定位置へ戻す */
 function applyVisibleDefaultPosition(el) {
-  clearStoredWindowPosition();
   el.style.top = `${TAX_FORECAST_DEFAULT_TOP}px`;
   el.style.right = `${TAX_FORECAST_DEFAULT_RIGHT}px`;
   el.style.left = 'auto';
@@ -21537,7 +21204,6 @@ function createTaxForecastWindow({
   const mountTarget = document.querySelector('.plan-app') ?? document.body;
   mountTarget.appendChild(shell);
 
-  clearStoredWindowPosition();
   bindWindowDrag(header, shell);
 
   const applyLockedShellSize = () => {

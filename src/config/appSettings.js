@@ -175,23 +175,6 @@ export function createDefaultBrandLogoImageByMode() {
   };
 }
 
-function migrateBrandLogoImageFromParsed(parsed) {
-  if (parsed?.brandLogoImage && (parsed.brandLogoImage.dark || parsed.brandLogoImage.light)) {
-    return normalizeBrandLogoImageByMode(parsed.brandLogoImage);
-  }
-  const legacyBucket = normalizeBrandLogoImageModeBucket({
-    outlineColor: parsed?.brandLogoOutlineColor,
-    outlineWidth: parsed?.brandLogoOutlineWidth,
-    shadowEnabled: parsed?.brandLogoShadowEnabled,
-    shadowColor: parsed?.brandLogoShadowColor,
-    shadowStrength: parsed?.brandLogoShadowStrength,
-  });
-  return {
-    dark: { ...legacyBucket },
-    light: { ...legacyBucket },
-  };
-}
-
 export function getBrandLogoImageSettings(settings, mode = 'dark') {
   const normalized = normalizeBrandLogoImageByMode(settings?.brandLogoImage ?? {});
   return normalized[mode === 'light' ? 'light' : 'dark'];
@@ -463,13 +446,7 @@ export function applyRowPaddingScale(uiScale, contentFitScale = getContentFitSca
 }
 
 function loadFontScale(parsed) {
-  const raw = parsed?.fontScale;
-  if (parsed?.fontScaleUi) {
-    return normalizeFontScale(raw);
-  }
-  const actual = Number(raw);
-  if (!Number.isFinite(actual)) return DEFAULT_FONT_SCALE;
-  return normalizeFontScale(actual / DESIGN_FONT_BASELINE);
+  return normalizeFontScale(parsed?.fontScale);
 }
 
 function loadRowPaddingScale(parsed) {
@@ -799,10 +776,6 @@ function loadCorpEntityMarkers(stored) {
   if (stored == null || String(stored).trim() === '') {
     return DEFAULT_CORP_ENTITY_MARKERS;
   }
-  const s = String(stored);
-  if (s.includes('??')) {
-    return DEFAULT_CORP_ENTITY_MARKERS;
-  }
   return normalizeCorpEntityMarkers(stored);
 }
 
@@ -810,12 +783,16 @@ function loadBrandSettings(parsed) {
   const companyName = parsed && Object.prototype.hasOwnProperty.call(parsed, 'companyName')
     ? normalizeCompanyName(parsed.companyName)
     : DEFAULT_COMPANY_NAME;
+  const hasBrandLogoImage = parsed?.brandLogoImage
+    && (parsed.brandLogoImage.dark || parsed.brandLogoImage.light);
   return {
     companyName,
     brandIconText: normalizeBrandIconText(parsed?.brandIconText),
     brandFillColor: normalizeBrandColor(parsed?.brandFillColor, DEFAULT_BRAND_FILL_COLOR),
     brandTextColor: normalizeBrandColor(parsed?.brandTextColor, DEFAULT_BRAND_TEXT_COLOR),
-    brandLogoImage: migrateBrandLogoImageFromParsed(parsed),
+    brandLogoImage: hasBrandLogoImage
+      ? normalizeBrandLogoImageByMode(parsed.brandLogoImage)
+      : createDefaultBrandLogoImageByMode(),
     brandLogoDataUrl: normalizeBrandLogoDataUrl(parsed?.brandLogoDataUrl),
   };
 }
@@ -867,10 +844,7 @@ export function loadAppSettings() {
 }
 
 export function saveAppSettings(settings) {
-  localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({
-    ...settings,
-    fontScaleUi: true,
-  }));
+  localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify(settings));
 }
 
 /** その他設定タブの項目のみデフォルトに戻す（フォント・行パディング等は維持） */

@@ -400,15 +400,9 @@ function cloneDefaultDefinition() {
   return result;
 }
 
-function repairLegacyKanji(text) {
-  return text
-    .replace(/\u7A05/g, ${JSON.stringify(jp(0x7a0e))})
-    .replace(/${jp(0x5c45, 0x6c11)}/g, ${JSON.stringify(jp(0x4f4f, 0x6c11))});
-}
-
 function normalizePatternString(raw, fallback) {
   if (typeof raw !== 'string' || !raw.trim()) return fallback;
-  return repairLegacyKanji(raw.trim());
+  return raw.trim();
 }
 
 function normalizeStringList(raw, fallback) {
@@ -434,7 +428,7 @@ export function normalizeJournalDefinition(raw) {
       normalized[key] = normalizePatternString(raw?.[key], fallback);
       continue;
     }
-    normalized[key] = normalizeStringList(raw?.[key], fallback).map((item) => repairLegacyKanji(item));
+    normalized[key] = normalizeStringList(raw?.[key], fallback);
   }
   return normalized;
 }

@@ -85,11 +85,6 @@ export const PLAN_TABLE_TAX_PAYMENT_TAX_EDITABLE_ACCOUNTS = [
   CORPORATE_TAX_ACCOUNT,
 ];
 
-function isLegacyPeriodPlan(stored) {
-  if (!stored || typeof stored !== 'object') return false;
-  return Object.keys(stored).some((key) => /^\d+月$/.test(key) || key === '決算整理');
-}
-
 export function normalizeTaxPaymentPlan(plan, fiscalMonths) {
   const monthly = emptyMonthly(fiscalMonths);
   if (plan && typeof plan === 'object') {
@@ -102,9 +97,6 @@ export function normalizeTaxPaymentPlan(plan, fiscalMonths) {
 
 function normalizePeriodPlans(stored, fiscalMonths) {
   if (!stored || typeof stored !== 'object') return {};
-  if (isLegacyPeriodPlan(stored)) {
-    return { 租税公課: normalizeTaxPaymentPlan(stored, fiscalMonths) };
-  }
   const result = {};
   for (const account of PAYMENT_PLAN_SIMPLE_ACCOUNTS) {
     result[account] = normalizeTaxPaymentPlan(stored[account], fiscalMonths);
@@ -115,13 +107,7 @@ function normalizePeriodPlans(stored, fiscalMonths) {
 function getPeriodStorageRaw(plans, fiscalPeriod) {
   const stored = plans[String(fiscalPeriod)];
   if (!stored || typeof stored !== 'object') return {};
-  if (isLegacyPeriodPlan(stored)) return stored;
   return stored;
-}
-
-function hasLegacyResidentTaxMonthly(stored, fiscalMonths) {
-  const legacy = normalizeTaxPaymentPlan(stored[RESIDENT_TAX_ACCOUNT], fiscalMonths);
-  return fiscalMonths.some((m) => (legacy[m] ?? 0) !== 0);
 }
 
 export function createResidentTaxMunicipalityId(municipality) {
@@ -156,13 +142,6 @@ export function getResidentTaxMunicipalityEntries(plans, fiscalPeriod, fiscalMon
     return true;
   });
   if (unique.length > 0) return unique;
-  if (hasLegacyResidentTaxMonthly(raw, fiscalMonths)) {
-    return [{
-      id: 'legacy-resident-tax',
-      municipality: '未設定',
-      monthly: normalizeTaxPaymentPlan(raw[RESIDENT_TAX_ACCOUNT], fiscalMonths),
-    }];
-  }
   return [];
 }
 

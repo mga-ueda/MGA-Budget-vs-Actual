@@ -129,14 +129,10 @@ const DASHBOARD_CHART_MODES = [
   { id: 'expense', label: '支出推移', title: TIP_DASH_MODE_EXPENSE },
 ];
 const DASHBOARD_CHECK_STORAGE_KEY = 'mga-dashboard-checks';
-const DASHBOARD_REVENUE_BREAKDOWN_KEY = 'mga-dashboard-revenue-breakdown-mode';
-const DASHBOARD_EXPENSE_BREAKDOWN_KEY = 'mga-dashboard-expense-breakdown-mode';
 const DASHBOARD_BREAKDOWN_MODES = [
   { id: 'account', label: '勘定科目', title: TIP_DASH_BREAKDOWN_ACCOUNT },
   { id: 'sub', label: '補助科目', title: TIP_DASH_BREAKDOWN_SUB },
 ];
-const DASHBOARD_REVENUE_SORT_KEY = 'mga-dashboard-revenue-sort';
-const DASHBOARD_EXPENSE_SORT_KEY = 'mga-dashboard-expense-sort';
 const DASHBOARD_SIDEBAR_SORT_MODES = [
   { id: 'amount', label: '金額順', title: TIP_DASH_SORT_AMOUNT },
   { id: 'name', label: '名前順', title: TIP_DASH_SORT_NAME },
@@ -536,18 +532,6 @@ function dashCollectAllPeriodBreakdownItems(allPeriods, sectionIds, mode) {
   for (const item of mergedItems) dashFinalizeRowValues(item.values);
   mergedItems.sort((a, b) => b.total - a.total);
   return mergedItems;
-}
-
-function dashClearSidebarPreferences() {
-  try {
-    localStorage.removeItem(DASHBOARD_REVENUE_BREAKDOWN_KEY);
-    localStorage.removeItem(DASHBOARD_EXPENSE_BREAKDOWN_KEY);
-    localStorage.removeItem('mga-dashboard-breakdown-mode');
-    localStorage.removeItem(DASHBOARD_REVENUE_SORT_KEY);
-    localStorage.removeItem(DASHBOARD_EXPENSE_SORT_KEY);
-  } catch {
-    /* ignore */
-  }
 }
 
 function dashSortBreakdownItems(items, sortMode = 'amount') {
@@ -3399,7 +3383,6 @@ export function mountDashboardPanel({
 export function resetDashboardState({ fiscalPeriod = null, multiPeriodRange = null } = {}) {
   dashUnbindDashboardClickRouting();
   dashboardMountCtx = null;
-  dashClearSidebarPreferences();
   if (fiscalPeriod != null) dashClearCheckedKeys(fiscalPeriod);
   if (multiPeriodRange) {
     dashClearCheckedKeys(dashMultiPeriodStorageKey(multiPeriodRange.from, multiPeriodRange.to));

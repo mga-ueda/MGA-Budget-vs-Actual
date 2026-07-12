@@ -1,7 +1,6 @@
 import { getLayoutViewportWidth } from '../config/viewportScale.js';
 import { TIP_CLOSE } from '../config/uiTooltipConfig.js';
 
-const POS_STORAGE_KEY = 'mga-color-settings-window-pos';
 const DEFAULT_WIDTH = 440;
 const DEFAULT_TOP = 72;
 const DEFAULT_RIGHT = 16;
@@ -24,18 +23,8 @@ function getTargetWindowHeight() {
   return Math.max(MIN_WINDOW_HEIGHT, Math.min(target, viewportMax));
 }
 
-/** 旧仕様の位置記憶を破棄する（位置は記憶しない） */
-function clearStoredWindowPosition() {
-  try {
-    localStorage.removeItem(POS_STORAGE_KEY);
-  } catch {
-    // ignore
-  }
-}
-
 /** 開き直すたびに内容全体が見える既定位置へ戻す */
 function applyVisibleDefaultPosition(el) {
-  clearStoredWindowPosition();
   el.style.top = `${DEFAULT_TOP}px`;
   el.style.right = `${DEFAULT_RIGHT}px`;
   el.style.left = 'auto';
@@ -151,7 +140,6 @@ export function createColorSettingsWindow({
   const mountTarget = document.querySelector('.plan-app') ?? document.body;
   mountTarget.appendChild(shell);
 
-  clearStoredWindowPosition();
   bindWindowDrag(header, shell);
 
   let layoutObserver = null;
