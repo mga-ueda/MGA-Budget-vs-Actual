@@ -5269,10 +5269,35 @@ body.plan-journal-open {
 .tax-forecast-window .tax-forecast-detail-grid--compact {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.75rem;
+  align-items: start;
 }
 
-.tax-forecast-window .tax-forecast-detail-grid--compact.tax-forecast-detail-grid--three {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+/* 法人税1列 + 右に消費税・内訳の2列分 */
+.tax-forecast-window .tax-forecast-detail-grid--compact.tax-forecast-detail-grid--with-notes-right {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+}
+
+.tax-forecast-window .tax-forecast-detail-right {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.tax-forecast-window .tax-forecast-detail-right-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: start;
+}
+
+.tax-forecast-window .tax-forecast-detail-right-top--two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.tax-forecast-window .tax-forecast-detail-notes {
+  min-width: 0;
+  padding: 0 0.45rem 0.25rem;
 }
 
 .tax-forecast-window .tax-forecast-detail-block {
@@ -5340,6 +5365,18 @@ body.plan-journal-open {
 .tax-forecast-window .tax-forecast-settings-group .tax-forecast-settings-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.3rem 0.45rem;
+}
+
+/* 法人税: 縦に1列（ペア行は内部で横並び）。2列指定より詳細度を上げる */
+.tax-forecast-window .tax-forecast-settings-group .tax-forecast-settings-grid--corporate {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.tax-forecast-window .tax-forecast-field-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.3rem 0.45rem;
+  min-width: 0;
 }
 
 .tax-forecast-window .tax-forecast-settings-grid--schedule {
@@ -5434,6 +5471,9 @@ body.plan-journal-open {
   font-size: 0.68rem;
   line-height: 1.2;
   color: var(--plan-text-dim);
+  /* 折り返し行は「※　」の後ろから始める */
+  padding-left: 1.6em;
+  text-indent: -1.6em;
 }
 
 .tax-forecast-window .tax-forecast-warning {

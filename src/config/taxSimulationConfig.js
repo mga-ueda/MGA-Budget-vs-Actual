@@ -19,11 +19,11 @@ export const DEFAULT_ITEMIZED_TAX_PARAMS = {
   municipalPerCapita: 50_000,
 };
 
-/** 地域別法人税・消費税のシミュレーション設定（年度ごとでは不要） */
+/** 法人税・消費税のシミュレーション設定（年度ごとでは不要） */
 export const DEFAULT_TAX_SIMULATION = {
-  regionPreset: 'custom',
+  regionPreset: 'small',
   corporateTaxMethod: 'itemized',
-  effectiveCorporateTaxRatePercent: 34,
+  effectiveCorporateTaxRatePercent: 34.59,
   itemizedPrefecturalPerCapita: null,
   itemizedMunicipalPerCapita: null,
   profitEstimateMethod: 'fullYear',
@@ -47,42 +47,38 @@ export const DEFAULT_TAX_SIMULATION = {
   incomeTaxRefundAddition: 0,
 };
 
+/** 法人区分プリセット（標準／中小）。メニュー順は中小を先頭 */
 export const TAX_REGION_PRESETS = {
-  custom: {
-    label: 'カスタム',
-    effectiveCorporateTaxRatePercent: null,
-  },
-  tokyo_standard: {
-    label: '東京（標準税率）',
-    effectiveCorporateTaxRatePercent: 30.62,
-    itemized: { ...DEFAULT_ITEMIZED_TAX_PARAMS, isSmallCorporation: false },
-  },
-  tokyo_small: {
-    label: '東京（中小法人）',
+  small: {
+    label: '中小法人',
     effectiveCorporateTaxRatePercent: 34.59,
     itemized: { ...DEFAULT_ITEMIZED_TAX_PARAMS, isSmallCorporation: true },
   },
-  osaka_standard: {
-    label: '大阪（標準税率）',
+  standard: {
+    label: '標準税率',
     effectiveCorporateTaxRatePercent: 30.62,
     itemized: { ...DEFAULT_ITEMIZED_TAX_PARAMS, isSmallCorporation: false },
-  },
-  osaka_small: {
-    label: '大阪（中小法人）',
-    effectiveCorporateTaxRatePercent: 34.59,
-    itemized: { ...DEFAULT_ITEMIZED_TAX_PARAMS, isSmallCorporation: true },
-  },
-  nagoya_standard: {
-    label: '名古屋（標準税率）',
-    effectiveCorporateTaxRatePercent: 30.62,
-  },
-  fukuoka_standard: {
-    label: '福岡（標準税率）',
-    effectiveCorporateTaxRatePercent: 30.62,
   },
 };
 
+/** 旧キー → 法人区分への移行 */
+const LEGACY_REGION_PRESET_MAP = {
+  custom: 'small',
+  tokyo_standard: 'standard',
+  osaka_standard: 'standard',
+  nagoya_standard: 'standard',
+  fukuoka_standard: 'standard',
+  tokyo_small: 'small',
+  osaka_small: 'small',
+};
+
 const VALID_REGION_PRESETS = new Set(Object.keys(TAX_REGION_PRESETS));
+
+function resolveRegionPresetKey(rawKey, fallback) {
+  if (VALID_REGION_PRESETS.has(rawKey)) return rawKey;
+  if (LEGACY_REGION_PRESET_MAP[rawKey]) return LEGACY_REGION_PRESET_MAP[rawKey];
+  return fallback;
+}
 const VALID_PROFIT_METHODS = new Set(['annualize', 'fullYear']);
 const VALID_CONSUMPTION_METHODS = new Set(['general', 'simplified']);
 const VALID_CORPORATE_TAX_METHODS = new Set(['effectiveRate', 'itemized']);
@@ -161,13 +157,13 @@ export function normalizeTaxSimulation(raw, fiscalEndMonth = 12) {
   const fiscalMonths = defaults.fiscalMonths;
   const base = { ...DEFAULT_TAX_SIMULATION, ...defaults };
   const source = raw && typeof raw === 'object' ? raw : {};
-  const regionPreset = VALID_REGION_PRESETS.has(source.regionPreset)
-    ? source.regionPreset
-    : base.regionPreset;
+  const regionPreset = resolveRegionPresetKey(source.regionPreset, base.regionPreset);
   const presetRate = TAX_REGION_PRESETS[regionPreset]?.effectiveCorporateTaxRatePercent;
-  const effectiveCorporateTaxRatePercent = regionPreset === 'custom'
-    ? clampPercent(source.effectiveCorporateTaxRatePercent, base.effectiveCorporateTaxRatePercent)
-    : clampPercent(presetRate, base.effectiveCorporateTaxRatePercent);
+  // 簡易時は手入力を保持。未設定時は法人区分の参考税率にフォールバック
+  const effectiveCorporateTaxRatePercent = clampPercent(
+    source.effectiveCorporateTaxRatePercent,
+    presetRate ?? base.effectiveCorporateTaxRatePercent,
+  );
   const profitEstimateMethod = VALID_PROFIT_METHODS.has(source.profitEstimateMethod)
     ? source.profitEstimateMethod
     : base.profitEstimateMethod;

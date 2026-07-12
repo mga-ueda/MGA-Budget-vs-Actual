@@ -441,12 +441,6 @@ export function computeNextPeriodTaxForecast({
     corporateTaxAmount = itemizedResult.total;
     corporateTaxRatePercent = itemizedResult.effectiveRatePercent;
     corporateTaxRateLabel = `${formatTaxSimulationRatePercent(corporateTaxRatePercent)}（検算）`;
-    if (simulation.regionPreset === 'custom') {
-      warnings.push('カスタム地域は大阪・中小法人の検算税率を使用しています');
-    }
-    if (!TAX_REGION_PRESETS[simulation.regionPreset]?.itemized) {
-      warnings.push('選択地域に検算プリセットがないため、大阪・中小法人の税率を使用しています');
-    }
   } else {
     corporateTaxAmount = Math.round(
       taxableProfit * simulation.effectiveCorporateTaxRatePercent / 100,
@@ -529,7 +523,7 @@ export function computeNextPeriodTaxForecast({
   const corporateTotal = corporateProvisionalSchedule.reduce((sum, row) => sum + (row.amount || 0), 0);
   const consumptionTotal = consumptionSchedule.reduce((sum, row) => sum + (row.amount || 0), 0);
   const regionLabel = TAX_REGION_PRESETS[simulation.regionPreset]?.label
-    ?? TAX_REGION_PRESETS.custom.label;
+    ?? TAX_REGION_PRESETS.small.label;
   return {
     currentPeriod,
     nextPeriod,

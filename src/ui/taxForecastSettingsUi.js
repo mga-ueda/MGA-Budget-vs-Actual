@@ -272,7 +272,7 @@ export function buildTaxForecastPanelHtml(forecast, formatYen, { compact = false
     },
     { label: '課税対象利益', value: yen(forecast.taxableProfit, formatYen, { computed: true }) },
     { label: '法人税計算', value: methodLabel },
-    { label: '地域・税率', value: `${forecast.regionLabel} / ${forecast.corporateTax?.rateLabel ?? ''}` },
+    { label: '法人区分・税率', value: `${forecast.regionLabel} / ${forecast.corporateTax?.rateLabel ?? ''}` },
     {
       label: '確定納付（期末未払）',
       value: yen(
@@ -339,25 +339,43 @@ export function buildTaxForecastPanelHtml(forecast, formatYen, { compact = false
       </div>
     </div>
   `;
-  // 警告・用語注釈はウィンドウ最下部にまとめる
+  // 警告・用語注釈（コンパクト時は詳細グリッド右2列の下へ）
   const targetPeriodHtml = `<p class="app-settings-hint tax-forecast-target-period">${forecast.currentPeriodLabel}の見込をもとに、${forecast.nextPeriodLabel}に支払うキャッシュ見込です。</p>`;
   const helpNotesHtml = `
     <div class="tax-forecast-help-notes">
       <p class="app-settings-hint tax-forecast-help-note">※　「当期分　確定納付」は、期末時点の未払（まだ払っていない残額）です。その期内にすでに払った予定納税・中間納税は含まれません。</p>
-      <p class="app-settings-hint tax-forecast-help-note">※　「来期　予定納税／中間納税」は、前年の年税額を基礎にした前払の見込です。残額である確定納付より大きくなることがあります（来期が儲かりそうだから多めに払う、という意味ではありません）。</p>
+      <p class="app-settings-hint tax-forecast-help-note">※　「来期　予定納税／中間納税」は、前年の年税額を基礎にした前払の見込です。残額である確定納付より大きくなることがあります。</p>
       <p class="app-settings-hint tax-forecast-help-note">※　この画面の予定・中間は、資金基準の年税額（多くの場合は期末未払。あれば仮払の清算分も加算）から見積ります。予定を費用科目へ直接計上している場合などは、実績より小さく見えることがあります。</p>
       <p class="app-settings-hint tax-forecast-help-note">※　金額の手前の ∑ はアプリが計算した値、∑ なしは貸借の未払など CSV 由来の参照値です。</p>
     </div>
   `;
-  const footerNotesHtml = `
+  const footerNotesInnerHtml = `
     ${warningsHtml}
     ${helpNotesHtml}
+  `;
+  const footerNotesHtml = `
+    ${footerNotesInnerHtml}
     ${compact ? '' : targetPeriodHtml}
   `;
   if (compact) {
+    const consumptionBlockHtml = `
+        <div class="tax-forecast-detail-block">
+          <h4 class="tax-forecast-detail-title">来期の消費税支払スケジュール</h4>
+          ${renderScheduleTable(forecast.consumptionTax?.schedule, formatYen, {
+            cashSource: forecast.consumptionTax?.cashSource,
+          })}
+          <h4 class="tax-forecast-detail-title">消費税の計算根拠</h4>
+          ${renderBasisList(consumptionBasis)}
+        </div>`;
+    const itemizedBlockHtml = itemizedBreakdownHtml ? `
+        <div class="tax-forecast-detail-block">
+          <h4 class="tax-forecast-detail-title">法人税等の内訳（検算）</h4>
+          ${itemizedBreakdownHtml}
+        </div>` : '';
+    // 右列に消費税・内訳＋注釈をまとめ、注釈を直下に詰める
     return `
       ${summaryHtml}
-      <div class="tax-forecast-detail-grid tax-forecast-detail-grid--compact${itemizedBreakdownHtml ? ' tax-forecast-detail-grid--three' : ''}">
+      <div class="tax-forecast-detail-grid tax-forecast-detail-grid--compact${itemizedBreakdownHtml ? ' tax-forecast-detail-grid--with-notes-right' : ''}">
         <div class="tax-forecast-detail-block">
           <h4 class="tax-forecast-detail-title">来期の法人税支払スケジュール</h4>
           ${renderScheduleTable(forecast.corporateTax?.schedule, formatYen, {
@@ -366,22 +384,16 @@ export function buildTaxForecastPanelHtml(forecast, formatYen, { compact = false
           <h4 class="tax-forecast-detail-title">法人税の計算根拠</h4>
           ${renderBasisList(profitBasis)}
         </div>
-        <div class="tax-forecast-detail-block">
-          <h4 class="tax-forecast-detail-title">来期の消費税支払スケジュール</h4>
-          ${renderScheduleTable(forecast.consumptionTax?.schedule, formatYen, {
-            cashSource: forecast.consumptionTax?.cashSource,
-          })}
-          <h4 class="tax-forecast-detail-title">消費税の計算根拠</h4>
-          ${renderBasisList(consumptionBasis)}
+        <div class="tax-forecast-detail-right">
+          <div class="tax-forecast-detail-right-top${itemizedBreakdownHtml ? ' tax-forecast-detail-right-top--two' : ''}">
+            ${consumptionBlockHtml}
+            ${itemizedBlockHtml}
+          </div>
+          <div class="tax-forecast-detail-notes">
+            ${footerNotesInnerHtml}
+          </div>
         </div>
-        ${itemizedBreakdownHtml ? `
-        <div class="tax-forecast-detail-block">
-          <h4 class="tax-forecast-detail-title">法人税等の内訳（検算）</h4>
-          ${itemizedBreakdownHtml}
-        </div>
-        ` : ''}
       </div>
-      ${footerNotesHtml}
     `;
   }
   return `
@@ -485,29 +497,35 @@ export function mountTaxForecastSettingsForm(container, {
 
       <section class="tax-forecast-settings-group">
         <h4 class="tax-forecast-settings-group-title">法人税</h4>
-        <div class="tax-forecast-settings-grid">
-          <div class="tax-forecast-field">
-            <span class="app-settings-label">法人税計算</span>
-            <select class="app-settings-input tax-forecast-select" data-field="corporateTaxMethod">
-              <option value="itemized">検算（税目別）</option>
-              <option value="effectiveRate">簡易（実効税率）</option>
-            </select>
+        <div class="tax-forecast-settings-grid tax-forecast-settings-grid--corporate">
+          <div class="tax-forecast-field-pair">
+            <div class="tax-forecast-field">
+              <span class="app-settings-label tax-forecast-label-with-tip" title="${TAX_REGION_PRESET_TOOLTIP}">法人区分</span>
+              <select class="app-settings-input tax-forecast-select" data-field="regionPreset"></select>
+            </div>
           </div>
-          <div class="tax-forecast-field">
-            <span class="app-settings-label tax-forecast-label-with-tip" title="${TAX_REGION_PRESET_TOOLTIP}">地域プリセット</span>
-            <select class="app-settings-input tax-forecast-select" data-field="regionPreset"></select>
+          <div class="tax-forecast-field-pair">
+            <div class="tax-forecast-field">
+              <span class="app-settings-label">法人税計算</span>
+              <select class="app-settings-input tax-forecast-select" data-field="corporateTaxMethod">
+                <option value="itemized">検算（税目別）</option>
+                <option value="effectiveRate">簡易（実効税率）</option>
+              </select>
+            </div>
+            <div class="tax-forecast-field" data-role="effective-rate-field">
+              <span class="app-settings-label">実効法人税率（%）</span>
+              <input type="number" class="app-settings-input tax-forecast-input tax-forecast-input--percent" data-field="effectiveCorporateTaxRatePercent" min="0" max="100" step="0.01" />
+            </div>
           </div>
-          <div class="tax-forecast-field" data-role="effective-rate-field">
-            <span class="app-settings-label">実効法人税率（%）</span>
-            <input type="number" class="app-settings-input tax-forecast-input tax-forecast-input--percent" data-field="effectiveCorporateTaxRatePercent" min="0" max="100" step="0.01" />
-          </div>
-          <div class="tax-forecast-field tax-forecast-field--itemized" data-role="itemized-field">
-            <span class="app-settings-label">道府県民税・均等割（円）</span>
-            <input type="text" class="app-settings-input tax-forecast-input" data-field="itemizedPrefecturalPerCapita" inputmode="numeric" placeholder="プリセット既定" />
-          </div>
-          <div class="tax-forecast-field tax-forecast-field--itemized" data-role="itemized-field">
-            <span class="app-settings-label">市町村民税・均等割（円）</span>
-            <input type="text" class="app-settings-input tax-forecast-input" data-field="itemizedMunicipalPerCapita" inputmode="numeric" placeholder="プリセット既定" />
+          <div class="tax-forecast-field-pair">
+            <div class="tax-forecast-field tax-forecast-field--itemized" data-role="itemized-field">
+              <span class="app-settings-label">道府県民税・均等割（円）</span>
+              <input type="text" class="app-settings-input tax-forecast-input" data-field="itemizedPrefecturalPerCapita" inputmode="numeric" placeholder="プリセット既定" />
+            </div>
+            <div class="tax-forecast-field tax-forecast-field--itemized" data-role="itemized-field">
+              <span class="app-settings-label">市町村民税・均等割（円）</span>
+              <input type="text" class="app-settings-input tax-forecast-input" data-field="itemizedMunicipalPerCapita" inputmode="numeric" placeholder="プリセット既定" />
+            </div>
           </div>
         </div>
         <p class="tax-forecast-settings-subgroup-title">来期の支払月</p>
@@ -678,18 +696,22 @@ export function mountTaxForecastSettingsForm(container, {
     });
   };
 
+  let lastComputedEffectiveRatePercent = null;
+
   const syncFieldStates = () => {
     const isItemized = methodSelect?.value === 'itemized';
-    const isCustom = regionSelect.value === 'custom';
     const isSimplifiedConsumption = consumptionMethodSelect?.value === 'simplified';
     const provisionalTaxEnabled = provisionalTaxEnabledCheckbox?.checked ?? false;
     const consumptionExempt = consumptionExemptCheckbox?.checked ?? false;
     const consumptionInterimEnabled = consumptionInterimEnabledCheckbox?.checked ?? false;
+    // 簡易のときだけ実効税率を編集可。検算時は事後実効税率を表示専用
+    const rateEditable = !isItemized;
 
-    setFieldGroupInactive(effectiveRateField, isItemized);
-    if (!isItemized && !isCustom && document.activeElement !== rateInput) {
-      const presetRate = TAX_REGION_PRESETS[regionSelect.value]?.effectiveCorporateTaxRatePercent;
-      if (presetRate != null) rateInput.value = String(presetRate);
+    setFieldGroupInactive(effectiveRateField, !rateEditable);
+    if (!rateEditable && rateInput && document.activeElement !== rateInput) {
+      if (lastComputedEffectiveRatePercent != null) {
+        rateInput.value = String(lastComputedEffectiveRatePercent);
+      }
     }
 
     itemizedFields.forEach((el) => setFieldGroupInactive(el, !isItemized));
@@ -733,6 +755,12 @@ export function mountTaxForecastSettingsForm(container, {
     );
   };
 
+  const syncComputedEffectiveRate = (forecast) => {
+    const rate = forecast?.corporateTax?.ratePercent;
+    lastComputedEffectiveRatePercent = Number.isFinite(rate) ? rate : null;
+    syncFieldStates();
+  };
+
   const syncRateInputState = () => {
     syncFieldStates();
   };
@@ -742,7 +770,10 @@ export function mountTaxForecastSettingsForm(container, {
     const raw = { ...simulation, ...resolveAppSettings()?.taxSimulation };
     raw.regionPreset = regionSelect.value;
     raw.corporateTaxMethod = methodSelect.value;
-    raw.effectiveCorporateTaxRatePercent = readControlValue(rateInput);
+    // 検算時は入力欄の事後実効税率を保存しない（簡易時のみ手入力を保存）
+    if (methodSelect.value !== 'itemized') {
+      raw.effectiveCorporateTaxRatePercent = readControlValue(rateInput);
+    }
     const prefPerCapitaEl = section.querySelector('[data-field="itemizedPrefecturalPerCapita"]');
     const muniPerCapitaEl = section.querySelector('[data-field="itemizedMunicipalPerCapita"]');
     const prefPerCapita = readYenInputValue(prefPerCapitaEl);
@@ -796,10 +827,17 @@ export function mountTaxForecastSettingsForm(container, {
 
   section.querySelectorAll('input, select').forEach((el) => {
     el.addEventListener('change', () => {
+      // 法人区分切替時は、簡易なら参考税率を欄に流し込む（その後手編集可）
+      if (el === regionSelect && methodSelect?.value !== 'itemized' && rateInput) {
+        const presetRate = TAX_REGION_PRESETS[regionSelect.value]?.effectiveCorporateTaxRatePercent;
+        if (presetRate != null) rateInput.value = String(presetRate);
+      }
       syncRateInputState();
       saveSimulation();
     });
   });
+
+  return { syncComputedEffectiveRate };
 }
 
 /** 来期納税見込みサマリーカードに大項目色を適用する */
@@ -932,12 +970,15 @@ export function mountTaxForecastWindowContent(container, {
     targetPeriodHint.hidden = false;
   };
 
+  let settingsApi = null;
+
   const refreshForecast = () => {
     const forecast = computeTaxForecastForDisplay({
       getForecastContext,
       getAppSettings: resolveAppSettings,
     });
     resultEl.innerHTML = buildTaxForecastPanelHtml(forecast, formatYen, { compact: true });
+    settingsApi?.syncComputedEffectiveRate?.(forecast);
     syncTargetPeriodHint(forecast);
     applySectionColors();
     onLayoutChange?.();
@@ -951,7 +992,7 @@ export function mountTaxForecastWindowContent(container, {
     refreshForecast();
   });
 
-  mountTaxForecastSettingsForm(settingsHost, {
+  settingsApi = mountTaxForecastSettingsForm(settingsHost, {
     appSettings: resolveAppSettings(),
     getAppSettings: resolveAppSettings,
     fiscalEndMonth,
