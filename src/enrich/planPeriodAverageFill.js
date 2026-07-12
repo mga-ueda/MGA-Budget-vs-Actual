@@ -23,7 +23,7 @@ const OTHER_SECTION_ID = 'other';
 const AVERAGE_COLUMN = '平均';
 const DEPRECIATION_ACCOUNT = '減価償却費';
 
-function sumNonPlanRows(rows, { includePlanRows = false } = {}) {
+function avgFillSumNonPlanRows(rows, { includePlanRows = false } = {}) {
   const total = emptyRawMonthValues();
   for (const row of rows) {
     if (row.type === 'total' || row.type === 'breakdown' || row.type === 'sub') continue;
@@ -77,7 +77,7 @@ function buildAveragePlanMonthValues(referenceRow, fiscalMonths) {
   return months;
 }
 
-function mergePlanIntoCsvRow(
+function avgFillMergePlanIntoCsvRow(
   csvRow,
   planMonthValues,
   fiscalMonths,
@@ -170,14 +170,14 @@ function enrichSectionRowsWithAverageFill(
     const refRow = refMap.get(rowKey(row));
     const planMonths = buildAveragePlanMonthValues(refRow, fiscalMonths);
     if (!planMonths) return row;
-    return mergePlanIntoCsvRow(row, planMonths, fiscalMonths, skipPlanFillMonths, forcePlanMonths);
+    return avgFillMergePlanIntoCsvRow(row, planMonths, fiscalMonths, skipPlanFillMonths, forcePlanMonths);
   });
 
   const totalIdx = rows.findIndex((r) => r.type === 'total');
   if (totalIdx >= 0) {
     rows[totalIdx] = {
       ...rows[totalIdx],
-      values: sumNonPlanRows(rows, {
+      values: avgFillSumNonPlanRows(rows, {
         includePlanRows: section.id === OTHER_SECTION_ID,
       }),
     };

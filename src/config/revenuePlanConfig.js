@@ -266,7 +266,7 @@ function clientEntryKey(accountLabel, subLabel) {
   return `${accountLabel}\x00${subLabel}`;
 }
 
-function getPeriodExcludedKeys(plans, fiscalPeriod) {
+function revGetPeriodExcludedKeys(plans, fiscalPeriod) {
   const periodKey = String(fiscalPeriod);
   const raw = plans[periodKey];
   if (!raw || typeof raw !== 'object') return new Set();
@@ -279,7 +279,7 @@ function addExcludedClientKey(plans, fiscalPeriod, accountLabel, subLabel) {
   const sub = String(subLabel ?? '').trim();
   if (!account || !sub) return plans;
   const key = clientEntryKey(account, sub);
-  const excluded = getPeriodExcludedKeys(plans, fiscalPeriod);
+  const excluded = revGetPeriodExcludedKeys(plans, fiscalPeriod);
   if (excluded.has(key)) return plans;
   excluded.add(key);
   const periodKey = String(fiscalPeriod);
@@ -432,7 +432,7 @@ export function mergeClientsFromSubaccounts(plans, fiscalPeriod, subaccounts, fi
   const existingKeys = new Set(
     entries.map((e) => `${e.accountLabel}\x00${e.subLabel}`),
   );
-  const excludedKeys = getPeriodExcludedKeys(plans, fiscalPeriod);
+  const excludedKeys = revGetPeriodExcludedKeys(plans, fiscalPeriod);
   let changed = false;
   const next = [...entries];
   for (const { accountLabel, subLabel } of subaccounts) {
@@ -464,7 +464,7 @@ export function syncClientListFromReference(plans, targetPeriod, referencePeriod
   const targetKeys = new Set(
     targetClients.map((v) => `${v.accountLabel}\x00${v.subLabel}`),
   );
-  const targetExcluded = getPeriodExcludedKeys(plans, targetPeriod);
+  const targetExcluded = revGetPeriodExcludedKeys(plans, targetPeriod);
   let changed = false;
   const next = [...targetClients];
   for (const ref of refClients) {

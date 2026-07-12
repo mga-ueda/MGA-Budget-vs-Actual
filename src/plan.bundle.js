@@ -5843,7 +5843,7 @@ function vendorEntryKey(accountLabel, subLabel) {
   return `${accountLabel}\x00${subLabel}`;
 }
 
-function getPeriodExcludedKeys(plans, fiscalPeriod) {
+function outGetPeriodExcludedKeys(plans, fiscalPeriod) {
   const periodKey = String(fiscalPeriod);
   const raw = plans[periodKey];
   if (!raw || typeof raw !== 'object') return new Set();
@@ -5856,7 +5856,7 @@ function addExcludedVendorKey(plans, fiscalPeriod, accountLabel, subLabel) {
   const sub = String(subLabel ?? '').trim();
   if (!account || !sub) return plans;
   const key = vendorEntryKey(account, sub);
-  const excluded = getPeriodExcludedKeys(plans, fiscalPeriod);
+  const excluded = outGetPeriodExcludedKeys(plans, fiscalPeriod);
   if (excluded.has(key)) return plans;
   excluded.add(key);
   const periodKey = String(fiscalPeriod);
@@ -5926,7 +5926,7 @@ function mergeVendorsFromSubaccounts(plans, fiscalPeriod, subaccounts, fiscalMon
   const existingKeys = new Set(
     entries.map((e) => `${e.accountLabel}\x00${e.subLabel}`),
   );
-  const excludedKeys = getPeriodExcludedKeys(plans, fiscalPeriod);
+  const excludedKeys = outGetPeriodExcludedKeys(plans, fiscalPeriod);
   let changed = false;
   const next = [...entries];
   for (const { accountLabel, subLabel } of subaccounts) {
@@ -5957,7 +5957,7 @@ function syncVendorListFromReference(plans, targetPeriod, referencePeriod, fisca
   const targetKeys = new Set(
     targetVendors.map((v) => `${v.accountLabel}\x00${v.subLabel}`),
   );
-  const targetExcluded = getPeriodExcludedKeys(plans, targetPeriod);
+  const targetExcluded = outGetPeriodExcludedKeys(plans, targetPeriod);
   let changed = false;
   const next = [...targetVendors];
   for (const ref of refVendors) {
@@ -6280,7 +6280,7 @@ function clientEntryKey(accountLabel, subLabel) {
   return `${accountLabel}\x00${subLabel}`;
 }
 
-function getPeriodExcludedKeys(plans, fiscalPeriod) {
+function revGetPeriodExcludedKeys(plans, fiscalPeriod) {
   const periodKey = String(fiscalPeriod);
   const raw = plans[periodKey];
   if (!raw || typeof raw !== 'object') return new Set();
@@ -6293,7 +6293,7 @@ function addExcludedClientKey(plans, fiscalPeriod, accountLabel, subLabel) {
   const sub = String(subLabel ?? '').trim();
   if (!account || !sub) return plans;
   const key = clientEntryKey(account, sub);
-  const excluded = getPeriodExcludedKeys(plans, fiscalPeriod);
+  const excluded = revGetPeriodExcludedKeys(plans, fiscalPeriod);
   if (excluded.has(key)) return plans;
   excluded.add(key);
   const periodKey = String(fiscalPeriod);
@@ -6446,7 +6446,7 @@ function mergeClientsFromSubaccounts(plans, fiscalPeriod, subaccounts, fiscalMon
   const existingKeys = new Set(
     entries.map((e) => `${e.accountLabel}\x00${e.subLabel}`),
   );
-  const excludedKeys = getPeriodExcludedKeys(plans, fiscalPeriod);
+  const excludedKeys = revGetPeriodExcludedKeys(plans, fiscalPeriod);
   let changed = false;
   const next = [...entries];
   for (const { accountLabel, subLabel } of subaccounts) {
@@ -6478,7 +6478,7 @@ function syncClientListFromReference(plans, targetPeriod, referencePeriod, fisca
   const targetKeys = new Set(
     targetClients.map((v) => `${v.accountLabel}\x00${v.subLabel}`),
   );
-  const targetExcluded = getPeriodExcludedKeys(plans, targetPeriod);
+  const targetExcluded = revGetPeriodExcludedKeys(plans, targetPeriod);
   let changed = false;
   const next = [...targetClients];
   for (const ref of refClients) {
@@ -6862,7 +6862,7 @@ function makePlanRow(id, label, subLabel, values) {
   };
 }
 
-function sumNonPlanRows(rows) {
+function empSumNonPlanRows(rows) {
   const total = emptyRawMonthValues();
   for (const row of rows) {
     if (row.type === 'total' || row.type === 'breakdown' || row.type === 'sub' || row.type === 'plan') continue;
@@ -7023,13 +7023,7 @@ function partitionCsvPersonnelRows(rows) {
   return { directorCsv, salaryMain, salaryOvertime, rest };
 }
 
-function rawValuesFromRow(row) {
-  const values = emptyRawMonthValues();
-  addRawMonthValues(values, row.values);
-  return values;
-}
-
-function mergePlanIntoCsvRow(
+function empMergePlanIntoCsvRow(
   csvRow,
   planMonthValues,
   fiscalMonths,
@@ -7078,7 +7072,7 @@ function mergePlanIntoPrimaryCsvRow(
       return planTargetTag ? { ...row, planTargetTag } : row;
     }
     const planMonths = rawValuesFromRow({ values: planTotal });
-    return mergePlanIntoCsvRow(
+    return empMergePlanIntoCsvRow(
       row,
       planMonths,
       fiscalMonths,
@@ -7275,7 +7269,7 @@ function createPersonnelSection(rows) {
     barColor: '#806000',
     textColor: '#ffffff',
   };
-  const totalValues = sumNonPlanRows(rows);
+  const totalValues = empSumNonPlanRows(rows);
   const totalRow = {
     id: 'per-total',
     label: `${APP_AGGREGATE_LABEL_PREFIX}${PERSONNEL_TOTAL_LABEL}`,
@@ -7400,7 +7394,7 @@ function enrichPlanDataWithEmployeeSalaryRows(planData, {
   if (totalIdx >= 0) {
     rows[totalIdx] = {
       ...rows[totalIdx],
-      values: sumNonPlanRows(rows),
+      values: empSumNonPlanRows(rows),
       aggregateFormula: 'sectionSumExcludePlan',
     };
   }
@@ -9350,7 +9344,7 @@ const OTHER_SECTION_ID = 'other';
 const AVERAGE_COLUMN = '平均';
 const DEPRECIATION_ACCOUNT = '減価償却費';
 
-function sumNonPlanRows(rows, { includePlanRows = false } = {}) {
+function avgFillSumNonPlanRows(rows, { includePlanRows = false } = {}) {
   const total = emptyRawMonthValues();
   for (const row of rows) {
     if (row.type === 'total' || row.type === 'breakdown' || row.type === 'sub') continue;
@@ -9404,7 +9398,7 @@ function buildAveragePlanMonthValues(referenceRow, fiscalMonths) {
   return months;
 }
 
-function mergePlanIntoCsvRow(
+function avgFillMergePlanIntoCsvRow(
   csvRow,
   planMonthValues,
   fiscalMonths,
@@ -9497,14 +9491,14 @@ function enrichSectionRowsWithAverageFill(
     const refRow = refMap.get(rowKey(row));
     const planMonths = buildAveragePlanMonthValues(refRow, fiscalMonths);
     if (!planMonths) return row;
-    return mergePlanIntoCsvRow(row, planMonths, fiscalMonths, skipPlanFillMonths, forcePlanMonths);
+    return avgFillMergePlanIntoCsvRow(row, planMonths, fiscalMonths, skipPlanFillMonths, forcePlanMonths);
   });
 
   const totalIdx = rows.findIndex((r) => r.type === 'total');
   if (totalIdx >= 0) {
     rows[totalIdx] = {
       ...rows[totalIdx],
-      values: sumNonPlanRows(rows, {
+      values: avgFillSumNonPlanRows(rows, {
         includePlanRows: section.id === OTHER_SECTION_ID,
       }),
     };
@@ -16763,11 +16757,11 @@ const MIN_WINDOW_HEIGHT = 140;
 const WINDOW_HEIGHT_RATIO = 0.6666666666666666;
 const VIEWPORT_EDGE_MARGIN = 16;
 
-function clamp(value, min, max) {
+function colorSettingsClamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
-function getMaxWindowWidth() {
+function colorSettingsGetMaxWindowWidth() {
   return Math.max(MIN_WINDOW_WIDTH, getLayoutViewportWidth() - VIEWPORT_EDGE_MARGIN);
 }
 
@@ -16778,7 +16772,7 @@ function getTargetWindowHeight() {
 }
 
 /** 開き直すたびに内容全体が見える既定位置へ戻す */
-function applyVisibleDefaultPosition(el) {
+function colorSettingsApplyVisibleDefaultPosition(el) {
   el.style.top = `${DEFAULT_TOP}px`;
   el.style.right = `${DEFAULT_RIGHT}px`;
   el.style.left = 'auto';
@@ -16798,8 +16792,8 @@ function measureColorSettingsWindowWidth(shell) {
 
 function fitColorSettingsWindowWidth(shell) {
   const measured = measureColorSettingsWindowWidth(shell);
-  const maxWidth = getMaxWindowWidth();
-  const nextWidth = clamp(measured, MIN_WINDOW_WIDTH, maxWidth);
+  const maxWidth = colorSettingsGetMaxWindowWidth();
+  const nextWidth = colorSettingsClamp(measured, MIN_WINDOW_WIDTH, maxWidth);
   shell.style.maxWidth = `${maxWidth}px`;
   if (Math.abs(nextWidth - shell.offsetWidth) <= 1) return;
   shell.style.width = `${nextWidth}px`;
@@ -16814,14 +16808,14 @@ function fitColorSettingsWindowHeight(shell) {
 
 function syncColorSettingsWindowLayout(shell, { resetPosition = false } = {}) {
   if (resetPosition) {
-    applyVisibleDefaultPosition(shell);
+    colorSettingsApplyVisibleDefaultPosition(shell);
   }
   fitColorSettingsWindowWidth(shell);
   fitColorSettingsWindowHeight(shell);
 }
 
 /** ドラッグ中はビューポート外へはみ出してよい（サイズは維持） */
-function bindWindowDrag(handle, el) {
+function colorSettingsBindWindowDrag(handle, el) {
   handle.addEventListener('mousedown', (event) => {
     if (event.button !== 0) return;
     if (event.target.closest('button')) return;
@@ -16894,7 +16888,7 @@ function createColorSettingsWindow({
   const mountTarget = document.querySelector('.plan-app') ?? document.body;
   mountTarget.appendChild(shell);
 
-  bindWindowDrag(header, shell);
+  colorSettingsBindWindowDrag(header, shell);
 
   let layoutObserver = null;
   const bindLayoutObserver = () => {
@@ -21469,15 +21463,15 @@ const TAX_FORECAST_VIEWPORT_EDGE_MARGIN = 16;
 /** サブピクセル丸めで縦スクロールが点灯しないよう、計測高に足す余白 */
 const TAX_FORECAST_HEIGHT_MEASURE_BUFFER_PX = 2;
 
-function clamp(value, min, max) {
+function taxForecastClamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
-function getMaxWindowWidth() {
+function taxForecastGetMaxWindowWidth() {
   return Math.max(TAX_FORECAST_MIN_WINDOW_WIDTH, getLayoutViewportWidth() - TAX_FORECAST_VIEWPORT_EDGE_MARGIN);
 }
 
-function getMaxWindowHeight() {
+function taxForecastGetMaxWindowHeight() {
   return Math.max(
     TAX_FORECAST_MIN_WINDOW_HEIGHT,
     window.innerHeight - TAX_FORECAST_VIEWPORT_EDGE_MARGIN,
@@ -21485,7 +21479,7 @@ function getMaxWindowHeight() {
 }
 
 /** 開き直すたびに内容全体が見える既定位置へ戻す */
-function applyVisibleDefaultPosition(el) {
+function taxForecastApplyVisibleDefaultPosition(el) {
   el.style.top = `${TAX_FORECAST_DEFAULT_TOP}px`;
   el.style.right = `${TAX_FORECAST_DEFAULT_RIGHT}px`;
   el.style.left = 'auto';
@@ -21501,7 +21495,7 @@ function getRootFontSizePx() {
 function resolveWindowWidthRem() {
   const rootPx = getRootFontSizePx();
   const preferredPx = TAX_FORECAST_WINDOW_WIDTH_REM * rootPx;
-  const clampedPx = clamp(preferredPx, TAX_FORECAST_MIN_WINDOW_WIDTH, getMaxWindowWidth());
+  const clampedPx = taxForecastClamp(preferredPx, TAX_FORECAST_MIN_WINDOW_WIDTH, taxForecastGetMaxWindowWidth());
   return clampedPx / rootPx;
 }
 
@@ -21520,7 +21514,7 @@ function measureWindowContentHeight(shell, body) {
   shell.style.height = prevHeight;
   shell.style.maxHeight = prevMaxHeight;
   if (body) body.style.overflowY = prevBodyOverflowY;
-  return clamp(measured, TAX_FORECAST_MIN_WINDOW_HEIGHT, getMaxWindowHeight());
+  return taxForecastClamp(measured, TAX_FORECAST_MIN_WINDOW_HEIGHT, taxForecastGetMaxWindowHeight());
 }
 
 function pxToRem(px) {
@@ -21571,11 +21565,11 @@ function createTaxForecastWindow({
   const mountTarget = document.querySelector('.plan-app') ?? document.body;
   mountTarget.appendChild(shell);
 
-  bindWindowDrag(header, shell);
+  taxForecastBindWindowDrag(header, shell);
 
   const applyLockedShellSize = () => {
-    const maxWidth = getMaxWindowWidth();
-    const maxHeight = getMaxWindowHeight();
+    const maxWidth = taxForecastGetMaxWindowWidth();
+    const maxHeight = taxForecastGetMaxWindowHeight();
     const rootPx = getRootFontSizePx();
     const widthRem = Math.min(lockedShellWidthRem, maxWidth / rootPx);
     shell.style.width = `${widthRem}rem`;
@@ -21594,7 +21588,7 @@ function createTaxForecastWindow({
   const lockWindowLayout = () => {
     lockedShellWidthRem = resolveWindowWidthRem();
     shell.style.width = `${lockedShellWidthRem}rem`;
-    shell.style.maxWidth = `${getMaxWindowWidth()}px`;
+    shell.style.maxWidth = `${taxForecastGetMaxWindowWidth()}px`;
     lockedShellHeightRem = pxToRem(measureWindowContentHeight(shell, body));
     layoutLocked = true;
     applyLockedShellSize();
@@ -21603,7 +21597,7 @@ function createTaxForecastWindow({
   const syncWindowLayout = ({ resetPosition = false } = {}) => {
     if (!open) return;
     if (resetPosition) {
-      applyVisibleDefaultPosition(shell);
+      taxForecastApplyVisibleDefaultPosition(shell);
     }
     if (!layoutLocked) {
       lockWindowLayout();
@@ -21679,7 +21673,7 @@ function createTaxForecastWindow({
 }
 
 /** ドラッグ中はビューポート外へはみ出してよい（サイズは維持） */
-function bindWindowDrag(handle, el) {
+function taxForecastBindWindowDrag(handle, el) {
   handle.addEventListener('mousedown', (event) => {
     if (event.button !== 0) return;
     if (event.target.closest('button')) return;

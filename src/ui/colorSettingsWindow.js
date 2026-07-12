@@ -9,11 +9,11 @@ const MIN_WINDOW_HEIGHT = 140;
 const WINDOW_HEIGHT_RATIO = 0.6666666666666666;
 const VIEWPORT_EDGE_MARGIN = 16;
 
-function clamp(value, min, max) {
+function colorSettingsClamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
-function getMaxWindowWidth() {
+function colorSettingsGetMaxWindowWidth() {
   return Math.max(MIN_WINDOW_WIDTH, getLayoutViewportWidth() - VIEWPORT_EDGE_MARGIN);
 }
 
@@ -24,7 +24,7 @@ function getTargetWindowHeight() {
 }
 
 /** 開き直すたびに内容全体が見える既定位置へ戻す */
-function applyVisibleDefaultPosition(el) {
+function colorSettingsApplyVisibleDefaultPosition(el) {
   el.style.top = `${DEFAULT_TOP}px`;
   el.style.right = `${DEFAULT_RIGHT}px`;
   el.style.left = 'auto';
@@ -44,8 +44,8 @@ function measureColorSettingsWindowWidth(shell) {
 
 function fitColorSettingsWindowWidth(shell) {
   const measured = measureColorSettingsWindowWidth(shell);
-  const maxWidth = getMaxWindowWidth();
-  const nextWidth = clamp(measured, MIN_WINDOW_WIDTH, maxWidth);
+  const maxWidth = colorSettingsGetMaxWindowWidth();
+  const nextWidth = colorSettingsClamp(measured, MIN_WINDOW_WIDTH, maxWidth);
   shell.style.maxWidth = `${maxWidth}px`;
   if (Math.abs(nextWidth - shell.offsetWidth) <= 1) return;
   shell.style.width = `${nextWidth}px`;
@@ -60,14 +60,14 @@ function fitColorSettingsWindowHeight(shell) {
 
 function syncColorSettingsWindowLayout(shell, { resetPosition = false } = {}) {
   if (resetPosition) {
-    applyVisibleDefaultPosition(shell);
+    colorSettingsApplyVisibleDefaultPosition(shell);
   }
   fitColorSettingsWindowWidth(shell);
   fitColorSettingsWindowHeight(shell);
 }
 
 /** ドラッグ中はビューポート外へはみ出してよい（サイズは維持） */
-function bindWindowDrag(handle, el) {
+function colorSettingsBindWindowDrag(handle, el) {
   handle.addEventListener('mousedown', (event) => {
     if (event.button !== 0) return;
     if (event.target.closest('button')) return;
@@ -140,7 +140,7 @@ export function createColorSettingsWindow({
   const mountTarget = document.querySelector('.plan-app') ?? document.body;
   mountTarget.appendChild(shell);
 
-  bindWindowDrag(header, shell);
+  colorSettingsBindWindowDrag(header, shell);
 
   let layoutObserver = null;
   const bindLayoutObserver = () => {

@@ -72,7 +72,7 @@ function vendorEntryKey(accountLabel, subLabel) {
   return `${accountLabel}\x00${subLabel}`;
 }
 
-function getPeriodExcludedKeys(plans, fiscalPeriod) {
+function outGetPeriodExcludedKeys(plans, fiscalPeriod) {
   const periodKey = String(fiscalPeriod);
   const raw = plans[periodKey];
   if (!raw || typeof raw !== 'object') return new Set();
@@ -85,7 +85,7 @@ function addExcludedVendorKey(plans, fiscalPeriod, accountLabel, subLabel) {
   const sub = String(subLabel ?? '').trim();
   if (!account || !sub) return plans;
   const key = vendorEntryKey(account, sub);
-  const excluded = getPeriodExcludedKeys(plans, fiscalPeriod);
+  const excluded = outGetPeriodExcludedKeys(plans, fiscalPeriod);
   if (excluded.has(key)) return plans;
   excluded.add(key);
   const periodKey = String(fiscalPeriod);
@@ -155,7 +155,7 @@ export function mergeVendorsFromSubaccounts(plans, fiscalPeriod, subaccounts, fi
   const existingKeys = new Set(
     entries.map((e) => `${e.accountLabel}\x00${e.subLabel}`),
   );
-  const excludedKeys = getPeriodExcludedKeys(plans, fiscalPeriod);
+  const excludedKeys = outGetPeriodExcludedKeys(plans, fiscalPeriod);
   let changed = false;
   const next = [...entries];
   for (const { accountLabel, subLabel } of subaccounts) {
@@ -186,7 +186,7 @@ export function syncVendorListFromReference(plans, targetPeriod, referencePeriod
   const targetKeys = new Set(
     targetVendors.map((v) => `${v.accountLabel}\x00${v.subLabel}`),
   );
-  const targetExcluded = getPeriodExcludedKeys(plans, targetPeriod);
+  const targetExcluded = outGetPeriodExcludedKeys(plans, targetPeriod);
   let changed = false;
   const next = [...targetVendors];
   for (const ref of refVendors) {

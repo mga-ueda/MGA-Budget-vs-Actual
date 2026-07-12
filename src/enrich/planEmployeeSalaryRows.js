@@ -25,6 +25,7 @@ import {
   emptyRawMonthValues,
   addRawMonthValues,
   isMissingCsvMonthValue,
+  rawValuesFromRow,
 } from './enrichUtils.js';
 
 const DIRECTOR_ACCOUNT = '役員報酬';
@@ -54,7 +55,7 @@ function makePlanRow(id, label, subLabel, values) {
   };
 }
 
-function sumNonPlanRows(rows) {
+function empSumNonPlanRows(rows) {
   const total = emptyRawMonthValues();
   for (const row of rows) {
     if (row.type === 'total' || row.type === 'breakdown' || row.type === 'sub' || row.type === 'plan') continue;
@@ -215,13 +216,7 @@ function partitionCsvPersonnelRows(rows) {
   return { directorCsv, salaryMain, salaryOvertime, rest };
 }
 
-function rawValuesFromRow(row) {
-  const values = emptyRawMonthValues();
-  addRawMonthValues(values, row.values);
-  return values;
-}
-
-function mergePlanIntoCsvRow(
+function empMergePlanIntoCsvRow(
   csvRow,
   planMonthValues,
   fiscalMonths,
@@ -270,7 +265,7 @@ function mergePlanIntoPrimaryCsvRow(
       return planTargetTag ? { ...row, planTargetTag } : row;
     }
     const planMonths = rawValuesFromRow({ values: planTotal });
-    return mergePlanIntoCsvRow(
+    return empMergePlanIntoCsvRow(
       row,
       planMonths,
       fiscalMonths,
@@ -467,7 +462,7 @@ function createPersonnelSection(rows) {
     barColor: '#806000',
     textColor: '#ffffff',
   };
-  const totalValues = sumNonPlanRows(rows);
+  const totalValues = empSumNonPlanRows(rows);
   const totalRow = {
     id: 'per-total',
     label: `${APP_AGGREGATE_LABEL_PREFIX}${PERSONNEL_TOTAL_LABEL}`,
@@ -592,7 +587,7 @@ export function enrichPlanDataWithEmployeeSalaryRows(planData, {
   if (totalIdx >= 0) {
     rows[totalIdx] = {
       ...rows[totalIdx],
-      values: sumNonPlanRows(rows),
+      values: empSumNonPlanRows(rows),
       aggregateFormula: 'sectionSumExcludePlan',
     };
   }
