@@ -6026,6 +6026,17 @@ body.plan-journal-open {
   color: color-mix(in srgb, var(--plan-text) 45%, transparent);
 }
 
+.dashboard-sidebar-pie-empty-ring {
+  fill: color-mix(in srgb, var(--plan-text) 8%, transparent);
+  pointer-events: none;
+}
+
+.dashboard-sidebar-pie-empty-label {
+  fill: color-mix(in srgb, var(--plan-text) 45%, transparent);
+  font-size: 1.1rem;
+  pointer-events: none;
+}
+
 .dashboard-sidebar-pie-wrap {
   display: flex;
   justify-content: center;

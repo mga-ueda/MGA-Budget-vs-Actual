@@ -498,7 +498,8 @@ function dashCollectBreakdownItems(sections, sectionIds, mode = 'account') {
 function dashAllPeriodItemKey(item, mode) {
   if (mode === 'account') return item.key;
   const sub = dashNormalizeSubLabel(item.row?.subLabel);
-  return `${item.sectionId}|all-sub|${item.accountLabel}\0${sub}`;
+  // HTML data-* に載せるため NUL は使わない（属性値が途中で切れてチェック同期が壊れる）
+  return `${item.sectionId}|all-sub|${item.accountLabel}|#sub#|${sub}`;
 }
 
 /** 全期モード: 全期分の内訳を合算し、全期連結の月次系列（seriesValues）を付与する */
@@ -762,13 +763,34 @@ function dashShowCfJournal(drilldownCtx, cfSectionId, rowId, month) {
   drilldownCtx.showJournalPopup(section, row, month);
 }
 
-function dashResolveStackedChartDrilldown(hoverRect, ev, svg, itemByKey, drilldownCtx) {
+function dashResolveStackedChartDrilldown(hoverRect, ev, svg, itemByKey, drilldownCtx, hitCtx = null) {
   if (!drilldownCtx) return null;
-  const seg = dashPeekChartElementUnder(hoverRect, ev.clientX, ev.clientY, '.dashboard-chart-segment');
-  if (!seg || seg.closest('svg') !== svg) return null;
-  const monthIdx = Number(seg.getAttribute('data-month-index'));
+  let monthIdx;
+  let seriesKey;
+  if (hitCtx?.series && hitCtx?.labels && hitCtx?.xScale && hitCtx?.yScale) {
+    const hit = dashHitTestStackedBar(
+      hitCtx.series,
+      hitCtx.labels,
+      hitCtx.xScale,
+      hitCtx.yScale,
+      svg,
+      ev.clientX,
+      ev.clientY,
+      hitCtx.layout,
+    );
+    if (!hit) return null;
+    monthIdx = hit.monthIdx;
+    seriesKey = hit.key;
+  } else {
+    const seg = dashPeekChartElementUnder(hoverRect, ev.clientX, ev.clientY, '.dashboard-chart-segment');
+    if (!seg || seg.closest('svg') !== svg) return null;
+    monthIdx = Number(seg.getAttribute('data-month-index'));
+    seriesKey = seg.getAttribute('data-series-key');
+  }
+  // 全期連結インデックスは単期の月配列に収まらないため、単期ドリルダウン時のみ月名を解決する
   const month = _dashDisplayMonths[monthIdx];
-  const item = itemByKey.get(seg.getAttribute('data-series-key'));
+  if (!month) return null;
+  const item = itemByKey.get(seriesKey);
   if (!dashCanShowJournal(drilldownCtx, item, month)) return null;
   return { item, month };
 }
@@ -834,11 +856,18 @@ function dashAppendSegmentOutline(layer, seg, { stroke = null, strokeWidth = 1, 
   layer.appendChild(outline);
 }
 
+/** data-series-key 照合（CSS.escape を属性セレクタに使うとキー文字で外れることがある） */
+function dashElementsBySeriesKey(root, selector, seriesKey) {
+  if (!root || seriesKey == null || seriesKey === '') return [];
+  return [...root.querySelectorAll(selector)].filter(
+    (el) => el.getAttribute('data-series-key') === seriesKey,
+  );
+}
+
 function dashSyncChartHighlightOutlines(wrap, seriesKey, { focusMonthIndex = null } = {}) {
   dashClearChartHighlightOutlines(wrap, { immediate: true });
   if (!wrap || !seriesKey) return;
-  const escaped = dashEscapeSeriesKeyForSelector(seriesKey);
-  wrap.querySelectorAll(`.dashboard-chart-segment[data-series-key="${escaped}"]`).forEach((seg) => {
+  dashElementsBySeriesKey(wrap, '.dashboard-chart-segment[data-series-key]', seriesKey).forEach((seg) => {
     const layer = seg.ownerSVGElement?.querySelector('.dashboard-chart-highlight-layer');
     if (!layer) return;
     const monthIdx = Number(seg.getAttribute('data-month-index'));
@@ -862,16 +891,15 @@ function dashSetSeriesHighlight(wrap, seriesKey, active, sidebarRoot = null, {
     dashClearChartHighlightOutlines(wrap);
   }
   if (!seriesKey) return;
-  const escaped = dashEscapeSeriesKeyForSelector(seriesKey);
-  wrap.querySelectorAll(`.dashboard-chart-legend-chip[data-series-key="${escaped}"]`).forEach((el) => {
+  dashElementsBySeriesKey(wrap, '.dashboard-chart-legend-chip[data-series-key]', seriesKey).forEach((el) => {
     el.classList.toggle('is-highlighted', active);
   });
   if (sidebarRoot) {
-    sidebarRoot.querySelectorAll(`.dashboard-sidebar-row[data-series-key="${escaped}"]`).forEach((el) => {
+    dashElementsBySeriesKey(sidebarRoot, '.dashboard-sidebar-row[data-series-key]', seriesKey).forEach((el) => {
       el.classList.toggle('is-series-highlighted', active);
       if (active && scrollSidebar) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     });
-    sidebarRoot.querySelectorAll(`.dashboard-sidebar-pie-slice-group[data-series-key="${escaped}"]`).forEach((el) => {
+    dashElementsBySeriesKey(sidebarRoot, '.dashboard-sidebar-pie-slice-group[data-series-key]', seriesKey).forEach((el) => {
       el.classList.toggle('is-series-highlighted', active);
     });
     sidebarRoot.querySelector('.dashboard-sidebar-pie-wrap')
@@ -879,17 +907,103 @@ function dashSetSeriesHighlight(wrap, seriesKey, active, sidebarRoot = null, {
   }
 }
 
-function dashBindChartSeriesHover(chartContainer, highlightWrap, sidebarRoot) {
-  if (!highlightWrap || !sidebarRoot) return;
-  const bind = (el) => {
+/**
+ * リスト→棒グラフのハイライトをイベント委譲で結ぶ。
+ * preserveSidebars 後も、常に現在の wrap / chartMode を見る。
+ */
+function dashBindSidebarListSeriesHighlight(sidebarEl, side) {
+  if (!sidebarEl) return;
+  const list = sidebarEl.querySelector('.dashboard-sidebar-list');
+  if (!list) return;
+
+  list._dashHighlightAbort?.abort();
+  const ac = new AbortController();
+  list._dashHighlightAbort = ac;
+  const { signal } = ac;
+  let activeKey = null;
+
+  const clearActive = () => {
+    if (!activeKey) return;
+    const wrap = sidebarEl.closest('.dashboard-wrap');
+    if (wrap) dashSetSeriesHighlight(wrap, activeKey, false, sidebarEl);
+    activeKey = null;
+  };
+
+  const setActive = (key) => {
+    if (!key || key === activeKey) return;
+    const wrap = sidebarEl.closest('.dashboard-wrap');
+    const ctx = dashboardMountCtx;
+    if (!wrap || !ctx || ctx.state.chartMode !== side) {
+      clearActive();
+      return;
+    }
+    if (activeKey) dashSetSeriesHighlight(wrap, activeKey, false, sidebarEl);
+    activeKey = key;
+    dashSetSeriesHighlight(wrap, key, true, sidebarEl);
+  };
+
+  list.addEventListener('mousemove', (ev) => {
+    const row = ev.target instanceof Element
+      ? ev.target.closest('.dashboard-sidebar-row[data-series-key]')
+      : null;
+    if (!row || !list.contains(row)) {
+      clearActive();
+      return;
+    }
+    setActive(row.getAttribute('data-series-key'));
+  }, { signal });
+
+  list.addEventListener('mouseleave', () => {
+    clearActive();
+  }, { signal });
+
+  // 棒グラフ再描画直後にカーソルがリスト上でも、動かさずハイライトできるよう復元する
+  requestAnimationFrame(() => {
+    if (!list.isConnected || !list.matches(':hover')) return;
+    const hovered = list.querySelector('.dashboard-sidebar-row[data-series-key]:hover');
+    const key = hovered?.getAttribute('data-series-key');
+    if (key) setActive(key);
+  });
+}
+
+function dashBindChartSeriesHover(chartContainer, highlightWrap, sidebarRoot, {
+  checkedKeys = null,
+  itemKeys = [],
+  breakdownItems = [],
+  onSolo = null,
+  onShowAll = null,
+  onHide = null,
+} = {}) {
+  if (!chartContainer) return;
+  const itemByKey = new Map(breakdownItems.map((item) => [item.key, item]));
+  const canHighlight = Boolean(highlightWrap && sidebarRoot);
+  const canMenu = Boolean(onSolo && onShowAll && onHide && checkedKeys);
+  chartContainer.querySelectorAll('.dashboard-chart-legend-chip[data-series-key]').forEach((el) => {
     const key = el.getAttribute('data-series-key');
     if (!key) return;
-    el.addEventListener('mouseenter', () => dashSetSeriesHighlight(highlightWrap, key, true, sidebarRoot, {
-      scrollSidebar: true,
-    }));
-    el.addEventListener('mouseleave', () => dashSetSeriesHighlight(highlightWrap, key, false, sidebarRoot));
-  };
-  chartContainer.querySelectorAll('.dashboard-chart-legend-chip[data-series-key]').forEach(bind);
+    if (canHighlight) {
+      el.addEventListener('mouseenter', () => dashSetSeriesHighlight(highlightWrap, key, true, sidebarRoot, {
+        scrollSidebar: true,
+      }));
+      el.addEventListener('mouseleave', () => dashSetSeriesHighlight(highlightWrap, key, false, sidebarRoot));
+    }
+    if (canMenu) {
+      el.addEventListener('contextmenu', (ev) => {
+        const item = itemByKey.get(key);
+        const title = item?.name ?? ((el.textContent || '').trim() || key);
+        ev.preventDefault();
+        dashOpenSeriesVisibilityContextMenu(ev.clientX, ev.clientY, {
+          title,
+          key,
+          checkedKeys,
+          itemKeys,
+          onSolo,
+          onShowAll,
+          onHide,
+        });
+      });
+    }
+  });
 }
 
 function dashRenderStackedLegendHtml(series) {
@@ -1394,38 +1508,44 @@ function dashBindSidebarPieHover(pieWrap, {
   onShowAll = null,
   onHide = null,
 } = {}) {
-  if (!pieWrap || !highlightWrap || !highlightSidebarRoot) return;
+  if (!pieWrap) return;
   const itemByKey = new Map(items.map((item) => [item.key, item]));
+  const canHighlight = Boolean(highlightWrap && highlightSidebarRoot);
+  const canMenu = Boolean(onSolo && onShowAll && onHide && checkedKeys);
   pieWrap.querySelectorAll('.dashboard-sidebar-pie-slice-group[data-series-key]').forEach((group) => {
     const key = group.getAttribute('data-series-key');
     if (!key) return;
-    group.addEventListener('mouseenter', () => dashSetSeriesHighlight(
-      highlightWrap,
-      key,
-      true,
-      highlightSidebarRoot,
-      { scrollSidebar: true },
-    ));
-    group.addEventListener('mouseleave', () => dashSetSeriesHighlight(
-      highlightWrap,
-      key,
-      false,
-      highlightSidebarRoot,
-    ));
-    group.addEventListener('contextmenu', (ev) => {
-      const item = itemByKey.get(key);
-      if (!item) return;
-      ev.preventDefault();
-      dashOpenSeriesVisibilityContextMenu(ev.clientX, ev.clientY, {
-        title: item.name,
+    if (canHighlight) {
+      group.addEventListener('mouseenter', () => dashSetSeriesHighlight(
+        highlightWrap,
         key,
-        checkedKeys,
-        itemKeys,
-        onSolo,
-        onShowAll,
-        onHide,
+        true,
+        highlightSidebarRoot,
+        { scrollSidebar: true },
+      ));
+      group.addEventListener('mouseleave', () => dashSetSeriesHighlight(
+        highlightWrap,
+        key,
+        false,
+        highlightSidebarRoot,
+      ));
+    }
+    if (canMenu) {
+      group.addEventListener('contextmenu', (ev) => {
+        const item = itemByKey.get(key);
+        if (!item) return;
+        ev.preventDefault();
+        dashOpenSeriesVisibilityContextMenu(ev.clientX, ev.clientY, {
+          title: item.name,
+          key,
+          checkedKeys,
+          itemKeys,
+          onSolo,
+          onShowAll,
+          onHide,
+        });
       });
-    });
+    }
   });
 }
 
@@ -1442,18 +1562,29 @@ function dashRenderSidebarPieChart(pieHost, items, checkedKeys, colorMap, {
   const slices = dashBuildPieChartSlices(items, checkedKeys, colorMap);
   pieHost.replaceChildren();
 
-  if (!slices.length) {
-    const empty = document.createElement('div');
-    empty.className = 'dashboard-sidebar-pie-empty';
-    empty.textContent = '—';
-    pieHost.append(empty);
-    return;
-  }
-
   const cx = DASH_SIDEBAR_PIE_SIZE / 2;
   const cy = DASH_SIDEBAR_PIE_SIZE / 2;
   const outerR = DASH_SIDEBAR_PIE_SIZE / 2 - DASH_SIDEBAR_PIE_OUTER_INSET;
   const innerR = outerR - DASH_SIDEBAR_PIE_RING_WIDTH;
+
+  // チェックなしでも円グラフ枠の高さを維持する（リスト領域が急に広がらないように）
+  if (!slices.length) {
+    const pieWrap = document.createElement('div');
+    pieWrap.className = 'dashboard-sidebar-pie-wrap is-empty';
+    const centerTitle = dashRenderPieCenterTitle(centerTitleLines, cx, cy);
+    const emptyLabel = centerTitle
+      ? ''
+      : `<text class="dashboard-sidebar-pie-empty-label" x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="middle">—</text>`;
+    pieWrap.innerHTML = `
+    <svg class="dashboard-sidebar-pie-svg" viewBox="0 0 ${DASH_SIDEBAR_PIE_SIZE} ${DASH_SIDEBAR_PIE_SIZE}" aria-hidden="true">
+      <path class="dashboard-sidebar-pie-empty-ring" d="${dashDonutSlicePath(cx, cy, outerR, innerR, 0, 360)}" />
+      ${centerTitle}
+      ${emptyLabel}
+    </svg>`;
+    pieHost.append(pieWrap);
+    return;
+  }
+
   const groups = slices.map((slice) => {
     const sweep = slice.endAngle - slice.startAngle;
     const midAngle = slice.startAngle + sweep / 2;
@@ -1744,6 +1875,35 @@ function dashPeekChartElementUnder(hoverRect, clientX, clientY, selector) {
   return el?.closest(selector) ?? null;
 }
 
+/**
+ * 積み上げ棒のヒット判定。全期表示などで棒が細いとき elementFromPoint が外れやすいため、
+ * 月枠の X と積み上げ Y から系列を幾何的に特定する。
+ */
+function dashHitTestStackedBar(series, labels, xScale, yScale, svg, clientX, clientY, layout = null) {
+  if (!series?.length || !labels?.length || !svg) return null;
+  const { x: svgX, y: svgY } = dashSvgClientToView(svg, clientX, clientY);
+  if (layout) {
+    const { pad, plotW, plotH } = layout;
+    if (svgX < pad.left || svgX > pad.left + plotW) return null;
+    if (svgY < pad.top || svgY > pad.top + plotH) return null;
+  }
+  const monthIdx = dashNearestLineChartIndex(svgX, labels, xScale);
+  let cumulative = 0;
+  let hit = null;
+  for (const s of series) {
+    const val = Math.abs(s.values[monthIdx] ?? 0);
+    if (val === 0) continue;
+    const yTop = yScale(cumulative + val);
+    const yBottom = yScale(cumulative);
+    cumulative += val;
+    // 下から積むので、後から当たった方が上のセグメント
+    if (svgY >= yTop && svgY <= yBottom) {
+      hit = { key: s.key, series: s, monthIdx, yTop, yBottom };
+    }
+  }
+  return hit;
+}
+
 function dashRenderChartTooltipRowsHtml(rows) {
   return rows.map((r) => {
     const swatch = r.color
@@ -1905,18 +2065,13 @@ function dashBindStackedBarChartHover(container, {
     const { x: svgX } = dashSvgClientToView(svg, ev.clientX, ev.clientY);
     const monthIdx = dashNearestLineChartIndex(svgX, labels, xScale);
     const anchorX = xScale(monthIdx);
-    const seg = dashPeekChartElementUnder(hoverRect, ev.clientX, ev.clientY, '.dashboard-chart-segment');
+    const hit = dashHitTestStackedBar(series, labels, xScale, yScale, svg, ev.clientX, ev.clientY, layout);
     let rows;
     let anchorY = plotBottom;
-    if (seg && seg.closest('svg') === svg) {
-      const gi = Number(seg.getAttribute('data-month-index'));
-      const key = seg.getAttribute('data-series-key');
-      const s = series.find((item) => item.key === key);
-      if (s) {
-        setHighlight(key, gi);
-        rows = [{ label: s.label, value: Math.abs(s.values[gi] ?? 0), color: s.color }];
-        anchorY = Number(seg.getAttribute('y') ?? plotBottom);
-      }
+    if (hit) {
+      setHighlight(hit.key, hit.monthIdx);
+      rows = [{ label: hit.series.label, value: Math.abs(hit.series.values[hit.monthIdx] ?? 0), color: hit.series.color }];
+      anchorY = hit.yTop;
     }
     if (!rows) {
       setHighlight(null);
@@ -1926,7 +2081,13 @@ function dashBindStackedBarChartHover(container, {
     }
     wrap.classList.toggle(
       'is-journal-drilldown',
-      Boolean(dashResolveStackedChartDrilldown(hoverRect, ev, svg, itemByKey, drilldownCtx)),
+      Boolean(dashResolveStackedChartDrilldown(hoverRect, ev, svg, itemByKey, drilldownCtx, {
+        series,
+        labels,
+        xScale,
+        yScale,
+        layout,
+      })),
     );
     dashShowChartBarTooltip({
       wrap,
@@ -1943,15 +2104,14 @@ function dashBindStackedBarChartHover(container, {
   hoverRect.addEventListener('mouseleave', hide);
   hoverRect.addEventListener('contextmenu', (ev) => {
     if (!onSolo || !onShowAll || !onHide || !checkedKeys) return;
-    const seg = dashPeekChartElementUnder(hoverRect, ev.clientX, ev.clientY, '.dashboard-chart-segment');
-    if (!seg || seg.closest('svg') !== svg) return;
-    const key = seg.getAttribute('data-series-key');
-    const item = itemByKey.get(key);
+    const hit = dashHitTestStackedBar(series, labels, xScale, yScale, svg, ev.clientX, ev.clientY, layout);
+    if (!hit) return;
+    const item = itemByKey.get(hit.key);
     if (!item) return;
     ev.preventDefault();
     dashOpenSeriesVisibilityContextMenu(ev.clientX, ev.clientY, {
       title: item.name,
-      key,
+      key: hit.key,
       checkedKeys,
       itemKeys,
       onSolo,
@@ -1960,7 +2120,13 @@ function dashBindStackedBarChartHover(container, {
     });
   });
   hoverRect.addEventListener('dblclick', (ev) => {
-    const target = dashResolveStackedChartDrilldown(hoverRect, ev, svg, itemByKey, drilldownCtx);
+    const target = dashResolveStackedChartDrilldown(hoverRect, ev, svg, itemByKey, drilldownCtx, {
+      series,
+      labels,
+      xScale,
+      yScale,
+      layout,
+    });
     if (!target) return;
     dashShowJournal(drilldownCtx, target.item, target.month);
   });
@@ -2035,8 +2201,8 @@ function dashRenderSvgStackedBarChart(container, series, labels, {
         <defs>${dashRenderPlotClip(layout, clipId)}</defs>
         ${gridLines}
         <g clip-path="url(#${clipId})">${bars}</g>
-        <g class="dashboard-chart-highlight-layer"></g>
         ${dashRenderBarChartInteractionMarkup(pad, plotW, plotH)}
+        <g class="dashboard-chart-highlight-layer"></g>
         ${xLabels}
       </svg>
       ${dashRenderBarChartTooltipMarkup()}
@@ -2058,7 +2224,14 @@ function dashRenderSvgStackedBarChart(container, series, labels, {
       onShowAll,
       onHide,
     });
-    dashBindChartSeriesHover(container, highlightWrap, highlightSidebarRoot);
+    dashBindChartSeriesHover(container, highlightWrap, highlightSidebarRoot, {
+      checkedKeys,
+      itemKeys,
+      breakdownItems: breakdownItems ?? [],
+      onSolo,
+      onShowAll,
+      onHide,
+    });
   });
   dashPlayChartDrawAnimation(container, { animate });
 }
@@ -2174,6 +2347,9 @@ function dashAppendSidebarRow(list, item, checkedKeys, onToggle, onSolo, {
   maxPct = 0,
   showPct = true,
   rowClass = '',
+  itemKeys = [],
+  onShowAll = null,
+  onHide = null,
 } = {}) {
   const pct = showPct && pctBase > 0 ? (Math.abs(item.total) / pctBase) * 100 : 0;
   const barWidth = showPct && maxPct > 0 ? (pct / maxPct) * 100 : 0;
@@ -2181,7 +2357,7 @@ function dashAppendSidebarRow(list, item, checkedKeys, onToggle, onSolo, {
   row.className = `dashboard-sidebar-row${rowClass ? ` ${rowClass}` : ''}`;
   row.dataset.seriesKey = item.key;
   row.innerHTML = `
-    <input type="checkbox" class="dashboard-sidebar-check" data-key="${item.key}" title="${dashEscapeHtml(TIP_DASH_SIDEBAR_ITEM)}" ${checkedKeys.has(item.key) ? 'checked' : ''} />
+    <input type="checkbox" class="dashboard-sidebar-check" data-key="${dashEscapeHtml(item.key)}" title="${dashEscapeHtml(TIP_DASH_SIDEBAR_ITEM)}" ${checkedKeys.has(item.key) ? 'checked' : ''} />
     <span class="dashboard-sidebar-name" title="${dashEscapeHtml(item.name + '\n' + TIP_DASH_SIDEBAR_ITEM)}">${dashEscapeHtml(item.name)}</span>
     <span class="dashboard-sidebar-amount">${dashFormatSidebarYenHtml(item.total)}</span>
     ${showPct
@@ -2196,16 +2372,19 @@ function dashAppendSidebarRow(list, item, checkedKeys, onToggle, onSolo, {
   input.addEventListener('click', (ev) => {
     if (ev.ctrlKey || ev.metaKey) {
       ev.preventDefault();
+      dashRememberSidebarListScroll(input);
       ensureChartMode?.();
       onSolo?.(item.key);
     }
   });
   input.addEventListener('change', (ev) => {
     if (ev.ctrlKey || ev.metaKey) return;
+    dashRememberSidebarListScroll(input);
     ensureChartMode?.();
     onToggle(item.key, ev.target.checked);
   });
   nameEl.addEventListener('click', (ev) => {
+    dashRememberSidebarListScroll(nameEl);
     if (ev.ctrlKey || ev.metaKey) {
       ensureChartMode?.();
       onSolo?.(item.key);
@@ -2215,19 +2394,29 @@ function dashAppendSidebarRow(list, item, checkedKeys, onToggle, onSolo, {
     input.checked = !input.checked;
     onToggle(item.key, input.checked);
   });
-  if (highlightWrap && highlightSidebarRoot) {
-    row.addEventListener('mouseenter', () => dashSetSeriesHighlight(
-      highlightWrap,
-      item.key,
-      true,
-      highlightSidebarRoot,
-    ));
-    row.addEventListener('mouseleave', () => dashSetSeriesHighlight(
-      highlightWrap,
-      item.key,
-      false,
-      highlightSidebarRoot,
-    ));
+  if (onSolo && onShowAll && onHide) {
+    row.addEventListener('contextmenu', (ev) => {
+      ev.preventDefault();
+      dashRememberSidebarListScroll(row);
+      dashOpenSeriesVisibilityContextMenu(ev.clientX, ev.clientY, {
+        title: item.name,
+        key: item.key,
+        checkedKeys,
+        itemKeys,
+        onSolo: (key) => {
+          ensureChartMode?.();
+          onSolo(key);
+        },
+        onShowAll: () => {
+          ensureChartMode?.();
+          onShowAll();
+        },
+        onHide: (key) => {
+          ensureChartMode?.();
+          onHide(key);
+        },
+      });
+    });
   }
   if (dashCanShowJournal(drilldownCtx, item, DASHBOARD_GOUKEI)) {
     amountEl.classList.add('dashboard-has-journal-drilldown');
@@ -2237,6 +2426,41 @@ function dashAppendSidebarRow(list, item, checkedKeys, onToggle, onSolo, {
     });
   }
   list.appendChild(row);
+}
+
+/** チェック操作前にリストのスクロール位置を state へ退避する */
+function dashRememberSidebarListScroll(fromEl) {
+  const list = fromEl?.closest?.('.dashboard-sidebar-list');
+  const dashState = dashboardMountCtx?.state;
+  if (!list || !dashState) return;
+  const side = list.closest('.dashboard-sidebar-revenue')
+    ? 'revenueListScrollTop'
+    : list.closest('.dashboard-sidebar-expense')
+      ? 'expenseListScrollTop'
+      : null;
+  if (!side) return;
+  list.dataset.scrollReady = '1';
+  dashState[side] = list.scrollTop;
+}
+
+/** リスト DOM を作り直さず、チェック状態と一括ボタンだけ同期する */
+function dashSyncSidebarCheckState(sidebarEl, checkedKeys, itemKeys) {
+  if (!sidebarEl) return;
+  const inputs = [...sidebarEl.querySelectorAll('.dashboard-sidebar-check')];
+  let checkedCount = 0;
+  inputs.forEach((input) => {
+    const key = input.getAttribute('data-key');
+    if (key == null) return;
+    const isChecked = checkedKeys.has(key);
+    input.checked = isChecked;
+    if (isChecked) checkedCount += 1;
+  });
+  // ボタンの disabled は画面上のチェックと一致させる（キー不整合で押せなくなるのを防ぐ）
+  const allChecked = inputs.length > 0
+    ? checkedCount === inputs.length
+    : itemKeys.length > 0 && itemKeys.every((key) => checkedKeys.has(key));
+  const checkAllBtn = sidebarEl.querySelector('[data-action="check-all"]');
+  if (checkAllBtn) checkAllBtn.disabled = allChecked;
 }
 
 function dashRenderSidebarList(container, items, checkedKeys, totalLabel, headerClass, onToggle, {
@@ -2257,6 +2481,8 @@ function dashRenderSidebarList(container, items, checkedKeys, totalLabel, header
   colorMap = null,
   pieCenterTitleLines = null,
   animate = false,
+  /** state にスクロール位置を保持するキー（再描画・ResizeObserver 対策） */
+  scrollStateKey = null,
 } = {}) {
   const total = items.reduce((sum, item) => sum + item.total, 0);
   const mainItems = deductionLabel ? items.filter((item) => item.total > 0) : items;
@@ -2302,11 +2528,13 @@ function dashRenderSidebarList(container, items, checkedKeys, totalLabel, header
     ${headerTabsHtml}`;
   header.querySelector('[data-action="check-all"]')?.addEventListener('click', (ev) => {
     ev.preventDefault();
+    dashRememberSidebarListScroll(container.querySelector('.dashboard-sidebar-list'));
     ensureChartMode?.();
     onCheckAll?.();
   });
   header.querySelector('[data-action="uncheck-all"]')?.addEventListener('click', (ev) => {
     ev.preventDefault();
+    dashRememberSidebarListScroll(container.querySelector('.dashboard-sidebar-list'));
     ensureChartMode?.();
     onUncheckAll?.();
   });
@@ -2341,6 +2569,9 @@ function dashRenderSidebarList(container, items, checkedKeys, totalLabel, header
     ensureChartMode,
     pctBase,
     maxPct,
+    itemKeys: items.map((item) => item.key),
+    onShowAll: onCheckAll,
+    onHide: (key) => onToggle(key, false),
   };
 
   for (const item of mainItems) {
@@ -2363,6 +2594,23 @@ function dashRenderSidebarList(container, items, checkedKeys, totalLabel, header
 
   const pieHost = document.createElement('div');
   pieHost.className = 'dashboard-sidebar-pie';
+
+  // 再描画でスクロール／フォーカスが先頭に戻らないように保持する
+  // （操作直前に dashRememberSidebarListScroll で state へ退避済み）
+  const dashState = dashboardMountCtx?.state;
+  const prevList = container.querySelector('.dashboard-sidebar-list');
+  if (dashState && scrollStateKey && prevList?.dataset.scrollReady === '1') {
+    dashState[scrollStateKey] = prevList.scrollTop;
+  }
+  const savedScrollTop = (dashState && scrollStateKey && Number.isFinite(dashState[scrollStateKey]))
+    ? dashState[scrollStateKey]
+    : 0;
+  const activeEl = document.activeElement;
+  const focusKey = (activeEl instanceof HTMLElement
+    && prevList?.contains(activeEl)
+    && activeEl.matches('.dashboard-sidebar-check'))
+    ? activeEl.getAttribute('data-key')
+    : null;
 
   container.replaceChildren(header, list, pieHost);
   dashPlaySidebarBarDrawAnimation(container, { animate });
@@ -2387,11 +2635,41 @@ function dashRenderSidebarList(container, items, checkedKeys, totalLabel, header
       animate,
     });
   }
+
+  const restoreListView = () => {
+    list.scrollTop = savedScrollTop;
+    list.dataset.scrollReady = '1';
+    if (dashState && scrollStateKey) dashState[scrollStateKey] = list.scrollTop;
+    if (focusKey == null) return;
+    const escaped = dashEscapeSeriesKeyForSelector(focusKey);
+    const nextFocus = list.querySelector(`.dashboard-sidebar-check[data-key="${escaped}"]`);
+    nextFocus?.focus({ preventScroll: true });
+  };
+  restoreListView();
+  requestAnimationFrame(() => {
+    restoreListView();
+    requestAnimationFrame(restoreListView);
+  });
+
+  if (dashState && scrollStateKey) {
+    list.addEventListener('scroll', () => {
+      if (list.dataset.scrollReady !== '1') return;
+      dashState[scrollStateKey] = list.scrollTop;
+    }, { passive: true });
+  }
 }
 
-function dashRenderDashboardContent(wrap, ctx, { animate = false, animateMainChart = false } = {}) {
+function dashRenderDashboardContent(wrap, ctx, {
+  animate = false,
+  animateMainChart = false,
+  /** サイドバーリストは維持し、チェック同期と円グラフだけ更新する */
+  preserveSidebars = false,
+  /** チェック変更の影響がない利益率・預金・収支棒は再描画しない */
+  skipUnaffectedCharts = false,
+} = {}) {
   dashCloseChartContextMenu();
-  dashGradientSeq = 0;
+  // 下部チャートを残したまま主チャートだけ差し替えるとき、ID 衝突を避けるため seq はリセットしない
+  if (!skipUnaffectedCharts) dashGradientSeq = 0;
   const { data, prevData, prevPrevData, appSettings, state } = ctx;
   const allPeriods = ctx.allPeriods ?? null;
   const periodRange = ctx.periodRange ?? { from: appSettings.fiscalPeriod, to: appSettings.fiscalPeriod };
@@ -2529,7 +2807,7 @@ function dashRenderDashboardContent(wrap, ctx, { animate = false, animateMainCha
       : formatFiscalPeriodLabel(periodRange.from);
     toolbar.querySelector('.dashboard-title').textContent =
       `${periodLabel} ダッシュボード`;
-    toolbar.querySelectorAll('.dashboard-mode-btn').forEach((btn) => {
+    toolbar.querySelectorAll('.dashboard-mode-tabs .dashboard-mode-btn').forEach((btn) => {
       btn.classList.toggle('is-active', btn.dataset.mode === state.chartMode);
     });
     dashSyncPeriodRangeControls(toolbar, periodRange, ctx.maxFiscalPeriod ?? 1);
@@ -2547,6 +2825,13 @@ function dashRenderDashboardContent(wrap, ctx, { animate = false, animateMainCha
 
   const revenueKeySet = new Set(revenueItems.map((i) => i.key));
 
+  const refreshAfterCheckedKeysChange = () => {
+    dashRenderDashboardContent(wrap, dashMakeDashboardRenderCtx(dashboardMountCtx ?? ctx), {
+      preserveSidebars: true,
+      skipUnaffectedCharts: true,
+    });
+  };
+
   const onToggle = (key, checked) => {
     if (checked) state.checkedKeys.add(key);
     else state.checkedKeys.delete(key);
@@ -2556,31 +2841,31 @@ function dashRenderDashboardContent(wrap, ctx, { animate = false, animateMainCha
       state.expenseCheckAll = dashIsSideFullyChecked(state.checkedKeys, expenseItems);
     }
     persistCheckedKeys();
-    dashRenderDashboardContent(wrap, ctx);
+    refreshAfterCheckedKeysChange();
   };
 
   const onRevenueBreakdownModeChange = (mode) => {
     if (state.revenueBreakdownMode === mode) return;
     state.revenueBreakdownMode = mode;
-    dashRenderDashboardContent(wrap, ctx);
+    dashRenderDashboardContent(wrap, dashMakeDashboardRenderCtx(dashboardMountCtx ?? ctx));
   };
 
   const onExpenseBreakdownModeChange = (mode) => {
     if (state.expenseBreakdownMode === mode) return;
     state.expenseBreakdownMode = mode;
-    dashRenderDashboardContent(wrap, ctx);
+    dashRenderDashboardContent(wrap, dashMakeDashboardRenderCtx(dashboardMountCtx ?? ctx));
   };
 
   const onRevenueSortModeChange = (mode) => {
     if (state.revenueSortMode === mode) return;
     state.revenueSortMode = mode;
-    dashRenderDashboardContent(wrap, ctx);
+    dashRenderDashboardContent(wrap, dashMakeDashboardRenderCtx(dashboardMountCtx ?? ctx));
   };
 
   const onExpenseSortModeChange = (mode) => {
     if (state.expenseSortMode === mode) return;
     state.expenseSortMode = mode;
-    dashRenderDashboardContent(wrap, ctx);
+    dashRenderDashboardContent(wrap, dashMakeDashboardRenderCtx(dashboardMountCtx ?? ctx));
   };
 
   const makeBulkHandlers = (itemKeys, side) => ({
@@ -2589,14 +2874,14 @@ function dashRenderDashboardContent(wrap, ctx, { animate = false, animateMainCha
       if (side === 'revenue') state.revenueCheckAll = true;
       else state.expenseCheckAll = true;
       persistCheckedKeys();
-      dashRenderDashboardContent(wrap, ctx);
+      refreshAfterCheckedKeysChange();
     },
     onUncheckAll: () => {
       for (const key of itemKeys) state.checkedKeys.delete(key);
       if (side === 'revenue') state.revenueCheckAll = false;
       else state.expenseCheckAll = false;
       persistCheckedKeys();
-      dashRenderDashboardContent(wrap, ctx);
+      refreshAfterCheckedKeysChange();
     },
     onSolo: (key) => {
       if (dashIsSoloCheckedKeys(state.checkedKeys, itemKeys, key)) {
@@ -2610,7 +2895,7 @@ function dashRenderDashboardContent(wrap, ctx, { animate = false, animateMainCha
         else state.expenseCheckAll = false;
       }
       persistCheckedKeys();
-      dashRenderDashboardContent(wrap, ctx);
+      refreshAfterCheckedKeysChange();
     },
   });
 
@@ -2629,125 +2914,200 @@ function dashRenderDashboardContent(wrap, ctx, { animate = false, animateMainCha
   const revenueChartMode = makeSidebarChartModeHandlers('revenue');
   const expenseChartMode = makeSidebarChartModeHandlers('expense');
 
-  dashRenderSidebarList(revenueEl, revenueItems, state.checkedKeys, '収益合計', 'dashboard-sidebar-header--revenue', onToggle, {
-    highlightWrap: state.chartMode === 'revenue' ? wrap : null,
-    highlightSidebarRoot: state.chartMode === 'revenue' ? revenueEl : null,
-    showBreakdownToggle: true,
-    breakdownMode: revenueBreakdownMode,
-    onBreakdownModeChange: onRevenueBreakdownModeChange,
-    showSortToggle: true,
-    sortMode: revenueSortMode,
-    onSortModeChange: onRevenueSortModeChange,
-    drilldownCtx,
-    colorMap: revenueColorMap,
-    pieCenterTitleLines: DASHBOARD_PIE_CENTER_REVENUE_LINES,
-    animate,
-    ...revenueBulk,
-    ...revenueChartMode,
-  });
-  dashRenderSidebarList(expenseEl, expenseItems, state.checkedKeys, '支出合計', 'dashboard-sidebar-header--expense', onToggle, {
-    highlightWrap: state.chartMode === 'expense' ? wrap : null,
-    highlightSidebarRoot: state.chartMode === 'expense' ? expenseEl : null,
-    showBreakdownToggle: true,
-    breakdownMode: expenseBreakdownMode,
-    onBreakdownModeChange: onExpenseBreakdownModeChange,
-    showSortToggle: true,
-    sortMode: expenseSortMode,
-    onSortModeChange: onExpenseSortModeChange,
-    drilldownCtx,
-    colorMap: expenseColorMap,
-    pieCenterTitleLines: DASHBOARD_PIE_CENTER_EXPENSE_LINES,
-    animate,
-    ...expenseBulk,
-    ...expenseChartMode,
-    deductionLabel: DASHBOARD_EXPENSE_DEDUCTION_LABEL,
-  });
+  const revenueItemKeys = revenueItems.map((item) => item.key);
+  const expenseItemKeys = expenseItems.map((item) => item.key);
+  const expensePieItems = expenseItems.filter((item) => item.total > 0);
+  const canPreserveSidebars = preserveSidebars
+    && revenueEl?.querySelector('.dashboard-sidebar-list')
+    && expenseEl?.querySelector('.dashboard-sidebar-list')
+    && revenueEl?.querySelector('.dashboard-sidebar-pie')
+    && expenseEl?.querySelector('.dashboard-sidebar-pie');
 
-  if (state.chartMode === 'balance') {
-    const revenueColors = dashGetSidebarHeaderColors('revenue');
-    const expenseColors = dashGetSidebarHeaderColors('expense');
-    dashRenderSvgGroupedBarChart(
-      mainChartEl,
-      [
-        { values: monthly.map((m) => m.inflow), color: revenueColors.background, label: '収入' },
-        { values: monthly.map((m) => m.outflow), color: expenseColors.background, label: '支出' },
-      ],
-      monthLabels,
+  if (canPreserveSidebars) {
+    dashSyncSidebarCheckState(revenueEl, state.checkedKeys, revenueItemKeys);
+    dashSyncSidebarCheckState(expenseEl, state.checkedKeys, expenseItemKeys);
+    dashRenderSidebarPieChart(
+      revenueEl.querySelector('.dashboard-sidebar-pie'),
+      revenueItems,
+      state.checkedKeys,
+      revenueColorMap,
       {
-        title: '収支推移',
-        headerClass: 'dashboard-chart-title--month-row',
-        legend: [
-          { label: '収入', color: revenueColors.background },
-          { label: '支出', color: expenseColors.background },
-        ],
-        drilldownCtx,
-        animate: mainChartAnimate,
+        highlightWrap: state.chartMode === 'revenue' ? wrap : null,
+        highlightSidebarRoot: state.chartMode === 'revenue' ? revenueEl : null,
+        centerTitleLines: DASHBOARD_PIE_CENTER_REVENUE_LINES,
+        itemKeys: revenueItemKeys,
+        onSolo: (key) => {
+          revenueChartMode.ensureChartMode();
+          revenueBulk.onSolo(key);
+        },
+        onShowAll: () => {
+          revenueChartMode.ensureChartMode();
+          revenueBulk.onCheckAll();
+        },
+        onHide: (key) => {
+          revenueChartMode.ensureChartMode();
+          onToggle(key, false);
+        },
+        animate: false,
       },
     );
-  } else if (state.chartMode === 'revenue') {
-    const series = dashBuildStackedSeries(revenueItems, state.checkedKeys, revenueColorMap);
-    dashRenderSvgStackedBarChart(mainChartEl, series, monthLabels, {
-      title: '収益推移',
-      headerClass: 'dashboard-chart-title--revenue',
-      highlightWrap: wrap,
-      highlightSidebarRoot: revenueEl,
-      breakdownItems: revenueItems,
-      drilldownCtx,
-      checkedKeys: state.checkedKeys,
-      itemKeys: revenueItems.map((item) => item.key),
-      onSolo: revenueBulk.onSolo,
-      onShowAll: revenueBulk.onCheckAll,
-      onHide: (key) => onToggle(key, false),
-      animate: mainChartAnimate,
-    });
+    dashRenderSidebarPieChart(
+      expenseEl.querySelector('.dashboard-sidebar-pie'),
+      expensePieItems,
+      state.checkedKeys,
+      expenseColorMap,
+      {
+        highlightWrap: state.chartMode === 'expense' ? wrap : null,
+        highlightSidebarRoot: state.chartMode === 'expense' ? expenseEl : null,
+        centerTitleLines: DASHBOARD_PIE_CENTER_EXPENSE_LINES,
+        itemKeys: expenseItemKeys,
+        onSolo: (key) => {
+          expenseChartMode.ensureChartMode();
+          expenseBulk.onSolo(key);
+        },
+        onShowAll: () => {
+          expenseChartMode.ensureChartMode();
+          expenseBulk.onCheckAll();
+        },
+        onHide: (key) => {
+          expenseChartMode.ensureChartMode();
+          onToggle(key, false);
+        },
+        animate: false,
+      },
+    );
   } else {
-    const series = dashBuildStackedSeries(expenseItems, state.checkedKeys, expenseColorMap);
-    dashRenderSvgStackedBarChart(mainChartEl, series, monthLabels, {
-      title: '支出推移',
-      headerClass: 'dashboard-chart-title--expense',
-      highlightWrap: wrap,
-      highlightSidebarRoot: expenseEl,
-      breakdownItems: expenseItems,
+    dashRenderSidebarList(revenueEl, revenueItems, state.checkedKeys, '収益合計', 'dashboard-sidebar-header--revenue', onToggle, {
+      highlightWrap: state.chartMode === 'revenue' ? wrap : null,
+      highlightSidebarRoot: state.chartMode === 'revenue' ? revenueEl : null,
+      showBreakdownToggle: true,
+      breakdownMode: revenueBreakdownMode,
+      onBreakdownModeChange: onRevenueBreakdownModeChange,
+      showSortToggle: true,
+      sortMode: revenueSortMode,
+      onSortModeChange: onRevenueSortModeChange,
       drilldownCtx,
-      checkedKeys: state.checkedKeys,
-      itemKeys: expenseItems.map((item) => item.key),
-      onSolo: expenseBulk.onSolo,
-      onShowAll: expenseBulk.onCheckAll,
-      onHide: (key) => onToggle(key, false),
-      animate: mainChartAnimate,
+      colorMap: revenueColorMap,
+      pieCenterTitleLines: DASHBOARD_PIE_CENTER_REVENUE_LINES,
+      animate,
+      scrollStateKey: 'revenueListScrollTop',
+      ...revenueBulk,
+      ...revenueChartMode,
+    });
+    dashRenderSidebarList(expenseEl, expenseItems, state.checkedKeys, '支出合計', 'dashboard-sidebar-header--expense', onToggle, {
+      highlightWrap: state.chartMode === 'expense' ? wrap : null,
+      highlightSidebarRoot: state.chartMode === 'expense' ? expenseEl : null,
+      showBreakdownToggle: true,
+      breakdownMode: expenseBreakdownMode,
+      onBreakdownModeChange: onExpenseBreakdownModeChange,
+      showSortToggle: true,
+      sortMode: expenseSortMode,
+      onSortModeChange: onExpenseSortModeChange,
+      drilldownCtx,
+      colorMap: expenseColorMap,
+      pieCenterTitleLines: DASHBOARD_PIE_CENTER_EXPENSE_LINES,
+      animate,
+      scrollStateKey: 'expenseListScrollTop',
+      ...expenseBulk,
+      ...expenseChartMode,
+      deductionLabel: DASHBOARD_EXPENSE_DEDUCTION_LABEL,
     });
   }
 
-  dashRenderSvgGradientLineChart(
-    profitChartEl,
-    monthly.map((m) => m.profit),
-    monthLabels,
-    {
-      title: '利益率推移',
-      headerClass: 'dashboard-chart-title--profit',
-      sectionFilterId: 'profit',
-      includeZero: true,
-      negativeTicksRed: true,
-      prevValues: prevMonthly?.map((m) => m.profit) ?? null,
-      prevPrevValues: prevPrevMonthly?.map((m) => m.profit) ?? null,
-      animate,
-    },
-  );
+  // 収支推移はチェック対象外。チェック変更時は積み上げ棒だけ更新する
+  if (!(skipUnaffectedCharts && state.chartMode === 'balance')) {
+    if (state.chartMode === 'balance') {
+      const revenueColors = dashGetSidebarHeaderColors('revenue');
+      const expenseColors = dashGetSidebarHeaderColors('expense');
+      dashRenderSvgGroupedBarChart(
+        mainChartEl,
+        [
+          { values: monthly.map((m) => m.inflow), color: revenueColors.background, label: '収入' },
+          { values: monthly.map((m) => m.outflow), color: expenseColors.background, label: '支出' },
+        ],
+        monthLabels,
+        {
+          title: '収支推移',
+          headerClass: 'dashboard-chart-title--month-row',
+          legend: [
+            { label: '収入', color: revenueColors.background },
+            { label: '支出', color: expenseColors.background },
+          ],
+          drilldownCtx,
+          animate: mainChartAnimate,
+        },
+      );
+    } else if (state.chartMode === 'revenue') {
+      const series = dashBuildStackedSeries(revenueItems, state.checkedKeys, revenueColorMap);
+      dashRenderSvgStackedBarChart(mainChartEl, series, monthLabels, {
+        title: '収益推移',
+        headerClass: 'dashboard-chart-title--revenue',
+        highlightWrap: wrap,
+        highlightSidebarRoot: revenueEl,
+        breakdownItems: revenueItems,
+        drilldownCtx,
+        checkedKeys: state.checkedKeys,
+        itemKeys: revenueItemKeys,
+        onSolo: revenueBulk.onSolo,
+        onShowAll: revenueBulk.onCheckAll,
+        onHide: (key) => onToggle(key, false),
+        animate: mainChartAnimate,
+      });
+    } else {
+      const series = dashBuildStackedSeries(expenseItems, state.checkedKeys, expenseColorMap);
+      dashRenderSvgStackedBarChart(mainChartEl, series, monthLabels, {
+        title: '支出推移',
+        headerClass: 'dashboard-chart-title--expense',
+        highlightWrap: wrap,
+        highlightSidebarRoot: expenseEl,
+        breakdownItems: expenseItems,
+        drilldownCtx,
+        checkedKeys: state.checkedKeys,
+        itemKeys: expenseItemKeys,
+        onSolo: expenseBulk.onSolo,
+        onShowAll: expenseBulk.onCheckAll,
+        onHide: (key) => onToggle(key, false),
+        animate: mainChartAnimate,
+      });
+    }
+  }
 
-  dashRenderSvgGradientLineChart(
-    cashChartEl,
-    monthly.map((m) => m.cash),
-    monthLabels,
-    {
-      title: '預金残高推移',
-      headerClass: 'dashboard-chart-title--cash',
-      sectionFilterId: 'cashBalance',
-      includeZero: false,
-      prevValues: prevMonthly?.map((m) => m.cash) ?? null,
-      prevPrevValues: prevPrevMonthly?.map((m) => m.cash) ?? null,
-      animate,
-    },
-  );
+  // 棒グラフ更新後に結び直す（空→全表示のあとでもリスト→棒のハイライトが生きるように）
+  dashBindSidebarListSeriesHighlight(revenueEl, 'revenue');
+  dashBindSidebarListSeriesHighlight(expenseEl, 'expense');
+
+  if (!skipUnaffectedCharts) {
+    dashRenderSvgGradientLineChart(
+      profitChartEl,
+      monthly.map((m) => m.profit),
+      monthLabels,
+      {
+        title: '利益率推移',
+        headerClass: 'dashboard-chart-title--profit',
+        sectionFilterId: 'profit',
+        includeZero: true,
+        negativeTicksRed: true,
+        prevValues: prevMonthly?.map((m) => m.profit) ?? null,
+        prevPrevValues: prevPrevMonthly?.map((m) => m.profit) ?? null,
+        animate,
+      },
+    );
+
+    dashRenderSvgGradientLineChart(
+      cashChartEl,
+      monthly.map((m) => m.cash),
+      monthLabels,
+      {
+        title: '預金残高推移',
+        headerClass: 'dashboard-chart-title--cash',
+        sectionFilterId: 'cashBalance',
+        includeZero: false,
+        prevValues: prevMonthly?.map((m) => m.cash) ?? null,
+        prevPrevValues: prevPrevMonthly?.map((m) => m.cash) ?? null,
+        animate,
+      },
+    );
+  }
 }
 
 function dashMakeDashboardRenderCtx({
@@ -2779,7 +3139,10 @@ function dashMakeDashboardRenderCtx({
 function dashSwitchToChartMode(wrap, mode) {
   const ctx = dashboardMountCtx;
   if (!ctx || !wrap?.isConnected) return;
-  if (ctx.state.chartMode === mode) return;
+  // 状態とタブ表示が食い違う場合は、同モードでも再描画する
+  const activeBtn = wrap.querySelector('.dashboard-mode-tabs .dashboard-mode-btn.is-active');
+  const uiMode = activeBtn?.dataset?.mode;
+  if (ctx.state.chartMode === mode && uiMode === mode) return;
   ctx.state.chartMode = mode;
   dashRenderDashboardContent(wrap, dashMakeDashboardRenderCtx(ctx), { animateMainChart: true });
 }
@@ -2962,7 +3325,6 @@ export function mountDashboardPanel({
             <button
               type="button"
               class="dashboard-mode-btn dashboard-period-all-btn"
-              data-mode="balance"
               title="${TIP_DASH_ALL_PERIODS}"
             >${DASHBOARD_ALL_PERIODS_BTN_LABEL}</button>
           </div>
@@ -2997,7 +3359,7 @@ export function mountDashboardPanel({
     onPeriodRangeChange,
   });
 
-  toolbar.querySelectorAll('.dashboard-mode-btn').forEach((btn) => {
+  toolbar.querySelectorAll('.dashboard-mode-tabs .dashboard-mode-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
       state.chartMode = btn.dataset.mode;
       dashRenderDashboardContent(wrap, renderCtx, { animateMainChart: true });
