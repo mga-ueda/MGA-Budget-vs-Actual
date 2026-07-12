@@ -100,6 +100,7 @@ bsSkipAccountPatterns: [
   ],
 paymentCounterparts: [
     '長期未払金',
+    '長期借入金',
     '保険積立金',
     '住民税',
     '役員借入金',

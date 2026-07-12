@@ -20,6 +20,7 @@ export const PAYMENT_PLAN_ACCOUNTS = [
   '租税公課',
   '保険積立金',
   '長期未払金',
+  '長期借入金',
   '未払消費税',
   '未払法人税等',
   '住民税',
@@ -32,6 +33,7 @@ export const PAYMENT_PLAN_SIMPLE_ACCOUNTS = [
   '租税公課',
   '保険積立金',
   '長期未払金',
+  '長期借入金',
   '未払消費税',
   '未払法人税等',
   '役員借入金',
@@ -55,6 +57,7 @@ export const PAYMENT_PLAN_ACCOUNT_SECTION_LABELS = {
 export const PAYMENT_PLAN_OTHER_PAY_ACCOUNTS = new Set([
   '保険積立金',
   '長期未払金',
+  '長期借入金',
   '未払消費税',
   '未払法人税等',
   '住民税',
@@ -65,6 +68,7 @@ export const PAYMENT_PLAN_OTHER_PAY_ACCOUNTS = new Set([
 export const PAYMENT_PLAN_OTHER_PAY_SIMPLE_ACCOUNTS = [
   '保険積立金',
   '長期未払金',
+  '長期借入金',
   '未払消費税',
   '未払法人税等',
   '役員借入金',

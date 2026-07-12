@@ -220,9 +220,9 @@ body {
 .plan-logo {
   box-sizing: border-box;
   height: var(--plan-logo-height);
+  width: var(--plan-logo-height);
   min-width: var(--plan-logo-height);
-  width: auto;
-  padding: 0 0.5rem;
+  padding: 0;
   border-radius: var(--plan-radius-sm);
   background: var(--plan-primary-btn-bg);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
@@ -244,6 +244,8 @@ body {
   align-self: end;
   justify-self: start;
   height: var(--plan-header-top-height);
+  width: var(--plan-header-top-height);
+  min-width: var(--plan-header-top-height);
   max-height: var(--plan-header-top-height);
 }
 
@@ -271,6 +273,8 @@ body {
 .plan-header-top .plan-logo-image {
   /* 行高が伸びてもロゴ画像は設計高さを維持する（100% だと行高に追従して肥大する） */
   min-height: 0;
+  width: auto;
+  min-width: 0;
   height: var(--plan-header-top-height);
   max-height: var(--plan-header-top-height);
   display: flex;
@@ -293,11 +297,24 @@ body {
   object-position: left bottom;
 }
 
+.plan-brand-heading {
+  display: grid;
+  grid-template-columns: max-content;
+  justify-items: stretch;
+  min-width: 0;
+}
+
 .plan-company {
-  font-size: 0.7rem;
+  box-sizing: border-box;
+  width: max-content;
+  max-width: 100%;
+  margin-bottom: 4px;
+  padding-inline: 20px;
+  font-size: 0.85rem;
   color: var(--plan-muted);
   letter-spacing: 0.08em;
-  text-transform: uppercase;
+  text-align: center;
+  white-space: nowrap;
 }
 
 .plan-company:empty {
@@ -306,18 +323,34 @@ body {
 
 .plan-title-row {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 0.5rem;
   min-height: var(--plan-header-control-height);
 }
 
+.plan-brand-heading h1,
 .plan-title-row h1 {
+  /* 列幅は社名の max-content で決め、タイトルはそれに合わせて伸ばす */
+  box-sizing: border-box;
   margin: 0;
   padding-inline: 20px;
+  width: 0;
+  min-width: 100%;
   font-size: 1.125rem;
   font-weight: 700;
   letter-spacing: -0.02em;
   line-height: var(--plan-header-control-line-height);
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plan-brand-heading:not(:has(.plan-company:not(:empty))) h1 {
+  width: max-content;
+  min-width: 0;
+  overflow: visible;
+  text-overflow: clip;
 }
 
 .plan-title-row .plan-period-select {
@@ -829,7 +862,6 @@ body {
 
 /* 旅費交通費（一人あたり月額）は直上の説明文と同じ desc サイズに揃える */
 .expand-settings-wrap.plan-settings-scalable .salary-plan-travel-allowance-field-label,
-.expand-settings-wrap.plan-settings-scalable .salary-plan-travel-allowance-suffix,
 .expand-settings-wrap.plan-settings-scalable .salary-plan-travel-allowance-input {
   font-size: calc(var(--plan-settings-ui-desc-size) * var(--plan-settings-ui-scale));
 }
@@ -839,8 +871,8 @@ body {
 }
 
 .expand-settings-wrap.plan-settings-scalable .salary-plan-travel-allowance-input {
-  width: calc(9ch * var(--plan-settings-ui-scale));
-  min-width: calc(7ch * var(--plan-settings-ui-scale));
+  width: calc(10ch * var(--plan-settings-ui-scale));
+  min-width: calc(8ch * var(--plan-settings-ui-scale));
   padding: calc(0.35rem * var(--plan-settings-ui-scale)) calc(0.55rem * var(--plan-settings-ui-scale));
 }
 
@@ -1685,13 +1717,77 @@ select.app-settings-input {
 }
 
 .other-settings-general-row .other-settings-corp-field .app-settings-input {
-  width: 14rem;
+  width: min(36rem, 100%);
+  min-width: 22rem;
 }
 
 .other-settings-corp-field {
   flex: 0 0 auto;
   min-width: 0;
   max-width: none;
+}
+
+.other-settings-danger {
+  margin-top: 0.85rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--plan-border);
+}
+
+.other-settings-danger .app-settings-hint {
+  margin: 0 0 0.65rem;
+  white-space: nowrap;
+}
+
+.app-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: var(--plan-journal-overlay);
+}
+
+.app-confirm-dialog {
+  width: min(26rem, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem 1.1rem;
+  background: var(--plan-context-menu-bg);
+  color: var(--plan-journal-text);
+  border: 1px solid var(--plan-border);
+  border-radius: 8px;
+  box-shadow: 0 16px 48px var(--plan-context-menu-shadow);
+}
+
+.app-confirm-title {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.app-confirm-message {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.55;
+  color: var(--plan-text-dim);
+  white-space: pre-wrap;
+}
+
+.app-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.25rem;
+}
+
+.app-confirm-actions .settings-delete-btn,
+.app-confirm-actions .expand-reset-btn {
+  min-width: 5.5rem;
 }
 
 .app-settings-wrap .csv-name-settings-wrap {
@@ -4235,10 +4331,70 @@ html[data-plan-color-mode="light"] .plan-loading-overlay-panel {
   margin-bottom: 0.75rem;
 }
 
+.employee-add-form #employee-add-number,
+.employee-add-form #employee-add-last,
+.employee-add-form #employee-add-first,
+.employee-add-form #employee-add-contract,
+.employee-add-form #employee-add-join {
+  text-align: center;
+}
+
+.employee-add-form #employee-add-salary {
+  text-align: right;
+}
+
 .employee-add-form-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
+}
+
+
+.employee-settings-table td.employee-cell-editable {
+  cursor: text;
+}
+
+.employee-settings-table td.employee-cell-editable:hover {
+  outline: 1px dashed var(--plan-border);
+  outline-offset: -1px;
+}
+
+/* 社員一覧: セル編集時も列幅・行高を変えない（input をセル内に絶対配置） */
+.employee-settings-table td.employee-cell-editable:has(> .employee-cell-edit-input) {
+  position: relative;
+  overflow: hidden;
+}
+
+.employee-settings-table td.employee-cell-editable > .employee-cell-edit-input {
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  min-width: 0;
+  margin: 0;
+  padding: 0 0.35rem;
+  border: none;
+  border-radius: 0;
+  background: var(--plan-editor-bg);
+  color: var(--plan-text);
+  font: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  text-align: inherit;
+  box-shadow: inset 0 0 0 1px var(--plan-editor-border);
+}
+
+.employee-settings-table td.employee-cell-editable > .employee-cell-edit-input:focus {
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--plan-editor-border-hover);
+}
+
+.employee-settings-table td.employee-cell-editable > .employee-cell-edit-input--amount {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 .employee-settings-table th {
@@ -4347,12 +4503,51 @@ html[data-plan-color-mode="light"] .plan-loading-overlay-panel {
 }
 
 .employee-settings-table tfoot .employee-settings-total-label {
-  text-align: center;
+  text-align: right;
 }
 
 .employee-settings-table .col-emp-actions {
   width: calc(7.5rem * var(--plan-settings-ui-scale, 1));
   text-align: center;
+}
+
+
+.employee-add-director-field {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+.employee-add-director-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  min-height: 1.75rem;
+  font-size: 0.78rem;
+  color: var(--plan-text);
+  cursor: pointer;
+  user-select: none;
+}
+
+.employee-settings-table .col-emp-director {
+  width: calc(4.75rem * var(--plan-settings-ui-scale, 1));
+  min-width: calc(4.75rem * var(--plan-settings-ui-scale, 1));
+  text-align: center;
+}
+
+.expand-settings-wrap.employee-settings-wrap .employee-settings-table thead th.col-emp-director,
+.expand-settings-wrap.employee-settings-wrap .employee-settings-table tbody td.col-emp-director,
+.expand-settings-wrap .employee-settings-table tbody td.col-emp-director,
+.expand-settings-wrap .employee-settings-table tfoot td.col-emp-director {
+  text-align: center;
+}
+
+.employee-director-compensation {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin: 0;
 }
 
 .employee-settings-table .col-emp-exclude {
@@ -4520,8 +4715,8 @@ html[data-plan-color-mode="light"] .plan-loading-overlay-panel {
 }
 
 .salary-plan-travel-allowance-input {
-  width: 9ch;
-  min-width: 7ch;
+  width: 10ch;
+  min-width: 8ch;
   padding: 0.35rem 0.55rem;
   border: 1px solid var(--plan-border);
   border-radius: 4px;
@@ -4530,11 +4725,6 @@ html[data-plan-color-mode="light"] .plan-loading-overlay-panel {
   font-size: clamp(0.68rem, 0.32vw + 0.62rem, 0.8rem);
   font-variant-numeric: tabular-nums;
   text-align: right;
-}
-
-.salary-plan-travel-allowance-suffix {
-  font-size: clamp(0.68rem, 0.32vw + 0.62rem, 0.8rem);
-  color: var(--plan-text-dim);
 }
 
 .salary-plan-period-block {

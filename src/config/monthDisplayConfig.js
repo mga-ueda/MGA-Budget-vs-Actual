@@ -10,7 +10,7 @@ const MONTH_DISPLAY_STORAGE_KEY = 'mga-month-display';
 
 /**
  * 期ごとの実績/計画の境界。
- * planFromMonth 以降の月が計画表示。未設定は全月計画。
+ * planFromMonth 以降の月が計画表示。未設定は当月の前月まで実績（当月が期首なら全月計画）。
  * planFromMonth: null は全月実績（決終整理除く）。
  * @type {Record<string, { planFromMonth: string | null }>}
  */
@@ -30,23 +30,38 @@ function getLastToggleMonthIndex(fiscalMonths = FISCAL_MONTHS) {
   return -1;
 }
 
-function getDefaultPlanFromMonth(fiscalMonths = FISCAL_MONTHS) {
+/**
+ * 未設定時の計画開始月。
+ * 当月の前月までを実績とするため、計画開始は当月。
+ * 当月が期首（最初のトグル対象月）なら全月計画のまま。
+ */
+function getDefaultPlanFromMonth(fiscalMonths = FISCAL_MONTHS, date = new Date()) {
   const idx = fiscalMonths.findIndex((m) => isMonthDisplayToggleTarget(m));
-  return idx >= 0 ? fiscalMonths[idx] : fiscalMonths[0];
+  const firstToggle = idx >= 0 ? fiscalMonths[idx] : fiscalMonths[0];
+  const currentLabel = `${date.getMonth() + 1}月`;
+  if (!isMonthDisplayToggleTarget(currentLabel)) return firstToggle;
+  const currentIdx = fiscalMonths.indexOf(currentLabel);
+  if (currentIdx < 0 || currentIdx === idx) return firstToggle;
+  return currentLabel;
 }
 
-/** 計画表示が始まる月の会計月インデックス（未設定は最初のトグル対象月） */
-export function getFirstPlanMonthIndex(config, fiscalPeriod, fiscalMonths = FISCAL_MONTHS) {
+/** 計画表示が始まる月の会計月インデックス（未設定は当月。期首なら全月計画） */
+export function getFirstPlanMonthIndex(
+  config,
+  fiscalPeriod,
+  fiscalMonths = FISCAL_MONTHS,
+  date = new Date(),
+) {
   const periodKey = String(fiscalPeriod);
   const entry = config?.[periodKey];
   if (!entry || !Object.prototype.hasOwnProperty.call(entry, 'planFromMonth')) {
-    return fiscalMonths.findIndex((m) => isMonthDisplayToggleTarget(m));
+    return fiscalMonths.indexOf(getDefaultPlanFromMonth(fiscalMonths, date));
   }
   if (entry.planFromMonth === null) {
     return getLastToggleMonthIndex(fiscalMonths) + 1;
   }
   const idx = fiscalMonths.indexOf(entry.planFromMonth);
-  if (idx < 0) return fiscalMonths.findIndex((m) => isMonthDisplayToggleTarget(m));
+  if (idx < 0) return fiscalMonths.indexOf(getDefaultPlanFromMonth(fiscalMonths, date));
   return idx;
 }
 
@@ -98,11 +113,12 @@ export function getMonthDisplayMode(
   monthLabel,
   _businessStartYear,
   fiscalMonths = FISCAL_MONTHS,
+  date = new Date(),
 ) {
   if (!isMonthDisplayToggleTarget(monthLabel)) return 'actual';
   const idx = fiscalMonths.indexOf(monthLabel);
   if (idx < 0) return 'plan';
-  const firstPlanIdx = getFirstPlanMonthIndex(config, fiscalPeriod, fiscalMonths);
+  const firstPlanIdx = getFirstPlanMonthIndex(config, fiscalPeriod, fiscalMonths, date);
   return idx >= firstPlanIdx ? 'plan' : 'actual';
 }
 
@@ -114,6 +130,7 @@ export function buildBudgetActualMonthSets({
   businessStartYear,
   fiscalPeriod,
   fiscalMonths = FISCAL_MONTHS,
+  date = new Date(),
 }) {
   const actualMonthSet = new Set();
   const skipPlanFillMonths = new Set();
@@ -127,6 +144,7 @@ export function buildBudgetActualMonthSets({
       monthLabel,
       businessStartYear,
       fiscalMonths,
+      date,
     );
 
     if (mode === 'actual') {
@@ -151,6 +169,7 @@ export function toggleMonthDisplayMode(
   monthLabel,
   _businessStartYear,
   fiscalMonths = FISCAL_MONTHS,
+  date = new Date(),
 ) {
   if (!isMonthDisplayToggleTarget(monthLabel)) {
     return normalizeMonthDisplayConfig(config, fiscalMonths);
@@ -167,6 +186,7 @@ export function toggleMonthDisplayMode(
     monthLabel,
     _businessStartYear,
     fiscalMonths,
+    date,
   );
 
   let planFromMonth;
@@ -179,7 +199,7 @@ export function toggleMonthDisplayMode(
   }
 
   const nextConfig = { ...normalized };
-  const defaultPlanFromMonth = getDefaultPlanFromMonth(fiscalMonths);
+  const defaultPlanFromMonth = getDefaultPlanFromMonth(fiscalMonths, date);
 
   if (planFromMonth === defaultPlanFromMonth) {
     delete nextConfig[periodKey];

@@ -34,6 +34,10 @@ export const TIP_EXPENSE_OVERRIDE_SELECT = 'オーバーライドする諸経費
 export const TIP_SALARY_EXCLUDE =
   '給与支払い計画表に表示しない（住民税の支払対象外）';
 
+export const TIP_DIRECTOR_COMPENSATION =
+  '役員報酬として扱う（賞与入力なし・役員報酬側）';
+
+
 /** セクションフィルター */
 export const TIP_FILTER_ALL =
   'クリックで全セクションを表示（通常表示）';

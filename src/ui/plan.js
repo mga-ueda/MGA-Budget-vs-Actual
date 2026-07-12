@@ -7,6 +7,7 @@ import {
   TIP_EDIT_ONLY,
   TIP_DRILLDOWN_JOURNAL,
   TIP_SALARY_EXCLUDE,
+  TIP_DIRECTOR_COMPENSATION,
   TIP_FILTER_ALL,
   TIP_FILTER_SECTION,
   TIP_ROW_TOGGLE,
@@ -55,6 +56,7 @@ import {
   isFolderPickerSupported,
   isFolderDropSupported,
   bindDirectoryDropZone,
+  clearSavedFolderData,
   CSV_KINDS,
   loadCsvNameConfig,
   saveCsvNameConfig,
@@ -122,6 +124,7 @@ import {
   downloadSettingsExport,
   validateSettingsImportText,
   applyValidatedSettingsImport,
+  clearAllStoredAppData,
 } from '../config/settingsExport.js';
 import {
   normalizeConsumptionTaxRates,
@@ -250,6 +253,9 @@ import {
   formatEmployeeName,
   buildEmployeeTableColumns,
   getEmployeeCellValue,
+  getEmployeeTableCellEditRawValue,
+  applyEmployeeTableCellEdit,
+  EMPLOYEE_TABLE_EDITABLE_KEYS,
   computeTenure,
   isActiveEmployee,
   isSalaryPlanEmployee,
@@ -272,11 +278,6 @@ import {
   computeSalaryPlanEmployeeTotal,
   computeSalaryPlanMonthlyTotals,
   loadSalaryPlanSettings,
-  getBonusPaymentMonths,
-  setBonusPaymentMonths,
-  bonusPaymentMonthLabels,
-  monthLabelToNumber,
-  prunePeriodSalaryPlanBonuses,
   applyAmountFromMonthForward,
   applyAmountFromMonthForwardSkippingPast,
   salaryPlanAmountDiffersFromPrevious,
@@ -289,7 +290,6 @@ import {
   getTravelAllowancePerPerson,
   setTravelAllowancePerPerson,
   DEFAULT_TRAVEL_ALLOWANCE_PER_PERSON,
-  MAX_BONUS_COUNT,
 } from '../config/salaryPlanConfig.js';
 import {
   handlePlanAmountCellKeydown,
@@ -3472,12 +3472,11 @@ function persistEmployeeSalaryPlanBonusMonthly(employeeId, nextBonusMonthly) {
   refreshPlanTable();
 }
 
-function isEmployeeSalaryPlanBonusMonth(month, fiscalPeriod, fiscalMonths, emp) {
+function isEmployeeSalaryPlanBonusMonth(_month, _fiscalPeriod, _fiscalMonths, emp) {
+  // 予実表の人件費計画行は月額のみ編集
+  // 賞与は給与支払い計画表で毎月入力
   if (isDirectorEmployee(emp)) return false;
-  const bonusMonthLabels = bonusPaymentMonthLabels(
-    getBonusPaymentMonths(salaryPlanSettings, fiscalPeriod, fiscalMonths),
-  );
-  return bonusMonthLabels.includes(month);
+  return false;
 }
 
 function startEmployeeSalaryPlanCellEdit(td, {
@@ -5054,7 +5053,6 @@ function switchMainTab(nextTab) {
   if (nextTab === 'csvnames') nextTab = 'settings';
   const prevTab = activeTab;
   if (prevTab === 'plan' && nextTab !== 'plan') {
-    resetPlanBodyScroll();
     cachePlanTableColumnWidthsFromDom();
     // content fit 倍率はリセットしない。設定画面でも予実表で確定した
     // ヘッダー倍率を維持する（ウィンドウリサイズ時のみ追従して変わる）
@@ -5072,14 +5070,16 @@ function switchMainTab(nextTab) {
   activeTab = nextTab;
   syncPeriodControls();
   restoreLockedPlanUiDisplayScale();
+  // メニュー切替時は前回のスクロール位置を引き継がない（常にページ先頭）
+  resetPlanBodyScroll();
   if (nextTab === 'plan' && prevTab !== 'plan') {
-    resetPlanBodyScroll();
     const showLoading = shouldShowPlanLoadingOnTabReturn();
     if (showLoading) {
       showPlanLoadingOverlay({ awaitLayout: true });
     }
     const render = () => {
       renderView();
+      resetPlanBodyScroll();
       if (!showLoading || !planLoadingAwaitLayout) return;
       const table = root.querySelector('.plan-table');
       if (!table && !data) finishPlanLoadingAfterLayout();
@@ -5092,6 +5092,11 @@ function switchMainTab(nextTab) {
     return;
   }
   renderView();
+  // 描画後にも先頭へ（長いページ差し替えでスクロールが残るのを防ぐ）
+  requestAnimationFrame(() => {
+    resetPlanBodyScroll();
+    requestAnimationFrame(resetPlanBodyScroll);
+  });
 }
 
 function renderView({ measureColumnWidths = false } = {}) {
@@ -7256,7 +7261,7 @@ function renderTaxPaymentSettings() {
   const header = document.createElement('div');
   header.className = 'expand-settings-header tax-payment-settings-header';
   header.innerHTML = `
-    <p class="expand-settings-desc">租税公課・保険積立金・長期未払金・未払消費税・未払法人税等・法人税等・住民税・役員借入金の支払い計画を設定します。法人税等は予実表の「法人税」セクションに反映され、計画表示月は予実表上でも編集できます。住民税は市区町村ごとに入力し、合計が予実表に反映されます。当期の実績表示月は仕訳実績を表示します（編集不可）。予実表で計画表示に切り替えた月は編集できます。住民税のみ過去月も入力でき、予実表にもその値が反映されます。Shift+Enter で入力した月以降の同額を後続月に反映します。</p>
+    <p class="expand-settings-desc">租税公課・保険積立金・長期未払金・長期借入金・未払消費税・未払法人税等・法人税等・住民税・役員借入金の支払い計画を設定します。法人税等は予実表の「法人税」セクションに反映され、計画表示月は予実表上でも編集できます。住民税は市区町村ごとに入力し、合計が予実表に反映されます。当期の実績表示月は仕訳実績を表示します（編集不可）。予実表で計画表示に切り替えた月は編集できます。住民税のみ過去月も入力でき、予実表にもその値が反映されます。Shift+Enter で入力した月以降の同額を後続月に反映します。</p>
     <div class="tax-payment-settings-controls">
       <div class="tax-payment-plan-years-row">
         <span class="app-settings-label">計画年数</span>
@@ -8080,6 +8085,13 @@ function renderEmployeeSettings() {
         <span class="app-settings-label">入社年月日</span>
         <input type="text" class="app-settings-input" id="employee-add-join" autocomplete="off" spellcheck="false" placeholder="2024/04/01" />
       </label>
+      <div class="app-settings-field employee-add-director-field">
+        <span class="app-settings-label">役員報酬</span>
+        <label class="employee-add-director-check">
+          <input type="checkbox" class="app-settings-checkbox" id="employee-add-director" />
+          <span>役員報酬として扱う</span>
+        </label>
+      </div>
       <label class="app-settings-field">
         <span class="app-settings-label">月額報酬</span>
         <input type="text" class="app-settings-input" id="employee-add-salary" inputmode="numeric" autocomplete="off" spellcheck="false" />
@@ -8128,6 +8140,97 @@ function renderEmployeeSettings() {
     });
   }
 
+
+  function startEmployeeTableCellEdit(td, emp, col) {
+    if (!EMPLOYEE_TABLE_EDITABLE_KEYS.has(col.key)) return;
+    if (td.querySelector('input')) return;
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = col.key === 'monthlySalary'
+      ? 'employee-cell-edit-input employee-cell-edit-input--amount'
+      : 'employee-cell-edit-input';
+    input.autocomplete = 'off';
+    input.spellcheck = false;
+    if (col.key === 'monthlySalary') input.inputMode = 'numeric';
+
+    const raw = getEmployeeTableCellEditRawValue(emp, col.key);
+    input.value = col.key === 'monthlySalary'
+      ? formatTaxRateThresholdYen(raw)
+      : raw;
+
+    let closed = false;
+    const original = td.textContent;
+    const lockW = td.offsetWidth;
+    const lockH = td.offsetHeight;
+
+    const clearSizeLock = () => {
+      td.style.width = '';
+      td.style.height = '';
+      td.style.minWidth = '';
+      td.style.minHeight = '';
+    };
+
+    const finish = (save) => {
+      if (closed) return;
+      closed = true;
+      if (save) {
+        const editValue = col.key === 'monthlySalary'
+          ? parseTaxRateThresholdYen(input.value)
+          : input.value;
+        const result = applyEmployeeTableCellEdit(emp, col.key, editValue);
+        if (!result?.employee) {
+          showStatus(result?.error || '入力内容が不正です。', true);
+          clearSizeLock();
+          td.textContent = original;
+          return;
+        }
+        employees = saveEmployees(
+          employees.map((e) => (e.id === emp.id ? result.employee : e)),
+        );
+        renderEmployeeTable();
+        refreshPlanTableIfNeeded();
+        return;
+      }
+      clearSizeLock();
+      td.textContent = original;
+    };
+
+    input.addEventListener('keydown', (e) => {
+      if (e.isComposing) return;
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        finish(true);
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        finish(false);
+      }
+    });
+    if (col.key === 'monthlySalary') {
+      input.addEventListener('focus', () => {
+        input.value = parseTaxRateThresholdYen(input.value);
+      });
+      input.addEventListener('input', () => {
+        const filtered = filterTaxRateIntegerInput(input.value);
+        if (filtered !== input.value) input.value = filtered;
+      });
+    }
+    input.addEventListener('blur', () => {
+      setTimeout(() => {
+        if (!closed) finish(true);
+      }, 0);
+    });
+
+    td.style.width = `${lockW}px`;
+    td.style.height = `${lockH}px`;
+    td.style.minWidth = `${lockW}px`;
+    td.style.minHeight = `${lockH}px`;
+    td.textContent = '';
+    td.appendChild(input);
+    input.focus();
+    input.select();
+  }
+
   function renderEmployeeTable() {
     const listColumnEl = wrap.querySelector('.employee-settings-column-list');
     if (!listColumnEl) return;
@@ -8171,7 +8274,28 @@ function renderEmployeeSettings() {
         const td = document.createElement('td');
         td.className = col.className;
 
-        if (col.kind === 'salaryPlanExclude') {
+        if (col.kind === 'directorCompensation') {
+          const directorLabel = document.createElement('label');
+          directorLabel.className = 'employee-director-compensation';
+          const checkbox = document.createElement('input');
+          checkbox.type = 'checkbox';
+          checkbox.className = 'app-settings-checkbox';
+          checkbox.checked = emp.isDirectorCompensation === true;
+          checkbox.title = TIP_DIRECTOR_COMPENSATION;
+          checkbox.addEventListener('change', () => {
+            employees = saveEmployees(
+              employees.map((e) => (
+                e.id === emp.id
+                  ? { ...e, isDirectorCompensation: checkbox.checked }
+                  : e
+              )),
+            );
+            renderEmployeeTable();
+            refreshPlanTableIfNeeded();
+          });
+          directorLabel.appendChild(checkbox);
+          td.appendChild(directorLabel);
+        } else if (col.kind === 'salaryPlanExclude') {
           const excludeLabel = document.createElement('label');
           excludeLabel.className = 'employee-salary-plan-exclude';
           const checkbox = document.createElement('input');
@@ -8241,6 +8365,11 @@ function renderEmployeeSettings() {
           td.textContent = getEmployeeCellValue(emp, col, now);
         } else {
           td.textContent = getEmployeeCellValue(emp, col, now);
+          if (EMPLOYEE_TABLE_EDITABLE_KEYS.has(col.key)) {
+            td.classList.add('employee-cell-editable');
+            td.title = 'ダブルクリックで編集';
+            td.addEventListener('dblclick', () => startEmployeeTableCellEdit(td, emp, col));
+          }
         }
 
         tr.appendChild(td);
@@ -8259,7 +8388,7 @@ function renderEmployeeSettings() {
       td.className = col.className;
       if (col.kind === 'amount') {
         td.textContent = getEmployeeAmountTotalValue(col.key, totals);
-      } else if (!totalLabelShown && col.key === 'name') {
+      } else if (!totalLabelShown && col.key === 'tenure') {
         td.textContent = '合計';
         td.classList.add('employee-settings-total-label');
         totalLabelShown = true;
@@ -8431,11 +8560,7 @@ function renderEmployeeSettings() {
     input.className = 'salary-plan-travel-allowance-input';
     input.autocomplete = 'off';
     input.spellcheck = false;
-    input.value = formatSalaryPlanAmount(getTravelAllowancePerPerson(salaryPlanSettings, fiscalPeriod));
-
-    const suffix = document.createElement('span');
-    suffix.className = 'salary-plan-travel-allowance-suffix';
-    suffix.textContent = '円/月';
+    input.value = formatSalaryPlanYen(getTravelAllowancePerPerson(salaryPlanSettings, fiscalPeriod));
 
     const persist = () => {
       const parsed = parseSalaryPlanAmountInput(input.value);
@@ -8444,7 +8569,7 @@ function renderEmployeeSettings() {
         fiscalPeriod,
         parsed ?? DEFAULT_TRAVEL_ALLOWANCE_PER_PERSON,
       );
-      input.value = formatSalaryPlanAmount(getTravelAllowancePerPerson(salaryPlanSettings, fiscalPeriod));
+      input.value = formatSalaryPlanYen(getTravelAllowancePerPerson(salaryPlanSettings, fiscalPeriod));
     };
 
     input.addEventListener('focus', () => {
@@ -8461,7 +8586,6 @@ function renderEmployeeSettings() {
     });
 
     field.appendChild(input);
-    field.appendChild(suffix);
     return field;
   }
 
@@ -8640,74 +8764,7 @@ function renderEmployeeSettings() {
     return table;
   }
 
-  function buildBonusMonthConfig(activeEmployees, fiscalPeriod, fiscalMonths) {
-    const bonusMonthNumbers = getBonusPaymentMonths(
-      salaryPlanSettings,
-      fiscalPeriod,
-      fiscalMonths,
-    );
-
-    const bonusMonthConfig = document.createElement('div');
-    bonusMonthConfig.className = 'salary-plan-bonus-month-config';
-    const configLabel = document.createElement('span');
-    configLabel.className = 'salary-plan-bonus-month-config-label';
-    configLabel.textContent = '賞与支払月';
-    bonusMonthConfig.appendChild(configLabel);
-
-    for (let slot = 0; slot < MAX_BONUS_COUNT; slot += 1) {
-      const field = document.createElement('label');
-      field.className = 'salary-plan-bonus-month-field';
-
-      const fieldLabel = document.createElement('span');
-      fieldLabel.className = 'salary-plan-bonus-month-field-label';
-      fieldLabel.textContent = `${slot + 1}回目`;
-      field.appendChild(fieldLabel);
-
-      const select = document.createElement('select');
-      select.className = 'salary-plan-bonus-month-select';
-      const emptyOpt = document.createElement('option');
-      emptyOpt.value = '';
-      emptyOpt.textContent = '—';
-      select.appendChild(emptyOpt);
-      for (const month of fiscalMonths) {
-        const opt = document.createElement('option');
-        opt.value = String(monthLabelToNumber(month));
-        opt.textContent = month;
-        select.appendChild(opt);
-      }
-      select.value = bonusMonthNumbers[slot] != null ? String(bonusMonthNumbers[slot]) : '';
-
-      select.addEventListener('change', () => {
-        const nums = [...bonusMonthConfig.querySelectorAll('select')]
-          .map((el) => (el.value ? parseInt(el.value, 10) : null))
-          .filter((n) => n != null);
-        salaryPlanSettings = setBonusPaymentMonths(
-          salaryPlanSettings,
-          fiscalPeriod,
-          nums,
-          fiscalMonths,
-        );
-        const labels = bonusPaymentMonthLabels(
-          getBonusPaymentMonths(salaryPlanSettings, fiscalPeriod, fiscalMonths),
-        );
-        salaryPlans = prunePeriodSalaryPlanBonuses(
-          salaryPlans,
-          labels,
-          fiscalPeriod,
-          activeEmployees,
-          fiscalMonths,
-        );
-        renderSalaryPlanSection(activeEmployees);
-      });
-
-      field.appendChild(select);
-      bonusMonthConfig.appendChild(field);
-    }
-
-    return bonusMonthConfig;
-  }
-
-  function buildSalaryPlanTable(activeEmployees, fiscalPeriod, fiscalMonths, bonusMonthLabels, {
+  function buildSalaryPlanTable(activeEmployees, fiscalPeriod, fiscalMonths, {
     showIncreaseRate = false,
     comparePeriod = null,
   } = {}) {
@@ -8840,8 +8897,7 @@ function renderEmployeeSettings() {
 
         for (let i = 0; i < fiscalMonths.length; i += 1) {
           const month = fiscalMonths[i];
-          const isEditable = bonusMonthLabels.includes(month)
-            && isSalaryPlanMonthEditable(fiscalPeriod, month);
+          const isEditable = isSalaryPlanMonthEditable(fiscalPeriod, month);
           const prevValue = i > 0 ? plan.bonusMonthly[fiscalMonths[i - 1]] : undefined;
           appendSalaryPlanAmountCell(trBonus, {
             emp,
@@ -8850,7 +8906,7 @@ function renderEmployeeSettings() {
             monthIndex: i,
             fiscalPeriod,
             value: plan.bonusMonthly[month],
-            prevValue: isEditable ? prevValue : undefined,
+            prevValue,
             editable: isEditable,
           });
         }
@@ -9076,10 +9132,6 @@ function renderEmployeeSettings() {
       if (month) monthDisplayUi.updateMonthHeaderTh(th, month, fiscalPeriod);
     });
 
-    const bonusMonthLabels = bonusPaymentMonthLabels(
-      getBonusPaymentMonths(salaryPlanSettings, fiscalPeriod, fiscalMonths),
-    );
-
     for (const emp of activeEmployees) {
       const plan = getSalaryPlanForEmployee(emp, fiscalMonths, fiscalPeriod);
       const trMonthly = table.querySelector(`tbody tr[data-plan-row-key="${CSS.escape(`${emp.id}:monthly`)}"]`);
@@ -9119,14 +9171,13 @@ function renderEmployeeSettings() {
         const month = fiscalMonths[i];
         const td = amountCells[i];
         if (!td) continue;
-        const isEditable = bonusMonthLabels.includes(month)
-          && isSalaryPlanMonthEditable(fiscalPeriod, month);
+        const isEditable = isSalaryPlanMonthEditable(fiscalPeriod, month);
         const prevValue = i > 0 ? plan.bonusMonthly[fiscalMonths[i - 1]] : undefined;
         monthDisplayUi.setPlanAmountCellContent(td, {
           month,
           monthIndex: i,
           value: plan.bonusMonthly[month],
-          prevValue: isEditable ? prevValue : undefined,
+          prevValue,
           editable: isEditable,
           fiscalPeriod,
           forcePlanMonthColor: true,
@@ -9336,10 +9387,6 @@ function renderEmployeeSettings() {
     section.appendChild(salaryHeader);
 
     for (const period of [currentPeriod, nextPeriod]) {
-      const bonusMonthLabels = bonusPaymentMonthLabels(
-        getBonusPaymentMonths(salaryPlanSettings, period, fiscalMonths),
-      );
-
       const block = document.createElement('div');
       block.className = 'salary-plan-period-block';
 
@@ -9348,12 +9395,10 @@ function renderEmployeeSettings() {
       blockTitle.textContent = formatFiscalPeriodLabel(period);
       block.appendChild(blockTitle);
 
-      block.appendChild(buildBonusMonthConfig(activeEmployees, period, fiscalMonths));
-
       const tableWrap = document.createElement('div');
       tableWrap.className = 'salary-plan-table-wrap';
       tableWrap.appendChild(
-        buildSalaryPlanTable(activeEmployees, period, fiscalMonths, bonusMonthLabels, {
+        buildSalaryPlanTable(activeEmployees, period, fiscalMonths, {
           showIncreaseRate: period === nextPeriod,
           comparePeriod: currentPeriod,
         }),
@@ -9416,6 +9461,18 @@ function renderEmployeeSettings() {
     }
   });
 
+  const salaryInput = addForm.querySelector('#employee-add-salary');
+  salaryInput.addEventListener('focus', () => {
+    salaryInput.value = parseTaxRateThresholdYen(salaryInput.value);
+  });
+  salaryInput.addEventListener('input', () => {
+    const filtered = filterTaxRateIntegerInput(salaryInput.value);
+    if (filtered !== salaryInput.value) salaryInput.value = filtered;
+  });
+  salaryInput.addEventListener('blur', () => {
+    salaryInput.value = formatTaxRateThresholdYen(salaryInput.value);
+  });
+
   addForm.querySelector('#employee-add-cancel-btn').addEventListener('click', () => {
     addForm.hidden = true;
     addForm.querySelector('#employee-add-number').value = '';
@@ -9423,7 +9480,8 @@ function renderEmployeeSettings() {
     addForm.querySelector('#employee-add-first').value = '';
     addForm.querySelector('#employee-add-contract').value = '';
     addForm.querySelector('#employee-add-join').value = '';
-    addForm.querySelector('#employee-add-salary').value = '';
+    salaryInput.value = '';
+    addForm.querySelector('#employee-add-director').checked = false;
   });
 
   addForm.querySelector('#employee-add-submit-btn').addEventListener('click', () => {
@@ -9433,8 +9491,8 @@ function renderEmployeeSettings() {
       showStatus('姓と名を入力してください。', true);
       return;
     }
-    const salaryRaw = addForm.querySelector('#employee-add-salary').value.trim();
-    const salary = salaryRaw ? parseInt(salaryRaw.replace(/,/g, ''), 10) : null;
+    const salaryRaw = parseTaxRateThresholdYen(salaryInput.value);
+    const salary = salaryRaw ? parseInt(salaryRaw, 10) : null;
     const newEmployee = createManualEmployee({
       employeeNumber: addForm.querySelector('#employee-add-number').value.trim(),
       lastName,
@@ -9442,6 +9500,7 @@ function renderEmployeeSettings() {
       contractType: addForm.querySelector('#employee-add-contract').value.trim(),
       joinDate: addForm.querySelector('#employee-add-join').value.trim(),
       baseSalary: Number.isFinite(salary) ? salary : null,
+      isDirectorCompensation: addForm.querySelector('#employee-add-director').checked,
     });
     employees = saveEmployees([...employees, newEmployee]);
     addForm.hidden = true;
@@ -9450,7 +9509,8 @@ function renderEmployeeSettings() {
     addForm.querySelector('#employee-add-first').value = '';
     addForm.querySelector('#employee-add-contract').value = '';
     addForm.querySelector('#employee-add-join').value = '';
-    addForm.querySelector('#employee-add-salary').value = '';
+    salaryInput.value = '';
+    addForm.querySelector('#employee-add-director').checked = false;
     showStatus(`${formatEmployeeName(newEmployee)} を追加しました。`);
     renderEmployeeTable();
   });
@@ -10288,6 +10348,63 @@ function filterBrandLogoDecimalInput(value) {
   return `${intPart}.`;
 }
 
+
+/** 破壊的操作の確認。キャンセルを既定フォーカスにする */
+function confirmDangerousAction({
+  title,
+  message,
+  confirmLabel = '実行する',
+  cancelLabel = 'キャンセル',
+} = {}) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.className = 'app-confirm-overlay';
+    overlay.innerHTML = `
+      <div class="app-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="app-confirm-title">
+        <h2 class="app-confirm-title" id="app-confirm-title"></h2>
+        <p class="app-confirm-message"></p>
+        <div class="app-confirm-actions">
+          <button type="button" class="settings-delete-btn" data-action="confirm"></button>
+          <button type="button" class="expand-reset-btn" data-action="cancel"></button>
+        </div>
+      </div>
+    `;
+    overlay.querySelector('.app-confirm-title').textContent = title;
+    overlay.querySelector('.app-confirm-message').textContent = message;
+    const confirmBtn = overlay.querySelector('[data-action="confirm"]');
+    const cancelBtn = overlay.querySelector('[data-action="cancel"]');
+    confirmBtn.textContent = confirmLabel;
+    cancelBtn.textContent = cancelLabel;
+
+    const finish = (value) => {
+      document.removeEventListener('keydown', onKeyDown, true);
+      overlay.remove();
+      resolve(value);
+    };
+    const onKeyDown = (ev) => {
+      if (ev.key === 'Escape') {
+        ev.preventDefault();
+        ev.stopPropagation();
+        finish(false);
+      }
+    };
+
+    confirmBtn.addEventListener('click', () => finish(true));
+    cancelBtn.addEventListener('click', () => finish(false));
+    overlay.addEventListener('click', (ev) => {
+      if (ev.target === overlay) finish(false);
+    });
+    overlay.querySelector('.app-confirm-dialog').addEventListener('click', (ev) => {
+      ev.stopPropagation();
+    });
+
+    document.addEventListener('keydown', onKeyDown, true);
+    const mountTarget = document.querySelector('.plan-app') ?? document.body;
+    mountTarget.appendChild(overlay);
+    cancelBtn.focus();
+  });
+}
+
 function renderOtherSettings() {
   setPlanKpi(null);
 
@@ -10379,7 +10496,7 @@ function renderOtherSettings() {
         <label class="app-settings-field other-settings-corp-field">
           <span class="app-settings-label">法人判定文字</span>
           <input type="text" class="app-settings-input" id="corp-entity-markers"
-            spellcheck="false" autocomplete="off" placeholder="株式会社,（株） など" />
+            spellcheck="false" autocomplete="off" placeholder="㈱,㈲,(同),株式会社,有限会社,合同会社" />
         </label>
       </div>
     </div>
@@ -10387,6 +10504,18 @@ function renderOtherSettings() {
   wrap.appendChild(form);
 
   appendCsvNameSettingsPanel(wrap);
+
+  const dangerSection = document.createElement('div');
+  dangerSection.innerHTML = `
+    <div class="app-settings-section other-settings-danger">
+      <h2 class="ui-color-panel-title">データ管理</h2>
+      <p class="app-settings-hint">設定・計画・保存フォルダを含む全ての保存データを削除し、初期状態に戻します。この操作は取り消せません。</p>
+      <div class="other-settings-brand-row other-settings-brand-row-actions">
+        <button type="button" class="settings-delete-btn" id="app-settings-clear-all-btn">全てのデータをクリア</button>
+      </div>
+    </div>
+  `.trim();
+  wrap.appendChild(dangerSection.firstElementChild);
 
   const corpEntityMarkersInput = form.querySelector('#corp-entity-markers');
   const companyNameInput = form.querySelector('#brand-company-name');
@@ -10658,8 +10787,6 @@ function renderOtherSettings() {
     corpEntityMarkersInput.value = appSettings.corpEntityMarkers;
   });
 
-
-
   wrap.querySelector('#app-settings-reset-btn').addEventListener('click', () => {
     appSettings = resetOtherAppSettings(appSettings);
     saveAppSettings(appSettings);
@@ -10672,6 +10799,19 @@ function renderOtherSettings() {
     refreshBrandSettings();
     syncPeriodControls();
     if (activeTab === 'plan' && data) refreshPlanTable();
+  });
+
+  wrap.querySelector('#app-settings-clear-all-btn').addEventListener('click', async () => {
+    const confirmed = await confirmDangerousAction({
+      title: '全てのデータをクリア',
+      message: '設定・計画・保存フォルダを含む全ての保存データを削除し、初期状態に戻します。\n\nこの操作は取り消せません。',
+      confirmLabel: 'クリアする',
+      cancelLabel: 'キャンセル',
+    });
+    if (!confirmed) return;
+    clearAllStoredAppData();
+    await clearSavedFolderData();
+    window.location.reload();
   });
 
   replaceRootPanel(wrap);
@@ -10687,6 +10827,7 @@ function renderOtherSettings() {
     const sectionW = Math.max(
       brandRowW,
       measureElementIntrinsicWidth(wrap.querySelector('.other-settings-general-row')),
+      measureElementIntrinsicWidth(wrap.querySelector('.other-settings-danger')),
       measureElementIntrinsicWidth(wrap.querySelector('.csv-name-settings-table')),
     );
     return sectionW > 0 ? sectionW + planSettingsRemToPx(2) : 0;

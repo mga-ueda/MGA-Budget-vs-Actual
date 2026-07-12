@@ -125,6 +125,7 @@ export function parseEmployeeCsv(text) {
       joinDate: getCell(cells, index, COL.JOIN_DATE),
       leaveDate: getCell(cells, index, COL.LEAVE_DATE),
       directorSalary: parseNumber(getCell(cells, index, COL.DIRECTOR_SALARY)),
+      isDirectorCompensation: (parseNumber(getCell(cells, index, COL.DIRECTOR_SALARY)) ?? 0) > 0,
       baseSalary: parseNumber(getCell(cells, index, COL.BASE_SALARY)),
       positionAllowance: parseNumber(getCell(cells, index, COL.POSITION_ALLOWANCE)),
       fixedOvertimePay: parseNumber(getCell(cells, index, COL.FIXED_OVERTIME_PAY)),

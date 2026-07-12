@@ -48,10 +48,10 @@ export const MIN_ROW_PADDING_SCALE = 1;
 export const MAX_ROW_PADDING_SCALE = 5;
 
 /** 補助科目の法人等判定に使う文字列マーカー（カンマ区切り） */
-export const DEFAULT_CORP_ENTITY_MARKERS = '㈱,㈲,(同)';
+export const DEFAULT_CORP_ENTITY_MARKERS = '㈱,㈲,(同),株式会社,有限会社,合同会社';
 
-export const DEFAULT_COMPANY_NAME = 'MIYABI GAME AUDIO INC.';
-export const DEFAULT_BRAND_ICON_TEXT = 'MGA';
+export const DEFAULT_COMPANY_NAME = 'サウンド株式会社';
+export const DEFAULT_BRAND_ICON_TEXT = 'SKK';
 export const DEFAULT_BRAND_FILL_COLOR = '#2563eb';
 export const DEFAULT_BRAND_TEXT_COLOR = '#ffffff';
 export const DEFAULT_BRAND_LOGO_OUTLINE_COLOR = '#a6a6a6';

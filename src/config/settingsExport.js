@@ -180,3 +180,18 @@ export function applyValidatedSettingsImport(data) {
   }
   return { ok: true, importedKeys };
 }
+
+/** localStorage 上のアプリ保存データをすべて削除する */
+export function clearAllStoredAppData() {
+  const keys = [];
+  for (let i = 0; i < localStorage.length; i += 1) {
+    const key = localStorage.key(i);
+    if (key && key.startsWith('mga-')) keys.push(key);
+  }
+  for (const key of ALL_SETTINGS_STORAGE_KEYS) {
+    if (!keys.includes(key)) keys.push(key);
+  }
+  for (const key of keys) {
+    localStorage.removeItem(key);
+  }
+}

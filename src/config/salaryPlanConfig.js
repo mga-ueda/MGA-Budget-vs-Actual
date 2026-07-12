@@ -51,10 +51,11 @@ export function saveSalaryPlanSettings(settings) {
   return settings;
 }
 
-export function getBonusPaymentMonths(settings, fiscalPeriod, fiscalMonths) {
-  const periodKey = String(fiscalPeriod);
-  const raw = settings[periodKey]?.bonusMonths;
-  return normalizeBonusPaymentMonths(raw ?? DEFAULT_BONUS_PAYMENT_MONTHS, fiscalMonths);
+/** 賞与は全会計月で入力可能（支払月設定は使わない） */
+export function getBonusPaymentMonths(_settings, _fiscalPeriod, fiscalMonths) {
+  return fiscalMonths
+    .map(monthLabelToNumber)
+    .filter((n) => Number.isInteger(n) && n >= 1 && n <= 12);
 }
 
 export function setBonusPaymentMonths(settings, fiscalPeriod, monthNumbers, fiscalMonths) {
@@ -135,11 +136,13 @@ export function setTravelAllowancePerPerson(settings, fiscalPeriod, amount) {
   });
 }
 
-export function pruneBonusMonthly(bonusMonthly, bonusMonthLabels, fiscalMonths) {
-  const allowed = new Set(bonusMonthLabels);
+/** 賞与月制限を廃止したため、値はそのまま保持する */
+export function pruneBonusMonthly(bonusMonthly, _bonusMonthLabels, fiscalMonths) {
   const next = emptyMonthly(fiscalMonths);
-  for (const month of fiscalMonths) {
-    next[month] = allowed.has(month) ? bonusMonthly[month] : null;
+  if (bonusMonthly && typeof bonusMonthly === 'object') {
+    for (const month of fiscalMonths) {
+      next[month] = normalizeAmount(bonusMonthly[month]);
+    }
   }
   return next;
 }

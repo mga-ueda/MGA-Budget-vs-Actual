@@ -53,6 +53,16 @@ async function dbPut(key, value) {
   });
 }
 
+async function dbDelete(key) {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    const req = tx.objectStore(STORE_NAME).delete(key);
+    req.onerror = () => reject(req.error);
+    req.onsuccess = () => resolve();
+  });
+}
+
 export function isFolderPickerSupported() {
   return typeof window.showDirectoryPicker === 'function';
 }
@@ -245,6 +255,17 @@ export function hasFolderCsvCache() {
 
 export function clearFolderCsvCache() {
   folderCsvCache = null;
+}
+
+/** 保存フォルダハンドルと CSV キャッシュを破棄する */
+export async function clearSavedFolderData() {
+  clearFolderCsvCache();
+  try {
+    await dbDelete(FOLDER_KEY);
+    await dbDelete(FOLDER_NAME_KEY);
+  } catch {
+    /* ignore */
+  }
 }
 
 function folderDataFromResolved(resolved, folderName) {

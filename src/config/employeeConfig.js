@@ -18,6 +18,16 @@ function normalizeResidentTaxMonthly(value) {
   return Object.keys(result).length > 0 ? result : null;
 }
 
+/** 役員報酬フラグを決定。未設定時は金額または旧名前判定から移行 */
+function resolveIsDirectorCompensation(employee) {
+  if (employee.isDirectorCompensation === true) return true;
+  if (employee.isDirectorCompensation === false) return false;
+  if ((normalizeSalary(employee.directorSalary) ?? 0) > 0) return true;
+  const contract = String(employee.contractType ?? '');
+  const position = String(employee.position ?? '');
+  return /役員/.test(contract) || /役員/.test(position);
+}
+
 export function normalizeEmployee(employee) {
   if (!employee || typeof employee !== 'object') return null;
   const id = String(employee.id ?? '').trim();
@@ -35,6 +45,7 @@ export function normalizeEmployee(employee) {
     joinDate: String(employee.joinDate ?? '').trim(),
     leaveDate: String(employee.leaveDate ?? '').trim(),
     directorSalary: normalizeSalary(employee.directorSalary),
+    isDirectorCompensation: resolveIsDirectorCompensation(employee),
     baseSalary: normalizeSalary(employee.baseSalary),
     positionAllowance: normalizeSalary(employee.positionAllowance),
     fixedOvertimePay: normalizeSalary(employee.fixedOvertimePay),
@@ -88,7 +99,7 @@ export function mergeEmployees(existing, imported) {
   return sortEmployees([...map.values()]);
 }
 
-export function createManualEmployee({ employeeNumber, lastName, firstName, contractType, joinDate, baseSalary }) {
+export function createManualEmployee({ employeeNumber, lastName, firstName, contractType, joinDate, baseSalary, isDirectorCompensation }) {
   const id = `manual-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
   return normalizeEmployee({
     id,
@@ -98,6 +109,7 @@ export function createManualEmployee({ employeeNumber, lastName, firstName, cont
     contractType: contractType ?? '',
     joinDate: joinDate ?? '',
     baseSalary: baseSalary ?? null,
+    isDirectorCompensation: isDirectorCompensation === true,
   });
 }
 
@@ -205,11 +217,9 @@ export function isSalaryPlanEmployee(employee) {
   return isActiveEmployee(employee) && !employee.excludedFromSalaryPlan;
 }
 
+/** 役員報酬チェック */
 export function isDirectorEmployee(employee) {
-  if ((employee.directorSalary ?? 0) > 0) return true;
-  const contract = employee.contractType ?? '';
-  const position = employee.position ?? '';
-  return /役員/.test(contract) || /役員/.test(position);
+  return employee.isDirectorCompensation === true;
 }
 
 export function buildEmployeeTableColumns() {
@@ -227,6 +237,12 @@ export function buildEmployeeTableColumns() {
       className: 'col-emp-amount',
     },
     {
+      kind: 'directorCompensation',
+      key: 'directorCompensation',
+      label: '役員報酬',
+      className: 'col-emp-director',
+    },
+    {
       kind: 'salaryPlanExclude',
       key: 'salaryPlanExclude',
       label: '非表示',
@@ -235,6 +251,93 @@ export function buildEmployeeTableColumns() {
     { kind: 'actions', key: 'actions', label: '操作', className: 'col-emp-actions' },
   ];
 }
+
+
+/** 手当合計 */
+export function getEmployeeAllowanceTotal(employee) {
+  return (employee.positionAllowance ?? 0)
+    + (employee.fixedOvertimePay ?? 0)
+    + (employee.fixedOvertimeAllowance ?? 0)
+    + (employee.childAllowance ?? 0);
+}
+
+/** 一覧セル編集用の初期値 */
+export function getEmployeeTableCellEditRawValue(employee, columnKey) {
+  switch (columnKey) {
+    case 'employeeNumber':
+      return employee.employeeNumber || '';
+    case 'name':
+      return formatEmployeeName(employee);
+    case 'residentTaxMunicipality':
+      return getEmployeeResidentTaxMunicipality(employee);
+    case 'contractType':
+      return employee.contractType || '';
+    case 'joinDate':
+      return employee.joinDate || '';
+    case 'monthlySalary': {
+      const total = computeMonthlySalary(employee);
+      return total ? String(total) : '';
+    }
+    default:
+      return '';
+  }
+}
+
+/**
+ * 一覧セル編集を適用。不正な入力はエラーを返す
+ * @returns {{ employee: object, error?: string } | null}
+ */
+export function applyEmployeeTableCellEdit(employee, columnKey, rawValue) {
+  const text = String(rawValue ?? '').trim();
+  switch (columnKey) {
+    case 'employeeNumber':
+      return { employee: { ...employee, employeeNumber: text } };
+    case 'name': {
+      const parts = text.split(/\s+/).filter(Boolean);
+      if (parts.length < 2) {
+        return {
+          employee: null,
+          error: '姓と名を空白区切りで入力してください。',
+        };
+      }
+      return {
+        employee: {
+          ...employee,
+          lastName: parts[0],
+          firstName: parts.slice(1).join(' '),
+        },
+      };
+    }
+    case 'residentTaxMunicipality':
+      return { employee: { ...employee, residentTaxMunicipality: text } };
+    case 'contractType':
+      return { employee: { ...employee, contractType: text } };
+    case 'joinDate':
+      return { employee: { ...employee, joinDate: text } };
+    case 'monthlySalary': {
+      const digits = text.replace(/[^\d]/g, '');
+      const total = digits ? parseInt(digits, 10) : null;
+      if (digits && !Number.isFinite(total)) return { employee: null, error: '金額が不正です。' };
+      const allowance = getEmployeeAllowanceTotal(employee);
+      const main = total == null ? null : Math.max(0, total - allowance);
+      if ((employee.directorSalary ?? 0) > 0) {
+        return { employee: { ...employee, directorSalary: main } };
+      }
+      return { employee: { ...employee, baseSalary: main } };
+    }
+    default:
+      return { employee };
+  }
+}
+
+export const EMPLOYEE_TABLE_EDITABLE_KEYS = new Set([
+  'employeeNumber',
+  'name',
+  'residentTaxMunicipality',
+  'contractType',
+  'joinDate',
+  'monthlySalary',
+]);
 
 export function getEmployeeCellValue(employee, column, refDate = new Date()) {
   switch (column.key) {
