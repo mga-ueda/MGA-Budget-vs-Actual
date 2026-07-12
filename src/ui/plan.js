@@ -1625,14 +1625,14 @@ function planTableOverflowsWrapContent(table) {
 
 let taxForecastScaleSyncRaf = null;
 
-/** 予実表の content-fit（rem）変更後に、納税見込ウィンドウのはみ出しを直す */
+/** 予実表の content-fit（rem）変更後に、納税見込ウィンドウの高さを内容に合わせ直す */
 function scheduleTaxForecastWindowScaleSync() {
   if (!taxForecastWindow?.isOpen()) return;
   if (taxForecastScaleSyncRaf != null) cancelAnimationFrame(taxForecastScaleSyncRaf);
   taxForecastScaleSyncRaf = requestAnimationFrame(() => {
     taxForecastScaleSyncRaf = null;
-    // サイズは rem 固定で自動追従する。位置のはみ出しだけ補正する
-    taxForecastWindow?.syncLayout?.();
+    // rem 固定だけでは px 指定や折り返し変化で高さがずれるため、内容高を再計測する
+    taxForecastWindow?.syncContentHeight?.();
   });
 }
 

@@ -1847,6 +1847,18 @@ select.app-settings-input {
   gap: 0.45rem;
 }
 
+.tax-forecast-field--checkbox-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem 1.1rem;
+}
+
+.tax-forecast-checkbox-hit.tax-forecast-field--disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
 .tax-forecast-checkbox-hit {
   display: inline-flex;
   align-items: center;
@@ -1954,6 +1966,15 @@ select.app-settings-input {
 .tax-forecast-schedule-table .tax-forecast-amount {
   text-align: right;
   white-space: nowrap;
+}
+
+.tax-forecast-computed-prefix {
+  display: inline-block;
+  font-size: 0.58em;
+  font-weight: 600;
+  line-height: 1;
+  vertical-align: 0.18em;
+  color: inherit;
 }
 
 .tax-forecast-window .tax-forecast-schedule-table th,
@@ -5129,6 +5150,17 @@ body.plan-journal-open {
   text-align-last: center;
 }
 
+.tax-forecast-window-source-period .tax-forecast-target-period {
+  margin: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.68rem;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .tax-forecast-window-reset-btn {
   flex-shrink: 0;
   font-size: 0.72rem;
@@ -5154,8 +5186,8 @@ body.plan-journal-open {
 .tax-forecast-window .tax-forecast-detail-grid--compact .tax-forecast-detail-title {
   font-weight: 600;
   line-height: 1.3;
-  margin: 0 0 10px;
-  padding: 0 5px;
+  margin: 0 0 0.625rem;
+  padding: 0 0.3125rem;
   border: none;
   border-bottom: none;
   background: var(--plan-month-row-bg);
@@ -5164,12 +5196,13 @@ body.plan-journal-open {
 
 .tax-forecast-window-settings-head,
 .tax-forecast-window-result-head {
-  font-size: 14px;
+  /* content-fit（rem）に追従させ、期切替時の縦スクロール点灯を防ぐ */
+  font-size: 0.875rem;
 }
 
 .tax-forecast-window .tax-forecast-settings-group-title,
 .tax-forecast-window .tax-forecast-detail-grid--compact .tax-forecast-detail-title {
-  font-size: 10px;
+  font-size: 0.75rem;
 }
 
 .tax-forecast-window-settings-host {
@@ -5332,14 +5365,41 @@ body.plan-journal-open {
 }
 
 .tax-forecast-window .tax-forecast-target-period,
-.tax-forecast-window .tax-forecast-note {
+.tax-forecast-window .tax-forecast-note,
+.tax-forecast-window .tax-forecast-empty,
+.tax-forecast-window .tax-forecast-interim-hint {
   font-size: 0.68rem;
-  line-height: 1.35;
+  line-height: 1.2;
+  color: var(--plan-text-dim);
+}
+
+.tax-forecast-warnings {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.tax-forecast-help-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin-top: 0.15rem;
+}
+
+.tax-forecast-help-note {
+  margin: 0;
+}
+
+.tax-forecast-window .tax-forecast-help-note {
+  font-size: 0.68rem;
+  line-height: 1.2;
   color: var(--plan-text-dim);
 }
 
 .tax-forecast-window .tax-forecast-warning {
+  margin: 0;
   font-size: 0.72rem;
+  line-height: 1.2;
   color: var(--plan-warning-text);
 }
 

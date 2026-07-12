@@ -4332,6 +4332,7 @@ const DEFAULT_TAX_SIMULATION = {
   provisionalTaxMonthIndices: [6],
   consumptionTaxMethod: 'general',
   simplifiedDeemedPurchaseRatePercent: 50,
+  consumptionTaxExempt: false,
   consumptionTaxInterimEnabled: true,
   consumptionTaxSettlementMonthIndex: 1,
   consumptionTaxInterimMonthIndex: 6,
@@ -4507,6 +4508,7 @@ function normalizeTaxSimulation(raw, fiscalEndMonth = 12) {
       source.simplifiedDeemedPurchaseRatePercent,
       base.simplifiedDeemedPurchaseRatePercent,
     ),
+    consumptionTaxExempt: source.consumptionTaxExempt === true,
     consumptionTaxInterimEnabled: source.consumptionTaxInterimEnabled !== false,
     consumptionTaxSettlementMonthIndex: normalizeMonthIndex(
       source.consumptionTaxSettlementMonthIndex,
@@ -10061,7 +10063,9 @@ function buildCorporateTaxSchedule(settlementAmount, simulation, fiscalMonths, o
         assigned += amount;
         schedule.push({
           kind: 'provisional',
-          label: `${'来期　予定納税'} ${idx + 1}`,
+          label: indices.length === 1
+            ? '来期　予定納税'
+            : `来期　予定納税 ${idx + 1}/${indices.length}`,
           monthLabel: monthLabelFromIndex(fiscalMonths, index),
           amount,
         });
@@ -10176,25 +10180,43 @@ function computeNextPeriodTaxForecast({
   }
   const revenueValues = getSectionTotalValues(currentPeriodPlanData, 'revenue');
   const sgaTaxableValues = getSectionTotalValues(currentPeriodPlanData, 'sgaTaxable');
-  if (!sgaTaxableValues) {
+  if (!sgaTaxableValues && !simulation.consumptionTaxExempt) {
     warnings.push('消費税対象仕入がないため、本則課税は概算精度が低くなります');
   }
-  const consumptionEstimate = estimateAnnualConsumptionTax({
-    revenueValues,
-    sgaTaxableValues,
-    fiscalMonths,
-    pastMonths: pastMonths ?? new Set(),
-    method: simulation.consumptionTaxMethod,
-    simplifiedDeemedPurchaseRatePercent: simulation.simplifiedDeemedPurchaseRatePercent,
-    monthYearMap,
-    consumptionTaxRates,
-  });
-  const consumptionCash = resolveConsumptionCashTax(
-    currentPeriodPlanData,
-    fiscalMonths,
-    consumptionEstimate.amount,
-  );
-  if (consumptionCash.incompletePeriod) {
+  const consumptionEstimate = simulation.consumptionTaxExempt
+    ? {
+        amount: 0,
+        basis: '免税事業者',
+        detail: '免税事業者のため消費税の支払見込はありません',
+      }
+    : estimateAnnualConsumptionTax({
+        revenueValues,
+        sgaTaxableValues,
+        fiscalMonths,
+        pastMonths: pastMonths ?? new Set(),
+        method: simulation.consumptionTaxMethod,
+        simplifiedDeemedPurchaseRatePercent: simulation.simplifiedDeemedPurchaseRatePercent,
+        monthYearMap,
+        consumptionTaxRates,
+      });
+  const consumptionCash = simulation.consumptionTaxExempt
+    ? {
+        settlement: 0,
+        annual: 0,
+        interimPaid: 0,
+        source: 'exempt',
+        sourceLabel: '免税事業者',
+        estimatedAmount: 0,
+        incompletePeriod: false,
+      }
+    : resolveConsumptionCashTax(
+        currentPeriodPlanData,
+        fiscalMonths,
+        consumptionEstimate.amount,
+      );
+  if (simulation.consumptionTaxExempt) {
+    warnings.push('免税事業者のため消費税の支払見込は0です');
+  } else if (consumptionCash.incompletePeriod) {
     warnings.push('消費税の期末未払が未計上のため、売上仕入からの概算を使用しています');
   }
   // 予定納税の基礎は資金繰り上の年税額。均等割のみ等で少額なら回数判定で0回になる
@@ -10211,12 +10233,14 @@ function computeNextPeriodTaxForecast({
       isSmallCorporation: itemizedParamsForSchedule?.isSmallCorporation !== false,
     },
   );
-  const consumptionSchedule = buildConsumptionTaxSchedule(
-    consumptionCash.settlement,
-    consumptionCash.annual,
-    simulation,
-    nextFiscalMonths,
-  );
+  const consumptionSchedule = simulation.consumptionTaxExempt
+    ? []
+    : buildConsumptionTaxSchedule(
+        consumptionCash.settlement,
+        consumptionCash.annual,
+        simulation,
+        nextFiscalMonths,
+      );
   const corporateTotal = corporateProvisionalSchedule.reduce((sum, row) => sum + (row.amount || 0), 0);
   const consumptionTotal = consumptionSchedule.reduce((sum, row) => sum + (row.amount || 0), 0);
   const regionLabel = TAX_REGION_PRESETS[simulation.regionPreset]?.label
@@ -20024,12 +20048,33 @@ function readControlValue(el) {
   return el.value;
 }
 
-function yen(value, formatYen) {
-  if (value == null || !Number.isFinite(value)) return '—';
-  return `¥${formatYen(value)}`;
+function isCashReferencedSource(source) {
+  return source === 'bs' || source === 'plan';
 }
 
-function renderScheduleTable(schedule, formatYen) {
+/** 金額表示。computed のとき手前に小さい ∑ を付ける（アプリ計算であることを示す） */
+function yen(value, formatYen, { computed = false } = {}) {
+  if (value == null || !Number.isFinite(value)) return '—';
+  const amount = `¥${formatYen(value)}`;
+  if (!computed) return amount;
+  return `<span class="tax-forecast-computed-prefix" title="アプリが計算した金額">∑</span> ${amount}`;
+}
+
+function isScheduleAmountComputed(row, cashSource) {
+  if (!row) return false;
+  if (row.kind === 'provisional' || row.kind === 'interim') return true;
+  // 確定納付: CSV/未払参照でなければアプリ計算
+  return !isCashReferencedSource(cashSource);
+}
+
+function isPaymentTotalComputed(schedule, cashSource) {
+  if (cashSource === 'exempt') return true;
+  const rows = schedule ?? [];
+  if (rows.length === 0) return false;
+  return rows.some((row) => isScheduleAmountComputed(row, cashSource));
+}
+
+function renderScheduleTable(schedule, formatYen, { cashSource = null } = {}) {
   if (!schedule?.length) {
     return `<p class="app-settings-hint tax-forecast-empty">支払予定はありません</p>`;
   }
@@ -20037,7 +20082,9 @@ function renderScheduleTable(schedule, formatYen) {
     <tr>
       <td>${row.label ?? ''}</td>
       <td>${row.monthLabel ?? ''}</td>
-      <td class="tax-forecast-amount tax-forecast-cell--amount">${yen(row.amount, formatYen)}</td>
+      <td class="tax-forecast-amount tax-forecast-cell--amount">${yen(row.amount, formatYen, {
+        computed: isScheduleAmountComputed(row, cashSource),
+      })}</td>
     </tr>
   `).join('');
   return `
@@ -20083,7 +20130,7 @@ function renderItemizedBreakdownTable(itemized, formatYen) {
   ].map((row) => `
     <tr${row.emphasis ? ' class="tax-forecast-breakdown-total"' : ''}>
       <td>${row.label}</td>
-      <td class="tax-forecast-amount tax-forecast-cell--amount">${yen(row.amount, formatYen)}</td>
+      <td class="tax-forecast-amount tax-forecast-cell--amount">${yen(row.amount, formatYen, { computed: true })}</td>
     </tr>
   `).join('');
   return `
@@ -20104,65 +20151,134 @@ function buildTaxForecastPanelHtml(forecast, formatYen, { compact = false } = {}
   if (!forecast) {
     return `<p class="app-settings-hint tax-forecast-empty">見込みを計算できません</p>`;
   }
-  const warnings = (forecast.warnings ?? []).map((w) => `<p class="tax-forecast-warning">${w}</p>`).join('');
+  const warningItems = (forecast.warnings ?? []).map((w) => {
+    const text = w === '免税事業者のため消費税の支払見込は0です'
+      ? `免税事業者のため消費税の支払見込は${yen(0, formatYen, { computed: true })}です`
+      : w;
+    return `<p class="tax-forecast-warning">${text}</p>`;
+  });
+  const warningsHtml = warningItems.length
+    ? `<div class="tax-forecast-warnings">${warningItems.join('')}</div>`
+    : '';
   const isItemized = forecast.corporateTax?.method === 'itemized';
   const methodLabel = isItemized ? '検算（税目別）' : '簡易（実効税率）';
+  const corpCashReferenced = isCashReferencedSource(forecast.corporateTax?.cashSource);
+  const consCashReferenced = isCashReferencedSource(forecast.consumptionTax?.cashSource);
+  const corpTotalComputed = isPaymentTotalComputed(
+    forecast.corporateTax?.schedule,
+    forecast.corporateTax?.cashSource,
+  );
+  const consTotalComputed = isPaymentTotalComputed(
+    forecast.consumptionTax?.schedule,
+    forecast.consumptionTax?.cashSource,
+  );
   const profitBasis = [
     { label: '参照期', value: forecast.currentPeriodLabel },
-    { label: '年間見込税引前利益', value: yen(forecast.profitEstimate?.amount, formatYen) },
+    { label: '年間見込税引前利益', value: yen(forecast.profitEstimate?.amount, formatYen, { computed: true }) },
     { label: '計算方法', value: forecast.profitEstimate?.basis ?? '' },
     { label: '補足説明', value: forecast.profitEstimate?.detail ?? '' },
     { label: '繰越欠損控除', value: yen(forecast.corporateTax?.lossDeduction, formatYen) },
-    { label: '課税対象利益', value: yen(forecast.taxableProfit, formatYen) },
+    { label: '課税対象利益', value: yen(forecast.taxableProfit, formatYen, { computed: true }) },
     { label: '法人税計算', value: methodLabel },
     { label: '地域・税率', value: `${forecast.regionLabel} / ${forecast.corporateTax?.rateLabel ?? ''}` },
-    { label: '確定納付（期末未払）', value: yen(forecast.corporateTax?.settlementAmount ?? forecast.corporateTax?.annualAmount, formatYen) },
-    { label: '年税額（予定・中間の計算基礎）', value: yen(forecast.corporateTax?.annualAmount, formatYen) },
+    {
+      label: '確定納付（期末未払）',
+      value: yen(
+        forecast.corporateTax?.settlementAmount ?? forecast.corporateTax?.annualAmount,
+        formatYen,
+        { computed: !corpCashReferenced },
+      ),
+    },
+    {
+      label: '年税額（予定・中間の計算基礎）',
+      value: yen(forecast.corporateTax?.annualAmount, formatYen, { computed: !corpCashReferenced }),
+    },
     { label: '資金基準の出所', value: forecast.corporateTax?.cashSourceLabel ?? '' },
-    { label: '検算税額（参考）', value: yen(forecast.corporateTax?.calculatedAmount, formatYen) },
+    { label: '検算税額（参考）', value: yen(forecast.corporateTax?.calculatedAmount, formatYen, { computed: true }) },
   ];
   const itemizedBreakdownHtml = isItemized
     ? renderItemizedBreakdownTable(forecast.corporateTax?.itemized, formatYen)
     : '';
+  const isConsumptionExempt = Boolean(
+    forecast.simulation?.consumptionTaxExempt
+    || forecast.consumptionTax?.cashSource === 'exempt',
+  );
   const consumptionBasis = [
-    { label: '確定納付（期末未払）', value: yen(forecast.consumptionTax?.settlementAmount ?? forecast.consumptionTax?.annualAmount, formatYen) },
-    { label: '年税額（予定・中間の計算基礎）', value: yen(forecast.consumptionTax?.annualAmount, formatYen) },
+    {
+      label: '確定納付（期末未払）',
+      value: yen(
+        forecast.consumptionTax?.settlementAmount ?? forecast.consumptionTax?.annualAmount,
+        formatYen,
+        { computed: !consCashReferenced },
+      ),
+    },
+    {
+      label: '年税額（予定・中間の計算基礎）',
+      value: yen(forecast.consumptionTax?.annualAmount, formatYen, { computed: !consCashReferenced }),
+    },
     { label: '資金基準の出所', value: forecast.consumptionTax?.cashSourceLabel ?? '' },
-    { label: '売上仕入からの概算（参考）', value: yen(forecast.consumptionTax?.estimatedAmount, formatYen) },
+    {
+      label: '売上仕入からの概算（参考）',
+      value: yen(forecast.consumptionTax?.estimatedAmount, formatYen, { computed: true }),
+    },
     { label: '課税計算方法', value: forecast.consumptionTax?.estimate?.basis ?? '' },
-    { label: '補足説明', value: forecast.consumptionTax?.estimate?.detail ?? '' },
+    {
+      label: '補足説明',
+      value: isConsumptionExempt
+        ? `免税事業者のため消費税の支払見込は${yen(0, formatYen, { computed: true })}です`
+        : (forecast.consumptionTax?.estimate?.detail ?? ''),
+    },
   ];
   const summaryHtml = `
     <div class="tax-forecast-summary-grid${compact ? ' tax-forecast-summary-grid--compact' : ''}">
       <div class="tax-forecast-summary-card" data-section-id="tax">
         <span class="tax-forecast-summary-label">${compact ? '法人税等' : '来期支払合計（法人税等）'}</span>
-        <span class="tax-forecast-summary-value">${yen(forecast.corporateTax?.totalPaymentInNextPeriod, formatYen)}</span>
+        <span class="tax-forecast-summary-value">${yen(forecast.corporateTax?.totalPaymentInNextPeriod, formatYen, { computed: corpTotalComputed })}</span>
       </div>
       <div class="tax-forecast-summary-card" data-section-id="otherPay">
         <span class="tax-forecast-summary-label">${compact ? '消費税' : '来期支払合計（消費税）'}</span>
-        <span class="tax-forecast-summary-value">${yen(forecast.consumptionTax?.totalPaymentInNextPeriod, formatYen)}</span>
+        <span class="tax-forecast-summary-value">${yen(forecast.consumptionTax?.totalPaymentInNextPeriod, formatYen, { computed: consTotalComputed })}</span>
       </div>
       <div class="tax-forecast-summary-card tax-forecast-summary-card--total" data-section-id="cfOut">
         <span class="tax-forecast-summary-label">${compact ? '総計' : '来期支払合計（総計）'}</span>
-        <span class="tax-forecast-summary-value">${yen(forecast.grandTotalPaymentInNextPeriod, formatYen)}</span>
+        <span class="tax-forecast-summary-value">${yen(forecast.grandTotalPaymentInNextPeriod, formatYen, {
+          computed: corpTotalComputed || consTotalComputed,
+        })}</span>
       </div>
     </div>
-    <p class="app-settings-hint tax-forecast-target-period">${forecast.currentPeriodLabel}の見込をもとに、${forecast.nextPeriodLabel}に支払うキャッシュ見込です。</p>
+  `;
+  // 警告・用語注釈はウィンドウ最下部にまとめる
+  const targetPeriodHtml = `<p class="app-settings-hint tax-forecast-target-period">${forecast.currentPeriodLabel}の見込をもとに、${forecast.nextPeriodLabel}に支払うキャッシュ見込です。</p>`;
+  const helpNotesHtml = `
+    <div class="tax-forecast-help-notes">
+      <p class="app-settings-hint tax-forecast-help-note">※　「当期分　確定納付」は、期末時点の未払（まだ払っていない残額）です。その期内にすでに払った予定納税・中間納税は含まれません。</p>
+      <p class="app-settings-hint tax-forecast-help-note">※　「来期　予定納税／中間納税」は、前年の年税額を基礎にした前払の見込です。残額である確定納付より大きくなることがあります（来期が儲かりそうだから多めに払う、という意味ではありません）。</p>
+      <p class="app-settings-hint tax-forecast-help-note">※　この画面の予定・中間は、資金基準の年税額（多くの場合は期末未払。あれば仮払の清算分も加算）から見積ります。予定を費用科目へ直接計上している場合などは、実績より小さく見えることがあります。</p>
+      <p class="app-settings-hint tax-forecast-help-note">※　金額の手前の ∑ はアプリが計算した値、∑ なしは貸借の未払など CSV 由来の参照値です。</p>
+    </div>
+  `;
+  const footerNotesHtml = `
+    ${warningsHtml}
+    ${helpNotesHtml}
+    ${compact ? '' : targetPeriodHtml}
   `;
   if (compact) {
     return `
-      ${warnings}
       ${summaryHtml}
       <div class="tax-forecast-detail-grid tax-forecast-detail-grid--compact${itemizedBreakdownHtml ? ' tax-forecast-detail-grid--three' : ''}">
         <div class="tax-forecast-detail-block">
           <h4 class="tax-forecast-detail-title">来期の法人税支払スケジュール</h4>
-          ${renderScheduleTable(forecast.corporateTax?.schedule, formatYen)}
+          ${renderScheduleTable(forecast.corporateTax?.schedule, formatYen, {
+            cashSource: forecast.corporateTax?.cashSource,
+          })}
           <h4 class="tax-forecast-detail-title">法人税の計算根拠</h4>
           ${renderBasisList(profitBasis)}
         </div>
         <div class="tax-forecast-detail-block">
           <h4 class="tax-forecast-detail-title">来期の消費税支払スケジュール</h4>
-          ${renderScheduleTable(forecast.consumptionTax?.schedule, formatYen)}
+          ${renderScheduleTable(forecast.consumptionTax?.schedule, formatYen, {
+            cashSource: forecast.consumptionTax?.cashSource,
+          })}
           <h4 class="tax-forecast-detail-title">消費税の計算根拠</h4>
           ${renderBasisList(consumptionBasis)}
         </div>
@@ -20173,28 +20289,31 @@ function buildTaxForecastPanelHtml(forecast, formatYen, { compact = false } = {}
         </div>
         ` : ''}
       </div>
-      <p class="app-settings-hint tax-forecast-note">※　来期の資金繰り用の見込です。税務申告の代替にはなりません。</p>
+      ${footerNotesHtml}
     `;
   }
   return `
-    ${warnings}
     ${summaryHtml}
     <div class="tax-forecast-detail-grid">
       <div class="tax-forecast-detail-block">
         <h4 class="tax-forecast-detail-title">来期の法人税支払スケジュール</h4>
-        ${renderScheduleTable(forecast.corporateTax?.schedule, formatYen)}
+        ${renderScheduleTable(forecast.corporateTax?.schedule, formatYen, {
+          cashSource: forecast.corporateTax?.cashSource,
+        })}
         <h4 class="tax-forecast-detail-title">法人税の計算根拠</h4>
         ${renderBasisList(profitBasis)}
         ${itemizedBreakdownHtml ? `<h4 class="tax-forecast-detail-title">法人税等の内訳（検算）</h4>${itemizedBreakdownHtml}` : ''}
       </div>
       <div class="tax-forecast-detail-block">
         <h4 class="tax-forecast-detail-title">来期の消費税支払スケジュール</h4>
-        ${renderScheduleTable(forecast.consumptionTax?.schedule, formatYen)}
+        ${renderScheduleTable(forecast.consumptionTax?.schedule, formatYen, {
+          cashSource: forecast.consumptionTax?.cashSource,
+        })}
         <h4 class="tax-forecast-detail-title">消費税の計算根拠</h4>
         ${renderBasisList(consumptionBasis)}
       </div>
     </div>
-    <p class="app-settings-hint tax-forecast-note">※　来期の資金繰り用の見込です。税務申告の代替にはなりません。</p>
+    ${footerNotesHtml}
   `;
 }
 
@@ -20312,7 +20431,7 @@ function mountTaxForecastSettingsForm(container, {
 
       <section class="tax-forecast-settings-group">
         <h4 class="tax-forecast-settings-group-title">消費税</h4>
-        <div class="tax-forecast-settings-grid">
+        <div class="tax-forecast-settings-grid" data-role="consumption-method-grid">
           <div class="tax-forecast-field">
             <span class="app-settings-label">消費税計算</span>
             <select class="app-settings-input tax-forecast-select" data-field="consumptionTaxMethod">
@@ -20327,13 +20446,17 @@ function mountTaxForecastSettingsForm(container, {
         </div>
         <p class="tax-forecast-settings-subgroup-title">来期の支払月</p>
         <div class="tax-forecast-settings-grid tax-forecast-settings-grid--schedule">
-          <div class="tax-forecast-field tax-forecast-field--checkbox tax-forecast-field--row-full">
-            <label class="tax-forecast-checkbox-hit">
+          <div class="tax-forecast-field tax-forecast-field--checkbox tax-forecast-field--row-full tax-forecast-field--checkbox-row">
+            <label class="tax-forecast-checkbox-hit" data-role="consumption-interim-enabled-field">
               <input type="checkbox" data-field="consumptionTaxInterimEnabled" />
               <span class="app-settings-label">来期の消費税中間納税を含める</span>
             </label>
+            <label class="tax-forecast-checkbox-hit">
+              <input type="checkbox" data-field="consumptionTaxExempt" />
+              <span class="app-settings-label">免税事業者</span>
+            </label>
           </div>
-          <div class="tax-forecast-field">
+          <div class="tax-forecast-field" data-role="consumption-settlement-month-field">
             <span class="app-settings-label">確定月</span>
             <select class="app-settings-input tax-forecast-select" data-field="consumptionTaxSettlementMonthIndex"></select>
           </div>
@@ -20401,6 +20524,7 @@ function mountTaxForecastSettingsForm(container, {
   setFieldValue('provisionalTaxEnabled', simulation.provisionalTaxEnabled);
   setFieldValue('consumptionTaxMethod', simulation.consumptionTaxMethod);
   setFieldValue('simplifiedDeemedPurchaseRatePercent', simulation.simplifiedDeemedPurchaseRatePercent);
+  setFieldValue('consumptionTaxExempt', simulation.consumptionTaxExempt);
   setFieldValue('consumptionTaxInterimEnabled', simulation.consumptionTaxInterimEnabled);
 
   const rateInput = section.querySelector('[data-field="effectiveCorporateTaxRatePercent"]');
@@ -20418,8 +20542,12 @@ function mountTaxForecastSettingsForm(container, {
   const consumptionMethodSelect = section.querySelector('[data-field="consumptionTaxMethod"]');
   const provisionalTaxEnabledCheckbox = section.querySelector('[data-field="provisionalTaxEnabled"]');
   const consumptionInterimEnabledCheckbox = section.querySelector('[data-field="consumptionTaxInterimEnabled"]');
+  const consumptionExemptCheckbox = section.querySelector('[data-field="consumptionTaxExempt"]');
   const simplifiedField = section.querySelector('[data-role="simplified-field"]');
   const provisionalTaxMonthFields = section.querySelectorAll('[data-role="provisional-tax-month-field"]');
+  const consumptionMethodGrid = section.querySelector('[data-role="consumption-method-grid"]');
+  const consumptionInterimEnabledField = section.querySelector('[data-role="consumption-interim-enabled-field"]');
+  const consumptionSettlementMonthField = section.querySelector('[data-role="consumption-settlement-month-field"]');
   const consumptionInterimMonthField = section.querySelector('[data-role="consumption-interim-month-field"]');
 
   const setFieldGroupInactive = (rootEl, inactive) => {
@@ -20436,6 +20564,7 @@ function mountTaxForecastSettingsForm(container, {
     const isCustom = regionSelect.value === 'custom';
     const isSimplifiedConsumption = consumptionMethodSelect?.value === 'simplified';
     const provisionalTaxEnabled = provisionalTaxEnabledCheckbox?.checked ?? false;
+    const consumptionExempt = consumptionExemptCheckbox?.checked ?? false;
     const consumptionInterimEnabled = consumptionInterimEnabledCheckbox?.checked ?? false;
 
     setFieldGroupInactive(effectiveRateField, isItemized);
@@ -20446,10 +20575,12 @@ function mountTaxForecastSettingsForm(container, {
 
     itemizedFields.forEach((el) => setFieldGroupInactive(el, !isItemized));
 
+    setFieldGroupInactive(consumptionMethodGrid, consumptionExempt);
     if (simplifiedField) {
       const simplifiedLabel = simplifiedField.closest('.tax-forecast-field');
-      simplifiedLabel?.classList.toggle('tax-forecast-field--disabled', !isSimplifiedConsumption);
-      if (!isSimplifiedConsumption) maskControl(simplifiedField);
+      const simplifiedInactive = consumptionExempt || !isSimplifiedConsumption;
+      simplifiedLabel?.classList.toggle('tax-forecast-field--disabled', simplifiedInactive);
+      if (simplifiedInactive) maskControl(simplifiedField);
       else unmaskControl(simplifiedField);
     }
 
@@ -20470,7 +20601,17 @@ function mountTaxForecastSettingsForm(container, {
       const inactive = !provisionalTaxEnabled || (idx >= 1 && !secondMonthVisible);
       setFieldGroupInactive(el, inactive);
     });
-    setFieldGroupInactive(consumptionInterimMonthField, !consumptionInterimEnabled);
+    if (consumptionInterimEnabledField) {
+      consumptionInterimEnabledField.classList.toggle('tax-forecast-field--disabled', consumptionExempt);
+      if (consumptionInterimEnabledCheckbox) {
+        consumptionInterimEnabledCheckbox.disabled = consumptionExempt;
+      }
+    }
+    setFieldGroupInactive(consumptionSettlementMonthField, consumptionExempt);
+    setFieldGroupInactive(
+      consumptionInterimMonthField,
+      consumptionExempt || !consumptionInterimEnabled,
+    );
   };
 
   const syncRateInputState = () => {
@@ -20506,10 +20647,13 @@ function mountTaxForecastSettingsForm(container, {
       Number(readControlValue(section.querySelector('[data-field="provisionalTaxMonthIndices.0"]'))),
       Number(readControlValue(section.querySelector('[data-field="provisionalTaxMonthIndices.1"]'))),
     ];
-    raw.consumptionTaxMethod = section.querySelector('[data-field="consumptionTaxMethod"]').value;
+    raw.consumptionTaxMethod = readControlValue(section.querySelector('[data-field="consumptionTaxMethod"]'));
     raw.simplifiedDeemedPurchaseRatePercent = readControlValue(simplifiedField);
+    raw.consumptionTaxExempt = section.querySelector('[data-field="consumptionTaxExempt"]').checked;
     raw.consumptionTaxInterimEnabled = section.querySelector('[data-field="consumptionTaxInterimEnabled"]').checked;
-    raw.consumptionTaxSettlementMonthIndex = Number(section.querySelector('[data-field="consumptionTaxSettlementMonthIndex"]').value);
+    raw.consumptionTaxSettlementMonthIndex = Number(readControlValue(
+      section.querySelector('[data-field="consumptionTaxSettlementMonthIndex"]'),
+    ));
     raw.consumptionTaxInterimMonthIndex = Number(readControlValue(
       section.querySelector('[data-field="consumptionTaxInterimMonthIndex"]'),
     ));
@@ -20572,6 +20716,7 @@ function mountTaxForecastWindowContent(container, {
       <div class="tax-forecast-window-source-period">
         <span class="app-settings-label">計算元の期</span>
         <select class="app-settings-input tax-forecast-source-period-select"></select>
+        <p class="app-settings-hint tax-forecast-target-period" data-role="target-period-hint" hidden></p>
       </div>
       <div class="tax-forecast-window-toolbar-actions">
         <button type="button" class="expand-reset-btn tax-forecast-window-reset-btn">デフォルトに戻す</button>
@@ -20591,6 +20736,7 @@ function mountTaxForecastWindowContent(container, {
   const settingsHost = wrap.querySelector('.tax-forecast-window-settings-host');
   const resultEl = wrap.querySelector('[data-role="forecast-result"]');
   const sourcePeriodSelect = wrap.querySelector('.tax-forecast-source-period-select');
+  const targetPeriodHint = wrap.querySelector('[data-role="target-period-hint"]');
 
   const syncSourcePeriodSelect = () => {
     if (!sourcePeriodSelect) return;
@@ -20607,12 +20753,24 @@ function mountTaxForecastWindowContent(container, {
     applyTaxForecastSectionColors(wrap, getSectionFilterColors);
   };
 
+  const syncTargetPeriodHint = (forecast) => {
+    if (!targetPeriodHint) return;
+    if (!forecast?.currentPeriodLabel || !forecast?.nextPeriodLabel) {
+      targetPeriodHint.textContent = '';
+      targetPeriodHint.hidden = true;
+      return;
+    }
+    targetPeriodHint.textContent = `${forecast.currentPeriodLabel}の見込をもとに、${forecast.nextPeriodLabel}に支払うキャッシュ見込です。`;
+    targetPeriodHint.hidden = false;
+  };
+
   const refreshForecast = () => {
     const forecast = computeTaxForecastForDisplay({
       getForecastContext,
       getAppSettings: resolveAppSettings,
     });
     resultEl.innerHTML = buildTaxForecastPanelHtml(forecast, formatYen, { compact: true });
+    syncTargetPeriodHint(forecast);
     applySectionColors();
     onLayoutChange?.();
   };
@@ -20654,6 +20812,8 @@ const TAX_FORECAST_DEFAULT_RIGHT = 16;
 const TAX_FORECAST_MIN_WINDOW_WIDTH = 880;
 const TAX_FORECAST_MIN_WINDOW_HEIGHT = 160;
 const TAX_FORECAST_VIEWPORT_EDGE_MARGIN = 16;
+/** サブピクセル丸めで縦スクロールが点灯しないよう、計測高に足す余白 */
+const TAX_FORECAST_HEIGHT_MEASURE_BUFFER_PX = 2;
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -20705,14 +20865,17 @@ function resolveWindowWidthRem() {
  * シェル高さを内容に合わせて測る。
  * 固定 height の影響を避けるため、計測中だけ height:auto にする。
  */
-function measureWindowContentHeight(shell) {
+function measureWindowContentHeight(shell, body) {
   const prevHeight = shell.style.height;
   const prevMaxHeight = shell.style.maxHeight;
+  const prevBodyOverflowY = body?.style.overflowY ?? '';
   shell.style.height = 'auto';
   shell.style.maxHeight = 'none';
-  const measured = shell.scrollHeight;
+  if (body) body.style.overflowY = 'hidden';
+  const measured = shell.scrollHeight + TAX_FORECAST_HEIGHT_MEASURE_BUFFER_PX;
   shell.style.height = prevHeight;
   shell.style.maxHeight = prevMaxHeight;
+  if (body) body.style.overflowY = prevBodyOverflowY;
   return clamp(measured, TAX_FORECAST_MIN_WINDOW_HEIGHT, getMaxWindowHeight());
 }
 
@@ -20775,9 +20938,13 @@ function createTaxForecastWindow({
     shell.style.width = `${widthRem}rem`;
     shell.style.maxWidth = `${maxWidth}px`;
     if (lockedShellHeightRem != null) {
-      const heightRem = Math.min(lockedShellHeightRem, maxHeight / rootPx);
+      const heightPx = Math.min(lockedShellHeightRem * rootPx, maxHeight);
+      const heightRem = heightPx / rootPx;
       shell.style.height = `${heightRem}rem`;
       shell.style.maxHeight = `${maxHeight}px`;
+      // 内容が枠に収まるときは縦スクロールを出さない（ビューポート上限時のみ許可）
+      const needsVerticalScroll = heightPx >= maxHeight - 0.5;
+      body.style.overflowY = needsVerticalScroll ? 'auto' : 'hidden';
     }
   };
 
@@ -20785,7 +20952,7 @@ function createTaxForecastWindow({
     lockedShellWidthRem = resolveWindowWidthRem();
     shell.style.width = `${lockedShellWidthRem}rem`;
     shell.style.maxWidth = `${getMaxWindowWidth()}px`;
-    lockedShellHeightRem = pxToRem(measureWindowContentHeight(shell));
+    lockedShellHeightRem = pxToRem(measureWindowContentHeight(shell, body));
     layoutLocked = true;
     applyLockedShellSize();
   };
@@ -20838,13 +21005,13 @@ function createTaxForecastWindow({
     syncLayout: () => syncWindowLayout(),
     syncContentHeight: () => {
       if (!open) return;
-      lockedShellHeightRem = pxToRem(measureWindowContentHeight(shell));
+      lockedShellHeightRem = pxToRem(measureWindowContentHeight(shell, body));
       applyLockedShellSize();
     },
     recalculateLayout: () => {
       if (!open) return;
       lockedShellWidthRem = resolveWindowWidthRem();
-      lockedShellHeightRem = pxToRem(measureWindowContentHeight(shell));
+      lockedShellHeightRem = pxToRem(measureWindowContentHeight(shell, body));
       layoutLocked = true;
       applyLockedShellSize();
     },
@@ -22156,14 +22323,14 @@ function planTableOverflowsWrapContent(table) {
 
 let taxForecastScaleSyncRaf = null;
 
-/** 予実表の content-fit（rem）変更後に、納税見込ウィンドウのはみ出しを直す */
+/** 予実表の content-fit（rem）変更後に、納税見込ウィンドウの高さを内容に合わせ直す */
 function scheduleTaxForecastWindowScaleSync() {
   if (!taxForecastWindow?.isOpen()) return;
   if (taxForecastScaleSyncRaf != null) cancelAnimationFrame(taxForecastScaleSyncRaf);
   taxForecastScaleSyncRaf = requestAnimationFrame(() => {
     taxForecastScaleSyncRaf = null;
-    // サイズは rem 固定で自動追従する。位置のはみ出しだけ補正する
-    taxForecastWindow?.syncLayout?.();
+    // rem 固定だけでは px 指定や折り返し変化で高さがずれるため、内容高を再計測する
+    taxForecastWindow?.syncContentHeight?.();
   });
 }
 

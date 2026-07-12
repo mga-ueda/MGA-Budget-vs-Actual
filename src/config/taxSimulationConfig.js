@@ -34,6 +34,7 @@ export const DEFAULT_TAX_SIMULATION = {
   provisionalTaxMonthIndices: [6],
   consumptionTaxMethod: 'general',
   simplifiedDeemedPurchaseRatePercent: 50,
+  consumptionTaxExempt: false,
   consumptionTaxInterimEnabled: true,
   consumptionTaxSettlementMonthIndex: 1,
   consumptionTaxInterimMonthIndex: 6,
@@ -209,6 +210,7 @@ export function normalizeTaxSimulation(raw, fiscalEndMonth = 12) {
       source.simplifiedDeemedPurchaseRatePercent,
       base.simplifiedDeemedPurchaseRatePercent,
     ),
+    consumptionTaxExempt: source.consumptionTaxExempt === true,
     consumptionTaxInterimEnabled: source.consumptionTaxInterimEnabled !== false,
     consumptionTaxSettlementMonthIndex: normalizeMonthIndex(
       source.consumptionTaxSettlementMonthIndex,

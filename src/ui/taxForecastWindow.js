@@ -8,6 +8,8 @@ const TAX_FORECAST_DEFAULT_RIGHT = 16;
 const TAX_FORECAST_MIN_WINDOW_WIDTH = 880;
 const TAX_FORECAST_MIN_WINDOW_HEIGHT = 160;
 const TAX_FORECAST_VIEWPORT_EDGE_MARGIN = 16;
+/** サブピクセル丸めで縦スクロールが点灯しないよう、計測高に足す余白 */
+const TAX_FORECAST_HEIGHT_MEASURE_BUFFER_PX = 2;
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -59,14 +61,17 @@ function resolveWindowWidthRem() {
  * シェル高さを内容に合わせて測る。
  * 固定 height の影響を避けるため、計測中だけ height:auto にする。
  */
-function measureWindowContentHeight(shell) {
+function measureWindowContentHeight(shell, body) {
   const prevHeight = shell.style.height;
   const prevMaxHeight = shell.style.maxHeight;
+  const prevBodyOverflowY = body?.style.overflowY ?? '';
   shell.style.height = 'auto';
   shell.style.maxHeight = 'none';
-  const measured = shell.scrollHeight;
+  if (body) body.style.overflowY = 'hidden';
+  const measured = shell.scrollHeight + TAX_FORECAST_HEIGHT_MEASURE_BUFFER_PX;
   shell.style.height = prevHeight;
   shell.style.maxHeight = prevMaxHeight;
+  if (body) body.style.overflowY = prevBodyOverflowY;
   return clamp(measured, TAX_FORECAST_MIN_WINDOW_HEIGHT, getMaxWindowHeight());
 }
 
@@ -129,9 +134,13 @@ export function createTaxForecastWindow({
     shell.style.width = `${widthRem}rem`;
     shell.style.maxWidth = `${maxWidth}px`;
     if (lockedShellHeightRem != null) {
-      const heightRem = Math.min(lockedShellHeightRem, maxHeight / rootPx);
+      const heightPx = Math.min(lockedShellHeightRem * rootPx, maxHeight);
+      const heightRem = heightPx / rootPx;
       shell.style.height = `${heightRem}rem`;
       shell.style.maxHeight = `${maxHeight}px`;
+      // 内容が枠に収まるときは縦スクロールを出さない（ビューポート上限時のみ許可）
+      const needsVerticalScroll = heightPx >= maxHeight - 0.5;
+      body.style.overflowY = needsVerticalScroll ? 'auto' : 'hidden';
     }
   };
 
@@ -139,7 +148,7 @@ export function createTaxForecastWindow({
     lockedShellWidthRem = resolveWindowWidthRem();
     shell.style.width = `${lockedShellWidthRem}rem`;
     shell.style.maxWidth = `${getMaxWindowWidth()}px`;
-    lockedShellHeightRem = pxToRem(measureWindowContentHeight(shell));
+    lockedShellHeightRem = pxToRem(measureWindowContentHeight(shell, body));
     layoutLocked = true;
     applyLockedShellSize();
   };
@@ -192,13 +201,13 @@ export function createTaxForecastWindow({
     syncLayout: () => syncWindowLayout(),
     syncContentHeight: () => {
       if (!open) return;
-      lockedShellHeightRem = pxToRem(measureWindowContentHeight(shell));
+      lockedShellHeightRem = pxToRem(measureWindowContentHeight(shell, body));
       applyLockedShellSize();
     },
     recalculateLayout: () => {
       if (!open) return;
       lockedShellWidthRem = resolveWindowWidthRem();
-      lockedShellHeightRem = pxToRem(measureWindowContentHeight(shell));
+      lockedShellHeightRem = pxToRem(measureWindowContentHeight(shell, body));
       layoutLocked = true;
       applyLockedShellSize();
     },

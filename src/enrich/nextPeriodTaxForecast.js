@@ -336,7 +336,9 @@ function buildCorporateTaxSchedule(settlementAmount, simulation, fiscalMonths, o
         assigned += amount;
         schedule.push({
           kind: 'provisional',
-          label: `${'来期　予定納税'} ${idx + 1}`,
+          label: indices.length === 1
+            ? '来期　予定納税'
+            : `来期　予定納税 ${idx + 1}/${indices.length}`,
           monthLabel: monthLabelFromIndex(fiscalMonths, index),
           amount,
         });
@@ -451,25 +453,43 @@ export function computeNextPeriodTaxForecast({
   }
   const revenueValues = getSectionTotalValues(currentPeriodPlanData, 'revenue');
   const sgaTaxableValues = getSectionTotalValues(currentPeriodPlanData, 'sgaTaxable');
-  if (!sgaTaxableValues) {
+  if (!sgaTaxableValues && !simulation.consumptionTaxExempt) {
     warnings.push('消費税対象仕入がないため、本則課税は概算精度が低くなります');
   }
-  const consumptionEstimate = estimateAnnualConsumptionTax({
-    revenueValues,
-    sgaTaxableValues,
-    fiscalMonths,
-    pastMonths: pastMonths ?? new Set(),
-    method: simulation.consumptionTaxMethod,
-    simplifiedDeemedPurchaseRatePercent: simulation.simplifiedDeemedPurchaseRatePercent,
-    monthYearMap,
-    consumptionTaxRates,
-  });
-  const consumptionCash = resolveConsumptionCashTax(
-    currentPeriodPlanData,
-    fiscalMonths,
-    consumptionEstimate.amount,
-  );
-  if (consumptionCash.incompletePeriod) {
+  const consumptionEstimate = simulation.consumptionTaxExempt
+    ? {
+        amount: 0,
+        basis: '免税事業者',
+        detail: '免税事業者のため消費税の支払見込はありません',
+      }
+    : estimateAnnualConsumptionTax({
+        revenueValues,
+        sgaTaxableValues,
+        fiscalMonths,
+        pastMonths: pastMonths ?? new Set(),
+        method: simulation.consumptionTaxMethod,
+        simplifiedDeemedPurchaseRatePercent: simulation.simplifiedDeemedPurchaseRatePercent,
+        monthYearMap,
+        consumptionTaxRates,
+      });
+  const consumptionCash = simulation.consumptionTaxExempt
+    ? {
+        settlement: 0,
+        annual: 0,
+        interimPaid: 0,
+        source: 'exempt',
+        sourceLabel: '免税事業者',
+        estimatedAmount: 0,
+        incompletePeriod: false,
+      }
+    : resolveConsumptionCashTax(
+        currentPeriodPlanData,
+        fiscalMonths,
+        consumptionEstimate.amount,
+      );
+  if (simulation.consumptionTaxExempt) {
+    warnings.push('免税事業者のため消費税の支払見込は0です');
+  } else if (consumptionCash.incompletePeriod) {
     warnings.push('消費税の期末未払が未計上のため、売上仕入からの概算を使用しています');
   }
   // 予定納税の基礎は資金繰り上の年税額。均等割のみ等で少額なら回数判定で0回になる
@@ -486,12 +506,14 @@ export function computeNextPeriodTaxForecast({
       isSmallCorporation: itemizedParamsForSchedule?.isSmallCorporation !== false,
     },
   );
-  const consumptionSchedule = buildConsumptionTaxSchedule(
-    consumptionCash.settlement,
-    consumptionCash.annual,
-    simulation,
-    nextFiscalMonths,
-  );
+  const consumptionSchedule = simulation.consumptionTaxExempt
+    ? []
+    : buildConsumptionTaxSchedule(
+        consumptionCash.settlement,
+        consumptionCash.annual,
+        simulation,
+        nextFiscalMonths,
+      );
   const corporateTotal = corporateProvisionalSchedule.reduce((sum, row) => sum + (row.amount || 0), 0);
   const consumptionTotal = consumptionSchedule.reduce((sum, row) => sum + (row.amount || 0), 0);
   const regionLabel = TAX_REGION_PRESETS[simulation.regionPreset]?.label
