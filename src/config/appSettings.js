@@ -32,7 +32,13 @@ export { DEFAULT_FISCAL_END_MONTH, normalizeFiscalEndMonth } from './fiscalCalen
 
 const APP_SETTINGS_STORAGE_KEY = 'mga-app-settings';
 
-export const DEFAULT_BUSINESS_START_YEAR = 2018;
+/** 事業開始年の既定（未設定。CSV 未推定時は resolveDefaultBusinessStartYear を使う） */
+export const DEFAULT_BUSINESS_START_YEAR = null;
+
+/** 事業開始年のフォールバック（既定がなければ現在の西暦年） */
+export function resolveDefaultBusinessStartYear() {
+  return DEFAULT_BUSINESS_START_YEAR ?? new Date().getFullYear();
+}
 
 /** 設定 UI で 100% と表示するときの実際の CSS 倍率 */
 export const DESIGN_FONT_BASELINE = 0.85;
@@ -583,12 +589,16 @@ export function getFiscalPeriodForDate(
   const y = date.getFullYear();
   const m = date.getMonth() + 1;
   const startMonth = getFiscalYearStartMonth(fiscalEndMonth);
+  let period;
   if (startMonth === 12) {
     const anchorYear = m === 12 ? y : y - 1;
-    return anchorYear - businessStartYear + 1;
+    period = anchorYear - businessStartYear + 1;
+  } else {
+    const endYear = m >= startMonth ? y + 1 : y;
+    period = endYear - businessStartYear;
   }
-  const endYear = m >= startMonth ? y + 1 : y;
-  return endYear - businessStartYear;
+  // 事業開始年フォールバック（現在年）では会計開始前に 0 以下になり得るため下限を 1 にする
+  return Math.max(1, period);
 }
 
 export function getMaxSelectablePeriod(
@@ -652,6 +662,16 @@ export function normalizeFiscalPeriod(
   const n = Number(fiscalPeriod);
   if (!Number.isInteger(n) || n < 1) return getDefaultFiscalPeriod(businessStartYear, date, fiscalEndMonth);
   return Math.min(max, Math.max(1, n));
+}
+
+/**
+ * localStorage 上の期番号の検証。
+ * 事業開始年が CSV 未推定のときは上限クランプしない（現在年フォールバックで期が潰れるのを防ぐ）。
+ */
+export function normalizePersistedFiscalPeriod(fiscalPeriod) {
+  const n = Number(fiscalPeriod);
+  if (!Number.isInteger(n) || n < 1) return 1;
+  return n;
 }
 
 function toFullWidthAsciiDigits(value) {
@@ -831,7 +851,7 @@ export function loadAppSettings() {
     const raw = localStorage.getItem(APP_SETTINGS_STORAGE_KEY);
     if (!raw) {
       return {
-        fiscalPeriod: getDefaultFiscalPeriod(DEFAULT_BUSINESS_START_YEAR),
+        fiscalPeriod: normalizePersistedFiscalPeriod(null),
         fontScale: DEFAULT_FONT_SCALE,
         rowPaddingScale: DEFAULT_ROW_PADDING_SCALE,
         corpEntityMarkers: DEFAULT_CORP_ENTITY_MARKERS,
@@ -845,7 +865,7 @@ export function loadAppSettings() {
     }
     const parsed = JSON.parse(raw);
     return {
-      fiscalPeriod: normalizeFiscalPeriod(DEFAULT_BUSINESS_START_YEAR, parsed?.fiscalPeriod),
+      fiscalPeriod: normalizePersistedFiscalPeriod(parsed?.fiscalPeriod),
       fontScale: loadFontScale(parsed),
       rowPaddingScale: loadRowPaddingScale(parsed),
       corpEntityMarkers: loadCorpEntityMarkers(parsed?.corpEntityMarkers),
@@ -858,7 +878,7 @@ export function loadAppSettings() {
     };
   } catch {
     return {
-      fiscalPeriod: getDefaultFiscalPeriod(DEFAULT_BUSINESS_START_YEAR),
+      fiscalPeriod: normalizePersistedFiscalPeriod(null),
       fontScale: DEFAULT_FONT_SCALE,
       rowPaddingScale: DEFAULT_ROW_PADDING_SCALE,
       corpEntityMarkers: DEFAULT_CORP_ENTITY_MARKERS,
@@ -880,7 +900,7 @@ export function saveAppSettings(settings) {
 export function resetOtherAppSettings(current) {
   return {
     ...current,
-    fiscalPeriod: normalizeFiscalPeriod(DEFAULT_BUSINESS_START_YEAR, current.fiscalPeriod),
+    fiscalPeriod: normalizePersistedFiscalPeriod(current.fiscalPeriod),
     corpEntityMarkers: DEFAULT_CORP_ENTITY_MARKERS,
     companyName: DEFAULT_COMPANY_NAME,
     brandIconText: DEFAULT_BRAND_ICON_TEXT,

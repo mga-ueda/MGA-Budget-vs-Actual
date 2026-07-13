@@ -9,7 +9,7 @@ import {
   journalFileMatchesFiscalPeriodByDates,
   inferFiscalEndMonthFromJournalFileName,
   inferBusinessStartYearFromJournalItems,
-  DEFAULT_BUSINESS_START_YEAR,
+  resolveDefaultBusinessStartYear,
   csvExportDateMatchesFiscalPeriod,
   csvDirname,
 } from '../config/appSettings.js';
@@ -221,7 +221,7 @@ function resolveBusinessStartYear(buckets, periodOptions = {}) {
   if (periodOptions.businessStartYear != null) {
     return periodOptions.businessStartYear;
   }
-  return inferBusinessStartYearFromJournalItems(buckets.journal) ?? DEFAULT_BUSINESS_START_YEAR;
+  return inferBusinessStartYearFromJournalItems(buckets.journal) ?? resolveDefaultBusinessStartYear();
 }
 
 function resolveCsvBuckets(buckets, periodOptions = {}) {

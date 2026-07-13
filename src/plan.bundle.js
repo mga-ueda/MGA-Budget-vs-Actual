@@ -11184,7 +11184,13 @@ function bindViewportScale(onChange) {
 /* config/appSettings.js */
 const APP_SETTINGS_STORAGE_KEY = 'mga-app-settings';
 
-const DEFAULT_BUSINESS_START_YEAR = 2018;
+/** 事業開始年の既定（未設定。CSV 未推定時は resolveDefaultBusinessStartYear を使う） */
+const DEFAULT_BUSINESS_START_YEAR = null;
+
+/** 事業開始年のフォールバック（既定がなければ現在の西暦年） */
+function resolveDefaultBusinessStartYear() {
+  return DEFAULT_BUSINESS_START_YEAR ?? new Date().getFullYear();
+}
 
 /** 設定 UI で 100% と表示するときの実際の CSS 倍率 */
 const DESIGN_FONT_BASELINE = 0.85;
@@ -11735,12 +11741,16 @@ function getFiscalPeriodForDate(
   const y = date.getFullYear();
   const m = date.getMonth() + 1;
   const startMonth = getFiscalYearStartMonth(fiscalEndMonth);
+  let period;
   if (startMonth === 12) {
     const anchorYear = m === 12 ? y : y - 1;
-    return anchorYear - businessStartYear + 1;
+    period = anchorYear - businessStartYear + 1;
+  } else {
+    const endYear = m >= startMonth ? y + 1 : y;
+    period = endYear - businessStartYear;
   }
-  const endYear = m >= startMonth ? y + 1 : y;
-  return endYear - businessStartYear;
+  // 事業開始年フォールバック（現在年）では会計開始前に 0 以下になり得るため下限を 1 にする
+  return Math.max(1, period);
 }
 
 function getMaxSelectablePeriod(
@@ -11804,6 +11814,16 @@ function normalizeFiscalPeriod(
   const n = Number(fiscalPeriod);
   if (!Number.isInteger(n) || n < 1) return getDefaultFiscalPeriod(businessStartYear, date, fiscalEndMonth);
   return Math.min(max, Math.max(1, n));
+}
+
+/**
+ * localStorage 上の期番号の検証。
+ * 事業開始年が CSV 未推定のときは上限クランプしない（現在年フォールバックで期が潰れるのを防ぐ）。
+ */
+function normalizePersistedFiscalPeriod(fiscalPeriod) {
+  const n = Number(fiscalPeriod);
+  if (!Number.isInteger(n) || n < 1) return 1;
+  return n;
 }
 
 function toFullWidthAsciiDigits(value) {
@@ -11983,7 +12003,7 @@ function loadAppSettings() {
     const raw = localStorage.getItem(APP_SETTINGS_STORAGE_KEY);
     if (!raw) {
       return {
-        fiscalPeriod: getDefaultFiscalPeriod(DEFAULT_BUSINESS_START_YEAR),
+        fiscalPeriod: normalizePersistedFiscalPeriod(null),
         fontScale: DEFAULT_FONT_SCALE,
         rowPaddingScale: DEFAULT_ROW_PADDING_SCALE,
         corpEntityMarkers: DEFAULT_CORP_ENTITY_MARKERS,
@@ -11997,7 +12017,7 @@ function loadAppSettings() {
     }
     const parsed = JSON.parse(raw);
     return {
-      fiscalPeriod: normalizeFiscalPeriod(DEFAULT_BUSINESS_START_YEAR, parsed?.fiscalPeriod),
+      fiscalPeriod: normalizePersistedFiscalPeriod(parsed?.fiscalPeriod),
       fontScale: loadFontScale(parsed),
       rowPaddingScale: loadRowPaddingScale(parsed),
       corpEntityMarkers: loadCorpEntityMarkers(parsed?.corpEntityMarkers),
@@ -12010,7 +12030,7 @@ function loadAppSettings() {
     };
   } catch {
     return {
-      fiscalPeriod: getDefaultFiscalPeriod(DEFAULT_BUSINESS_START_YEAR),
+      fiscalPeriod: normalizePersistedFiscalPeriod(null),
       fontScale: DEFAULT_FONT_SCALE,
       rowPaddingScale: DEFAULT_ROW_PADDING_SCALE,
       corpEntityMarkers: DEFAULT_CORP_ENTITY_MARKERS,
@@ -12032,7 +12052,7 @@ function saveAppSettings(settings) {
 function resetOtherAppSettings(current) {
   return {
     ...current,
-    fiscalPeriod: normalizeFiscalPeriod(DEFAULT_BUSINESS_START_YEAR, current.fiscalPeriod),
+    fiscalPeriod: normalizePersistedFiscalPeriod(current.fiscalPeriod),
     corpEntityMarkers: DEFAULT_CORP_ENTITY_MARKERS,
     companyName: DEFAULT_COMPANY_NAME,
     brandIconText: DEFAULT_BRAND_ICON_TEXT,
@@ -12447,7 +12467,7 @@ function resolveBusinessStartYear(buckets, periodOptions = {}) {
   if (periodOptions.businessStartYear != null) {
     return periodOptions.businessStartYear;
   }
-  return inferBusinessStartYearFromJournalItems(buckets.journal) ?? DEFAULT_BUSINESS_START_YEAR;
+  return inferBusinessStartYearFromJournalItems(buckets.journal) ?? resolveDefaultBusinessStartYear();
 }
 
 function resolveCsvBuckets(buckets, periodOptions = {}) {
@@ -21732,9 +21752,9 @@ function getPeriodOptions() {
   };
 }
 
-/** 事業開始年（最古の仕訳 CSV を第1期とみなして推定。未ロード時はデフォルト） */
+/** 事業開始年（最古の仕訳 CSV を第1期とみなして推定。未ロード時は現在年フォールバック） */
 function getActiveBusinessStartYear() {
-  return resolveBusinessStartYearFromCache() ?? DEFAULT_BUSINESS_START_YEAR;
+  return resolveBusinessStartYearFromCache() ?? resolveDefaultBusinessStartYear();
 }
 
 /** 選択期の決算月（仕訳 CSV ファイル名から推定。未ロード時はキャッシュまたはデフォルト） */

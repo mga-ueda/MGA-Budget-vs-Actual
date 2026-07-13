@@ -108,7 +108,7 @@ import {
   MAX_BRAND_LOGO_OUTLINE_WIDTH,
   MIN_BRAND_LOGO_SHADOW_STRENGTH,
   MAX_BRAND_LOGO_SHADOW_STRENGTH,
-  DEFAULT_BUSINESS_START_YEAR,
+  resolveDefaultBusinessStartYear,
 } from '../config/appSettings.js';
 import { buildFiscalMonths, DEFAULT_FISCAL_END_MONTH } from '../config/fiscalCalendar.js';
 import {
@@ -405,9 +405,9 @@ function getPeriodOptions() {
   };
 }
 
-/** 事業開始年（最古の仕訳 CSV を第1期とみなして推定。未ロード時はデフォルト） */
+/** 事業開始年（最古の仕訳 CSV を第1期とみなして推定。未ロード時は現在年フォールバック） */
 function getActiveBusinessStartYear() {
-  return resolveBusinessStartYearFromCache() ?? DEFAULT_BUSINESS_START_YEAR;
+  return resolveBusinessStartYearFromCache() ?? resolveDefaultBusinessStartYear();
 }
 
 /** 選択期の決算月（仕訳 CSV ファイル名から推定。未ロード時はキャッシュまたはデフォルト） */
