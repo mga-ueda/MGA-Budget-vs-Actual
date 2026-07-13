@@ -12492,6 +12492,42 @@ function resolveCsvBuckets(buckets, periodOptions = {}) {
   };
 }
 
+/** バケット内の仕訳から決算月を推定（来期フォールバック判定用） */
+function inferFiscalEndMonthFromBuckets(buckets) {
+  const journals = [...(buckets.journal ?? [])].sort((a, b) => b.name.localeCompare(a.name, 'ja'));
+  for (const item of journals) {
+    const endMonth = inferFiscalEndMonthFromJournalFileName(item.name);
+    if (endMonth != null) return endMonth;
+  }
+  return DEFAULT_FISCAL_END_MONTH;
+}
+
+/**
+ * 指定期の仕訳が無いとき、事業開始年を推定して来期なら今期 CSV にフォールバックする。
+ * （キャッシュ前に現在年フォールバックで誤って来期判定しないよう、推定できる場合のみ）
+ */
+function resolveCsvBucketsWithPlanOnlyFallback(buckets, periodOptions = {}) {
+  const resolved = resolveCsvBuckets(buckets, periodOptions);
+  if (resolved.journal) return resolved;
+
+  const inferredStartYear = inferBusinessStartYearFromJournalItems(buckets.journal);
+  if (inferredStartYear == null) return resolved;
+
+  const settings = loadAppSettings();
+  const requestedPeriod = periodOptions.fiscalPeriod ?? settings.fiscalPeriod;
+  const fiscalEndMonth = inferFiscalEndMonthFromBuckets(buckets);
+  if (!isPlanOnlyPeriod(inferredStartYear, requestedPeriod, undefined, fiscalEndMonth)) {
+    return resolved;
+  }
+
+  const currentPeriod = getFiscalPeriodForDate(inferredStartYear, undefined, fiscalEndMonth);
+  return resolveCsvBuckets(buckets, {
+    ...periodOptions,
+    businessStartYear: inferredStartYear,
+    fiscalPeriod: currentPeriod,
+  });
+}
+
 /** @type {{ folderName: string, buckets: { journal: object[], balanceSheet: object[], generalLedger: object[] } } | null} */
 let folderCsvCache = null;
 
@@ -12543,7 +12579,7 @@ function folderDataFromResolved(resolved, folderName) {
 /** キャッシュ済み CSV から期に応じたデータを解決（ファイルシステムアクセス不要） */
 function resolveFolderDataFromCache(periodOptions = {}) {
   if (!folderCsvCache) return null;
-  const resolved = resolveCsvBuckets(folderCsvCache.buckets, periodOptions);
+  const resolved = resolveCsvBucketsWithPlanOnlyFallback(folderCsvCache.buckets, periodOptions);
   return folderDataFromResolved(resolved, folderCsvCache.folderName);
 }
 
@@ -12564,7 +12600,7 @@ async function readCsvFromFolderHandle(handle, periodOptions = {}, options = {})
   const folderName = handle.name;
 
   if (!forceRefresh && folderCsvCache?.folderName === folderName) {
-    const resolved = resolveCsvBuckets(folderCsvCache.buckets, periodOptions);
+    const resolved = resolveCsvBucketsWithPlanOnlyFallback(folderCsvCache.buckets, periodOptions);
     return folderDataFromResolved(resolved, folderName);
   }
 
@@ -12578,7 +12614,7 @@ async function readCsvFromFolderHandle(handle, periodOptions = {}, options = {})
   }
 
   await loadCsvCacheFromHandle(handle);
-  const resolved = resolveCsvBuckets(folderCsvCache.buckets, periodOptions);
+  const resolved = resolveCsvBucketsWithPlanOnlyFallback(folderCsvCache.buckets, periodOptions);
   return folderDataFromResolved(resolved, folderName);
 }
 
@@ -21789,11 +21825,15 @@ function getPlanFiscalMonths() {
 /** CSV が存在する期向けの読み込みオプション（来期・計画のみの期は今期にフォールバック） */
 function getCsvLoadPeriodOptions() {
   const { fiscalPeriod } = appSettings;
-  const businessStartYear = getActiveBusinessStartYear();
+  // 事業開始年未推定のまま現在年フォールバックで来期判定すると、保存中の期と別期を読んでしまう
+  const inferredStartYear = resolveBusinessStartYearFromCache();
+  if (inferredStartYear == null) {
+    return getPeriodOptions();
+  }
   const fiscalEndMonth = getActiveFiscalEndMonth();
-  if (isPlanOnlyPeriod(businessStartYear, fiscalPeriod, undefined, fiscalEndMonth)) {
+  if (isPlanOnlyPeriod(inferredStartYear, fiscalPeriod, undefined, fiscalEndMonth)) {
     return {
-      fiscalPeriod: getFiscalPeriodForDate(businessStartYear, undefined, fiscalEndMonth),
+      fiscalPeriod: getFiscalPeriodForDate(inferredStartYear, undefined, fiscalEndMonth),
     };
   }
   return getPeriodOptions();
@@ -32417,7 +32457,11 @@ async function handlePickCsvFolder() {
 }
 
 async function handleReloadCsv() {
-  if (isPlanOnlyPeriod(getActiveBusinessStartYear(), appSettings.fiscalPeriod, undefined, getActiveFiscalEndMonth())) {
+  // 事業開始年未推定時は来期判定しない（現在年フォールバックで誤判定する）
+  if (
+    resolveBusinessStartYearFromCache() != null
+    && isPlanOnlyPeriod(getActiveBusinessStartYear(), appSettings.fiscalPeriod, undefined, getActiveFiscalEndMonth())
+  ) {
     showPlanLoadingOverlay({ awaitLayout: true });
     loadPlanOnlyPeriodData();
     switchMainTab('plan');
@@ -32427,9 +32471,19 @@ async function handleReloadCsv() {
   showPlanLoadingOverlay({ awaitLayout: true });
 
   try {
-    const loaded = await reloadPlanDataFromSavedFolder(expandConfig, getPeriodOptions(), {
+    const loaded = await reloadPlanDataFromSavedFolder(expandConfig, getCsvLoadPeriodOptions(), {
       forceRefresh: true,
     });
+    if (isPlanOnlyPeriod(getActiveBusinessStartYear(), appSettings.fiscalPeriod, undefined, getActiveFiscalEndMonth())) {
+      journalText = loaded.journalText;
+      bsText = loaded.bsText;
+      generalLedgerText = loaded.generalLedgerText ?? null;
+      generalLedgerName = loaded.generalLedgerName ?? null;
+      rawPlanData = loaded.data;
+      loadPlanOnlyPeriodData();
+      switchMainTab('plan');
+      return;
+    }
     loadData(loaded);
     switchMainTab('plan');
   } catch (err) {
@@ -32772,35 +32826,7 @@ async function init() {
   root.innerHTML = '';
 
   try {
-    if (isPlanOnlyPeriod(getActiveBusinessStartYear(), appSettings.fiscalPeriod, undefined, getActiveFiscalEndMonth())) {
-      const savedPeriod = appSettings.fiscalPeriod;
-      const currentPeriod = getFiscalPeriodForDate(getActiveBusinessStartYear(), undefined, getActiveFiscalEndMonth());
-      try {
-        const result = await resolvePlanStartup(expandConfig, {
-          businessStartYear: getActiveBusinessStartYear(),
-          fiscalPeriod: currentPeriod,
-        });
-        if (result.status === 'loaded') {
-          root.innerHTML = '';
-          journalText = result.data.journalText;
-          bsText = result.data.bsText;
-          generalLedgerText = result.data.generalLedgerText ?? null;
-          generalLedgerName = result.data.generalLedgerName ?? null;
-          rawPlanData = result.data.data;
-        } else if (result.status === 'needs-permission') {
-          renderFolderAccessScreen(result.folderName, result.handle);
-          return;
-        }
-      } catch {
-        /* テンプレートなしでも計画表示は可能 */
-      }
-      appSettings = { ...appSettings, fiscalPeriod: savedPeriod };
-      root.innerHTML = '';
-      showPlanLoadingOverlay({ awaitLayout: true });
-      loadPlanOnlyPeriodData();
-      return;
-    }
-
+    // 事業開始年は CSV キャッシュ推定後に確定するため、来期判定は読み込み後に行う
     const result = await resolvePlanStartup(expandConfig, getCsvLoadPeriodOptions());
     if (result.status === 'loaded') {
       root.innerHTML = '';

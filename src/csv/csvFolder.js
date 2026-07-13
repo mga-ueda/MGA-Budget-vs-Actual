@@ -12,6 +12,9 @@ import {
   resolveDefaultBusinessStartYear,
   csvExportDateMatchesFiscalPeriod,
   csvDirname,
+  isPlanOnlyPeriod,
+  getFiscalPeriodForDate,
+  DEFAULT_FISCAL_END_MONTH,
 } from '../config/appSettings.js';
 
 const DB_NAME = 'mga-budget-cache';
@@ -246,6 +249,42 @@ function resolveCsvBuckets(buckets, periodOptions = {}) {
   };
 }
 
+/** バケット内の仕訳から決算月を推定（来期フォールバック判定用） */
+function inferFiscalEndMonthFromBuckets(buckets) {
+  const journals = [...(buckets.journal ?? [])].sort((a, b) => b.name.localeCompare(a.name, 'ja'));
+  for (const item of journals) {
+    const endMonth = inferFiscalEndMonthFromJournalFileName(item.name);
+    if (endMonth != null) return endMonth;
+  }
+  return DEFAULT_FISCAL_END_MONTH;
+}
+
+/**
+ * 指定期の仕訳が無いとき、事業開始年を推定して来期なら今期 CSV にフォールバックする。
+ * （キャッシュ前に現在年フォールバックで誤って来期判定しないよう、推定できる場合のみ）
+ */
+function resolveCsvBucketsWithPlanOnlyFallback(buckets, periodOptions = {}) {
+  const resolved = resolveCsvBuckets(buckets, periodOptions);
+  if (resolved.journal) return resolved;
+
+  const inferredStartYear = inferBusinessStartYearFromJournalItems(buckets.journal);
+  if (inferredStartYear == null) return resolved;
+
+  const settings = loadAppSettings();
+  const requestedPeriod = periodOptions.fiscalPeriod ?? settings.fiscalPeriod;
+  const fiscalEndMonth = inferFiscalEndMonthFromBuckets(buckets);
+  if (!isPlanOnlyPeriod(inferredStartYear, requestedPeriod, undefined, fiscalEndMonth)) {
+    return resolved;
+  }
+
+  const currentPeriod = getFiscalPeriodForDate(inferredStartYear, undefined, fiscalEndMonth);
+  return resolveCsvBuckets(buckets, {
+    ...periodOptions,
+    businessStartYear: inferredStartYear,
+    fiscalPeriod: currentPeriod,
+  });
+}
+
 /** @type {{ folderName: string, buckets: { journal: object[], balanceSheet: object[], generalLedger: object[] } } | null} */
 let folderCsvCache = null;
 
@@ -297,7 +336,7 @@ function folderDataFromResolved(resolved, folderName) {
 /** キャッシュ済み CSV から期に応じたデータを解決（ファイルシステムアクセス不要） */
 export function resolveFolderDataFromCache(periodOptions = {}) {
   if (!folderCsvCache) return null;
-  const resolved = resolveCsvBuckets(folderCsvCache.buckets, periodOptions);
+  const resolved = resolveCsvBucketsWithPlanOnlyFallback(folderCsvCache.buckets, periodOptions);
   return folderDataFromResolved(resolved, folderCsvCache.folderName);
 }
 
@@ -318,7 +357,7 @@ export async function readCsvFromFolderHandle(handle, periodOptions = {}, option
   const folderName = handle.name;
 
   if (!forceRefresh && folderCsvCache?.folderName === folderName) {
-    const resolved = resolveCsvBuckets(folderCsvCache.buckets, periodOptions);
+    const resolved = resolveCsvBucketsWithPlanOnlyFallback(folderCsvCache.buckets, periodOptions);
     return folderDataFromResolved(resolved, folderName);
   }
 
@@ -332,7 +371,7 @@ export async function readCsvFromFolderHandle(handle, periodOptions = {}, option
   }
 
   await loadCsvCacheFromHandle(handle);
-  const resolved = resolveCsvBuckets(folderCsvCache.buckets, periodOptions);
+  const resolved = resolveCsvBucketsWithPlanOnlyFallback(folderCsvCache.buckets, periodOptions);
   return folderDataFromResolved(resolved, folderName);
 }
 

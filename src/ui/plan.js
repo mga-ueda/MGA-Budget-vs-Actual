@@ -442,11 +442,15 @@ function getPlanFiscalMonths() {
 /** CSV が存在する期向けの読み込みオプション（来期・計画のみの期は今期にフォールバック） */
 function getCsvLoadPeriodOptions() {
   const { fiscalPeriod } = appSettings;
-  const businessStartYear = getActiveBusinessStartYear();
+  // 事業開始年未推定のまま現在年フォールバックで来期判定すると、保存中の期と別期を読んでしまう
+  const inferredStartYear = resolveBusinessStartYearFromCache();
+  if (inferredStartYear == null) {
+    return getPeriodOptions();
+  }
   const fiscalEndMonth = getActiveFiscalEndMonth();
-  if (isPlanOnlyPeriod(businessStartYear, fiscalPeriod, undefined, fiscalEndMonth)) {
+  if (isPlanOnlyPeriod(inferredStartYear, fiscalPeriod, undefined, fiscalEndMonth)) {
     return {
-      fiscalPeriod: getFiscalPeriodForDate(businessStartYear, undefined, fiscalEndMonth),
+      fiscalPeriod: getFiscalPeriodForDate(inferredStartYear, undefined, fiscalEndMonth),
     };
   }
   return getPeriodOptions();
@@ -11070,7 +11074,11 @@ async function handlePickCsvFolder() {
 }
 
 async function handleReloadCsv() {
-  if (isPlanOnlyPeriod(getActiveBusinessStartYear(), appSettings.fiscalPeriod, undefined, getActiveFiscalEndMonth())) {
+  // 事業開始年未推定時は来期判定しない（現在年フォールバックで誤判定する）
+  if (
+    resolveBusinessStartYearFromCache() != null
+    && isPlanOnlyPeriod(getActiveBusinessStartYear(), appSettings.fiscalPeriod, undefined, getActiveFiscalEndMonth())
+  ) {
     showPlanLoadingOverlay({ awaitLayout: true });
     loadPlanOnlyPeriodData();
     switchMainTab('plan');
@@ -11080,9 +11088,19 @@ async function handleReloadCsv() {
   showPlanLoadingOverlay({ awaitLayout: true });
 
   try {
-    const loaded = await reloadPlanDataFromSavedFolder(expandConfig, getPeriodOptions(), {
+    const loaded = await reloadPlanDataFromSavedFolder(expandConfig, getCsvLoadPeriodOptions(), {
       forceRefresh: true,
     });
+    if (isPlanOnlyPeriod(getActiveBusinessStartYear(), appSettings.fiscalPeriod, undefined, getActiveFiscalEndMonth())) {
+      journalText = loaded.journalText;
+      bsText = loaded.bsText;
+      generalLedgerText = loaded.generalLedgerText ?? null;
+      generalLedgerName = loaded.generalLedgerName ?? null;
+      rawPlanData = loaded.data;
+      loadPlanOnlyPeriodData();
+      switchMainTab('plan');
+      return;
+    }
     loadData(loaded);
     switchMainTab('plan');
   } catch (err) {
@@ -11425,35 +11443,7 @@ async function init() {
   root.innerHTML = '';
 
   try {
-    if (isPlanOnlyPeriod(getActiveBusinessStartYear(), appSettings.fiscalPeriod, undefined, getActiveFiscalEndMonth())) {
-      const savedPeriod = appSettings.fiscalPeriod;
-      const currentPeriod = getFiscalPeriodForDate(getActiveBusinessStartYear(), undefined, getActiveFiscalEndMonth());
-      try {
-        const result = await resolvePlanStartup(expandConfig, {
-          businessStartYear: getActiveBusinessStartYear(),
-          fiscalPeriod: currentPeriod,
-        });
-        if (result.status === 'loaded') {
-          root.innerHTML = '';
-          journalText = result.data.journalText;
-          bsText = result.data.bsText;
-          generalLedgerText = result.data.generalLedgerText ?? null;
-          generalLedgerName = result.data.generalLedgerName ?? null;
-          rawPlanData = result.data.data;
-        } else if (result.status === 'needs-permission') {
-          renderFolderAccessScreen(result.folderName, result.handle);
-          return;
-        }
-      } catch {
-        /* テンプレートなしでも計画表示は可能 */
-      }
-      appSettings = { ...appSettings, fiscalPeriod: savedPeriod };
-      root.innerHTML = '';
-      showPlanLoadingOverlay({ awaitLayout: true });
-      loadPlanOnlyPeriodData();
-      return;
-    }
-
+    // 事業開始年は CSV キャッシュ推定後に確定するため、来期判定は読み込み後に行う
     const result = await resolvePlanStartup(expandConfig, getCsvLoadPeriodOptions());
     if (result.status === 'loaded') {
       root.innerHTML = '';
