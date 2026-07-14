@@ -7,6 +7,7 @@ import {
   buildMonthYearMap,
   parseCorpEntityMarkers,
   isCorporateSubLabel,
+  isPlanOnlyPeriod,
 } from '../config/appSettings.js';
 import { buildFiscalYearMonths } from '../config/salaryPlanConfig.js';
 import { getPeriodVendorEntries } from '../config/outsourcingPlanConfig.js';
@@ -118,6 +119,7 @@ function outRebuildOutsourcingRows(
   fiscalMonths,
   skipPlanFillMonths = null,
   forcePlanMonths = null,
+  dropUnmatchedCsvDetail = false,
 ) {
   const totalRow = rows.find((r) => r.type === 'total');
   const body = rows.filter((r) => r.type !== 'plan' && r.type !== 'total');
@@ -134,6 +136,11 @@ function outRebuildOutsourcingRows(
       ...outMergePlanIntoCsvRow(row, planMonths, fiscalMonths, skipPlanFillMonths, forcePlanMonths),
       outsourcingVendorId: vendor.id,
     };
+  }).filter((row) => {
+    // 来期など計画専用期は、今期CSV由来の仕訳補助科目を残さない（計画にある発注先のみ）
+    if (!dropUnmatchedCsvDetail) return true;
+    if (!outIsOutsourcingDetailRow(row)) return true;
+    return vendors.some((v) => outRowMatchesVendor(row, v));
   });
 
   const orphanPlanRows = planRows.filter((row) => {
@@ -412,6 +419,12 @@ export function enrichPlanDataWithOutsourcingRows(planData, {
     };
   }
 
+  const dropUnmatchedCsvDetail = isPlanOnlyPeriod(
+    businessStartYear,
+    fiscalPeriod,
+    undefined,
+    fiscalEndMonth,
+  );
   const outsourcing = planData.sections[outsourcingIdx];
   let rows = outRebuildOutsourcingRows(
     outsourcing.rows,
@@ -419,6 +432,7 @@ export function enrichPlanDataWithOutsourcingRows(planData, {
     fiscalMonths,
     skipPlanFillMonths,
     forcePlanMonths,
+    dropUnmatchedCsvDetail,
   );
 
   const totalIdx = rows.findIndex((r) => r.type === 'total');

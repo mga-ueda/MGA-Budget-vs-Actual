@@ -272,6 +272,23 @@ export function setRevenuePlanYears(settings, planYears) {
   });
 }
 
+/** 契約月数サマリの受注先ソート（null | 'asc' | 'desc'） */
+export function normalizeOrderMonthsClientSort(value) {
+  if (value === 'asc' || value === 'desc') return value;
+  return null;
+}
+
+export function getOrderMonthsClientSort(settings) {
+  return normalizeOrderMonthsClientSort(settings?.orderMonthsClientSort);
+}
+
+export function setOrderMonthsClientSort(settings, sort) {
+  return saveRevenuePlanSettings({
+    ...settings,
+    orderMonthsClientSort: normalizeOrderMonthsClientSort(sort),
+  });
+}
+
 export function buildRevenuePlanPeriodEntries(currentPeriod, planYears) {
   const years = normalizeRevenuePlanYears(planYears);
   const entries = [];
@@ -417,66 +434,46 @@ export function renameManualClientEntry(plans, fiscalPeriod, clientId, newSubLab
   if (!sub) return { plans, ok: false, reason: 'empty' };
   const sourceEntries = getPeriodClientEntries(plans, fiscalPeriod, fiscalMonths);
   const client = sourceEntries.find((e) => e.id === clientId);
-  if (!client?.manual) return { plans, ok: false, reason: 'not_manual' };
+  if (!client) return { plans, ok: false, reason: 'not_found' };
 
   const oldSub = client.subLabel;
   const oldId = client.id;
   const newId = createClientId(client.accountLabel, sub);
 
-  function isSameManualClient(entry) {
-    if (!entry?.manual) return false;
+  function isSameClient(entry) {
+    // 他期へ同期済みで manual が落ちた行も、同一受注先として扱う
     return entry.id === oldId
       || (entry.accountLabel === client.accountLabel && entry.subLabel === oldSub);
   }
 
-  for (const periodKey of Object.keys(plans)) {
-    const period = Number(periodKey);
-    if (!Number.isFinite(period)) continue;
-    const entries = getPeriodClientEntries(plans, period, fiscalMonths);
-    const duplicate = entries.some(
-      (e) => !isSameManualClient(e)
-        && e.accountLabel === client.accountLabel
-        && e.subLabel === sub,
-    );
-    if (duplicate) return { plans, ok: false, reason: 'duplicate' };
-  }
+  // 同名は操作中の期内だけ禁止。他期に同名があっても許可する。
+  const duplicate = sourceEntries.some(
+    (e) => !isSameClient(e)
+      && e.accountLabel === client.accountLabel
+      && e.subLabel === sub,
+  );
+  if (duplicate) return { plans, ok: false, reason: 'duplicate' };
 
-  let nextPlans = plans;
-  let renamedEntry = null;
-  for (const periodKey of Object.keys(nextPlans)) {
-    const period = Number(periodKey);
-    if (!Number.isFinite(period)) continue;
-    const raw = nextPlans[periodKey];
-    if (!raw || typeof raw !== 'object') continue;
-
-    const entries = getPeriodClientEntries(nextPlans, period, fiscalMonths);
-    let changed = false;
-    const updatedEntries = entries.map((entry) => {
-      if (!isSameManualClient(entry)) return entry;
-      changed = true;
-      const nextEntry = normalizeClientEntry({
-        ...entry,
-        subLabel: sub,
-        id: newId,
-        manual: true,
-      }, fiscalMonths);
-      if (period === fiscalPeriod) renamedEntry = nextEntry;
-      return nextEntry;
-    });
-    if (!changed) continue;
-    nextPlans = setPeriodClientEntries(nextPlans, period, updatedEntries, fiscalMonths);
-  }
-
-  if (!renamedEntry) {
-    renamedEntry = normalizeClientEntry({
+  // 名前変更は操作した期だけに適用する（他期の同名受注先と独立）
+  const updatedEntries = sourceEntries.map((entry) => {
+    if (!isSameClient(entry)) return entry;
+    return normalizeClientEntry({
+      ...entry,
+      subLabel: sub,
+      id: newId,
+      manual: true,
+    }, fiscalMonths);
+  });
+  const renamedEntry = updatedEntries.find((e) => e.id === newId)
+    ?? normalizeClientEntry({
       ...client,
       subLabel: sub,
       id: newId,
+      manual: true,
     }, fiscalMonths);
-  }
 
   return {
-    plans: nextPlans,
+    plans: setPeriodClientEntries(plans, fiscalPeriod, updatedEntries, fiscalMonths),
     ok: true,
     entry: renamedEntry,
   };
@@ -528,16 +525,30 @@ export function mergeClientsFromSubaccounts(plans, fiscalPeriod, subaccounts, fi
   return setPeriodClientEntries(plans, fiscalPeriod, next, fiscalMonths);
 }
 
-/** 参照期の受注先一覧を、未登録分だけ対象期に追加する（金額は空） */
+/** 参照期の受注先一覧を、未登録分だけ対象期に追加する（金額は空。手動追加の manual フラグも引き継ぐ） */
 export function syncClientListFromReference(plans, targetPeriod, referencePeriod, fiscalMonths) {
   const refClients = getPeriodClientEntries(plans, referencePeriod, fiscalMonths);
   const targetClients = getPeriodClientEntries(plans, targetPeriod, fiscalMonths);
-  const targetKeys = new Set(
-    targetClients.map((v) => `${v.accountLabel}\x00${v.subLabel}`),
-  );
   const targetExcluded = revGetPeriodExcludedKeys(plans, targetPeriod);
   let changed = false;
-  const next = [...targetClients];
+  const next = targetClients.map((entry) => {
+    if (entry.manual) return entry;
+    const key = `${entry.accountLabel}\x00${entry.subLabel}`;
+    const ref = refClients.find(
+      (r) => r.manual
+        && r.accountLabel === entry.accountLabel
+        && r.subLabel === entry.subLabel,
+    );
+    if (!ref) return entry;
+    if (targetExcluded.has(key)) return entry;
+    const healed = normalizeClientEntry({ ...entry, manual: true }, fiscalMonths);
+    if (!healed) return entry;
+    changed = true;
+    return healed;
+  });
+  const targetKeys = new Set(
+    next.map((v) => `${v.accountLabel}\x00${v.subLabel}`),
+  );
   for (const ref of refClients) {
     const key = `${ref.accountLabel}\x00${ref.subLabel}`;
     if (targetKeys.has(key) || targetExcluded.has(key)) continue;
@@ -547,6 +558,7 @@ export function syncClientListFromReference(plans, targetPeriod, referencePeriod
       subLabel: ref.subLabel,
       manMonths: {},
       monthlyUnitPrice: {},
+      manual: ref.manual ? true : undefined,
     }, fiscalMonths);
     if (client) {
       next.push(client);

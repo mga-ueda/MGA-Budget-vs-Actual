@@ -1,6 +1,10 @@
 import { normalizeAmount, emptyMonthly } from './planAmountUtils.js';
 
 const OUTSOURCING_PLAN_STORAGE_KEY = 'mga-outsourcing-plans';
+const OUTSOURCING_PLAN_SETTINGS_STORAGE_KEY = 'mga-outsourcing-plan-settings';
+export const DEFAULT_OUTSOURCING_PLAN_YEARS = 3;
+const MIN_OUTSOURCING_PLAN_YEARS = 1;
+const MAX_OUTSOURCING_PLAN_YEARS = 30;
 
 export function createVendorId(accountLabel, subLabel) {
   const base = `${accountLabel}|${subLabel}`;
@@ -38,6 +42,49 @@ export function saveOutsourcingPlans(plans) {
   localStorage.setItem(OUTSOURCING_PLAN_STORAGE_KEY, JSON.stringify(plans));
   return plans;
 }
+
+/** 受注計画と同様、今期を含む計画年数（デフォルト 3 年） */
+export function normalizeOutsourcingPlanYears(value) {
+  const n = Math.round(Number(value));
+  if (!Number.isFinite(n)) return DEFAULT_OUTSOURCING_PLAN_YEARS;
+  return Math.min(MAX_OUTSOURCING_PLAN_YEARS, Math.max(MIN_OUTSOURCING_PLAN_YEARS, n));
+}
+
+export function loadOutsourcingPlanSettings() {
+  try {
+    const raw = localStorage.getItem(OUTSOURCING_PLAN_SETTINGS_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+export function saveOutsourcingPlanSettings(settings) {
+  localStorage.setItem(OUTSOURCING_PLAN_SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+  return settings;
+}
+
+export function getOutsourcingPlanYears(settings) {
+  return normalizeOutsourcingPlanYears(settings?.planYears ?? DEFAULT_OUTSOURCING_PLAN_YEARS);
+}
+
+export function setOutsourcingPlanYears(settings, planYears) {
+  return saveOutsourcingPlanSettings({
+    ...settings,
+    planYears: normalizeOutsourcingPlanYears(planYears),
+  });
+}
+
+export function buildOutsourcingPlanPeriodEntries(currentPeriod, planYears) {
+  const years = normalizeOutsourcingPlanYears(planYears);
+  const entries = [];
+  for (let i = 0; i < years; i += 1) {
+    entries.push({ period: currentPeriod + i });
+  }
+  return entries;
+}
+
 
 export function getPeriodVendorEntries(plans, fiscalPeriod, fiscalMonths) {
   const periodKey = String(fiscalPeriod);
@@ -179,25 +226,22 @@ export function mergeVendorsFromSubaccounts(plans, fiscalPeriod, subaccounts, fi
   return setPeriodVendorEntries(plans, fiscalPeriod, next, fiscalMonths);
 }
 
-/** 手動追加でない空の取引先を対象期から除去する（金額のある計画行は残す） */
+/** 手動追加以外の取引先を対象期から除去する（旧自動同期の名残。金額があっても除去し、再登録防止のため excluded に追加） */
 export function purgeEmptyNonManualVendors(plans, fiscalPeriod, fiscalMonths) {
   const entries = getPeriodVendorEntries(plans, fiscalPeriod, fiscalMonths);
   const kept = [];
+  let next = plans;
   let changed = false;
   for (const entry of entries) {
     if (entry.manual) {
       kept.push(entry);
       continue;
     }
-    const hasAmount = fiscalMonths.some((month) => (entry.monthly[month] ?? 0) !== 0);
-    if (hasAmount) {
-      kept.push(entry);
-      continue;
-    }
     changed = true;
+    next = addExcludedVendorKey(next, fiscalPeriod, entry.accountLabel, entry.subLabel);
   }
   if (!changed) return plans;
-  return setPeriodVendorEntries(plans, fiscalPeriod, kept, fiscalMonths);
+  return setPeriodVendorEntries(next, fiscalPeriod, kept, fiscalMonths);
 }
 
 export function computeVendorPlanTotal(entry, fiscalMonths) {

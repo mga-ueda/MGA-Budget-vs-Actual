@@ -5,6 +5,7 @@ import {
 import { buildBudgetActualMonthSets } from '../config/monthDisplayConfig.js';
 import {
   buildMonthYearMap,
+  isPlanOnlyPeriod,
 } from '../config/appSettings.js';
 import { buildFiscalYearMonths } from '../config/salaryPlanConfig.js';
 import {
@@ -207,6 +208,7 @@ function revRebuildRevenueRows(
   skipPlanFillMonths = null,
   taxOptions = null,
   forcePlanMonths = null,
+  dropUnmatchedCsvDetail = false,
 ) {
   const totalRow = rows.find((r) => r.type === 'total');
   const body = rows.filter((r) => r.type !== 'plan' && r.type !== 'total' && r.type !== 'man-month');
@@ -220,6 +222,11 @@ function revRebuildRevenueRows(
     matchedClientIds.add(client.id);
     const planMonths = rawValuesFromRow({ values: revBuildClientPlanValues(client, fiscalMonths, taxOptions) });
     return revMergePlanIntoCsvRow(row, planMonths, fiscalMonths, skipPlanFillMonths, forcePlanMonths);
+  }).filter((row) => {
+    // 来期など計画専用期は、今期CSV由来の仕訳補助科目を残さない（計画にある受注先のみ）
+    if (!dropUnmatchedCsvDetail) return true;
+    if (!revIsRevenueDetailRow(row)) return true;
+    return clients.some((c) => revRowMatchesClient(row, c));
   });
 
   const orphanPlanRows = planRows.filter((row) => {
@@ -325,6 +332,12 @@ export function enrichPlanDataWithRevenueRows(planData, {
     };
   }
 
+  const dropUnmatchedCsvDetail = isPlanOnlyPeriod(
+    businessStartYear,
+    fiscalPeriod,
+    undefined,
+    fiscalEndMonth,
+  );
   const revenue = planData.sections[revenueIdx];
   let rows = revRebuildRevenueRows(
     revenue.rows,
@@ -333,6 +346,7 @@ export function enrichPlanDataWithRevenueRows(planData, {
     skipPlanFillMonths,
     taxOptions,
     forcePlanMonths,
+    dropUnmatchedCsvDetail,
   );
 
   rows = revInsertManMonthRows(rows, clients, fiscalMonths);

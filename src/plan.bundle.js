@@ -5771,6 +5771,10 @@ function resolveExpenseOverrideTargetRow(rows, account) {
 
 /* config/outsourcingPlanConfig.js */
 const OUTSOURCING_PLAN_STORAGE_KEY = 'mga-outsourcing-plans';
+const OUTSOURCING_PLAN_SETTINGS_STORAGE_KEY = 'mga-outsourcing-plan-settings';
+const DEFAULT_OUTSOURCING_PLAN_YEARS = 3;
+const MIN_OUTSOURCING_PLAN_YEARS = 1;
+const MAX_OUTSOURCING_PLAN_YEARS = 30;
 
 function createVendorId(accountLabel, subLabel) {
   const base = `${accountLabel}|${subLabel}`;
@@ -5808,6 +5812,49 @@ function saveOutsourcingPlans(plans) {
   localStorage.setItem(OUTSOURCING_PLAN_STORAGE_KEY, JSON.stringify(plans));
   return plans;
 }
+
+/** 受注計画と同様、今期を含む計画年数（デフォルト 3 年） */
+function normalizeOutsourcingPlanYears(value) {
+  const n = Math.round(Number(value));
+  if (!Number.isFinite(n)) return DEFAULT_OUTSOURCING_PLAN_YEARS;
+  return Math.min(MAX_OUTSOURCING_PLAN_YEARS, Math.max(MIN_OUTSOURCING_PLAN_YEARS, n));
+}
+
+function loadOutsourcingPlanSettings() {
+  try {
+    const raw = localStorage.getItem(OUTSOURCING_PLAN_SETTINGS_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveOutsourcingPlanSettings(settings) {
+  localStorage.setItem(OUTSOURCING_PLAN_SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+  return settings;
+}
+
+function getOutsourcingPlanYears(settings) {
+  return normalizeOutsourcingPlanYears(settings?.planYears ?? DEFAULT_OUTSOURCING_PLAN_YEARS);
+}
+
+function setOutsourcingPlanYears(settings, planYears) {
+  return saveOutsourcingPlanSettings({
+    ...settings,
+    planYears: normalizeOutsourcingPlanYears(planYears),
+  });
+}
+
+function buildOutsourcingPlanPeriodEntries(currentPeriod, planYears) {
+  const years = normalizeOutsourcingPlanYears(planYears);
+  const entries = [];
+  for (let i = 0; i < years; i += 1) {
+    entries.push({ period: currentPeriod + i });
+  }
+  return entries;
+}
+
 
 function getPeriodVendorEntries(plans, fiscalPeriod, fiscalMonths) {
   const periodKey = String(fiscalPeriod);
@@ -5949,25 +5996,22 @@ function mergeVendorsFromSubaccounts(plans, fiscalPeriod, subaccounts, fiscalMon
   return setPeriodVendorEntries(plans, fiscalPeriod, next, fiscalMonths);
 }
 
-/** 手動追加でない空の取引先を対象期から除去する（金額のある計画行は残す） */
+/** 手動追加以外の取引先を対象期から除去する（旧自動同期の名残。金額があっても除去し、再登録防止のため excluded に追加） */
 function purgeEmptyNonManualVendors(plans, fiscalPeriod, fiscalMonths) {
   const entries = getPeriodVendorEntries(plans, fiscalPeriod, fiscalMonths);
   const kept = [];
+  let next = plans;
   let changed = false;
   for (const entry of entries) {
     if (entry.manual) {
       kept.push(entry);
       continue;
     }
-    const hasAmount = fiscalMonths.some((month) => (entry.monthly[month] ?? 0) !== 0);
-    if (hasAmount) {
-      kept.push(entry);
-      continue;
-    }
     changed = true;
+    next = addExcludedVendorKey(next, fiscalPeriod, entry.accountLabel, entry.subLabel);
   }
   if (!changed) return plans;
-  return setPeriodVendorEntries(plans, fiscalPeriod, kept, fiscalMonths);
+  return setPeriodVendorEntries(next, fiscalPeriod, kept, fiscalMonths);
 }
 
 function computeVendorPlanTotal(entry, fiscalMonths) {
@@ -6278,6 +6322,23 @@ function setRevenuePlanYears(settings, planYears) {
   });
 }
 
+/** 契約月数サマリの受注先ソート（null | 'asc' | 'desc'） */
+function normalizeOrderMonthsClientSort(value) {
+  if (value === 'asc' || value === 'desc') return value;
+  return null;
+}
+
+function getOrderMonthsClientSort(settings) {
+  return normalizeOrderMonthsClientSort(settings?.orderMonthsClientSort);
+}
+
+function setOrderMonthsClientSort(settings, sort) {
+  return saveRevenuePlanSettings({
+    ...settings,
+    orderMonthsClientSort: normalizeOrderMonthsClientSort(sort),
+  });
+}
+
 function buildRevenuePlanPeriodEntries(currentPeriod, planYears) {
   const years = normalizeRevenuePlanYears(planYears);
   const entries = [];
@@ -6423,66 +6484,46 @@ function renameManualClientEntry(plans, fiscalPeriod, clientId, newSubLabel, fis
   if (!sub) return { plans, ok: false, reason: 'empty' };
   const sourceEntries = getPeriodClientEntries(plans, fiscalPeriod, fiscalMonths);
   const client = sourceEntries.find((e) => e.id === clientId);
-  if (!client?.manual) return { plans, ok: false, reason: 'not_manual' };
+  if (!client) return { plans, ok: false, reason: 'not_found' };
 
   const oldSub = client.subLabel;
   const oldId = client.id;
   const newId = createClientId(client.accountLabel, sub);
 
-  function isSameManualClient(entry) {
-    if (!entry?.manual) return false;
+  function isSameClient(entry) {
+    // 他期へ同期済みで manual が落ちた行も、同一受注先として扱う
     return entry.id === oldId
       || (entry.accountLabel === client.accountLabel && entry.subLabel === oldSub);
   }
 
-  for (const periodKey of Object.keys(plans)) {
-    const period = Number(periodKey);
-    if (!Number.isFinite(period)) continue;
-    const entries = getPeriodClientEntries(plans, period, fiscalMonths);
-    const duplicate = entries.some(
-      (e) => !isSameManualClient(e)
-        && e.accountLabel === client.accountLabel
-        && e.subLabel === sub,
-    );
-    if (duplicate) return { plans, ok: false, reason: 'duplicate' };
-  }
+  // 同名は操作中の期内だけ禁止。他期に同名があっても許可する。
+  const duplicate = sourceEntries.some(
+    (e) => !isSameClient(e)
+      && e.accountLabel === client.accountLabel
+      && e.subLabel === sub,
+  );
+  if (duplicate) return { plans, ok: false, reason: 'duplicate' };
 
-  let nextPlans = plans;
-  let renamedEntry = null;
-  for (const periodKey of Object.keys(nextPlans)) {
-    const period = Number(periodKey);
-    if (!Number.isFinite(period)) continue;
-    const raw = nextPlans[periodKey];
-    if (!raw || typeof raw !== 'object') continue;
-
-    const entries = getPeriodClientEntries(nextPlans, period, fiscalMonths);
-    let changed = false;
-    const updatedEntries = entries.map((entry) => {
-      if (!isSameManualClient(entry)) return entry;
-      changed = true;
-      const nextEntry = normalizeClientEntry({
-        ...entry,
-        subLabel: sub,
-        id: newId,
-        manual: true,
-      }, fiscalMonths);
-      if (period === fiscalPeriod) renamedEntry = nextEntry;
-      return nextEntry;
-    });
-    if (!changed) continue;
-    nextPlans = setPeriodClientEntries(nextPlans, period, updatedEntries, fiscalMonths);
-  }
-
-  if (!renamedEntry) {
-    renamedEntry = normalizeClientEntry({
+  // 名前変更は操作した期だけに適用する（他期の同名受注先と独立）
+  const updatedEntries = sourceEntries.map((entry) => {
+    if (!isSameClient(entry)) return entry;
+    return normalizeClientEntry({
+      ...entry,
+      subLabel: sub,
+      id: newId,
+      manual: true,
+    }, fiscalMonths);
+  });
+  const renamedEntry = updatedEntries.find((e) => e.id === newId)
+    ?? normalizeClientEntry({
       ...client,
       subLabel: sub,
       id: newId,
+      manual: true,
     }, fiscalMonths);
-  }
 
   return {
-    plans: nextPlans,
+    plans: setPeriodClientEntries(plans, fiscalPeriod, updatedEntries, fiscalMonths),
     ok: true,
     entry: renamedEntry,
   };
@@ -6534,16 +6575,30 @@ function mergeClientsFromSubaccounts(plans, fiscalPeriod, subaccounts, fiscalMon
   return setPeriodClientEntries(plans, fiscalPeriod, next, fiscalMonths);
 }
 
-/** 参照期の受注先一覧を、未登録分だけ対象期に追加する（金額は空） */
+/** 参照期の受注先一覧を、未登録分だけ対象期に追加する（金額は空。手動追加の manual フラグも引き継ぐ） */
 function syncClientListFromReference(plans, targetPeriod, referencePeriod, fiscalMonths) {
   const refClients = getPeriodClientEntries(plans, referencePeriod, fiscalMonths);
   const targetClients = getPeriodClientEntries(plans, targetPeriod, fiscalMonths);
-  const targetKeys = new Set(
-    targetClients.map((v) => `${v.accountLabel}\x00${v.subLabel}`),
-  );
   const targetExcluded = revGetPeriodExcludedKeys(plans, targetPeriod);
   let changed = false;
-  const next = [...targetClients];
+  const next = targetClients.map((entry) => {
+    if (entry.manual) return entry;
+    const key = `${entry.accountLabel}\x00${entry.subLabel}`;
+    const ref = refClients.find(
+      (r) => r.manual
+        && r.accountLabel === entry.accountLabel
+        && r.subLabel === entry.subLabel,
+    );
+    if (!ref) return entry;
+    if (targetExcluded.has(key)) return entry;
+    const healed = normalizeClientEntry({ ...entry, manual: true }, fiscalMonths);
+    if (!healed) return entry;
+    changed = true;
+    return healed;
+  });
+  const targetKeys = new Set(
+    next.map((v) => `${v.accountLabel}\x00${v.subLabel}`),
+  );
   for (const ref of refClients) {
     const key = `${ref.accountLabel}\x00${ref.subLabel}`;
     if (targetKeys.has(key) || targetExcluded.has(key)) continue;
@@ -6553,6 +6608,7 @@ function syncClientListFromReference(plans, targetPeriod, referencePeriod, fisca
       subLabel: ref.subLabel,
       manMonths: {},
       monthlyUnitPrice: {},
+      manual: ref.manual ? true : undefined,
     }, fiscalMonths);
     if (client) {
       next.push(client);
@@ -8474,6 +8530,7 @@ function outRebuildOutsourcingRows(
   fiscalMonths,
   skipPlanFillMonths = null,
   forcePlanMonths = null,
+  dropUnmatchedCsvDetail = false,
 ) {
   const totalRow = rows.find((r) => r.type === 'total');
   const body = rows.filter((r) => r.type !== 'plan' && r.type !== 'total');
@@ -8490,6 +8547,11 @@ function outRebuildOutsourcingRows(
       ...outMergePlanIntoCsvRow(row, planMonths, fiscalMonths, skipPlanFillMonths, forcePlanMonths),
       outsourcingVendorId: vendor.id,
     };
+  }).filter((row) => {
+    // 来期など計画専用期は、今期CSV由来の仕訳補助科目を残さない（計画にある発注先のみ）
+    if (!dropUnmatchedCsvDetail) return true;
+    if (!outIsOutsourcingDetailRow(row)) return true;
+    return vendors.some((v) => outRowMatchesVendor(row, v));
   });
 
   const orphanPlanRows = planRows.filter((row) => {
@@ -8768,6 +8830,12 @@ function enrichPlanDataWithOutsourcingRows(planData, {
     };
   }
 
+  const dropUnmatchedCsvDetail = isPlanOnlyPeriod(
+    businessStartYear,
+    fiscalPeriod,
+    undefined,
+    fiscalEndMonth,
+  );
   const outsourcing = planData.sections[outsourcingIdx];
   let rows = outRebuildOutsourcingRows(
     outsourcing.rows,
@@ -8775,6 +8843,7 @@ function enrichPlanDataWithOutsourcingRows(planData, {
     fiscalMonths,
     skipPlanFillMonths,
     forcePlanMonths,
+    dropUnmatchedCsvDetail,
   );
 
   const totalIdx = rows.findIndex((r) => r.type === 'total');
@@ -9009,6 +9078,7 @@ function revRebuildRevenueRows(
   skipPlanFillMonths = null,
   taxOptions = null,
   forcePlanMonths = null,
+  dropUnmatchedCsvDetail = false,
 ) {
   const totalRow = rows.find((r) => r.type === 'total');
   const body = rows.filter((r) => r.type !== 'plan' && r.type !== 'total' && r.type !== 'man-month');
@@ -9022,6 +9092,11 @@ function revRebuildRevenueRows(
     matchedClientIds.add(client.id);
     const planMonths = rawValuesFromRow({ values: revBuildClientPlanValues(client, fiscalMonths, taxOptions) });
     return revMergePlanIntoCsvRow(row, planMonths, fiscalMonths, skipPlanFillMonths, forcePlanMonths);
+  }).filter((row) => {
+    // 来期など計画専用期は、今期CSV由来の仕訳補助科目を残さない（計画にある受注先のみ）
+    if (!dropUnmatchedCsvDetail) return true;
+    if (!revIsRevenueDetailRow(row)) return true;
+    return clients.some((c) => revRowMatchesClient(row, c));
   });
 
   const orphanPlanRows = planRows.filter((row) => {
@@ -9127,6 +9202,12 @@ function enrichPlanDataWithRevenueRows(planData, {
     };
   }
 
+  const dropUnmatchedCsvDetail = isPlanOnlyPeriod(
+    businessStartYear,
+    fiscalPeriod,
+    undefined,
+    fiscalEndMonth,
+  );
   const revenue = planData.sections[revenueIdx];
   let rows = revRebuildRevenueRows(
     revenue.rows,
@@ -9135,6 +9216,7 @@ function enrichPlanDataWithRevenueRows(planData, {
     skipPlanFillMonths,
     taxOptions,
     forcePlanMonths,
+    dropUnmatchedCsvDetail,
   );
 
   rows = revInsertManMonthRows(rows, clients, fiscalMonths);
@@ -12158,6 +12240,7 @@ const ALL_SETTINGS_STORAGE_KEYS = [
   'mga-tax-payment-settings',
   'mga-expense-plan-overrides',
   'mga-outsourcing-plans',
+  'mga-outsourcing-plan-settings',
   'mga-revenue-plans',
   'mga-revenue-plan-settings',
   'mga-sub-expand-config',
@@ -14048,6 +14131,8 @@ function mountRevenueSettingsPanel({
 
   let revenuePlans = getRevenuePlans();
   let revenuePlanSettings = getRevenuePlanSettings();
+  /** null | 'asc' | 'desc' */
+  let orderMonthsClientSort = getOrderMonthsClientSort(revenuePlanSettings);
 
   const planPeriodEntries = () => buildRevenuePlanPeriodEntries(
     currentPeriod,
@@ -14064,17 +14149,6 @@ function mountRevenueSettingsPanel({
     );
     setRevenuePlans(revenuePlans);
   }
-  for (const { period } of planPeriodEntries()) {
-    if (period === currentPeriod) continue;
-    revenuePlans = syncClientListFromReference(
-      revenuePlans,
-      period,
-      currentPeriod,
-      fiscalMonths,
-    );
-  }
-  setRevenuePlans(revenuePlans);
-
   const actualAmountsByClient = rawPlanData
     ? collectRevenueActualAmountsFromPlanData(rawPlanData, fiscalMonths)
     : new Map();
@@ -14096,43 +14170,10 @@ function mountRevenueSettingsPanel({
   header.className = 'expand-settings-header tax-payment-settings-header';
   header.innerHTML = `
     <p class="expand-settings-desc">
-      売上高の受注計画を人月で入力します。受注先ごとに月ごとの人月単価を入力します。売上は実績月は仕訳CSVの実績、それ以外は人月\u00d7単価の計画（${isAccountingTaxExclusive(appSettings.accountingTaxBasis) ? "消費税抜（上乗せなし）" : "消費税込"}）です。人月・人月単価は Shift+Enter で入力月以降に同値を引き継ぎます（0 も可。既入力区間内ならその末尾まで、未入力月からは次の既入力まで（なければ期末まで）空月を埋める）。Enter はその月のみ反映します。今期の実績月は仕訳実績月として編集不可です。設定はブラウザに保存され、予実表の「売上高」に反映されます。
+      売上高の受注計画を人月で入力します。受注先ごとに月ごとの人月単価を入力します。売上は実績月は仕訳CSVの実績、それ以外は人月\u00d7単価の計画（${isAccountingTaxExclusive(appSettings.accountingTaxBasis) ? "消費税抜（上乗せなし）" : "消費税込"}）です。人月・人月単価は Shift+Enter で入力月以降に同値を引き継ぎます（0 も可。既入力区間内ならその末尾まで、未入力月からは次の既入力まで（なければ期末まで）空月を埋める）。Enter はその月のみ反映します。来期以降には今期の受注先を自動で引き継ぎせず、必要な受注先を手動で追加します。今期の実績月は仕訳実績月として編集不可です。設定はブラウザに保存され、予実表の「売上高」に反映されます。
     </p>
-    <div class="tax-payment-settings-controls">
-      <div class="tax-payment-plan-years-row">
-        <span class="app-settings-label">計画年数</span>
-        <input
-          type="number"
-          class="app-settings-input tax-payment-plan-years-input"
-          id="revenue-plan-years-input"
-          min="1"
-          max="30"
-          step="1"
-          inputmode="numeric"
-          autocomplete="off"
-          spellcheck="false"
-          aria-label="計画年数"
-        />
-        <p class="tax-payment-plan-years-hint">今期を含む年数です。デフォルトは ${DEFAULT_REVENUE_PLAN_YEARS} 年です。</p>
-      </div>
-    </div>
   `;
   wrap.appendChild(header);
-
-  const planYearsInput = header.querySelector('#revenue-plan-years-input');
-  planYearsInput.value = String(getRevenuePlanYears(revenuePlanSettings));
-  planYearsInput.addEventListener('change', () => {
-    revenuePlanSettings = setRevenuePlanYears(revenuePlanSettings, planYearsInput.value);
-    setRevenuePlanSettings(revenuePlanSettings);
-    planYearsInput.value = String(getRevenuePlanYears(revenuePlanSettings));
-    renderPlanSection();
-  });
-  planYearsInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      planYearsInput.blur();
-    }
-  });
 
   const statusEl = document.createElement('p');
   statusEl.className = 'employee-status-msg';
@@ -14161,6 +14202,9 @@ function mountRevenueSettingsPanel({
 
   function buildRevenueFillRangeMap(client, fiscalPeriod) {
     const latest = latestRevenueClient(client, fiscalPeriod);
+    const periodTable = wrap.querySelector(
+      '.revenue-plan-table[data-fiscal-period="' + String(fiscalPeriod) + '"]',
+    );
     const map = {};
     for (const month of fiscalMonths) {
       const fromData = hasRevenuePlanInputValue(latest?.manMonths?.[month])
@@ -14168,13 +14212,15 @@ function mountRevenueSettingsPanel({
         || hasRevenuePlanInputValue(client?.manMonths?.[month])
         || hasRevenuePlanInputValue(client?.monthlyUnitPrice?.[month]);
       let fromDom = false;
-      for (const key of ['manMonths', 'unitPrice']) {
-        const selector = 'tr.revenue-plan-row--' + key
-          + '[data-revenue-client-group="' + CSS.escape(client.id) + '"]'
-          + ' td[data-plan-month="' + CSS.escape(month) + '"]';
-        if (cellLooksFilled(wrap.querySelector(selector))) {
-          fromDom = true;
-          break;
+      if (periodTable) {
+        for (const key of ['manMonths', 'unitPrice']) {
+          const selector = 'tr.revenue-plan-row--' + key
+            + '[data-revenue-client-group="' + CSS.escape(client.id) + '"]'
+            + ' td[data-plan-month="' + CSS.escape(month) + '"]';
+          if (cellLooksFilled(periodTable.querySelector(selector))) {
+            fromDom = true;
+            break;
+          }
         }
       }
       map[month] = fromData || fromDom ? 1 : null;
@@ -14240,10 +14286,25 @@ function mountRevenueSettingsPanel({
     }
     summary.hidden = false;
 
-    const caption = document.createElement('p');
-    caption.className = 'revenue-order-months-summary-caption';
-    caption.textContent = "契約月数（売上金額が入っている月数。計画・実績を含む）";
-    summary.appendChild(caption);
+    const sortMode = orderMonthsClientSort === 'asc' || orderMonthsClientSort === 'desc'
+      ? orderMonthsClientSort
+      : 'none';
+    const sortedIdentities = (() => {
+      if (sortMode === 'none') return identities;
+      const dir = sortMode === 'asc' ? 1 : -1;
+      return [...identities].sort((a, b) => {
+        const cmp = String(a.subLabel ?? '').localeCompare(String(b.subLabel ?? ''), 'ja');
+        return cmp * dir;
+      });
+    })();
+
+    const captionEl = document.createElement('p');
+    captionEl.className = 'revenue-order-months-summary-caption';
+    captionEl.textContent = "契約月数（売上金額が入っている月数。計画・実績を含む）";
+    summary.appendChild(captionEl);
+
+    const body = document.createElement('div');
+    body.className = 'revenue-order-months-summary-body';
 
     const table = document.createElement('table');
     table.className = 'revenue-order-months-summary-table';
@@ -14251,6 +14312,10 @@ function mountRevenueSettingsPanel({
     const headTr = document.createElement('tr');
     const clientTh = document.createElement('th');
     clientTh.textContent = "受注先";
+    clientTh.setAttribute(
+      'aria-sort',
+      sortMode === 'asc' ? 'ascending' : sortMode === 'desc' ? 'descending' : 'none',
+    );
     headTr.appendChild(clientTh);
     for (const { period } of periodEntries) {
       const th = document.createElement('th');
@@ -14264,8 +14329,8 @@ function mountRevenueSettingsPanel({
     table.appendChild(thead);
 
     const tbody = document.createElement('tbody');
-    const monthUnit = "ヶ月";
-    for (const identity of identities) {
+    const monthUnitText = "ヶ月";
+    for (const identity of sortedIdentities) {
       const tr = document.createElement('tr');
       const nameTd = document.createElement('td');
       nameTd.className = 'revenue-order-months-summary-client';
@@ -14281,17 +14346,51 @@ function mountRevenueSettingsPanel({
         grand += count;
         const td = document.createElement('td');
         td.className = 'revenue-order-months-summary-count';
-        td.textContent = count > 0 ? String(count) + monthUnit : '';
+        td.textContent = count > 0 ? String(count) + monthUnitText : '';
         tr.appendChild(td);
       }
       const totalTd = document.createElement('td');
       totalTd.className = 'revenue-order-months-summary-count revenue-order-months-summary-total';
-      totalTd.textContent = grand > 0 ? String(grand) + monthUnit : '';
+      totalTd.textContent = grand > 0 ? String(grand) + monthUnitText : '';
       tr.appendChild(totalTd);
       tbody.appendChild(tr);
     }
     table.appendChild(tbody);
-    summary.appendChild(table);
+    body.appendChild(table);
+
+    const sortFieldset = document.createElement('fieldset');
+    sortFieldset.className = 'revenue-order-months-summary-sort';
+    const legend = document.createElement('legend');
+    legend.textContent = "受注先ソート";
+    sortFieldset.appendChild(legend);
+
+    const radioName = 'revenue-order-months-client-sort';
+    for (const opt of [
+      { value: 'none', label: "なし" },
+      { value: 'asc', label: "昇順" },
+      { value: 'desc', label: "降順" },
+    ]) {
+      const label = document.createElement('label');
+      label.className = 'revenue-order-months-summary-sort-option';
+      const input = document.createElement('input');
+      input.type = 'radio';
+      input.name = radioName;
+      input.value = opt.value;
+      input.checked = sortMode === opt.value;
+      input.addEventListener('change', () => {
+        if (!input.checked) return;
+        orderMonthsClientSort = opt.value === 'none' ? null : opt.value;
+        revenuePlanSettings = setOrderMonthsClientSort(revenuePlanSettings, orderMonthsClientSort);
+        setRevenuePlanSettings(revenuePlanSettings);
+        renderOrderMonthsSummary(planHeader);
+      });
+      const text = document.createElement('span');
+      text.textContent = opt.label;
+      label.append(input, text);
+      sortFieldset.appendChild(label);
+    }
+    body.appendChild(sortFieldset);
+    summary.appendChild(body);
   }
 
   function persistClient(entry, fiscalPeriod) {
@@ -14835,7 +14934,26 @@ function mountRevenueSettingsPanel({
     tr.appendChild(td);
   }
 
-  function canDeleteClient(client) {
+  function canDeleteClient(client, fiscalPeriod) {
+    if (client.manual) return true;
+
+    // この期に CSV 実績がある受注先は削除不可
+    const csvMonthly = buildCsvRevenueMonthly(client, fiscalPeriod);
+    if (fiscalMonths.some((month) => hasRevenuePlanInputValue(csvMonthly[month]))) {
+      return false;
+    }
+
+    // 今期: 仕訳補助科目由来は削除不可（再マージ対象）
+    if (fiscalPeriod === currentPeriod) {
+      const key = `${client.accountLabel}\x00${client.subLabel}`;
+      if (journalClientKeys.has(key)) return false;
+    }
+
+    // 来期以降の空行（自動同期の名残）などは削除可
+    return true;
+  }
+
+  function canRenameClient(client) {
     if (client.manual) return true;
     const key = `${client.accountLabel}\x00${client.subLabel}`;
     return !journalClientKeys.has(key);
@@ -14897,7 +15015,7 @@ function mountRevenueSettingsPanel({
       actionsWrap.replaceChildren();
       actionsWrap.classList.remove('employee-actions-confirm');
 
-      if (canDeleteClient(client)) {
+      if (canDeleteClient(client, fiscalPeriod)) {
         const deleteBtn = document.createElement('button');
         deleteBtn.type = 'button';
         deleteBtn.className = 'settings-delete-btn';
@@ -14937,7 +15055,7 @@ function mountRevenueSettingsPanel({
   }
 
   function startClientNameEdit(nameLabel, client, fiscalPeriod) {
-    if (!client.manual) return;
+    if (!canRenameClient(client)) return;
     if (nameLabel.querySelector('input')) return;
 
     const input = document.createElement('input');
@@ -15063,7 +15181,7 @@ function mountRevenueSettingsPanel({
     const nameLabel = document.createElement('span');
     nameLabel.className = 'revenue-client-name-label';
     nameLabel.textContent = client.subLabel;
-    if (client.manual) {
+    if (canRenameClient(client)) {
       nameLabel.classList.add('revenue-client-name-editable', 'salary-plan-cell-editable');
       nameLabel.title = TIP_EDIT_NAME;
       nameLabel.addEventListener('dblclick', () => {
@@ -15249,7 +15367,9 @@ function mountRevenueSettingsPanel({
       const emptyTd = document.createElement('td');
       emptyTd.colSpan = headerLabels.length;
       emptyTd.className = 'expand-settings-empty';
-      emptyTd.textContent = '受注先が登録されていません。今期の仕訳に補助科目がある場合は自動追加されます。手動追加も可能です。';
+      emptyTd.textContent = fiscalPeriod === currentPeriod
+        ? '受注先が登録されていません。今期の仕訳に補助科目がある場合は自動追加されます。手動追加も可能です。'
+        : '受注先が登録されていません。必要な受注先を手動で追加してください。';
       emptyRow.appendChild(emptyTd);
       tbody.appendChild(emptyRow);
       table.appendChild(tbody);
@@ -15420,14 +15540,49 @@ function mountRevenueSettingsPanel({
       section.className = 'salary-plan-section';
 
       const planHeader = document.createElement('div');
-      planHeader.className = 'salary-plan-header';
-      planHeader.innerHTML = `
-        <h3 class="salary-plan-title" data-section-filter="revenue">売上高計画表</h3>
-        <p class="salary-plan-desc">
-          決算月 ${appSettings.fiscalEndMonth}月 を基準とした12か月分です。各受注先は人月・人月単価・売上（自動計算）の3行で表示します。
-        </p>
+      planHeader.className = 'salary-plan-header revenue-plan-header';
+      const planTitle = document.createElement('h3');
+      planTitle.className = 'salary-plan-title';
+      planTitle.dataset.sectionFilter = 'revenue';
+      planTitle.textContent = '売上高計画表';
+      applySectionFilterTitleStyle(planTitle, 'revenue', getSectionFilterColors);
+      planHeader.appendChild(planTitle);
+
+      const planYearsControls = document.createElement('div');
+      planYearsControls.className = 'tax-payment-settings-controls';
+      planYearsControls.innerHTML = `
+        <div class="tax-payment-plan-years-row">
+          <span class="app-settings-label">計画年数</span>
+          <input
+            type="number"
+            class="app-settings-input tax-payment-plan-years-input"
+            id="revenue-plan-years-input"
+            min="1"
+            max="30"
+            step="1"
+            inputmode="numeric"
+            autocomplete="off"
+            spellcheck="false"
+            aria-label="計画年数"
+          />
+          <p class="tax-payment-plan-years-hint">今期を含む年数です。デフォルトは ${DEFAULT_REVENUE_PLAN_YEARS} 年です。</p>
+        </div>
       `;
-      applySectionFilterTitleStyle(planHeader.querySelector('.salary-plan-title'), 'revenue', getSectionFilterColors);
+      const planYearsInput = planYearsControls.querySelector('#revenue-plan-years-input');
+      planYearsInput.value = String(getRevenuePlanYears(revenuePlanSettings));
+      planYearsInput.addEventListener('change', () => {
+        revenuePlanSettings = setRevenuePlanYears(revenuePlanSettings, planYearsInput.value);
+        setRevenuePlanSettings(revenuePlanSettings);
+        planYearsInput.value = String(getRevenuePlanYears(revenuePlanSettings));
+        renderPlanSection();
+      });
+      planYearsInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          planYearsInput.blur();
+        }
+      });
+      planHeader.appendChild(planYearsControls);
       section.appendChild(planHeader);
 
       periodsContainer = document.createElement('div');
@@ -15441,6 +15596,10 @@ function mountRevenueSettingsPanel({
         'revenue',
         getSectionFilterColors,
       );
+      const planYearsInput = section.querySelector('#revenue-plan-years-input');
+      if (planYearsInput) {
+        planYearsInput.value = String(getRevenuePlanYears(revenuePlanSettings));
+      }
     }
 
     const activeEdit = capturePlanSectionActiveEdit(periodsContainer);
@@ -22681,6 +22840,7 @@ let taxPaymentPlans = loadTaxPaymentPlans();
 let paymentPlanSettings = loadPaymentPlanSettings();
 let expensePlanOverrides = loadExpensePlanOverrides();
 let outsourcingPlans = loadOutsourcingPlans();
+let outsourcingPlanSettings = loadOutsourcingPlanSettings();
 let revenuePlans = loadRevenuePlans();
 let revenuePlanSettings = loadRevenuePlanSettings();
 let monthDisplayConfig = loadMonthDisplayConfig();
@@ -28914,40 +29074,8 @@ function renderTaxPaymentSettings() {
   header.className = 'expand-settings-header tax-payment-settings-header';
   header.innerHTML = `
     <p class="expand-settings-desc">租税公課・保険積立金・長期未払金・長期借入金・未払消費税・未払法人税等・法人税等・住民税・役員借入金の支払い計画を設定します。法人税等は予実表の「法人税」セクションに反映され、計画表示月は予実表上でも編集できます。住民税は市区町村ごとに入力し、合計が予実表に反映されます。当期の実績表示月は仕訳実績を表示します（編集不可）。予実表で計画表示に切り替えた月は編集できます。住民税のみ過去月も入力でき、予実表にもその値が反映されます。Shift+Enter で入力した月以降の同額を後続月に反映します。</p>
-    <div class="tax-payment-settings-controls">
-      <div class="tax-payment-plan-years-row">
-        <span class="app-settings-label">計画年数</span>
-        <input
-          type="number"
-          class="app-settings-input tax-payment-plan-years-input"
-          id="tax-payment-plan-years-input"
-          min="1"
-          max="30"
-          step="1"
-          inputmode="numeric"
-          autocomplete="off"
-          spellcheck="false"
-          aria-label="計画年数"
-        />
-        <p class="tax-payment-plan-years-hint">選択中の期から数えた年数です。デフォルトは ${DEFAULT_PAYMENT_PLAN_YEARS} 年です。</p>
-      </div>
-    </div>
   `;
   wrap.appendChild(header);
-
-  const planYearsInput = header.querySelector('#tax-payment-plan-years-input');
-  planYearsInput.value = String(getPaymentPlanYears(paymentPlanSettings));
-  planYearsInput.addEventListener('change', () => {
-    paymentPlanSettings = setPaymentPlanYears(paymentPlanSettings, planYearsInput.value);
-    planYearsInput.value = String(getPaymentPlanYears(paymentPlanSettings));
-    renderPlanSection();
-  });
-  planYearsInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      planYearsInput.blur();
-    }
-  });
 
   const fiscalMonths = buildFiscalYearMonths(getActiveFiscalEndMonth());
   const currentPeriod = appSettings.fiscalPeriod;
@@ -29593,12 +29721,47 @@ function renderTaxPaymentSettings() {
     section.className = 'salary-plan-section tax-payment-plan-section';
 
     const planHeader = document.createElement('div');
-    planHeader.className = 'salary-plan-header';
+    planHeader.className = 'salary-plan-header tax-payment-plan-header';
     const planTitle = document.createElement('h3');
     planTitle.className = 'salary-plan-title';
     planTitle.textContent = '支払い計画表';
     applyTaxPaymentPlanTitleStyle(planTitle);
     planHeader.appendChild(planTitle);
+
+    const planYearsControls = document.createElement('div');
+    planYearsControls.className = 'tax-payment-settings-controls';
+    planYearsControls.innerHTML = `
+      <div class="tax-payment-plan-years-row">
+        <span class="app-settings-label">計画年数</span>
+        <input
+          type="number"
+          class="app-settings-input tax-payment-plan-years-input"
+          id="tax-payment-plan-years-input"
+          min="1"
+          max="30"
+          step="1"
+          inputmode="numeric"
+          autocomplete="off"
+          spellcheck="false"
+          aria-label="計画年数"
+        />
+        <p class="tax-payment-plan-years-hint">選択中の期から数えた年数です。デフォルトは ${DEFAULT_PAYMENT_PLAN_YEARS} 年です。</p>
+      </div>
+    `;
+    const planYearsInput = planYearsControls.querySelector('#tax-payment-plan-years-input');
+    planYearsInput.value = String(getPaymentPlanYears(paymentPlanSettings));
+    planYearsInput.addEventListener('change', () => {
+      paymentPlanSettings = setPaymentPlanYears(paymentPlanSettings, planYearsInput.value);
+      planYearsInput.value = String(getPaymentPlanYears(paymentPlanSettings));
+      renderPlanSection();
+    });
+    planYearsInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        planYearsInput.blur();
+      }
+    });
+    planHeader.appendChild(planYearsControls);
     section.appendChild(planHeader);
 
     for (const { period, label } of planPeriodEntries()) {
@@ -31218,7 +31381,10 @@ function renderRevenueSettings() {
 function renderOutsourcingSettings() {
   const fiscalMonths = buildFiscalYearMonths(getActiveFiscalEndMonth());
   const currentPeriod = appSettings.fiscalPeriod;
-  const nextPeriod = appSettings.fiscalPeriod + 1;
+  const planPeriodEntries = () => buildOutsourcingPlanPeriodEntries(
+    currentPeriod,
+    getOutsourcingPlanYears(outsourcingPlanSettings),
+  );
 
   if (rawPlanData) {
     const subaccounts = collectOutsourcingSubaccountsFromPlanData(rawPlanData);
@@ -31229,12 +31395,15 @@ function renderOutsourcingSettings() {
       fiscalMonths,
     );
   }
-  // 来期へ当期の発注先は自動引き継ぎしない。過去に同期済みの空行だけ除去する。
-  outsourcingPlans = purgeEmptyNonManualVendors(
-    outsourcingPlans,
-    nextPeriod,
-    fiscalMonths,
-  );
+  // 来期以降へ当期の発注先は自動引き継ぎしない。過去に同期済みの非手動行を除去する。
+  for (const { period } of planPeriodEntries()) {
+    if (period === currentPeriod) continue;
+    outsourcingPlans = purgeEmptyNonManualVendors(
+      outsourcingPlans,
+      period,
+      fiscalMonths,
+    );
+  }
 
   const actualAmountsByVendor = rawPlanData
     ? collectOutsourcingActualAmountsFromPlanData(rawPlanData, fiscalMonths)
@@ -31514,11 +31683,14 @@ function renderOutsourcingSettings() {
   }
 
   function canDeleteVendor(vendor, fiscalPeriod) {
-    // 来期などは常に削除可。今期のみ仕訳由来の発注先は残す。
-    if (fiscalPeriod !== currentPeriod) return true;
+    // 来期などは常に削除可。今期は仕訳由来・CSV実績がある発注先を残す。
+    if (Number(fiscalPeriod) !== Number(currentPeriod)) return true;
     if (vendor.manual) return true;
     const key = `${vendor.accountLabel}\x00${vendor.subLabel}`;
-    return !journalVendorKeys.has(key);
+    if (journalVendorKeys.has(key)) return false;
+    const actual = getVendorActualMonthly(vendor);
+    if (fiscalMonths.some((month) => (actual[month] ?? 0) !== 0)) return false;
+    return true;
   }
 
   function deleteVendor(vendor, fiscalPeriod) {
@@ -31627,7 +31799,9 @@ function renderOutsourcingSettings() {
       const emptyTd = document.createElement('td');
       emptyTd.colSpan = fiscalMonths.length + 4;
       emptyTd.className = 'expand-settings-empty';
-      emptyTd.textContent = '取引先が登録されていません。今期の仕訳に補助科目がある場合は自動追加されます。手動追加も可能です。';
+      emptyTd.textContent = fiscalPeriod === currentPeriod
+        ? "取引先が登録されていません。今期の仕訳に補助科目がある場合は自動追加されます。手動追加も可能です。"
+        : "取引先が登録されていません。必要な取引先を手動で追加してください。";
       emptyRow.appendChild(emptyTd);
       tbody.appendChild(emptyRow);
       table.appendChild(tbody);
@@ -31815,19 +31989,51 @@ function renderOutsourcingSettings() {
       section.className = 'salary-plan-section';
 
       const planHeader = document.createElement('div');
-      planHeader.className = 'salary-plan-header';
+      planHeader.className = 'salary-plan-header outsourcing-plan-header';
       const planTitle = document.createElement('h3');
       planTitle.className = 'salary-plan-title';
       planTitle.dataset.sectionFilter = 'outsourcing';
       planTitle.textContent = '外注費支払い計画表';
-      planHeader.appendChild(planTitle);
-      const planDesc = document.createElement('p');
-      planDesc.className = 'salary-plan-desc';
-      planDesc.textContent = `決算月 ${getActiveFiscalEndMonth()}月 を基準とした12か月分です。`
-        + '今期の実績表示月は仕訳実績を表示します（編集不可）。予実表で計画表示に切り替えた月はダブルクリックで編集できます。'
-        + 'Shift+Enter で入力した月以降の同額を後続月に反映します（0円も可）。Enter はその月のみ反映します。';
-      planHeader.appendChild(planDesc);
       applySectionFilterTitleStyle(planTitle, 'outsourcing', getFilterButtonColors);
+      planHeader.appendChild(planTitle);
+
+      const planYearsControls = document.createElement('div');
+      planYearsControls.className = 'tax-payment-settings-controls';
+      planYearsControls.innerHTML = `
+        <div class="tax-payment-plan-years-row">
+          <span class="app-settings-label">計画年数</span>
+          <input
+            type="number"
+            class="app-settings-input tax-payment-plan-years-input"
+            id="outsourcing-plan-years-input"
+            min="1"
+            max="30"
+            step="1"
+            inputmode="numeric"
+            autocomplete="off"
+            spellcheck="false"
+            aria-label="計画年数"
+          />
+          <p class="tax-payment-plan-years-hint">今期を含む年数です。デフォルトは ${DEFAULT_OUTSOURCING_PLAN_YEARS} 年です。</p>
+        </div>
+      `;
+      const planYearsInput = planYearsControls.querySelector('#outsourcing-plan-years-input');
+      planYearsInput.value = String(getOutsourcingPlanYears(outsourcingPlanSettings));
+      planYearsInput.addEventListener('change', () => {
+        outsourcingPlanSettings = setOutsourcingPlanYears(
+          outsourcingPlanSettings,
+          planYearsInput.value,
+        );
+        planYearsInput.value = String(getOutsourcingPlanYears(outsourcingPlanSettings));
+        renderPlanSection();
+      });
+      planYearsInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          planYearsInput.blur();
+        }
+      });
+      planHeader.appendChild(planYearsControls);
       section.appendChild(planHeader);
 
       periodsContainer = document.createElement('div');
@@ -31835,13 +32041,23 @@ function renderOutsourcingSettings() {
       section.appendChild(periodsContainer);
 
       wrap.appendChild(section);
+    } else {
+      applySectionFilterTitleStyle(
+        section.querySelector('.salary-plan-title'),
+        'outsourcing',
+        getFilterButtonColors,
+      );
+      const planYearsInput = section.querySelector('#outsourcing-plan-years-input');
+      if (planYearsInput) {
+        planYearsInput.value = String(getOutsourcingPlanYears(outsourcingPlanSettings));
+      }
     }
 
     // 再描画で編集中の入力欄が消えないよう、編集状態を退避しておく
     const activeEdit = capturePlanSectionActiveEdit(periodsContainer);
     periodsContainer.replaceChildren();
 
-    for (const period of [currentPeriod, nextPeriod]) {
+    for (const { period } of planPeriodEntries()) {
       const block = document.createElement('div');
       block.className = 'salary-plan-period-block';
 

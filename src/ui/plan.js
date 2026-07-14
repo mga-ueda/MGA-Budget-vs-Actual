@@ -333,6 +333,11 @@ import { mountExpensePlanOverrideSection } from './expensePlanOverrideSettings.j
 import {
   loadOutsourcingPlans,
   saveOutsourcingPlans,
+  loadOutsourcingPlanSettings,
+  DEFAULT_OUTSOURCING_PLAN_YEARS,
+  getOutsourcingPlanYears,
+  setOutsourcingPlanYears,
+  buildOutsourcingPlanPeriodEntries,
   getPeriodVendorEntries,
   getVendorEntry,
   setVendorEntry,
@@ -1053,6 +1058,7 @@ let taxPaymentPlans = loadTaxPaymentPlans();
 let paymentPlanSettings = loadPaymentPlanSettings();
 let expensePlanOverrides = loadExpensePlanOverrides();
 let outsourcingPlans = loadOutsourcingPlans();
+let outsourcingPlanSettings = loadOutsourcingPlanSettings();
 let revenuePlans = loadRevenuePlans();
 let revenuePlanSettings = loadRevenuePlanSettings();
 let monthDisplayConfig = loadMonthDisplayConfig();
@@ -7286,40 +7292,8 @@ function renderTaxPaymentSettings() {
   header.className = 'expand-settings-header tax-payment-settings-header';
   header.innerHTML = `
     <p class="expand-settings-desc">租税公課・保険積立金・長期未払金・長期借入金・未払消費税・未払法人税等・法人税等・住民税・役員借入金の支払い計画を設定します。法人税等は予実表の「法人税」セクションに反映され、計画表示月は予実表上でも編集できます。住民税は市区町村ごとに入力し、合計が予実表に反映されます。当期の実績表示月は仕訳実績を表示します（編集不可）。予実表で計画表示に切り替えた月は編集できます。住民税のみ過去月も入力でき、予実表にもその値が反映されます。Shift+Enter で入力した月以降の同額を後続月に反映します。</p>
-    <div class="tax-payment-settings-controls">
-      <div class="tax-payment-plan-years-row">
-        <span class="app-settings-label">計画年数</span>
-        <input
-          type="number"
-          class="app-settings-input tax-payment-plan-years-input"
-          id="tax-payment-plan-years-input"
-          min="1"
-          max="30"
-          step="1"
-          inputmode="numeric"
-          autocomplete="off"
-          spellcheck="false"
-          aria-label="計画年数"
-        />
-        <p class="tax-payment-plan-years-hint">選択中の期から数えた年数です。デフォルトは ${DEFAULT_PAYMENT_PLAN_YEARS} 年です。</p>
-      </div>
-    </div>
   `;
   wrap.appendChild(header);
-
-  const planYearsInput = header.querySelector('#tax-payment-plan-years-input');
-  planYearsInput.value = String(getPaymentPlanYears(paymentPlanSettings));
-  planYearsInput.addEventListener('change', () => {
-    paymentPlanSettings = setPaymentPlanYears(paymentPlanSettings, planYearsInput.value);
-    planYearsInput.value = String(getPaymentPlanYears(paymentPlanSettings));
-    renderPlanSection();
-  });
-  planYearsInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      planYearsInput.blur();
-    }
-  });
 
   const fiscalMonths = buildFiscalYearMonths(getActiveFiscalEndMonth());
   const currentPeriod = appSettings.fiscalPeriod;
@@ -7965,12 +7939,47 @@ function renderTaxPaymentSettings() {
     section.className = 'salary-plan-section tax-payment-plan-section';
 
     const planHeader = document.createElement('div');
-    planHeader.className = 'salary-plan-header';
+    planHeader.className = 'salary-plan-header tax-payment-plan-header';
     const planTitle = document.createElement('h3');
     planTitle.className = 'salary-plan-title';
     planTitle.textContent = '支払い計画表';
     applyTaxPaymentPlanTitleStyle(planTitle);
     planHeader.appendChild(planTitle);
+
+    const planYearsControls = document.createElement('div');
+    planYearsControls.className = 'tax-payment-settings-controls';
+    planYearsControls.innerHTML = `
+      <div class="tax-payment-plan-years-row">
+        <span class="app-settings-label">計画年数</span>
+        <input
+          type="number"
+          class="app-settings-input tax-payment-plan-years-input"
+          id="tax-payment-plan-years-input"
+          min="1"
+          max="30"
+          step="1"
+          inputmode="numeric"
+          autocomplete="off"
+          spellcheck="false"
+          aria-label="計画年数"
+        />
+        <p class="tax-payment-plan-years-hint">選択中の期から数えた年数です。デフォルトは ${DEFAULT_PAYMENT_PLAN_YEARS} 年です。</p>
+      </div>
+    `;
+    const planYearsInput = planYearsControls.querySelector('#tax-payment-plan-years-input');
+    planYearsInput.value = String(getPaymentPlanYears(paymentPlanSettings));
+    planYearsInput.addEventListener('change', () => {
+      paymentPlanSettings = setPaymentPlanYears(paymentPlanSettings, planYearsInput.value);
+      planYearsInput.value = String(getPaymentPlanYears(paymentPlanSettings));
+      renderPlanSection();
+    });
+    planYearsInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        planYearsInput.blur();
+      }
+    });
+    planHeader.appendChild(planYearsControls);
     section.appendChild(planHeader);
 
     for (const { period, label } of planPeriodEntries()) {
@@ -9590,7 +9599,10 @@ function renderRevenueSettings() {
 function renderOutsourcingSettings() {
   const fiscalMonths = buildFiscalYearMonths(getActiveFiscalEndMonth());
   const currentPeriod = appSettings.fiscalPeriod;
-  const nextPeriod = appSettings.fiscalPeriod + 1;
+  const planPeriodEntries = () => buildOutsourcingPlanPeriodEntries(
+    currentPeriod,
+    getOutsourcingPlanYears(outsourcingPlanSettings),
+  );
 
   if (rawPlanData) {
     const subaccounts = collectOutsourcingSubaccountsFromPlanData(rawPlanData);
@@ -9601,12 +9613,15 @@ function renderOutsourcingSettings() {
       fiscalMonths,
     );
   }
-  // 来期へ当期の発注先は自動引き継ぎしない。過去に同期済みの空行だけ除去する。
-  outsourcingPlans = purgeEmptyNonManualVendors(
-    outsourcingPlans,
-    nextPeriod,
-    fiscalMonths,
-  );
+  // 来期以降へ当期の発注先は自動引き継ぎしない。過去に同期済みの非手動行を除去する。
+  for (const { period } of planPeriodEntries()) {
+    if (period === currentPeriod) continue;
+    outsourcingPlans = purgeEmptyNonManualVendors(
+      outsourcingPlans,
+      period,
+      fiscalMonths,
+    );
+  }
 
   const actualAmountsByVendor = rawPlanData
     ? collectOutsourcingActualAmountsFromPlanData(rawPlanData, fiscalMonths)
@@ -9886,11 +9901,14 @@ function renderOutsourcingSettings() {
   }
 
   function canDeleteVendor(vendor, fiscalPeriod) {
-    // 来期などは常に削除可。今期のみ仕訳由来の発注先は残す。
-    if (fiscalPeriod !== currentPeriod) return true;
+    // 来期などは常に削除可。今期は仕訳由来・CSV実績がある発注先を残す。
+    if (Number(fiscalPeriod) !== Number(currentPeriod)) return true;
     if (vendor.manual) return true;
     const key = `${vendor.accountLabel}\x00${vendor.subLabel}`;
-    return !journalVendorKeys.has(key);
+    if (journalVendorKeys.has(key)) return false;
+    const actual = getVendorActualMonthly(vendor);
+    if (fiscalMonths.some((month) => (actual[month] ?? 0) !== 0)) return false;
+    return true;
   }
 
   function deleteVendor(vendor, fiscalPeriod) {
@@ -9999,7 +10017,9 @@ function renderOutsourcingSettings() {
       const emptyTd = document.createElement('td');
       emptyTd.colSpan = fiscalMonths.length + 4;
       emptyTd.className = 'expand-settings-empty';
-      emptyTd.textContent = '取引先が登録されていません。今期の仕訳に補助科目がある場合は自動追加されます。手動追加も可能です。';
+      emptyTd.textContent = fiscalPeriod === currentPeriod
+        ? "取引先が登録されていません。今期の仕訳に補助科目がある場合は自動追加されます。手動追加も可能です。"
+        : "取引先が登録されていません。必要な取引先を手動で追加してください。";
       emptyRow.appendChild(emptyTd);
       tbody.appendChild(emptyRow);
       table.appendChild(tbody);
@@ -10187,19 +10207,51 @@ function renderOutsourcingSettings() {
       section.className = 'salary-plan-section';
 
       const planHeader = document.createElement('div');
-      planHeader.className = 'salary-plan-header';
+      planHeader.className = 'salary-plan-header outsourcing-plan-header';
       const planTitle = document.createElement('h3');
       planTitle.className = 'salary-plan-title';
       planTitle.dataset.sectionFilter = 'outsourcing';
       planTitle.textContent = '外注費支払い計画表';
-      planHeader.appendChild(planTitle);
-      const planDesc = document.createElement('p');
-      planDesc.className = 'salary-plan-desc';
-      planDesc.textContent = `決算月 ${getActiveFiscalEndMonth()}月 を基準とした12か月分です。`
-        + '今期の実績表示月は仕訳実績を表示します（編集不可）。予実表で計画表示に切り替えた月はダブルクリックで編集できます。'
-        + 'Shift+Enter で入力した月以降の同額を後続月に反映します（0円も可）。Enter はその月のみ反映します。';
-      planHeader.appendChild(planDesc);
       applySectionFilterTitleStyle(planTitle, 'outsourcing', getFilterButtonColors);
+      planHeader.appendChild(planTitle);
+
+      const planYearsControls = document.createElement('div');
+      planYearsControls.className = 'tax-payment-settings-controls';
+      planYearsControls.innerHTML = `
+        <div class="tax-payment-plan-years-row">
+          <span class="app-settings-label">計画年数</span>
+          <input
+            type="number"
+            class="app-settings-input tax-payment-plan-years-input"
+            id="outsourcing-plan-years-input"
+            min="1"
+            max="30"
+            step="1"
+            inputmode="numeric"
+            autocomplete="off"
+            spellcheck="false"
+            aria-label="計画年数"
+          />
+          <p class="tax-payment-plan-years-hint">今期を含む年数です。デフォルトは ${DEFAULT_OUTSOURCING_PLAN_YEARS} 年です。</p>
+        </div>
+      `;
+      const planYearsInput = planYearsControls.querySelector('#outsourcing-plan-years-input');
+      planYearsInput.value = String(getOutsourcingPlanYears(outsourcingPlanSettings));
+      planYearsInput.addEventListener('change', () => {
+        outsourcingPlanSettings = setOutsourcingPlanYears(
+          outsourcingPlanSettings,
+          planYearsInput.value,
+        );
+        planYearsInput.value = String(getOutsourcingPlanYears(outsourcingPlanSettings));
+        renderPlanSection();
+      });
+      planYearsInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          planYearsInput.blur();
+        }
+      });
+      planHeader.appendChild(planYearsControls);
       section.appendChild(planHeader);
 
       periodsContainer = document.createElement('div');
@@ -10207,13 +10259,23 @@ function renderOutsourcingSettings() {
       section.appendChild(periodsContainer);
 
       wrap.appendChild(section);
+    } else {
+      applySectionFilterTitleStyle(
+        section.querySelector('.salary-plan-title'),
+        'outsourcing',
+        getFilterButtonColors,
+      );
+      const planYearsInput = section.querySelector('#outsourcing-plan-years-input');
+      if (planYearsInput) {
+        planYearsInput.value = String(getOutsourcingPlanYears(outsourcingPlanSettings));
+      }
     }
 
     // 再描画で編集中の入力欄が消えないよう、編集状態を退避しておく
     const activeEdit = capturePlanSectionActiveEdit(periodsContainer);
     periodsContainer.replaceChildren();
 
-    for (const period of [currentPeriod, nextPeriod]) {
+    for (const { period } of planPeriodEntries()) {
       const block = document.createElement('div');
       block.className = 'salary-plan-period-block';
 

@@ -1288,6 +1288,21 @@ body {
   margin-bottom: 10px;
 }
 
+.tax-payment-plan-section .salary-plan-header.tax-payment-plan-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1.1rem;
+}
+
+.tax-payment-plan-section .salary-plan-header.tax-payment-plan-header .salary-plan-title {
+  margin: 0;
+}
+
+.tax-payment-plan-section .salary-plan-header.tax-payment-plan-header .tax-payment-settings-controls {
+  margin: 0;
+}
+
 .expense-plan-override-add-row {
   display: flex;
   flex-wrap: wrap;
@@ -4136,24 +4151,38 @@ tr.row-sub-variance .col-amount.has-variance {
   flex-wrap: wrap;
 }
 
-.revenue-settings-wrap .salary-plan-header {
+.revenue-settings-wrap .salary-plan-header.revenue-plan-header {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0.35rem 1rem;
+  align-items: center;
+  gap: 0.5rem 1.1rem;
 }
 
-.revenue-settings-wrap .salary-plan-title {
+.revenue-settings-wrap .salary-plan-header.revenue-plan-header .salary-plan-title {
   margin: 0;
   flex: 0 0 auto;
 }
 
-
-.revenue-settings-wrap .salary-plan-desc {
+.revenue-settings-wrap .salary-plan-header.revenue-plan-header .tax-payment-settings-controls {
   margin: 0;
-  flex: 1 1 auto;
-  min-width: 12rem;
 }
+
+.outsourcing-settings-wrap .salary-plan-header.outsourcing-plan-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1.1rem;
+}
+
+.outsourcing-settings-wrap .salary-plan-header.outsourcing-plan-header .salary-plan-title {
+  margin: 0;
+  flex: 0 0 auto;
+}
+
+.outsourcing-settings-wrap .salary-plan-header.outsourcing-plan-header .tax-payment-settings-controls {
+  margin: 0;
+}
+
 
 .revenue-settings-wrap .revenue-order-months-summary {
   display: block;
@@ -4164,8 +4193,21 @@ tr.row-sub-variance .col-amount.has-variance {
   border: none;
   background: transparent;
   box-sizing: border-box;
-  overflow-x: auto;
   text-align: left;
+}
+
+.revenue-settings-wrap .revenue-order-months-summary-body {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.85rem 1.1rem;
+  max-width: 100%;
+}
+
+.revenue-settings-wrap .revenue-order-months-summary-body > .revenue-order-months-summary-table {
+  flex: 0 1 auto;
+  overflow-x: auto;
 }
 
 .revenue-settings-wrap .revenue-order-months-summary-caption {
@@ -4216,10 +4258,9 @@ tr.row-sub-variance .col-amount.has-variance {
 }
 
 .revenue-settings-wrap .revenue-order-months-summary-table tbody td {
-  text-align: center;
+  text-align: right;
 }
 
-.revenue-settings-wrap .revenue-order-months-summary-table th:first-child,
 .revenue-settings-wrap .revenue-order-months-summary-table td:first-child,
 .revenue-settings-wrap .revenue-order-months-summary-client {
   text-align: right;
@@ -4229,12 +4270,57 @@ tr.row-sub-variance .col-amount.has-variance {
 
 .revenue-settings-wrap .revenue-order-months-summary-count {
   font-variant-numeric: tabular-nums;
-  text-align: center;
+  text-align: right;
 }
 
 .revenue-settings-wrap .revenue-order-months-summary-total {
   font-weight: 700;
-  text-align: center;
+  text-align: right;
+}
+
+.revenue-settings-wrap .revenue-order-months-summary-sort {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0.35rem 0.55rem 0.45rem;
+  border: 1px solid var(--plan-border);
+  border-radius: 0.35rem;
+  background: rgba(255, 255, 255, 0.03);
+  min-width: 7.5rem;
+  box-sizing: border-box;
+}
+
+.revenue-settings-wrap .revenue-order-months-summary-sort legend {
+  padding: 0 0.25rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--plan-text-dim);
+}
+
+.expand-settings-wrap.plan-settings-scalable .revenue-order-months-summary-sort legend {
+  font-size: calc(var(--plan-settings-ui-desc-size) * var(--plan-settings-ui-scale));
+}
+
+.revenue-settings-wrap .revenue-order-months-summary-sort-option {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0.2rem 0 0;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--plan-text);
+  cursor: pointer;
+  white-space: nowrap;
+  line-height: 1.35;
+}
+
+.expand-settings-wrap.plan-settings-scalable .revenue-order-months-summary-sort-option {
+  font-size: calc(var(--plan-settings-ui-desc-size) * var(--plan-settings-ui-scale));
+}
+
+.revenue-settings-wrap .revenue-order-months-summary-sort-option input {
+  margin: 0;
+  accent-color: var(--plan-accent, #6aa9ff);
+  cursor: pointer;
 }
 
 

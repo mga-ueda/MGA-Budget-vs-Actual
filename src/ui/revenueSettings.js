@@ -11,6 +11,8 @@ import {
   DEFAULT_REVENUE_PLAN_YEARS,
   getRevenuePlanYears,
   setRevenuePlanYears,
+  getOrderMonthsClientSort,
+  setOrderMonthsClientSort,
   buildRevenuePlanPeriodEntries,
   buildMiscIncomePlanPeriodEntries,
   getPeriodClientEntries,
@@ -19,7 +21,6 @@ import {
   removeClientEntry,
   createManualClient,
   mergeClientsFromSubaccounts,
-  syncClientListFromReference,
   moveClientEntry,
   renameManualClientEntry,
   computeClientMonthlyRevenue,
@@ -394,6 +395,8 @@ export function mountRevenueSettingsPanel({
 
   let revenuePlans = getRevenuePlans();
   let revenuePlanSettings = getRevenuePlanSettings();
+  /** null | 'asc' | 'desc' */
+  let orderMonthsClientSort = getOrderMonthsClientSort(revenuePlanSettings);
 
   const planPeriodEntries = () => buildRevenuePlanPeriodEntries(
     currentPeriod,
@@ -410,17 +413,6 @@ export function mountRevenueSettingsPanel({
     );
     setRevenuePlans(revenuePlans);
   }
-  for (const { period } of planPeriodEntries()) {
-    if (period === currentPeriod) continue;
-    revenuePlans = syncClientListFromReference(
-      revenuePlans,
-      period,
-      currentPeriod,
-      fiscalMonths,
-    );
-  }
-  setRevenuePlans(revenuePlans);
-
   const actualAmountsByClient = rawPlanData
     ? collectRevenueActualAmountsFromPlanData(rawPlanData, fiscalMonths)
     : new Map();
@@ -442,43 +434,10 @@ export function mountRevenueSettingsPanel({
   header.className = 'expand-settings-header tax-payment-settings-header';
   header.innerHTML = `
     <p class="expand-settings-desc">
-      売上高の受注計画を人月で入力します。受注先ごとに月ごとの人月単価を入力します。売上は実績月は仕訳CSVの実績、それ以外は人月\u00d7単価の計画（${isAccountingTaxExclusive(appSettings.accountingTaxBasis) ? "消費税抜（上乗せなし）" : "消費税込"}）です。人月・人月単価は Shift+Enter で入力月以降に同値を引き継ぎます（0 も可。既入力区間内ならその末尾まで、未入力月からは次の既入力まで（なければ期末まで）空月を埋める）。Enter はその月のみ反映します。今期の実績月は仕訳実績月として編集不可です。設定はブラウザに保存され、予実表の「売上高」に反映されます。
+      売上高の受注計画を人月で入力します。受注先ごとに月ごとの人月単価を入力します。売上は実績月は仕訳CSVの実績、それ以外は人月\u00d7単価の計画（${isAccountingTaxExclusive(appSettings.accountingTaxBasis) ? "消費税抜（上乗せなし）" : "消費税込"}）です。人月・人月単価は Shift+Enter で入力月以降に同値を引き継ぎます（0 も可。既入力区間内ならその末尾まで、未入力月からは次の既入力まで（なければ期末まで）空月を埋める）。Enter はその月のみ反映します。来期以降には今期の受注先を自動で引き継ぎせず、必要な受注先を手動で追加します。今期の実績月は仕訳実績月として編集不可です。設定はブラウザに保存され、予実表の「売上高」に反映されます。
     </p>
-    <div class="tax-payment-settings-controls">
-      <div class="tax-payment-plan-years-row">
-        <span class="app-settings-label">計画年数</span>
-        <input
-          type="number"
-          class="app-settings-input tax-payment-plan-years-input"
-          id="revenue-plan-years-input"
-          min="1"
-          max="30"
-          step="1"
-          inputmode="numeric"
-          autocomplete="off"
-          spellcheck="false"
-          aria-label="計画年数"
-        />
-        <p class="tax-payment-plan-years-hint">今期を含む年数です。デフォルトは ${DEFAULT_REVENUE_PLAN_YEARS} 年です。</p>
-      </div>
-    </div>
   `;
   wrap.appendChild(header);
-
-  const planYearsInput = header.querySelector('#revenue-plan-years-input');
-  planYearsInput.value = String(getRevenuePlanYears(revenuePlanSettings));
-  planYearsInput.addEventListener('change', () => {
-    revenuePlanSettings = setRevenuePlanYears(revenuePlanSettings, planYearsInput.value);
-    setRevenuePlanSettings(revenuePlanSettings);
-    planYearsInput.value = String(getRevenuePlanYears(revenuePlanSettings));
-    renderPlanSection();
-  });
-  planYearsInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      planYearsInput.blur();
-    }
-  });
 
   const statusEl = document.createElement('p');
   statusEl.className = 'employee-status-msg';
@@ -507,6 +466,9 @@ export function mountRevenueSettingsPanel({
 
   function buildRevenueFillRangeMap(client, fiscalPeriod) {
     const latest = latestRevenueClient(client, fiscalPeriod);
+    const periodTable = wrap.querySelector(
+      '.revenue-plan-table[data-fiscal-period="' + String(fiscalPeriod) + '"]',
+    );
     const map = {};
     for (const month of fiscalMonths) {
       const fromData = hasRevenuePlanInputValue(latest?.manMonths?.[month])
@@ -514,13 +476,15 @@ export function mountRevenueSettingsPanel({
         || hasRevenuePlanInputValue(client?.manMonths?.[month])
         || hasRevenuePlanInputValue(client?.monthlyUnitPrice?.[month]);
       let fromDom = false;
-      for (const key of ['manMonths', 'unitPrice']) {
-        const selector = 'tr.revenue-plan-row--' + key
-          + '[data-revenue-client-group="' + CSS.escape(client.id) + '"]'
-          + ' td[data-plan-month="' + CSS.escape(month) + '"]';
-        if (cellLooksFilled(wrap.querySelector(selector))) {
-          fromDom = true;
-          break;
+      if (periodTable) {
+        for (const key of ['manMonths', 'unitPrice']) {
+          const selector = 'tr.revenue-plan-row--' + key
+            + '[data-revenue-client-group="' + CSS.escape(client.id) + '"]'
+            + ' td[data-plan-month="' + CSS.escape(month) + '"]';
+          if (cellLooksFilled(periodTable.querySelector(selector))) {
+            fromDom = true;
+            break;
+          }
         }
       }
       map[month] = fromData || fromDom ? 1 : null;
@@ -586,10 +550,25 @@ export function mountRevenueSettingsPanel({
     }
     summary.hidden = false;
 
-    const caption = document.createElement('p');
-    caption.className = 'revenue-order-months-summary-caption';
-    caption.textContent = "契約月数（売上金額が入っている月数。計画・実績を含む）";
-    summary.appendChild(caption);
+    const sortMode = orderMonthsClientSort === 'asc' || orderMonthsClientSort === 'desc'
+      ? orderMonthsClientSort
+      : 'none';
+    const sortedIdentities = (() => {
+      if (sortMode === 'none') return identities;
+      const dir = sortMode === 'asc' ? 1 : -1;
+      return [...identities].sort((a, b) => {
+        const cmp = String(a.subLabel ?? '').localeCompare(String(b.subLabel ?? ''), 'ja');
+        return cmp * dir;
+      });
+    })();
+
+    const captionEl = document.createElement('p');
+    captionEl.className = 'revenue-order-months-summary-caption';
+    captionEl.textContent = "契約月数（売上金額が入っている月数。計画・実績を含む）";
+    summary.appendChild(captionEl);
+
+    const body = document.createElement('div');
+    body.className = 'revenue-order-months-summary-body';
 
     const table = document.createElement('table');
     table.className = 'revenue-order-months-summary-table';
@@ -597,6 +576,10 @@ export function mountRevenueSettingsPanel({
     const headTr = document.createElement('tr');
     const clientTh = document.createElement('th');
     clientTh.textContent = "受注先";
+    clientTh.setAttribute(
+      'aria-sort',
+      sortMode === 'asc' ? 'ascending' : sortMode === 'desc' ? 'descending' : 'none',
+    );
     headTr.appendChild(clientTh);
     for (const { period } of periodEntries) {
       const th = document.createElement('th');
@@ -610,8 +593,8 @@ export function mountRevenueSettingsPanel({
     table.appendChild(thead);
 
     const tbody = document.createElement('tbody');
-    const monthUnit = "ヶ月";
-    for (const identity of identities) {
+    const monthUnitText = "ヶ月";
+    for (const identity of sortedIdentities) {
       const tr = document.createElement('tr');
       const nameTd = document.createElement('td');
       nameTd.className = 'revenue-order-months-summary-client';
@@ -627,17 +610,51 @@ export function mountRevenueSettingsPanel({
         grand += count;
         const td = document.createElement('td');
         td.className = 'revenue-order-months-summary-count';
-        td.textContent = count > 0 ? String(count) + monthUnit : '';
+        td.textContent = count > 0 ? String(count) + monthUnitText : '';
         tr.appendChild(td);
       }
       const totalTd = document.createElement('td');
       totalTd.className = 'revenue-order-months-summary-count revenue-order-months-summary-total';
-      totalTd.textContent = grand > 0 ? String(grand) + monthUnit : '';
+      totalTd.textContent = grand > 0 ? String(grand) + monthUnitText : '';
       tr.appendChild(totalTd);
       tbody.appendChild(tr);
     }
     table.appendChild(tbody);
-    summary.appendChild(table);
+    body.appendChild(table);
+
+    const sortFieldset = document.createElement('fieldset');
+    sortFieldset.className = 'revenue-order-months-summary-sort';
+    const legend = document.createElement('legend');
+    legend.textContent = "受注先ソート";
+    sortFieldset.appendChild(legend);
+
+    const radioName = 'revenue-order-months-client-sort';
+    for (const opt of [
+      { value: 'none', label: "なし" },
+      { value: 'asc', label: "昇順" },
+      { value: 'desc', label: "降順" },
+    ]) {
+      const label = document.createElement('label');
+      label.className = 'revenue-order-months-summary-sort-option';
+      const input = document.createElement('input');
+      input.type = 'radio';
+      input.name = radioName;
+      input.value = opt.value;
+      input.checked = sortMode === opt.value;
+      input.addEventListener('change', () => {
+        if (!input.checked) return;
+        orderMonthsClientSort = opt.value === 'none' ? null : opt.value;
+        revenuePlanSettings = setOrderMonthsClientSort(revenuePlanSettings, orderMonthsClientSort);
+        setRevenuePlanSettings(revenuePlanSettings);
+        renderOrderMonthsSummary(planHeader);
+      });
+      const text = document.createElement('span');
+      text.textContent = opt.label;
+      label.append(input, text);
+      sortFieldset.appendChild(label);
+    }
+    body.appendChild(sortFieldset);
+    summary.appendChild(body);
   }
 
   function persistClient(entry, fiscalPeriod) {
@@ -1181,7 +1198,26 @@ export function mountRevenueSettingsPanel({
     tr.appendChild(td);
   }
 
-  function canDeleteClient(client) {
+  function canDeleteClient(client, fiscalPeriod) {
+    if (client.manual) return true;
+
+    // この期に CSV 実績がある受注先は削除不可
+    const csvMonthly = buildCsvRevenueMonthly(client, fiscalPeriod);
+    if (fiscalMonths.some((month) => hasRevenuePlanInputValue(csvMonthly[month]))) {
+      return false;
+    }
+
+    // 今期: 仕訳補助科目由来は削除不可（再マージ対象）
+    if (fiscalPeriod === currentPeriod) {
+      const key = `${client.accountLabel}\x00${client.subLabel}`;
+      if (journalClientKeys.has(key)) return false;
+    }
+
+    // 来期以降の空行（自動同期の名残）などは削除可
+    return true;
+  }
+
+  function canRenameClient(client) {
     if (client.manual) return true;
     const key = `${client.accountLabel}\x00${client.subLabel}`;
     return !journalClientKeys.has(key);
@@ -1243,7 +1279,7 @@ export function mountRevenueSettingsPanel({
       actionsWrap.replaceChildren();
       actionsWrap.classList.remove('employee-actions-confirm');
 
-      if (canDeleteClient(client)) {
+      if (canDeleteClient(client, fiscalPeriod)) {
         const deleteBtn = document.createElement('button');
         deleteBtn.type = 'button';
         deleteBtn.className = 'settings-delete-btn';
@@ -1283,7 +1319,7 @@ export function mountRevenueSettingsPanel({
   }
 
   function startClientNameEdit(nameLabel, client, fiscalPeriod) {
-    if (!client.manual) return;
+    if (!canRenameClient(client)) return;
     if (nameLabel.querySelector('input')) return;
 
     const input = document.createElement('input');
@@ -1409,7 +1445,7 @@ export function mountRevenueSettingsPanel({
     const nameLabel = document.createElement('span');
     nameLabel.className = 'revenue-client-name-label';
     nameLabel.textContent = client.subLabel;
-    if (client.manual) {
+    if (canRenameClient(client)) {
       nameLabel.classList.add('revenue-client-name-editable', 'salary-plan-cell-editable');
       nameLabel.title = TIP_EDIT_NAME;
       nameLabel.addEventListener('dblclick', () => {
@@ -1595,7 +1631,9 @@ export function mountRevenueSettingsPanel({
       const emptyTd = document.createElement('td');
       emptyTd.colSpan = headerLabels.length;
       emptyTd.className = 'expand-settings-empty';
-      emptyTd.textContent = '受注先が登録されていません。今期の仕訳に補助科目がある場合は自動追加されます。手動追加も可能です。';
+      emptyTd.textContent = fiscalPeriod === currentPeriod
+        ? '受注先が登録されていません。今期の仕訳に補助科目がある場合は自動追加されます。手動追加も可能です。'
+        : '受注先が登録されていません。必要な受注先を手動で追加してください。';
       emptyRow.appendChild(emptyTd);
       tbody.appendChild(emptyRow);
       table.appendChild(tbody);
@@ -1766,14 +1804,49 @@ export function mountRevenueSettingsPanel({
       section.className = 'salary-plan-section';
 
       const planHeader = document.createElement('div');
-      planHeader.className = 'salary-plan-header';
-      planHeader.innerHTML = `
-        <h3 class="salary-plan-title" data-section-filter="revenue">売上高計画表</h3>
-        <p class="salary-plan-desc">
-          決算月 ${appSettings.fiscalEndMonth}月 を基準とした12か月分です。各受注先は人月・人月単価・売上（自動計算）の3行で表示します。
-        </p>
+      planHeader.className = 'salary-plan-header revenue-plan-header';
+      const planTitle = document.createElement('h3');
+      planTitle.className = 'salary-plan-title';
+      planTitle.dataset.sectionFilter = 'revenue';
+      planTitle.textContent = '売上高計画表';
+      applySectionFilterTitleStyle(planTitle, 'revenue', getSectionFilterColors);
+      planHeader.appendChild(planTitle);
+
+      const planYearsControls = document.createElement('div');
+      planYearsControls.className = 'tax-payment-settings-controls';
+      planYearsControls.innerHTML = `
+        <div class="tax-payment-plan-years-row">
+          <span class="app-settings-label">計画年数</span>
+          <input
+            type="number"
+            class="app-settings-input tax-payment-plan-years-input"
+            id="revenue-plan-years-input"
+            min="1"
+            max="30"
+            step="1"
+            inputmode="numeric"
+            autocomplete="off"
+            spellcheck="false"
+            aria-label="計画年数"
+          />
+          <p class="tax-payment-plan-years-hint">今期を含む年数です。デフォルトは ${DEFAULT_REVENUE_PLAN_YEARS} 年です。</p>
+        </div>
       `;
-      applySectionFilterTitleStyle(planHeader.querySelector('.salary-plan-title'), 'revenue', getSectionFilterColors);
+      const planYearsInput = planYearsControls.querySelector('#revenue-plan-years-input');
+      planYearsInput.value = String(getRevenuePlanYears(revenuePlanSettings));
+      planYearsInput.addEventListener('change', () => {
+        revenuePlanSettings = setRevenuePlanYears(revenuePlanSettings, planYearsInput.value);
+        setRevenuePlanSettings(revenuePlanSettings);
+        planYearsInput.value = String(getRevenuePlanYears(revenuePlanSettings));
+        renderPlanSection();
+      });
+      planYearsInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          planYearsInput.blur();
+        }
+      });
+      planHeader.appendChild(planYearsControls);
       section.appendChild(planHeader);
 
       periodsContainer = document.createElement('div');
@@ -1787,6 +1860,10 @@ export function mountRevenueSettingsPanel({
         'revenue',
         getSectionFilterColors,
       );
+      const planYearsInput = section.querySelector('#revenue-plan-years-input');
+      if (planYearsInput) {
+        planYearsInput.value = String(getRevenuePlanYears(revenuePlanSettings));
+      }
     }
 
     const activeEdit = capturePlanSectionActiveEdit(periodsContainer);
