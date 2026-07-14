@@ -35,6 +35,16 @@ export function hasRevenuePlanInputValue(value) {
   return value != null && value !== 0;
 }
 
+/** 受注先の契約月数（売上金額が入っている月を数える。計画・実績の月別金額マップを渡す） */
+export function countClientOrderMonths(monthlyRevenue, fiscalMonths) {
+  if (!monthlyRevenue) return 0;
+  let count = 0;
+  for (const month of fiscalMonths) {
+    if (hasRevenuePlanInputValue(monthlyRevenue[month])) count += 1;
+  }
+  return count;
+}
+
 export function applyRevenueMonthlyFromMonthForward(
   source,
   startMonth,

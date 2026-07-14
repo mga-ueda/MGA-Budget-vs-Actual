@@ -29,6 +29,7 @@ import {
   applyManMonthsFromMonthForward,
   applyRevenueMonthlyFromMonthForward,
   hasRevenuePlanInputValue,
+  countClientOrderMonths,
   MISC_INCOME_ACCOUNT,
   getMiscIncomeMonthly,
   setMiscIncomeMonthly,
@@ -533,6 +534,112 @@ export function mountRevenueSettingsPanel({
     };
   }
 
+
+  function revenueClientIdentityKey(client) {
+    return client.accountLabel + '\0' + client.subLabel;
+  }
+
+  function collectRevenueClientsAcrossPeriods(periodEntries) {
+    const byKey = new Map();
+    const order = [];
+    for (const { period } of periodEntries) {
+      for (const client of getClientsForPeriod(period)) {
+        const key = revenueClientIdentityKey(client);
+        if (byKey.has(key)) continue;
+        byKey.set(key, {
+          key,
+          id: client.id,
+          accountLabel: client.accountLabel,
+          subLabel: client.subLabel,
+        });
+        order.push(key);
+      }
+    }
+    return order.map((key) => byKey.get(key));
+  }
+
+  function findClientInPeriod(period, identity) {
+    const clients = getClientsForPeriod(period);
+    return clients.find((c) => revenueClientIdentityKey(c) === identity.key)
+      ?? clients.find((c) => c.id === identity.id)
+      ?? null;
+  }
+
+  function renderOrderMonthsSummary(planHeader) {
+    const periodEntries = planPeriodEntries();
+    const section = planHeader.parentElement;
+    let summary = section?.querySelector(':scope > .revenue-order-months-summary')
+      ?? planHeader.querySelector('.revenue-order-months-summary');
+    if (!summary) {
+      summary = document.createElement('div');
+      summary.className = 'revenue-order-months-summary';
+      planHeader.insertAdjacentElement('afterend', summary);
+    } else if (summary.parentElement === planHeader) {
+      planHeader.insertAdjacentElement('afterend', summary);
+    }
+    summary.replaceChildren();
+
+    const identities = collectRevenueClientsAcrossPeriods(periodEntries);
+    if (identities.length === 0) {
+      summary.hidden = true;
+      return;
+    }
+    summary.hidden = false;
+
+    const caption = document.createElement('p');
+    caption.className = 'revenue-order-months-summary-caption';
+    caption.textContent = "契約月数（売上金額が入っている月数。計画・実績を含む）";
+    summary.appendChild(caption);
+
+    const table = document.createElement('table');
+    table.className = 'revenue-order-months-summary-table';
+    const thead = document.createElement('thead');
+    const headTr = document.createElement('tr');
+    const clientTh = document.createElement('th');
+    clientTh.textContent = "受注先";
+    headTr.appendChild(clientTh);
+    for (const { period } of periodEntries) {
+      const th = document.createElement('th');
+      th.textContent = formatFiscalPeriodLabel(period);
+      headTr.appendChild(th);
+    }
+    const totalTh = document.createElement('th');
+    totalTh.textContent = "総計";
+    headTr.appendChild(totalTh);
+    thead.appendChild(headTr);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    const monthUnit = "ヶ月";
+    for (const identity of identities) {
+      const tr = document.createElement('tr');
+      const nameTd = document.createElement('td');
+      nameTd.className = 'revenue-order-months-summary-client';
+      nameTd.textContent = identity.subLabel;
+      tr.appendChild(nameTd);
+
+      let grand = 0;
+      for (const { period } of periodEntries) {
+        const client = findClientInPeriod(period, identity);
+        const count = client
+          ? countClientOrderMonths(buildDisplayRevenueMonthly(client, period), fiscalMonths)
+          : 0;
+        grand += count;
+        const td = document.createElement('td');
+        td.className = 'revenue-order-months-summary-count';
+        td.textContent = count > 0 ? String(count) + monthUnit : '';
+        tr.appendChild(td);
+      }
+      const totalTd = document.createElement('td');
+      totalTd.className = 'revenue-order-months-summary-count revenue-order-months-summary-total';
+      totalTd.textContent = grand > 0 ? String(grand) + monthUnit : '';
+      tr.appendChild(totalTd);
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    summary.appendChild(table);
+  }
+
   function persistClient(entry, fiscalPeriod) {
     revenuePlans = setClientEntry(revenuePlans, fiscalPeriod, entry, fiscalMonths);
     setRevenuePlans(revenuePlans);
@@ -953,6 +1060,8 @@ export function mountRevenueSettingsPanel({
       if (fiscalPeriod !== currentPeriod) return;
       syncMiscIncomeTableMonthDisplay(table, fiscalPeriod);
     });
+    const planHeaderEl = rootWrap.querySelector('.salary-plan-section > .salary-plan-header');
+    if (planHeaderEl) renderOrderMonthsSummary(planHeaderEl);
     requestAnimationFrame(() => requestAnimationFrame(() => {
       syncAllRevenueTableColumnPlates(rootWrap, fiscalMonths, currentPeriod, appSettings);
     }));
@@ -1705,6 +1814,8 @@ export function mountRevenueSettingsPanel({
     }
 
     restorePlanSectionActiveEdit(periodsContainer, activeEdit);
+    const planHeaderEl = section.querySelector('.salary-plan-header');
+    if (planHeaderEl) renderOrderMonthsSummary(planHeaderEl);
     scheduleRevenueSettingsLayout(wrap, fiscalMonths.length, currentPeriod, appSettings, fiscalMonths);
   }
 

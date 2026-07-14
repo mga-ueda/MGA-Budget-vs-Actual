@@ -4148,11 +4148,95 @@ tr.row-sub-variance .col-amount.has-variance {
   flex: 0 0 auto;
 }
 
+
 .revenue-settings-wrap .salary-plan-desc {
   margin: 0;
   flex: 1 1 auto;
   min-width: 12rem;
 }
+
+.revenue-settings-wrap .revenue-order-months-summary {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  margin: 0.65rem 0 0.85rem;
+  padding: 0;
+  border: none;
+  background: transparent;
+  box-sizing: border-box;
+  overflow-x: auto;
+  text-align: left;
+}
+
+.revenue-settings-wrap .revenue-order-months-summary-caption {
+  margin: 0 0 0.35rem;
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--plan-text-dim);
+  line-height: 1.5;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.expand-settings-wrap.plan-settings-scalable .revenue-order-months-summary-caption {
+  font-size: calc(var(--plan-settings-ui-desc-size) * var(--plan-settings-ui-scale));
+}
+
+.revenue-settings-wrap .revenue-order-months-summary-table {
+  width: max-content;
+  min-width: 0;
+  max-width: none;
+  border-collapse: collapse;
+  table-layout: auto;
+  font-size: var(--plan-settings-font-size);
+}
+
+.expand-settings-wrap.plan-settings-scalable .revenue-order-months-summary-table {
+  font-size: var(--plan-settings-ui-table-font-size);
+}
+
+.revenue-settings-wrap .revenue-order-months-summary-table th,
+.revenue-settings-wrap .revenue-order-months-summary-table td {
+  padding: 0.28rem 0.55rem;
+  border-bottom: 1px solid var(--plan-border);
+  white-space: nowrap;
+  width: 1%;
+  overflow: visible;
+  text-overflow: clip;
+  max-width: none;
+  box-sizing: border-box;
+  color: var(--plan-text);
+}
+
+.revenue-settings-wrap .revenue-order-months-summary-table thead th {
+  text-align: center;
+  font-weight: 700;
+  color: var(--plan-text);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.revenue-settings-wrap .revenue-order-months-summary-table tbody td {
+  text-align: center;
+}
+
+.revenue-settings-wrap .revenue-order-months-summary-table th:first-child,
+.revenue-settings-wrap .revenue-order-months-summary-table td:first-child,
+.revenue-settings-wrap .revenue-order-months-summary-client {
+  text-align: right;
+  width: auto;
+  font-weight: 500;
+}
+
+.revenue-settings-wrap .revenue-order-months-summary-count {
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.revenue-settings-wrap .revenue-order-months-summary-total {
+  font-weight: 700;
+  text-align: center;
+}
+
 
 .expand-settings-wrap.revenue-settings-wrap {
   --revenue-col-client-w: 5rem;
