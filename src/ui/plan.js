@@ -339,7 +339,7 @@ import {
   removeVendorEntry,
   createManualVendor,
   mergeVendorsFromSubaccounts,
-  syncVendorListFromReference,
+  purgeEmptyNonManualVendors,
 } from '../config/outsourcingPlanConfig.js';
 import {
   loadRevenuePlans,
@@ -2944,7 +2944,7 @@ function startTaxPaymentPlanTableCellEdit(td, {
   input.className = 'salary-plan-amount-input';
   input.autocomplete = 'off';
   input.spellcheck = false;
-  input.value = rawValue != null && rawValue !== 0 ? String(rawValue) : '';
+  input.value = rawValue != null ? String(rawValue) : '';
 
   let editClosed = false;
 
@@ -3248,7 +3248,7 @@ function startRevenueManMonthCellEdit(td, {
   input.className = 'salary-plan-amount-input plan-man-month-amount-input';
   input.autocomplete = 'off';
   input.spellcheck = false;
-  input.value = editStartValue != null && editStartValue !== 0 ? String(editStartValue) : '';
+  input.value = editStartValue != null ? String(editStartValue) : '';
 
   let editClosed = false;
 
@@ -3351,7 +3351,7 @@ function startOutsourcingPlanCellEdit(td, {
   input.className = 'salary-plan-amount-input';
   input.autocomplete = 'off';
   input.spellcheck = false;
-  input.value = rawValue != null && rawValue !== 0 ? String(rawValue) : '';
+  input.value = rawValue != null ? String(rawValue) : '';
 
   let editClosed = false;
 
@@ -3499,7 +3499,7 @@ function startEmployeeSalaryPlanCellEdit(td, {
   input.className = 'salary-plan-amount-input';
   input.autocomplete = 'off';
   input.spellcheck = false;
-  input.value = rawValue != null && rawValue !== 0 ? String(rawValue) : '';
+  input.value = rawValue != null ? String(rawValue) : '';
 
   let editClosed = false;
 
@@ -3608,7 +3608,7 @@ function startOvertimePlanTableCellEdit(td, {
   input.className = 'salary-plan-amount-input';
   input.autocomplete = 'off';
   input.spellcheck = false;
-  input.value = rawValue != null && rawValue !== 0 ? String(rawValue) : '';
+  input.value = rawValue != null ? String(rawValue) : '';
 
   let editClosed = false;
 
@@ -8454,7 +8454,7 @@ function renderEmployeeSettings() {
     input.className = 'salary-plan-amount-input';
     input.autocomplete = 'off';
     input.spellcheck = false;
-    input.value = rawValue != null && rawValue !== 0 ? String(rawValue) : '';
+    input.value = rawValue != null ? String(rawValue) : '';
 
     let editClosed = false;
 
@@ -8646,7 +8646,7 @@ function renderEmployeeSettings() {
     input.className = 'salary-plan-amount-input';
     input.autocomplete = 'off';
     input.spellcheck = false;
-    input.value = rawValue != null && rawValue !== 0 ? String(rawValue) : '';
+    input.value = rawValue != null ? String(rawValue) : '';
 
     let editClosed = false;
 
@@ -9595,10 +9595,10 @@ function renderOutsourcingSettings() {
       fiscalMonths,
     );
   }
-  outsourcingPlans = syncVendorListFromReference(
+  // 来期へ当期の発注先は自動引き継ぎしない。過去に同期済みの空行だけ除去する。
+  outsourcingPlans = purgeEmptyNonManualVendors(
     outsourcingPlans,
     nextPeriod,
-    currentPeriod,
     fiscalMonths,
   );
 
@@ -9624,7 +9624,7 @@ function renderOutsourcingSettings() {
   header.className = 'expand-settings-header';
   header.innerHTML = `
     <p class="expand-settings-desc">
-      外注費の支払い計画を設定します。今期の仕訳に存在する補助科目は自動で一覧に追加されます。
+      外注費の支払い計画を設定します。今期の仕訳に存在する補助科目は自動で一覧に追加されます。来期には今期の発注先を自動で引き継ぎせず、必要な取引先を手動で追加します。
       ${isAccountingTaxExclusive(appSettings.accountingTaxBasis)
         ? "入力金額は税抜き本体額（仕訳と同基準）として扱い、個人事業主は報酬・消費税・源泉に分解します。"
         : "入力金額は税込み支払額として扱い、個人事業主は報酬・消費税・源泉に分解します。"}
@@ -9879,7 +9879,9 @@ function renderOutsourcingSettings() {
     });
   }
 
-  function canDeleteVendor(vendor) {
+  function canDeleteVendor(vendor, fiscalPeriod) {
+    // 来期などは常に削除可。今期のみ仕訳由来の発注先は残す。
+    if (fiscalPeriod !== currentPeriod) return true;
     if (vendor.manual) return true;
     const key = `${vendor.accountLabel}\x00${vendor.subLabel}`;
     return !journalVendorKeys.has(key);
@@ -9900,7 +9902,7 @@ function renderOutsourcingSettings() {
     const td = document.createElement('td');
     td.className = 'col-out-actions';
 
-    if (!canDeleteVendor(vendor)) {
+    if (!canDeleteVendor(vendor, fiscalPeriod)) {
       tr.appendChild(td);
       return;
     }

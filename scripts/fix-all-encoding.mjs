@@ -480,8 +480,8 @@ export function mergeVendorsFromSubaccounts(plans, fiscalPeriod, subaccounts, fi
 
 `;
     outsourcingConfig = outsourcingConfig.replace(
-      'export function syncVendorListFromReference',
-      `${mergeBlock}export function syncVendorListFromReference`,
+      'export function purgeEmptyNonManualVendors',
+      `${mergeBlock}export function purgeEmptyNonManualVendors`,
     );
   } else {
     outsourcingConfig = replaceFunctionComment(
@@ -497,8 +497,8 @@ export function mergeVendorsFromSubaccounts(plans, fiscalPeriod, subaccounts, fi
 
   outsourcingConfig = replaceFunctionComment(
     outsourcingConfig,
-    'syncVendorListFromReference',
-    jp(0x53c2, 0x7167, 0x671f, 0x306e, 0x53d6, 0x5f15, 0x5148, 0x4e00, 0x89a7, 0x3092, 0x3001, 0x672a, 0x767b, 0x9332, 0x5206, 0x3060, 0x3051, 0x5bfe, 0x8c61, 0x671f, 0x306b, 0x8ffd, 0x52a0, 0x3059, 0x308b, 0xFF08, 0x91d1, 0x984d, 0x306f, 0x7a7a, 0xFF09),
+    'purgeEmptyNonManualVendors',
+    jp(0x624b, 0x52d5, 0x8ffd, 0x52a0, 0x3067, 0x306a, 0x3044, 0x7a7a, 0x306e, 0x53d6, 0x5f15, 0x5148, 0x3092, 0x5bfe, 0x8c61, 0x671f, 0x304b, 0x3089, 0x9664, 0x53bb, 0x3059, 0x308b, 0xFF08, 0x91d1, 0x984d, 0x306e, 0x3042, 0x308b, 0x8a08, 0x753b, 0x884c, 0x306f, 0x6b8b, 0x3059, 0xFF09),
   );
 
   writeFileSync(outsourcingConfigPath, outsourcingConfig, { encoding: 'utf8' });

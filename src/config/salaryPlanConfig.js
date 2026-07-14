@@ -169,12 +169,11 @@ export function parseSalaryPlanAmountInput(raw) {
   return Number.isFinite(num) ? num : null;
 }
 
-/** Shift+Enter 反映時、入力が空でもセルに 0 など既存値がある場合はその値を使う */
+/** Shift+Enter 反映時，入力が空なら空欄（null）として後続月へ反映する（0 は編集開始時に入力欄へ表示する） */
 export function parseSalaryPlanAmountInputWithFillForward(raw, fillForward, existingValue) {
-  const parsed = parseSalaryPlanAmountInput(raw);
-  if (!fillForward || parsed !== null || String(raw ?? '').trim() !== '') return parsed;
-  if (existingValue === null || existingValue === undefined) return null;
-  return existingValue;
+  void fillForward;
+  void existingValue;
+  return parseSalaryPlanAmountInput(raw);
 }
 
 export function formatSalaryPlanAmount(value) {

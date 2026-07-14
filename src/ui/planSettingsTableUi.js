@@ -191,10 +191,11 @@ export function createPlanMonthDisplayUi({
 /** ダブルクリック前にセルへ表示していた値から編集用の初期文字列を決める。
     保存値（rawValue）が未設定でも、表示中の値をそのまま入力欄へ引き継ぐ */
 export function resolvePlanAmountEditInitialValue(rawValue, displayedText, parseValue) {
-  if (rawValue != null && rawValue !== 0) return String(rawValue);
+  // 0 は表示上は空でも編集欄には "0" を入れ，Shift+Enter で 0 後続反映できるようにする
+  if (rawValue != null) return String(rawValue);
   if (typeof parseValue === 'function') {
     const parsedDisplayed = parseValue(displayedText ?? '');
-    if (parsedDisplayed != null && parsedDisplayed !== 0) return String(parsedDisplayed);
+    if (parsedDisplayed != null) return String(parsedDisplayed);
   }
   return '';
 }

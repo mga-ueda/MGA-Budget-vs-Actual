@@ -51,9 +51,7 @@ export function clientHasManMonthPlan(client, fiscalMonths) {
 }
 
 export function getEffectiveUnitPrice(client, month) {
-  const override = client.monthlyUnitPrice?.[month];
-  if (override != null) return override;
-  return client.defaultUnitPrice ?? null;
+  return client.monthlyUnitPrice?.[month] ?? null;
 }
 
 function parseFiscalMonthNumber(monthLabel, fiscalEndMonth) {
@@ -138,13 +136,20 @@ export function normalizeClientEntry(entry, fiscalMonths) {
     }
   }
 
-  const defaultUnitPrice = normalizeAmount(entry.defaultUnitPrice);
+  // 旧「既定単価」は月別単価へ移行する（空の月だけ埋める）。移行後は保持しない。
+  const legacyDefaultUnitPrice = normalizeAmount(entry.defaultUnitPrice);
+  if (legacyDefaultUnitPrice != null) {
+    for (const month of fiscalMonths) {
+      if (monthlyUnitPrice[month] == null) {
+        monthlyUnitPrice[month] = legacyDefaultUnitPrice;
+      }
+    }
+  }
 
   const result = {
     id,
     accountLabel,
     subLabel,
-    defaultUnitPrice,
     manMonths,
     monthlyUnitPrice,
   };

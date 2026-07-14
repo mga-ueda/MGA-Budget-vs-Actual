@@ -22,7 +22,6 @@ import {
   moveClientEntry,
   renameManualClientEntry,
   computeClientMonthlyRevenue,
-  getEffectiveUnitPrice,
   parseManMonthInput,
   formatManMonths,
   cloneClientMonthly,
@@ -439,7 +438,7 @@ export function mountRevenueSettingsPanel({
   header.className = 'expand-settings-header tax-payment-settings-header';
   header.innerHTML = `
     <p class="expand-settings-desc">
-      売上高の受注計画を人月で入力します。受注先ごとに月ごとの人月単価を入力します。売上は実績月は仕訳CSVの実績、それ以外は人月\u00d7単価の計画（${isAccountingTaxExclusive(appSettings.accountingTaxBasis) ? "消費税抜（上乗せなし）" : "消費税込"}）です。人月は Shift+Enter で入力月以降に同値を引き継ぎます（0 も可）。Enter はその月のみ反映します。今期の実績月は仕訳実績月として編集不可です。設定はブラウザに保存され、予実表の「売上高」に反映されます。
+      売上高の受注計画を人月で入力します。受注先ごとに月ごとの人月単価を入力します。売上は実績月は仕訳CSVの実績、それ以外は人月\u00d7単価の計画（${isAccountingTaxExclusive(appSettings.accountingTaxBasis) ? "消費税抜（上乗せなし）" : "消費税込"}）です。人月・人月単価は Shift+Enter で入力月以降に同値を引き継ぎます（0 も可）。Enter はその月のみ反映します。今期の実績月は仕訳実績月として編集不可です。設定はブラウザに保存され、予実表の「売上高」に反映されます。
     </p>
     <div class="tax-payment-settings-controls">
       <div class="tax-payment-plan-years-row">
@@ -727,11 +726,21 @@ export function mountRevenueSettingsPanel({
             fiscalPeriod,
             title: TIP_EDIT_UNIT_PRICE,
             formatValue: formatSalaryPlanYen,
-            rawValue: getEffectiveUnitPrice(client, month),
+            rawValue: client.monthlyUnitPrice?.[month] ?? null,
             parseValue: parseSalaryPlanAmountInput,
+            allowShiftFillForward: true,
             tabScopeId,
-            onSave: (parsed) => {
-              const nextUnitPrices = setMonthlyUnitPrice(client, month, parsed, fiscalMonths);
+            onSave: (parsed, fillForward) => {
+              const pastMonths = getPastMonthsForPeriod(fiscalPeriod);
+              const nextUnitPrices = fillForward
+                ? applyAmountFromMonthForwardSkippingPast(
+                  cloneClientMonthly(client.monthlyUnitPrice, fiscalMonths),
+                  fiscalMonths,
+                  month,
+                  parsed,
+                  pastMonths,
+                )
+                : setMonthlyUnitPrice(client, month, parsed, fiscalMonths);
               persistClient({ ...client, monthlyUnitPrice: nextUnitPrices }, fiscalPeriod);
             },
           });
@@ -961,7 +970,7 @@ export function mountRevenueSettingsPanel({
     const display = {};
     for (const month of fiscalMonths) {
       if (isMonthEditable(fiscalPeriod, month)) {
-        display[month] = getEffectiveUnitPrice(client, month);
+        display[month] = client.monthlyUnitPrice?.[month] ?? null;
       } else {
         display[month] = null;
       }
@@ -1322,13 +1331,23 @@ export function mountRevenueSettingsPanel({
             prevValue: prevUnitPrice,
             editable,
             fiscalPeriod,
-            rawValue: getEffectiveUnitPrice(client, month),
+            rawValue: client.monthlyUnitPrice?.[month] ?? null,
             tabScopeId: `revenue-settings-${fiscalPeriod}`,
             title: TIP_EDIT_UNIT_PRICE,
             formatValue: formatSalaryPlanYen,
             parseValue: parseSalaryPlanAmountInput,
-            onSave: (parsed) => {
-              const nextUnitPrices = setMonthlyUnitPrice(client, month, parsed, fiscalMonths);
+            allowShiftFillForward: true,
+            onSave: (parsed, fillForward) => {
+              const pastMonths = getPastMonthsForPeriod(fiscalPeriod);
+              const nextUnitPrices = fillForward
+                ? applyAmountFromMonthForwardSkippingPast(
+                  cloneClientMonthly(client.monthlyUnitPrice, fiscalMonths),
+                  fiscalMonths,
+                  month,
+                  parsed,
+                  pastMonths,
+                )
+                : setMonthlyUnitPrice(client, month, parsed, fiscalMonths);
               persistClient({ ...client, monthlyUnitPrice: nextUnitPrices }, fiscalPeriod);
             },
           });

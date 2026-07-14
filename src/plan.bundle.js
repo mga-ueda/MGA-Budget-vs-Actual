@@ -4994,12 +4994,11 @@ function parseSalaryPlanAmountInput(raw) {
   return Number.isFinite(num) ? num : null;
 }
 
-/** Shift+Enter 反映時、入力が空でもセルに 0 など既存値がある場合はその値を使う */
+/** Shift+Enter 反映時，入力が空なら空欄（null）として後続月へ反映する（0 は編集開始時に入力欄へ表示する） */
 function parseSalaryPlanAmountInputWithFillForward(raw, fillForward, existingValue) {
-  const parsed = parseSalaryPlanAmountInput(raw);
-  if (!fillForward || parsed !== null || String(raw ?? '').trim() !== '') return parsed;
-  if (existingValue === null || existingValue === undefined) return null;
-  return existingValue;
+  void fillForward;
+  void existingValue;
+  return parseSalaryPlanAmountInput(raw);
 }
 
 function formatSalaryPlanAmount(value) {
@@ -5950,32 +5949,25 @@ function mergeVendorsFromSubaccounts(plans, fiscalPeriod, subaccounts, fiscalMon
   return setPeriodVendorEntries(plans, fiscalPeriod, next, fiscalMonths);
 }
 
-/** 参照期の取引先一覧を、未登録分だけ対象期に追加する（金額は空） */
-function syncVendorListFromReference(plans, targetPeriod, referencePeriod, fiscalMonths) {
-  const refVendors = getPeriodVendorEntries(plans, referencePeriod, fiscalMonths);
-  const targetVendors = getPeriodVendorEntries(plans, targetPeriod, fiscalMonths);
-  const targetKeys = new Set(
-    targetVendors.map((v) => `${v.accountLabel}\x00${v.subLabel}`),
-  );
-  const targetExcluded = outGetPeriodExcludedKeys(plans, targetPeriod);
+/** 手動追加でない空の取引先を対象期から除去する（金額のある計画行は残す） */
+function purgeEmptyNonManualVendors(plans, fiscalPeriod, fiscalMonths) {
+  const entries = getPeriodVendorEntries(plans, fiscalPeriod, fiscalMonths);
+  const kept = [];
   let changed = false;
-  const next = [...targetVendors];
-  for (const ref of refVendors) {
-    const key = `${ref.accountLabel}\x00${ref.subLabel}`;
-    if (targetKeys.has(key) || targetExcluded.has(key)) continue;
-    targetKeys.add(key);
-    const vendor = normalizeVendorEntry({
-      accountLabel: ref.accountLabel,
-      subLabel: ref.subLabel,
-      monthly: {},
-    }, fiscalMonths);
-    if (vendor) {
-      next.push(vendor);
-      changed = true;
+  for (const entry of entries) {
+    if (entry.manual) {
+      kept.push(entry);
+      continue;
     }
+    const hasAmount = fiscalMonths.some((month) => (entry.monthly[month] ?? 0) !== 0);
+    if (hasAmount) {
+      kept.push(entry);
+      continue;
+    }
+    changed = true;
   }
   if (!changed) return plans;
-  return setPeriodVendorEntries(plans, targetPeriod, next, fiscalMonths);
+  return setPeriodVendorEntries(plans, fiscalPeriod, kept, fiscalMonths);
 }
 
 function computeVendorPlanTotal(entry, fiscalMonths) {
@@ -6065,9 +6057,7 @@ function clientHasManMonthPlan(client, fiscalMonths) {
 }
 
 function getEffectiveUnitPrice(client, month) {
-  const override = client.monthlyUnitPrice?.[month];
-  if (override != null) return override;
-  return client.defaultUnitPrice ?? null;
+  return client.monthlyUnitPrice?.[month] ?? null;
 }
 
 function parseFiscalMonthNumber(monthLabel, fiscalEndMonth) {
@@ -6152,13 +6142,20 @@ function normalizeClientEntry(entry, fiscalMonths) {
     }
   }
 
-  const defaultUnitPrice = normalizeAmount(entry.defaultUnitPrice);
+  // 旧「既定単価」は月別単価へ移行する（空の月だけ埋める）。移行後は保持しない。
+  const legacyDefaultUnitPrice = normalizeAmount(entry.defaultUnitPrice);
+  if (legacyDefaultUnitPrice != null) {
+    for (const month of fiscalMonths) {
+      if (monthlyUnitPrice[month] == null) {
+        monthlyUnitPrice[month] = legacyDefaultUnitPrice;
+      }
+    }
+  }
 
   const result = {
     id,
     accountLabel,
     subLabel,
-    defaultUnitPrice,
     manMonths,
     monthlyUnitPrice,
   };
@@ -6656,8 +6653,8 @@ const TIP_EDIT_AMOUNT_SHIFT_FILL =
 const TIP_EDIT_MAN_MONTH_SHIFT_FILL =
   'ダブルクリックで編集（Shift+Enter で後続月へ同値を反映　0 も可）';
 
-/** 人月単価（Shift+Enter 後続反映なし） */
-const TIP_EDIT_UNIT_PRICE = 'ダブルクリックで編集（人月単価）';
+/** 人月単価セル：ダブルクリック編集 + Shift+Enter 後続月反映（0も可） */
+const TIP_EDIT_UNIT_PRICE = 'ダブルクリックで編集（Shift+Enter で後続月へ同額を反映　0 も可）';
 
 /** 編集のみ（Shift+Enter 後続反映なし） */
 const TIP_EDIT_ONLY = 'ダブルクリックで編集';
@@ -12963,10 +12960,11 @@ function createPlanMonthDisplayUi({
 /** ダブルクリック前にセルへ表示していた値から編集用の初期文字列を決める。
     保存値（rawValue）が未設定でも、表示中の値をそのまま入力欄へ引き継ぐ */
 function resolvePlanAmountEditInitialValue(rawValue, displayedText, parseValue) {
-  if (rawValue != null && rawValue !== 0) return String(rawValue);
+  // 0 は表示上は空でも編集欄には "0" を入れ，Shift+Enter で 0 後続反映できるようにする
+  if (rawValue != null) return String(rawValue);
   if (typeof parseValue === 'function') {
     const parsedDisplayed = parseValue(displayedText ?? '');
-    if (parsedDisplayed != null && parsedDisplayed !== 0) return String(parsedDisplayed);
+    if (parsedDisplayed != null) return String(parsedDisplayed);
   }
   return '';
 }
@@ -14032,7 +14030,7 @@ function mountRevenueSettingsPanel({
   header.className = 'expand-settings-header tax-payment-settings-header';
   header.innerHTML = `
     <p class="expand-settings-desc">
-      売上高の受注計画を人月で入力します。受注先ごとに月ごとの人月単価を入力します。売上は実績月は仕訳CSVの実績、それ以外は人月\u00d7単価の計画（${isAccountingTaxExclusive(appSettings.accountingTaxBasis) ? "消費税抜（上乗せなし）" : "消費税込"}）です。人月は Shift+Enter で入力月以降に同値を引き継ぎます（0 も可）。Enter はその月のみ反映します。今期の実績月は仕訳実績月として編集不可です。設定はブラウザに保存され、予実表の「売上高」に反映されます。
+      売上高の受注計画を人月で入力します。受注先ごとに月ごとの人月単価を入力します。売上は実績月は仕訳CSVの実績、それ以外は人月\u00d7単価の計画（${isAccountingTaxExclusive(appSettings.accountingTaxBasis) ? "消費税抜（上乗せなし）" : "消費税込"}）です。人月・人月単価は Shift+Enter で入力月以降に同値を引き継ぎます（0 も可）。Enter はその月のみ反映します。今期の実績月は仕訳実績月として編集不可です。設定はブラウザに保存され、予実表の「売上高」に反映されます。
     </p>
     <div class="tax-payment-settings-controls">
       <div class="tax-payment-plan-years-row">
@@ -14320,11 +14318,21 @@ function mountRevenueSettingsPanel({
             fiscalPeriod,
             title: TIP_EDIT_UNIT_PRICE,
             formatValue: formatSalaryPlanYen,
-            rawValue: getEffectiveUnitPrice(client, month),
+            rawValue: client.monthlyUnitPrice?.[month] ?? null,
             parseValue: parseSalaryPlanAmountInput,
+            allowShiftFillForward: true,
             tabScopeId,
-            onSave: (parsed) => {
-              const nextUnitPrices = setMonthlyUnitPrice(client, month, parsed, fiscalMonths);
+            onSave: (parsed, fillForward) => {
+              const pastMonths = getPastMonthsForPeriod(fiscalPeriod);
+              const nextUnitPrices = fillForward
+                ? applyAmountFromMonthForwardSkippingPast(
+                  cloneClientMonthly(client.monthlyUnitPrice, fiscalMonths),
+                  fiscalMonths,
+                  month,
+                  parsed,
+                  pastMonths,
+                )
+                : setMonthlyUnitPrice(client, month, parsed, fiscalMonths);
               persistClient({ ...client, monthlyUnitPrice: nextUnitPrices }, fiscalPeriod);
             },
           });
@@ -14554,7 +14562,7 @@ function mountRevenueSettingsPanel({
     const display = {};
     for (const month of fiscalMonths) {
       if (isMonthEditable(fiscalPeriod, month)) {
-        display[month] = getEffectiveUnitPrice(client, month);
+        display[month] = client.monthlyUnitPrice?.[month] ?? null;
       } else {
         display[month] = null;
       }
@@ -14915,13 +14923,23 @@ function mountRevenueSettingsPanel({
             prevValue: prevUnitPrice,
             editable,
             fiscalPeriod,
-            rawValue: getEffectiveUnitPrice(client, month),
+            rawValue: client.monthlyUnitPrice?.[month] ?? null,
             tabScopeId: `revenue-settings-${fiscalPeriod}`,
             title: TIP_EDIT_UNIT_PRICE,
             formatValue: formatSalaryPlanYen,
             parseValue: parseSalaryPlanAmountInput,
-            onSave: (parsed) => {
-              const nextUnitPrices = setMonthlyUnitPrice(client, month, parsed, fiscalMonths);
+            allowShiftFillForward: true,
+            onSave: (parsed, fillForward) => {
+              const pastMonths = getPastMonthsForPeriod(fiscalPeriod);
+              const nextUnitPrices = fillForward
+                ? applyAmountFromMonthForwardSkippingPast(
+                  cloneClientMonthly(client.monthlyUnitPrice, fiscalMonths),
+                  fiscalMonths,
+                  month,
+                  parsed,
+                  pastMonths,
+                )
+                : setMonthlyUnitPrice(client, month, parsed, fiscalMonths);
               persistClient({ ...client, monthlyUnitPrice: nextUnitPrices }, fiscalPeriod);
             },
           });
@@ -24327,7 +24345,7 @@ function startTaxPaymentPlanTableCellEdit(td, {
   input.className = 'salary-plan-amount-input';
   input.autocomplete = 'off';
   input.spellcheck = false;
-  input.value = rawValue != null && rawValue !== 0 ? String(rawValue) : '';
+  input.value = rawValue != null ? String(rawValue) : '';
 
   let editClosed = false;
 
@@ -24631,7 +24649,7 @@ function startRevenueManMonthCellEdit(td, {
   input.className = 'salary-plan-amount-input plan-man-month-amount-input';
   input.autocomplete = 'off';
   input.spellcheck = false;
-  input.value = editStartValue != null && editStartValue !== 0 ? String(editStartValue) : '';
+  input.value = editStartValue != null ? String(editStartValue) : '';
 
   let editClosed = false;
 
@@ -24734,7 +24752,7 @@ function startOutsourcingPlanCellEdit(td, {
   input.className = 'salary-plan-amount-input';
   input.autocomplete = 'off';
   input.spellcheck = false;
-  input.value = rawValue != null && rawValue !== 0 ? String(rawValue) : '';
+  input.value = rawValue != null ? String(rawValue) : '';
 
   let editClosed = false;
 
@@ -24882,7 +24900,7 @@ function startEmployeeSalaryPlanCellEdit(td, {
   input.className = 'salary-plan-amount-input';
   input.autocomplete = 'off';
   input.spellcheck = false;
-  input.value = rawValue != null && rawValue !== 0 ? String(rawValue) : '';
+  input.value = rawValue != null ? String(rawValue) : '';
 
   let editClosed = false;
 
@@ -24991,7 +25009,7 @@ function startOvertimePlanTableCellEdit(td, {
   input.className = 'salary-plan-amount-input';
   input.autocomplete = 'off';
   input.spellcheck = false;
-  input.value = rawValue != null && rawValue !== 0 ? String(rawValue) : '';
+  input.value = rawValue != null ? String(rawValue) : '';
 
   let editClosed = false;
 
@@ -29837,7 +29855,7 @@ function renderEmployeeSettings() {
     input.className = 'salary-plan-amount-input';
     input.autocomplete = 'off';
     input.spellcheck = false;
-    input.value = rawValue != null && rawValue !== 0 ? String(rawValue) : '';
+    input.value = rawValue != null ? String(rawValue) : '';
 
     let editClosed = false;
 
@@ -30029,7 +30047,7 @@ function renderEmployeeSettings() {
     input.className = 'salary-plan-amount-input';
     input.autocomplete = 'off';
     input.spellcheck = false;
-    input.value = rawValue != null && rawValue !== 0 ? String(rawValue) : '';
+    input.value = rawValue != null ? String(rawValue) : '';
 
     let editClosed = false;
 
@@ -30978,10 +30996,10 @@ function renderOutsourcingSettings() {
       fiscalMonths,
     );
   }
-  outsourcingPlans = syncVendorListFromReference(
+  // 来期へ当期の発注先は自動引き継ぎしない。過去に同期済みの空行だけ除去する。
+  outsourcingPlans = purgeEmptyNonManualVendors(
     outsourcingPlans,
     nextPeriod,
-    currentPeriod,
     fiscalMonths,
   );
 
@@ -31007,7 +31025,7 @@ function renderOutsourcingSettings() {
   header.className = 'expand-settings-header';
   header.innerHTML = `
     <p class="expand-settings-desc">
-      外注費の支払い計画を設定します。今期の仕訳に存在する補助科目は自動で一覧に追加されます。
+      外注費の支払い計画を設定します。今期の仕訳に存在する補助科目は自動で一覧に追加されます。来期には今期の発注先を自動で引き継ぎせず、必要な取引先を手動で追加します。
       ${isAccountingTaxExclusive(appSettings.accountingTaxBasis)
         ? "入力金額は税抜き本体額（仕訳と同基準）として扱い、個人事業主は報酬・消費税・源泉に分解します。"
         : "入力金額は税込み支払額として扱い、個人事業主は報酬・消費税・源泉に分解します。"}
@@ -31262,7 +31280,9 @@ function renderOutsourcingSettings() {
     });
   }
 
-  function canDeleteVendor(vendor) {
+  function canDeleteVendor(vendor, fiscalPeriod) {
+    // 来期などは常に削除可。今期のみ仕訳由来の発注先は残す。
+    if (fiscalPeriod !== currentPeriod) return true;
     if (vendor.manual) return true;
     const key = `${vendor.accountLabel}\x00${vendor.subLabel}`;
     return !journalVendorKeys.has(key);
@@ -31283,7 +31303,7 @@ function renderOutsourcingSettings() {
     const td = document.createElement('td');
     td.className = 'col-out-actions';
 
-    if (!canDeleteVendor(vendor)) {
+    if (!canDeleteVendor(vendor, fiscalPeriod)) {
       tr.appendChild(td);
       return;
     }

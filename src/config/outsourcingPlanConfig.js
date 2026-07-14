@@ -179,32 +179,25 @@ export function mergeVendorsFromSubaccounts(plans, fiscalPeriod, subaccounts, fi
   return setPeriodVendorEntries(plans, fiscalPeriod, next, fiscalMonths);
 }
 
-/** 参照期の取引先一覧を、未登録分だけ対象期に追加する（金額は空） */
-export function syncVendorListFromReference(plans, targetPeriod, referencePeriod, fiscalMonths) {
-  const refVendors = getPeriodVendorEntries(plans, referencePeriod, fiscalMonths);
-  const targetVendors = getPeriodVendorEntries(plans, targetPeriod, fiscalMonths);
-  const targetKeys = new Set(
-    targetVendors.map((v) => `${v.accountLabel}\x00${v.subLabel}`),
-  );
-  const targetExcluded = outGetPeriodExcludedKeys(plans, targetPeriod);
+/** 手動追加でない空の取引先を対象期から除去する（金額のある計画行は残す） */
+export function purgeEmptyNonManualVendors(plans, fiscalPeriod, fiscalMonths) {
+  const entries = getPeriodVendorEntries(plans, fiscalPeriod, fiscalMonths);
+  const kept = [];
   let changed = false;
-  const next = [...targetVendors];
-  for (const ref of refVendors) {
-    const key = `${ref.accountLabel}\x00${ref.subLabel}`;
-    if (targetKeys.has(key) || targetExcluded.has(key)) continue;
-    targetKeys.add(key);
-    const vendor = normalizeVendorEntry({
-      accountLabel: ref.accountLabel,
-      subLabel: ref.subLabel,
-      monthly: {},
-    }, fiscalMonths);
-    if (vendor) {
-      next.push(vendor);
-      changed = true;
+  for (const entry of entries) {
+    if (entry.manual) {
+      kept.push(entry);
+      continue;
     }
+    const hasAmount = fiscalMonths.some((month) => (entry.monthly[month] ?? 0) !== 0);
+    if (hasAmount) {
+      kept.push(entry);
+      continue;
+    }
+    changed = true;
   }
   if (!changed) return plans;
-  return setPeriodVendorEntries(plans, targetPeriod, next, fiscalMonths);
+  return setPeriodVendorEntries(plans, fiscalPeriod, kept, fiscalMonths);
 }
 
 export function computeVendorPlanTotal(entry, fiscalMonths) {
