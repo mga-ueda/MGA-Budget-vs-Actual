@@ -30,17 +30,73 @@ export function cloneClientMonthly(source, fiscalMonths) {
   return next;
 }
 
-export function applyManMonthsFromMonthForward(source, startMonth, amount, pastMonths, fiscalMonths) {
+/** Shift+Enter: 全未入力なら期末まで反映。既入力区間内を編集するとその区間末尾まで。空区間・区間後の未入力月からは、次の既入力まで（なければ期末まで）空月を埋める。0は未入力とみなす。 */
+export function hasRevenuePlanInputValue(value) {
+  return value != null && value !== 0;
+}
+
+export function applyRevenueMonthlyFromMonthForward(
+  source,
+  startMonth,
+  amount,
+  pastMonths,
+  fiscalMonths,
+  options = {},
+) {
   const next = cloneClientMonthly(source, fiscalMonths);
   const startIndex = fiscalMonths.indexOf(startMonth);
   if (startIndex < 0) return next;
   next[startMonth] = amount;
+
+  const isPast = (month) => Boolean(pastMonths?.has?.(month));
+  const rangeMaps = Array.isArray(options.rangeMaps) && options.rangeMaps.length > 0
+    ? options.rangeMaps
+    : [source];
+  const hasRangeValue = (month) => rangeMaps.some((map) => hasRevenuePlanInputValue(map?.[month]));
+
+  const hasAnyFilled = fiscalMonths.some((month) => !isPast(month) && hasRangeValue(month));
+  const startHadValue = hasRangeValue(startMonth);
+
+  // 全体未入力、または入力月自体が未入力（区間の延長）: 空月を先へ埋める
+  if (!hasAnyFilled || !startHadValue) {
+    for (let i = startIndex + 1; i < fiscalMonths.length; i += 1) {
+      const month = fiscalMonths[i];
+      if (isPast(month)) continue;
+      if (hasAnyFilled && hasRangeValue(month)) break;
+      next[month] = amount;
+    }
+    return next;
+  }
+
+  // 既入力区間内: 連続する既入力の末尾までだけ上書き
   for (let i = startIndex + 1; i < fiscalMonths.length; i += 1) {
     const month = fiscalMonths[i];
-    if (pastMonths.has(month)) continue;
-    next[month] = amount;
+    if (isPast(month)) continue;
+    if (hasRangeValue(month)) {
+      next[month] = amount;
+    } else {
+      break;
+    }
   }
   return next;
+}
+
+export function applyManMonthsFromMonthForward(
+  source,
+  startMonth,
+  amount,
+  pastMonths,
+  fiscalMonths,
+  options = {},
+) {
+  return applyRevenueMonthlyFromMonthForward(
+    source,
+    startMonth,
+    amount,
+    pastMonths,
+    fiscalMonths,
+    options,
+  );
 }
 
 export function clientHasManMonthPlan(client, fiscalMonths) {

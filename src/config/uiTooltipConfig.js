@@ -8,10 +8,10 @@ export const TIP_EDIT_AMOUNT_SHIFT_FILL =
 
 /** 人月セル：ダブルクリック編集 + Shift+Enter 後続月反映（0も可） */
 export const TIP_EDIT_MAN_MONTH_SHIFT_FILL =
-  'ダブルクリックで編集（Shift+Enter で後続月へ同値を反映　0 も可）';
+  'ダブルクリックで編集（Shift+Enter で後続月へ同値を反映　0 も可　既入力区間があればその末尾まで）';
 
 /** 人月単価セル：ダブルクリック編集 + Shift+Enter 後続月反映（0も可） */
-export const TIP_EDIT_UNIT_PRICE = 'ダブルクリックで編集（Shift+Enter で後続月へ同額を反映　0 も可）';
+export const TIP_EDIT_UNIT_PRICE = 'ダブルクリックで編集（Shift+Enter で後続月へ同額を反映　0 も可　既入力区間があればその末尾まで）';
 
 /** 編集のみ（Shift+Enter 後続反映なし） */
 export const TIP_EDIT_ONLY = 'ダブルクリックで編集';

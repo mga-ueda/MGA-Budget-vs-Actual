@@ -14,6 +14,7 @@ import {
   buildRevenuePlanPeriodEntries,
   buildMiscIncomePlanPeriodEntries,
   getPeriodClientEntries,
+  getClientEntry,
   setClientEntry,
   removeClientEntry,
   createManualClient,
@@ -26,6 +27,8 @@ import {
   formatManMonths,
   cloneClientMonthly,
   applyManMonthsFromMonthForward,
+  applyRevenueMonthlyFromMonthForward,
+  hasRevenuePlanInputValue,
   MISC_INCOME_ACCOUNT,
   getMiscIncomeMonthly,
   setMiscIncomeMonthly,
@@ -438,7 +441,7 @@ export function mountRevenueSettingsPanel({
   header.className = 'expand-settings-header tax-payment-settings-header';
   header.innerHTML = `
     <p class="expand-settings-desc">
-      売上高の受注計画を人月で入力します。受注先ごとに月ごとの人月単価を入力します。売上は実績月は仕訳CSVの実績、それ以外は人月\u00d7単価の計画（${isAccountingTaxExclusive(appSettings.accountingTaxBasis) ? "消費税抜（上乗せなし）" : "消費税込"}）です。人月・人月単価は Shift+Enter で入力月以降に同値を引き継ぎます（0 も可）。Enter はその月のみ反映します。今期の実績月は仕訳実績月として編集不可です。設定はブラウザに保存され、予実表の「売上高」に反映されます。
+      売上高の受注計画を人月で入力します。受注先ごとに月ごとの人月単価を入力します。売上は実績月は仕訳CSVの実績、それ以外は人月\u00d7単価の計画（${isAccountingTaxExclusive(appSettings.accountingTaxBasis) ? "消費税抜（上乗せなし）" : "消費税込"}）です。人月・人月単価は Shift+Enter で入力月以降に同値を引き継ぎます（0 も可。既入力区間内ならその末尾まで、未入力月からは次の既入力まで（なければ期末まで）空月を埋める）。Enter はその月のみ反映します。今期の実績月は仕訳実績月として編集不可です。設定はブラウザに保存され、予実表の「売上高」に反映されます。
     </p>
     <div class="tax-payment-settings-controls">
       <div class="tax-payment-plan-years-row">
@@ -485,6 +488,49 @@ export function mountRevenueSettingsPanel({
     statusEl.textContent = message;
     statusEl.hidden = !message;
     statusEl.classList.toggle('employee-status-error', isError);
+  }
+
+
+  function latestRevenueClient(client, fiscalPeriod) {
+    return getClientEntry(revenuePlans, fiscalPeriod, client.id, fiscalMonths) ?? client;
+  }
+
+  function cellLooksFilled(td) {
+    if (!td) return false;
+    if (td.querySelector('input')) return false;
+    const text = String(td.textContent ?? '').replace(/[\s,\u00a5\uffe5]/g, '');
+    if (!text) return false;
+    const num = Number(text);
+    return Number.isFinite(num) ? num !== 0 : true;
+  }
+
+  function buildRevenueFillRangeMap(client, fiscalPeriod) {
+    const latest = latestRevenueClient(client, fiscalPeriod);
+    const map = {};
+    for (const month of fiscalMonths) {
+      const fromData = hasRevenuePlanInputValue(latest?.manMonths?.[month])
+        || hasRevenuePlanInputValue(latest?.monthlyUnitPrice?.[month])
+        || hasRevenuePlanInputValue(client?.manMonths?.[month])
+        || hasRevenuePlanInputValue(client?.monthlyUnitPrice?.[month]);
+      let fromDom = false;
+      for (const key of ['manMonths', 'unitPrice']) {
+        const selector = 'tr.revenue-plan-row--' + key
+          + '[data-revenue-client-group="' + CSS.escape(client.id) + '"]'
+          + ' td[data-plan-month="' + CSS.escape(month) + '"]';
+        if (cellLooksFilled(wrap.querySelector(selector))) {
+          fromDom = true;
+          break;
+        }
+      }
+      map[month] = fromData || fromDom ? 1 : null;
+    }
+    return map;
+  }
+
+  function revenueFillRangeOptions(client, fiscalPeriod) {
+    return {
+      rangeMaps: [buildRevenueFillRangeMap(client, fiscalPeriod)],
+    };
   }
 
   function persistClient(entry, fiscalPeriod) {
@@ -688,16 +734,18 @@ export function mountRevenueSettingsPanel({
             tabScopeId,
             onSave: (parsed, fillForward) => {
               const pastMonths = getPastMonthsForPeriod(fiscalPeriod);
+              const latest = latestRevenueClient(client, fiscalPeriod);
               const nextManMonths = fillForward
                 ? applyManMonthsFromMonthForward(
-                  client.manMonths,
+                  latest.manMonths,
                   month,
                   parsed,
                   pastMonths,
                   fiscalMonths,
+                  revenueFillRangeOptions(client, fiscalPeriod),
                 )
-                : { ...cloneClientMonthly(client.manMonths, fiscalMonths), [month]: parsed };
-              persistClient({ ...client, manMonths: nextManMonths }, fiscalPeriod);
+                : { ...cloneClientMonthly(latest.manMonths, fiscalMonths), [month]: parsed };
+              persistClient({ ...latest, manMonths: nextManMonths }, fiscalPeriod);
             },
           });
         }
@@ -732,16 +780,18 @@ export function mountRevenueSettingsPanel({
             tabScopeId,
             onSave: (parsed, fillForward) => {
               const pastMonths = getPastMonthsForPeriod(fiscalPeriod);
+              const latest = latestRevenueClient(client, fiscalPeriod);
               const nextUnitPrices = fillForward
-                ? applyAmountFromMonthForwardSkippingPast(
-                  cloneClientMonthly(client.monthlyUnitPrice, fiscalMonths),
-                  fiscalMonths,
+                ? applyRevenueMonthlyFromMonthForward(
+                  latest.monthlyUnitPrice,
                   month,
                   parsed,
                   pastMonths,
+                  fiscalMonths,
+                  revenueFillRangeOptions(client, fiscalPeriod),
                 )
-                : setMonthlyUnitPrice(client, month, parsed, fiscalMonths);
-              persistClient({ ...client, monthlyUnitPrice: nextUnitPrices }, fiscalPeriod);
+                : setMonthlyUnitPrice(latest, month, parsed, fiscalMonths);
+              persistClient({ ...latest, monthlyUnitPrice: nextUnitPrices }, fiscalPeriod);
             },
           });
         }
@@ -1310,16 +1360,18 @@ export function mountRevenueSettingsPanel({
             allowShiftFillForward: true,
             onSave: (parsed, fillForward) => {
               const pastMonths = getPastMonthsForPeriod(fiscalPeriod);
+              const latest = latestRevenueClient(client, fiscalPeriod);
               const nextManMonths = fillForward
                 ? applyManMonthsFromMonthForward(
-                  client.manMonths,
+                  latest.manMonths,
                   month,
                   parsed,
                   pastMonths,
                   fiscalMonths,
+                  revenueFillRangeOptions(client, fiscalPeriod),
                 )
-                : { ...cloneClientMonthly(client.manMonths, fiscalMonths), [month]: parsed };
-              persistClient({ ...client, manMonths: nextManMonths }, fiscalPeriod);
+                : { ...cloneClientMonthly(latest.manMonths, fiscalMonths), [month]: parsed };
+              persistClient({ ...latest, manMonths: nextManMonths }, fiscalPeriod);
             },
           });
         } else if (key === 'unitPrice') {
@@ -1339,16 +1391,18 @@ export function mountRevenueSettingsPanel({
             allowShiftFillForward: true,
             onSave: (parsed, fillForward) => {
               const pastMonths = getPastMonthsForPeriod(fiscalPeriod);
+              const latest = latestRevenueClient(client, fiscalPeriod);
               const nextUnitPrices = fillForward
-                ? applyAmountFromMonthForwardSkippingPast(
-                  cloneClientMonthly(client.monthlyUnitPrice, fiscalMonths),
-                  fiscalMonths,
+                ? applyRevenueMonthlyFromMonthForward(
+                  latest.monthlyUnitPrice,
                   month,
                   parsed,
                   pastMonths,
+                  fiscalMonths,
+                  revenueFillRangeOptions(client, fiscalPeriod),
                 )
-                : setMonthlyUnitPrice(client, month, parsed, fiscalMonths);
-              persistClient({ ...client, monthlyUnitPrice: nextUnitPrices }, fiscalPeriod);
+                : setMonthlyUnitPrice(latest, month, parsed, fiscalMonths);
+              persistClient({ ...latest, monthlyUnitPrice: nextUnitPrices }, fiscalPeriod);
             },
           });
         } else if (key === 'revenue') {

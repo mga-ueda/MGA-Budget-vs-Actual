@@ -3275,6 +3275,12 @@ function startRevenueManMonthCellEdit(td, {
           parsed,
           fillForwardSkipMonths,
           fiscalMonths,
+          {
+            rangeMaps: [
+              baseManMonths,
+              latestClient?.monthlyUnitPrice,
+            ],
+          },
         )
         : { ...baseManMonths, [month]: parsed };
       input.remove();
