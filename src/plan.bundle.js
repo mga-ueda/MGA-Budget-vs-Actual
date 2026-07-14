@@ -22210,35 +22210,11 @@ async function setFiscalPeriod(nextPeriod) {
   saveAppSettings(appSettings);
   syncPeriodControls();
 
-  if (activeTab === 'settings') {
-    syncPlanDataToCurrentPeriod();
-    renderOtherSettings();
-    return;
-  }
-
-  if (activeTab === 'employees') {
-    syncPlanDataToCurrentPeriod();
-    renderEmployeeSettings();
-    return;
-  }
-
-  if (activeTab === 'orders') {
-    syncPlanDataToCurrentPeriod();
-    renderRevenueSettings();
-    return;
-  }
-
-  if (activeTab === 'taxpayments') {
-    syncPlanDataToCurrentPeriod();
-    renderTaxPaymentSettings();
-    return;
-  }
-
-  if (activeTab === 'outsourcing') {
-    syncPlanDataToCurrentPeriod();
-    renderOutsourcingSettings();
-    return;
-  }
+  // 設定タブでも期切替時は CSV／キャッシュを再解決する。
+  // 来期（計画のみ）表示で rawPlanData がゼロ化されるため、
+  // 再読込せずに描画だけすると実績月の金額が消えたままになる。
+  // loadData / loadPlanOnlyPeriodData → renderPlanViewAfterDataChange → renderView
+  // が activeTab に応じて設定画面を再描画する。
 
   if (isPlanOnlyPeriod(getActiveBusinessStartYear(), clamped, undefined, getActiveFiscalEndMonth(clamped))) {
     showPlanLoadingOverlay({ awaitLayout: true });
