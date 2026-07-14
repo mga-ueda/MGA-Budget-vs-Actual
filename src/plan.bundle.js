@@ -25036,7 +25036,7 @@ function persistRevenueManMonths(clientId, nextManMonths) {
   applyRevenueManMonthEditDom(root.querySelector('.plan-table'), clientId);
 }
 
-/** 人月編集後: 売上・利益の該当セルだけ DOM 更新する */
+/** 人月編集後: 売上・利益・入出金・現預金の該当セルを DOM 更新する */
 function applyRevenueManMonthEditDom(table, clientId) {
   if (!table || !data) return;
   const amountCtx = getPlanTableAmountContext();
@@ -25079,11 +25079,23 @@ function applyRevenueManMonthEditDom(table, clientId) {
   }
 
   const profitSection = data.sections.find((s) => s.id === 'profit');
-  if (!profitSection) return;
-  for (const tr of table.querySelectorAll('tbody tr[data-section-id="profit"][data-row-id]')) {
-    const row = profitSection.rows.find((r) => r.id === tr.dataset.rowId);
-    if (!row || !rowVisibleInSection(profitSection, row)) continue;
-    updatePlanTableProfitRowCells(tr, profitSection, row, amountCtx);
+  if (profitSection) {
+    for (const tr of table.querySelectorAll('tbody tr[data-section-id="profit"][data-row-id]')) {
+      const row = profitSection.rows.find((r) => r.id === tr.dataset.rowId);
+      if (!row || !rowVisibleInSection(profitSection, row)) continue;
+      updatePlanTableProfitRowCells(tr, profitSection, row, amountCtx);
+    }
+  }
+
+  // 人月→売上→入金→現預金の連鎖を、部分更新でも画面に同期する
+  for (const sectionId of ['cfIn', 'cfOut', 'cashBalance']) {
+    const section = data.sections.find((s) => s.id === sectionId);
+    if (!section) continue;
+    for (const tr of table.querySelectorAll(`tbody tr[data-section-id="${sectionId}"][data-row-id]`)) {
+      const row = section.rows.find((r) => r.id === tr.dataset.rowId);
+      if (!row || !rowVisibleInSection(section, row)) continue;
+      updatePlanTableRevenueAmountRowCells(tr, section, row, amountCtx);
+    }
   }
 }
 
