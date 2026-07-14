@@ -26938,6 +26938,25 @@ function handleFiscalPeriodNavShortcut(ev) {
   return true;
 }
 
+/** Ctrl/⌘+Shift+E/I で設定をエクスポート／インポート */
+function handleSettingsTransferShortcut(ev) {
+  if (!(ev.ctrlKey || ev.metaKey) || !ev.shiftKey || ev.altKey) return false;
+  if (ev.isComposing) return false;
+  if (isEditableKeyboardTarget(ev.target)) return false;
+  const key = ev.key.length === 1 ? ev.key.toUpperCase() : '';
+  if (key === 'E') {
+    ev.preventDefault();
+    executeMainMenuEntry({ value: 'action:settings-export' });
+    return true;
+  }
+  if (key === 'I') {
+    ev.preventDefault();
+    executeMainMenuEntry({ value: 'action:settings-import' });
+    return true;
+  }
+  return false;
+}
+
 document.addEventListener('keydown', (ev) => {
   if (csvGateActive) return;
   if (ev.key === 'F10' && !ev.shiftKey && !ev.altKey && !ev.ctrlKey && !ev.metaKey) {
@@ -26947,6 +26966,7 @@ document.addEventListener('keydown', (ev) => {
   }
   if (handleMonthDisplayNavShortcut(ev)) return;
   if (handleFiscalPeriodNavShortcut(ev)) return;
+  if (handleSettingsTransferShortcut(ev)) return;
   if (ev.key === 'Escape') handleEscapeKey();
 });
 
@@ -26965,8 +26985,8 @@ const MAIN_MENU_ENTRIES = [
   { kind: 'item', value: 'colors', label: '色', indented: true, shortcutKey: 'C' },
   { kind: 'item', value: 'settings', label: 'その他', indented: true, shortcutKey: 'S' },
   { kind: 'heading', label: '操作' },
-  { kind: 'item', value: 'action:settings-export', label: 'エクスポート', indented: true, shortcutKey: 'X' },
-  { kind: 'item', value: 'action:settings-import', label: 'インポート', indented: true, shortcutKey: 'I' },
+  { kind: 'item', value: 'action:settings-export', label: 'エクスポート', indented: true, shortcutKey: 'Ctrl+Shift+E' },
+  { kind: 'item', value: 'action:settings-import', label: 'インポート', indented: true, shortcutKey: 'Ctrl+Shift+I' },
   { kind: 'item', value: 'action:reload-csv', label: '再読み込み', indented: true, shortcutKey: 'R' },
   { kind: 'item', value: 'action:change-folder', label: 'フォルダ変更', indented: true, shortcutKey: 'F' },
   { kind: 'heading', label: 'ヘルプ' },
@@ -26979,8 +26999,30 @@ function getMainMenuEntryByShortcut(key) {
   const normalized = key.length === 1 ? key.toUpperCase() : '';
   if (!normalized) return null;
   return MAIN_MENU_ENTRIES.find(
-    (entry) => entry.kind === 'item' && entry.shortcutKey?.toUpperCase() === normalized,
+    (entry) => entry.kind === 'item'
+      && entry.shortcutKey?.length === 1
+      && entry.shortcutKey.toUpperCase() === normalized,
   ) ?? null;
+}
+
+/** メニュー右端のショートカット表記 */
+function appendMenuShortcutKbds(container, shortcutKey) {
+  const parts = String(shortcutKey).split('+').filter(Boolean);
+  parts.forEach((part, index) => {
+    if (index > 0) {
+      const sep = document.createElement('span');
+      sep.className = 'plan-main-menu-shortcut-sep';
+      sep.textContent = '+';
+      container.appendChild(sep);
+    }
+    const kbd = document.createElement('kbd');
+    kbd.textContent = part;
+    container.appendChild(kbd);
+  });
+}
+
+function toAriaKeyShortcuts(shortcutKey) {
+  return String(shortcutKey).replace(/Ctrl/gi, 'Control');
 }
 
 function executeMainMenuEntry(entry) {
@@ -33354,7 +33396,7 @@ function buildMainMenu() {
     btn.dataset.menuValue = entry.value;
     if (entry.shortcutKey) {
       btn.dataset.shortcutKey = entry.shortcutKey;
-      btn.setAttribute('aria-keyshortcuts', entry.shortcutKey);
+      btn.setAttribute('aria-keyshortcuts', toAriaKeyShortcuts(entry.shortcutKey));
     }
 
     const checkSpan = document.createElement('span');
@@ -33370,9 +33412,8 @@ function buildMainMenu() {
     if (entry.shortcutKey) {
       const keySpan = document.createElement('span');
       keySpan.className = 'plan-main-menu-item-key';
-      const kbd = document.createElement('kbd');
-      kbd.textContent = entry.shortcutKey;
-      keySpan.appendChild(kbd);
+      if (entry.shortcutKey.includes('+')) keySpan.classList.add('plan-main-menu-item-key--combo');
+      appendMenuShortcutKbds(keySpan, entry.shortcutKey);
       keySpan.setAttribute('aria-hidden', 'true');
       btn.appendChild(keySpan);
     }

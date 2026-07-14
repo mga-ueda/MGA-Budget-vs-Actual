@@ -785,11 +785,31 @@ body {
 .plan-main-menu-item-key {
   flex: 0 0 1.55em;
   display: inline-flex;
+  align-items: center;
   justify-content: center;
+}
+
+.plan-main-menu-item-key--combo {
+  flex: 0 0 auto;
+  justify-content: flex-end;
+  gap: 0.05em;
+}
+
+.plan-main-menu-shortcut-sep {
+  margin: 0 0.02em;
+  color: var(--plan-text-dim);
+  font-size: 0.78em;
+  font-weight: 700;
+  line-height: 1;
+  user-select: none;
 }
 
 .plan-main-menu-item-key kbd {
   margin-left: 0;
+  min-width: 1.55em;
+}
+
+.plan-main-menu-item-key:not(.plan-main-menu-item-key--combo) kbd {
   min-width: 100%;
 }
 
