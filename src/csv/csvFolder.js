@@ -419,6 +419,13 @@ export async function loadCsvFromSavedFolderWithAccess(handle, periodOptions, op
 }
 
 /** キャッシュ済み仕訳 CSV から指定の期の決算月を推定する */
+/** 指定期本来の CSV がキャッシュにあるか（来期の今期フォールバックはしない） */
+export function hasPeriodCsvInCache(periodOptions = {}) {
+  if (!folderCsvCache) return false;
+  const resolved = resolveCsvBuckets(folderCsvCache.buckets, periodOptions);
+  return Boolean(resolved.journal && resolved.bs && resolved.generalLedger);
+}
+
 export function resolveFiscalEndMonthFromCache(periodOptions = {}) {
   if (!folderCsvCache) return null;
   const resolved = resolveCsvBuckets(folderCsvCache.buckets, periodOptions);

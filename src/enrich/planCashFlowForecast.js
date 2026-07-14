@@ -6,7 +6,11 @@ import {
   isMonthDisplayToggleTarget,
 } from '../config/monthDisplayConfig.js';
 import { buildFiscalYearMonths } from '../config/salaryPlanConfig.js';
-import { emptyRawMonthValues, loadReferencePeriodPlanData } from './enrichUtils.js';
+import { emptyRawMonthValues } from './enrichUtils.js';
+import {
+  findCashBalanceTotalRow,
+  resolvePriorPeriodEndCashBalance,
+} from './planCashPriorEnd.js';
 
 const CFF_IN_SECTION_ID = 'cfIn';
 const CFF_OUT_SECTION_ID = 'cfOut';
@@ -27,20 +31,6 @@ const CFF_OUTFLOW_SECTION_IDS = [
   'nonOperatingExpense',
   'otherPay',
 ];
-
-function cffFindCashBalanceTotalRow(section) {
-  if (!section) return null;
-  return section.rows.find((r) =>
-    r.type === 'total'
-    && (r.label === CFF_CASH_BALANCE_TOTAL_LABEL || String(r.label ?? '').includes(CFF_CASH_BALANCE_TOTAL_LABEL)),
-  ) ?? section.rows.find((r) => r.type === 'total' && r.accentTotal);
-}
-
-function cffGetPriorPeriodEndCashBalance(refPlanData) {
-  const section = refPlanData?.sections?.find((s) => s.id === CFF_CASH_BALANCE_SECTION_ID);
-  const totalRow = cffFindCashBalanceTotalRow(section);
-  return totalRow?.values?.["合計"] ?? 0;
-}
 
 function cffResolvePlanMonths(displayMode, monthDisplayConfig, businessStartYear, fiscalPeriod, fiscalMonths) {
   if (displayMode === 'actual') return null;
@@ -106,6 +96,8 @@ export function enrichPlanDataWithCashFlowForecast(planData, {
   fiscalEndMonth,
   displayMode,
   monthDisplayConfig,
+  priorPeriodEndCashBalance,
+  getEnrichedPriorPlanData,
 }) {
   if (!planData?.sections?.length) return planData;
   if (displayMode === 'actual') return planData;
@@ -127,13 +119,18 @@ export function enrichPlanDataWithCashFlowForecast(planData, {
 
   const inflowRow = cfInSection.rows.find((r) => r.id === CFF_IN_ROW_ID);
   const outflowRow = cfOutSection.rows.find((r) => r.id === CFF_OUT_ROW_ID);
-  const cashTotalRow = cffFindCashBalanceTotalRow(cashSection);
+  const cashTotalRow = findCashBalanceTotalRow(cashSection);
   if (!inflowRow || !outflowRow || !cashTotalRow) return planData;
 
-  const refPlanData = fiscalPeriod > 1
-    ? loadReferencePeriodPlanData(expandConfig, businessStartYear, fiscalPeriod - 1)
-    : null;
-  const priorPeriodEnd = cffGetPriorPeriodEndCashBalance(refPlanData);
+  const priorPeriodEnd = priorPeriodEndCashBalance != null
+    ? priorPeriodEndCashBalance
+    : resolvePriorPeriodEndCashBalance({
+      expandConfig,
+      businessStartYear,
+      fiscalPeriod,
+      fiscalEndMonth,
+      getEnrichedPriorPlanData,
+    });
 
   const inflowMonths = { ...inflowRow.values };
   const outflowMonths = { ...outflowRow.values };

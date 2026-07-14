@@ -1,28 +1,16 @@
 import { enrichRowValues } from '../parse/parseJournal.js';
 import { buildBudgetActualMonthSets } from '../config/monthDisplayConfig.js';
 import { buildFiscalMonths, buildFiscalYearMonths } from '../config/fiscalCalendar.js';
-import { loadReferencePeriodPlanData } from './enrichUtils.js';
+import {
+  findCashBalanceTotalRow,
+  resolvePriorPeriodEndCashBalance,
+} from './planCashPriorEnd.js';
 
 const CF_IN_SECTION_ID = 'cfIn';
 const CF_OUT_SECTION_ID = 'cfOut';
 const CF_CASH_BALANCE_SECTION_ID = 'cashBalance';
-const CASH_BALANCE_TOTAL_LABEL = "現金及び預金合計";
 const CF_IN_ROW_ID = 'cf-in';
 const CF_OUT_ROW_ID = 'cf-out';
-
-function findCashBalanceTotalRow(section) {
-  if (!section) return null;
-  return section.rows.find((r) =>
-    r.type === 'total'
-    && (r.label === CASH_BALANCE_TOTAL_LABEL || String(r.label ?? '').includes(CASH_BALANCE_TOTAL_LABEL)),
-  ) ?? section.rows.find((r) => r.type === 'total' && r.accentTotal);
-}
-
-function getPriorPeriodEndCashBalance(refPlanData) {
-  const section = refPlanData?.sections?.find((s) => s.id === CF_CASH_BALANCE_SECTION_ID);
-  const totalRow = findCashBalanceTotalRow(section);
-  return totalRow?.values?.合計 ?? 0;
-}
 
 function monthHasCashFlowActivity(inflowRow, outflowRow, month) {
   return (inflowRow?.values?.[month] ?? 0) !== 0
@@ -55,12 +43,11 @@ export function enrichPlanDataWithCashFlowOpeningInflow(planData, {
   fiscalEndMonth,
   displayMode,
   monthDisplayConfig,
+  priorPeriodEndCashBalance,
+  getEnrichedPriorPlanData,
 }) {
   const referencePeriod = fiscalPeriod - 1;
   if (referencePeriod < 1) return planData;
-
-  const refPlanData = loadReferencePeriodPlanData(expandConfig, businessStartYear, referencePeriod);
-  if (!refPlanData) return planData;
 
   const cfInSection = planData.sections.find((s) => s.id === CF_IN_SECTION_ID);
   const cfOutSection = planData.sections.find((s) => s.id === CF_OUT_SECTION_ID);
@@ -99,7 +86,15 @@ export function enrichPlanDataWithCashFlowOpeningInflow(planData, {
     return planData;
   }
 
-  const priorEnd = getPriorPeriodEndCashBalance(refPlanData);
+  const priorEnd = priorPeriodEndCashBalance != null
+    ? priorPeriodEndCashBalance
+    : resolvePriorPeriodEndCashBalance({
+      expandConfig,
+      businessStartYear,
+      fiscalPeriod,
+      fiscalEndMonth,
+      getEnrichedPriorPlanData,
+    });
   const currentBalance = cashTotalRow.values[firstMonth] ?? 0;
   const outflow = outflowRow.values[firstMonth] ?? 0;
   const journalInflow = inflowRow.values[firstMonth] ?? 0;

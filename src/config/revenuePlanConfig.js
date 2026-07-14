@@ -45,6 +45,65 @@ export function countClientOrderMonths(monthlyRevenue, fiscalMonths) {
   return count;
 }
 
+/** 年月（例: 2024年 4月。1桁月は削に半角スペース） */
+export function formatOrderYearMonth(year, month) {
+  if (year == null || month == null) return '';
+  const monthText = Number(month) < 10 ? ' ' + String(month) : String(month);
+  return String(year) + '年' + monthText + '月';
+}
+
+/** 受注先の取引開始・終了年月を表示文字にする */
+export function formatClientTradeDateRange(start, end) {
+  if (!start || !end) return '';
+  const startText = formatOrderYearMonth(start.year, start.month);
+  const endText = formatOrderYearMonth(end.year, end.month);
+  if (!startText || !endText) return '';
+  return startText + '〜' + endText;
+}
+
+/** 前後の年月が暦上で連続するか */
+export function isConsecutiveCalendarMonth(prev, next) {
+  if (!prev || !next) return false;
+  const prevIndex = prev.year * 12 + prev.month;
+  const nextIndex = next.year * 12 + next.month;
+  return nextIndex === prevIndex + 1;
+}
+
+/** 売上が入った月を連続区間ごとに分割する（途中が空けば別期間） */
+export function splitFilledMonthsIntoTradeRanges(filledMonths) {
+  if (!Array.isArray(filledMonths) || filledMonths.length === 0) return [];
+  const ranges = [];
+  let rangeStart = filledMonths[0];
+  let rangeEnd = filledMonths[0];
+  for (let i = 1; i < filledMonths.length; i += 1) {
+    const cur = filledMonths[i];
+    if (isConsecutiveCalendarMonth(rangeEnd, cur)) {
+      rangeEnd = cur;
+      continue;
+    }
+    ranges.push({
+      start: { year: rangeStart.year, month: rangeStart.month },
+      end: { year: rangeEnd.year, month: rangeEnd.month },
+    });
+    rangeStart = cur;
+    rangeEnd = cur;
+  }
+  ranges.push({
+    start: { year: rangeStart.year, month: rangeStart.month },
+    end: { year: rangeEnd.year, month: rangeEnd.month },
+  });
+  return ranges;
+}
+
+/** 複数の取引期間を、区切りで連結（改行しない） */
+export function formatClientTradeDateRanges(ranges) {
+  if (!Array.isArray(ranges) || ranges.length === 0) return '';
+  return ranges
+    .map((range) => formatClientTradeDateRange(range.start, range.end))
+    .filter(Boolean)
+    .join('、');
+}
+
 export function applyRevenueMonthlyFromMonthForward(
   source,
   startMonth,

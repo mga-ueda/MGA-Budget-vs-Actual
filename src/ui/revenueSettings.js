@@ -4,6 +4,7 @@ import {
   formatSalaryPlanYen,
   salaryPlanAmountDiffersFromPrevious,
   buildFiscalYearMonths,
+  monthLabelToNumber,
   applyAmountFromMonthForwardSkippingPast,
 } from '../config/salaryPlanConfig.js';
 import { isAccountingTaxExclusive } from '../config/consumptionTaxRateConfig.js';
@@ -31,6 +32,8 @@ import {
   applyRevenueMonthlyFromMonthForward,
   hasRevenuePlanInputValue,
   countClientOrderMonths,
+  formatClientTradeDateRanges,
+  splitFilledMonthsIntoTradeRanges,
   MISC_INCOME_ACCOUNT,
   getMiscIncomeMonthly,
   setMiscIncomeMonthly,
@@ -522,6 +525,29 @@ export function mountRevenueSettingsPanel({
     return order.map((key) => byKey.get(key));
   }
 
+  function resolveClientTradeDateRange(identity) {
+    const filledMonths = [];
+    for (const { period } of planPeriodEntries()) {
+      const client = findClientInPeriod(period, identity);
+      if (!client) continue;
+      const monthly = buildDisplayRevenueMonthly(client, period);
+      const monthYearMap = buildMonthYearMap(
+        appSettings.businessStartYear,
+        period,
+        appSettings.fiscalEndMonth,
+      );
+      for (const month of fiscalMonths) {
+        if (!hasRevenuePlanInputValue(monthly[month])) continue;
+        const monthNum = monthLabelToNumber(month);
+        const year = monthYearMap[month];
+        if (year == null || monthNum == null) continue;
+        filledMonths.push({ year, month: monthNum });
+      }
+    }
+    const ranges = splitFilledMonthsIntoTradeRanges(filledMonths);
+    return formatClientTradeDateRanges(ranges);
+  }
+
   function findClientInPeriod(period, identity) {
     const clients = getClientsForPeriod(period);
     return clients.find((c) => revenueClientIdentityKey(c) === identity.key)
@@ -589,6 +615,9 @@ export function mountRevenueSettingsPanel({
     const totalTh = document.createElement('th');
     totalTh.textContent = "総計";
     headTr.appendChild(totalTh);
+    const tradeRangeTh = document.createElement('th');
+    tradeRangeTh.textContent = "開始年月〜終了年月";
+    headTr.appendChild(tradeRangeTh);
     thead.appendChild(headTr);
     table.appendChild(thead);
 
@@ -617,6 +646,10 @@ export function mountRevenueSettingsPanel({
       totalTd.className = 'revenue-order-months-summary-count revenue-order-months-summary-total';
       totalTd.textContent = grand > 0 ? String(grand) + monthUnitText : '';
       tr.appendChild(totalTd);
+      const tradeRangeTd = document.createElement('td');
+      tradeRangeTd.className = 'revenue-order-months-summary-range';
+      tradeRangeTd.textContent = resolveClientTradeDateRange(identity);
+      tr.appendChild(tradeRangeTd);
       tbody.appendChild(tr);
     }
     table.appendChild(tbody);

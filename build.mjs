@@ -48,6 +48,7 @@ const FILES = [
   'enrich/planPeriodAverageFill.js',
   'enrich/corporateTaxItemized.js',
   'enrich/nextPeriodTaxForecast.js',
+  'enrich/planCashPriorEnd.js',
   'enrich/planCashFlowOpening.js',
   'enrich/planCashFlowForecast.js',
   'parse/parseEmployee.js',

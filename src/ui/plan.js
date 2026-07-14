@@ -14,6 +14,9 @@ import {
   TIP_DASHBOARD_SHOW,
   TIP_PLAN_SHOW,
   TIP_MAIN_MENU,
+  TIP_PERIOD_PREV,
+  TIP_PERIOD_NEXT,
+  TIP_PERIOD_SELECT,
   TIP_ROW_PADDING_INC,
   TIP_ROW_PADDING_DEC,
   TIP_CLOSE,
@@ -50,6 +53,7 @@ import {
   loadPlanDataWithFolderAccess,
   reloadPlanDataFromSavedFolder,
   planDataFromCache,
+  hasPeriodCsvInCache,
   resolveFiscalEndMonthFromCache,
   resolveLatestFiscalEndMonthFromCache,
   resolveBusinessStartYearFromCache,
@@ -227,6 +231,7 @@ import {
   getMonthDisplayClickHint,
   getSettingsLockedMonths,
   toggleMonthDisplayMode,
+  shiftMonthDisplayBoundary,
   buildBudgetActualMonthSets,
   isMonthDisplayToggleTarget,
 } from '../config/monthDisplayConfig.js';
@@ -239,6 +244,7 @@ import { enrichPlanDataWithMiscIncomeRows } from '../enrich/planMiscIncomeRows.j
 import { enrichPlanDataWithPeriodAverageFills } from '../enrich/planPeriodAverageFill.js';
 import { enrichPlanDataWithCashFlowOpeningInflow } from '../enrich/planCashFlowOpening.js';
 import { enrichPlanDataWithCashFlowForecast } from '../enrich/planCashFlowForecast.js';
+import { resolvePriorPeriodEndCashBalance } from '../enrich/planCashPriorEnd.js';
 import {
   parseJournalEntries,
   findRelatedJournalEntries,
@@ -898,12 +904,20 @@ function bindPeriodControls() {
     if (menu && !menu.contains(e.target)) closePeriodSelect();
   });
 
-  prevBtn?.addEventListener('click', () => {
-    setFiscalPeriod(appSettings.fiscalPeriod - 1);
-  });
-  nextBtn?.addEventListener('click', () => {
-    setFiscalPeriod(appSettings.fiscalPeriod + 1);
-  });
+  if (prevBtn) {
+    prevBtn.title = TIP_PERIOD_PREV;
+    prevBtn.addEventListener('click', () => {
+      setFiscalPeriod(appSettings.fiscalPeriod - 1);
+    });
+  }
+  if (nextBtn) {
+    nextBtn.title = TIP_PERIOD_NEXT;
+    nextBtn.addEventListener('click', () => {
+      setFiscalPeriod(appSettings.fiscalPeriod + 1);
+    });
+  }
+  const periodTrigger = document.getElementById('plan-period-select-trigger');
+  if (periodTrigger) periodTrigger.title = TIP_PERIOD_SELECT;
 }
 
 function bindDashboardButton() {
@@ -4514,95 +4528,137 @@ function buildPlanTablePastMonthSet(displayMode) {
 }
 
 function applyPlanColors(planData, fiscalPeriod = appSettings.fiscalPeriod) {
+  return applyPlanColorsWithMemo(planData, fiscalPeriod, new Map(), new Set());
+}
+
+/** 期ごとのエンリッチ。来期期首現預金のため前期を再帰的に補完する */
+function applyPlanColorsWithMemo(planData, fiscalPeriod, memo, visiting) {
   if (!planData) return null;
+  if (memo.has(fiscalPeriod)) return memo.get(fiscalPeriod);
+  if (visiting.has(fiscalPeriod)) return planData;
+  visiting.add(fiscalPeriod);
+
   const displayMode = getAppFiscalPeriodDisplayMode(fiscalPeriod);
-  const enriched = enrichPlanDataWithEmployeeSalaryRows(planData, {
-    employees,
-    salaryPlans,
-    salaryPlanSettings,
-    businessStartYear: getActiveBusinessStartYear(),
+  const fiscalEndMonth = getActiveFiscalEndMonth(fiscalPeriod);
+  const businessStartYear = getActiveBusinessStartYear();
+  const priorPeriodEndCashBalance = resolvePriorPeriodEndCashBalance({
+    expandConfig: getExpandConfigWithFiscal(),
+    businessStartYear,
     fiscalPeriod,
-    fiscalEndMonth: getActiveFiscalEndMonth(),
-    displayMode,
-    legalWelfareRate: appSettings.legalWelfareRate,
-    monthDisplayConfig,
+    fiscalEndMonth,
+    getEnrichedPriorPlanData: (priorPeriod) => {
+      if (memo.has(priorPeriod)) return memo.get(priorPeriod);
+      if (!hasPeriodCsvInCache({ businessStartYear, fiscalPeriod: priorPeriod })) {
+        return null;
+      }
+      try {
+        const cached = planDataFromCache(expandConfig, {
+          businessStartYear,
+          fiscalPeriod: priorPeriod,
+        });
+        if (!cached?.data) return null;
+        return applyPlanColorsWithMemo(cached.data, priorPeriod, memo, visiting);
+      } catch {
+        return null;
+      }
+    },
   });
-  const withTaxPayments = enrichPlanDataWithTaxPaymentRows(enriched, {
-    taxPaymentPlans,
-    employees,
-    businessStartYear: getActiveBusinessStartYear(),
-    fiscalPeriod,
-    fiscalEndMonth: getActiveFiscalEndMonth(),
-    displayMode,
-    actualSourcePlanData: enriched,
-    monthDisplayConfig,
-  });
-  const withOutsourcing = enrichPlanDataWithOutsourcingRows(withTaxPayments, {
-    outsourcingPlans,
-    businessStartYear: getActiveBusinessStartYear(),
-    fiscalPeriod,
-    fiscalEndMonth: getActiveFiscalEndMonth(),
-    displayMode,
-    corpEntityMarkers: appSettings.corpEntityMarkers,
-    consumptionTaxRates: appSettings.consumptionTaxRates,
-    withholdingTaxRates: appSettings.withholdingTaxRates,
-    accountingTaxBasis: appSettings.accountingTaxBasis,
-    monthDisplayConfig,
-  });
-  const withRevenue = enrichPlanDataWithRevenueRows(withOutsourcing, {
-    revenuePlans,
-    businessStartYear: getActiveBusinessStartYear(),
-    fiscalPeriod,
-    fiscalEndMonth: getActiveFiscalEndMonth(),
-    displayMode,
-    consumptionTaxRates: appSettings.consumptionTaxRates,
-    accountingTaxBasis: appSettings.accountingTaxBasis,
-    monthDisplayConfig,
-  });
-  const withMiscIncome = enrichPlanDataWithMiscIncomeRows(withRevenue, {
-    revenuePlans,
-    businessStartYear: getActiveBusinessStartYear(),
-    fiscalPeriod,
-    fiscalEndMonth: getActiveFiscalEndMonth(),
-    displayMode,
-    monthDisplayConfig,
-  });
-  const withAverages = enrichPlanDataWithPeriodAverageFills(withMiscIncome, {
-    expandConfig,
-    businessStartYear: getActiveBusinessStartYear(),
-    fiscalPeriod,
-    fiscalEndMonth: getActiveFiscalEndMonth(),
-    displayMode,
-    expensePlanOverrides,
-    monthDisplayConfig,
-  });
-  const withCashOpening = enrichPlanDataWithCashFlowOpeningInflow(withAverages, {
-    expandConfig,
-    businessStartYear: getActiveBusinessStartYear(),
-    fiscalPeriod,
-    fiscalEndMonth: getActiveFiscalEndMonth(),
-    displayMode,
-    monthDisplayConfig,
-  });
-  const withCashForecast = enrichPlanDataWithCashFlowForecast(withCashOpening, {
-    expandConfig,
-    businessStartYear: getActiveBusinessStartYear(),
-    fiscalPeriod,
-    fiscalEndMonth: getActiveFiscalEndMonth(),
-    displayMode,
-    monthDisplayConfig,
-  });
-  const withProfit = rebuildProfitSectionInPlanData(withCashForecast);
-  const withSga = insertSgaSummarySections(withProfit);
-  const colored = {
-    ...withSga,
-    sections: applySectionColors(withSga.sections, sectionColorConfig, getPlanColorMode()),
-  };
-  const sorted = applyExpenseSortToPlanData(colored, expenseSortConfig);
-  return {
-    ...sorted,
-    visibilityCandidates: collectVisibilityCandidates(sorted.sections),
-  };
+
+  try {
+    const enriched = enrichPlanDataWithEmployeeSalaryRows(planData, {
+      employees,
+      salaryPlans,
+      salaryPlanSettings,
+      businessStartYear,
+      fiscalPeriod,
+      fiscalEndMonth,
+      displayMode,
+      legalWelfareRate: appSettings.legalWelfareRate,
+      monthDisplayConfig,
+    });
+    const withTaxPayments = enrichPlanDataWithTaxPaymentRows(enriched, {
+      taxPaymentPlans,
+      employees,
+      businessStartYear,
+      fiscalPeriod,
+      fiscalEndMonth,
+      displayMode,
+      actualSourcePlanData: enriched,
+      monthDisplayConfig,
+    });
+    const withOutsourcing = enrichPlanDataWithOutsourcingRows(withTaxPayments, {
+      outsourcingPlans,
+      businessStartYear,
+      fiscalPeriod,
+      fiscalEndMonth,
+      displayMode,
+      corpEntityMarkers: appSettings.corpEntityMarkers,
+      consumptionTaxRates: appSettings.consumptionTaxRates,
+      withholdingTaxRates: appSettings.withholdingTaxRates,
+      accountingTaxBasis: appSettings.accountingTaxBasis,
+      monthDisplayConfig,
+    });
+    const withRevenue = enrichPlanDataWithRevenueRows(withOutsourcing, {
+      revenuePlans,
+      businessStartYear,
+      fiscalPeriod,
+      fiscalEndMonth,
+      displayMode,
+      consumptionTaxRates: appSettings.consumptionTaxRates,
+      accountingTaxBasis: appSettings.accountingTaxBasis,
+      monthDisplayConfig,
+    });
+    const withMiscIncome = enrichPlanDataWithMiscIncomeRows(withRevenue, {
+      revenuePlans,
+      businessStartYear,
+      fiscalPeriod,
+      fiscalEndMonth,
+      displayMode,
+      monthDisplayConfig,
+    });
+    const withAverages = enrichPlanDataWithPeriodAverageFills(withMiscIncome, {
+      expandConfig,
+      businessStartYear,
+      fiscalPeriod,
+      fiscalEndMonth,
+      displayMode,
+      expensePlanOverrides,
+      monthDisplayConfig,
+    });
+    const withCashOpening = enrichPlanDataWithCashFlowOpeningInflow(withAverages, {
+      expandConfig,
+      businessStartYear,
+      fiscalPeriod,
+      fiscalEndMonth,
+      displayMode,
+      monthDisplayConfig,
+      priorPeriodEndCashBalance,
+    });
+    const withCashForecast = enrichPlanDataWithCashFlowForecast(withCashOpening, {
+      expandConfig,
+      businessStartYear,
+      fiscalPeriod,
+      fiscalEndMonth,
+      displayMode,
+      monthDisplayConfig,
+      priorPeriodEndCashBalance,
+    });
+    const withProfit = rebuildProfitSectionInPlanData(withCashForecast);
+    const withSga = insertSgaSummarySections(withProfit);
+    const colored = {
+      ...withSga,
+      sections: applySectionColors(withSga.sections, sectionColorConfig, getPlanColorMode()),
+    };
+    const sorted = applyExpenseSortToPlanData(colored, expenseSortConfig);
+    const result = {
+      ...sorted,
+      visibilityCandidates: collectVisibilityCandidates(sorted.sections),
+    };
+    memo.set(fiscalPeriod, result);
+    return result;
+  } finally {
+    visiting.delete(fiscalPeriod);
+  }
 }
 
 function refreshSectionColors() {
@@ -4885,6 +4941,45 @@ function handleEscapeKey() {
   }
 }
 
+/** 入力欄にフォーカスがあるときはグローバルショートカットを無視する */
+function isEditableKeyboardTarget(target) {
+  if (!(target instanceof Element)) return false;
+  const el = target.closest('input, textarea, select, [contenteditable="true"], [contenteditable=""]');
+  if (!el) return false;
+  if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+    if (el.disabled || el.readOnly) return false;
+  }
+  return true;
+}
+
+/** Ctrl/⌘+←→ で予実境界を前後する */
+function handleMonthDisplayNavShortcut(ev) {
+  if (!(ev.ctrlKey || ev.metaKey) || ev.altKey || ev.shiftKey) return false;
+  if (ev.key !== 'ArrowLeft' && ev.key !== 'ArrowRight') return false;
+  if (ev.isComposing) return false;
+  if (isEditableKeyboardTarget(ev.target)) return false;
+
+  ev.preventDefault();
+  shiftPlanMonthDisplay(ev.key === 'ArrowLeft' ? -1 : 1);
+  return true;
+}
+
+/** Ctrl/⌘+Shift+←→ で会計期を前後する */
+function handleFiscalPeriodNavShortcut(ev) {
+  if (!(ev.ctrlKey || ev.metaKey) || !ev.shiftKey || ev.altKey) return false;
+  if (ev.key !== 'ArrowLeft' && ev.key !== 'ArrowRight') return false;
+  if (ev.isComposing) return false;
+  if (isEditableKeyboardTarget(ev.target)) return false;
+
+  ev.preventDefault();
+  if (ev.key === 'ArrowLeft') {
+    void setFiscalPeriod(appSettings.fiscalPeriod - 1);
+  } else {
+    void setFiscalPeriod(appSettings.fiscalPeriod + 1);
+  }
+  return true;
+}
+
 document.addEventListener('keydown', (ev) => {
   if (csvGateActive) return;
   if (ev.key === 'F10' && !ev.shiftKey && !ev.altKey && !ev.ctrlKey && !ev.metaKey) {
@@ -4892,6 +4987,8 @@ document.addEventListener('keydown', (ev) => {
     openMainMenu({ focusFirst: true });
     return;
   }
+  if (handleMonthDisplayNavShortcut(ev)) return;
+  if (handleFiscalPeriodNavShortcut(ev)) return;
   if (ev.key === 'Escape') handleEscapeKey();
 });
 
@@ -5628,24 +5725,43 @@ function togglePlanMonthDisplay(monthLabel) {
     getActiveBusinessStartYear(),
     getPlanFiscalMonths(),
   );
+  applyMonthDisplayConfigChange();
+}
+
+/** 月表示設定変更後の表示更新 */
+function applyMonthDisplayConfigChange() {
   saveMonthDisplayConfig(monthDisplayConfig);
-  if (rawPlanData) {
-    data = applyPlanColors(rawPlanData);
-    refreshPlanKpi();
-    if (activeTab === 'dashboard') {
-      renderDashboardView();
-    } else if (activeTab === 'orders') {
-      applyRevenueSettingsMonthDisplayDom();
-    } else if (activeTab === 'taxpayments') {
-      applyTaxPaymentSettingsMonthDisplayDom();
-    } else if (activeTab === 'outsourcing') {
-      applyOutsourcingSettingsMonthDisplayDom();
-    } else if (activeTab === 'employees') {
-      applyEmployeeSettingsMonthDisplayDom();
-    } else {
-      applyPlanMonthDisplayDom(root.querySelector('.plan-table'));
-    }
+  if (!rawPlanData) return;
+  data = applyPlanColors(rawPlanData);
+  refreshPlanKpi();
+  if (activeTab === 'dashboard') {
+    renderDashboardView();
+  } else if (activeTab === 'orders') {
+    applyRevenueSettingsMonthDisplayDom();
+  } else if (activeTab === 'taxpayments') {
+    applyTaxPaymentSettingsMonthDisplayDom();
+  } else if (activeTab === 'outsourcing') {
+    applyOutsourcingSettingsMonthDisplayDom();
+  } else if (activeTab === 'employees') {
+    applyEmployeeSettingsMonthDisplayDom();
+  } else {
+    applyPlanMonthDisplayDom(root.querySelector('.plan-table'));
   }
+}
+
+/** 予実境界を1か月ずつ動かす */
+function shiftPlanMonthDisplay(delta) {
+  const displayMode = getAppFiscalPeriodDisplayMode();
+  if (displayMode !== 'budget-actual') return;
+  const next = shiftMonthDisplayBoundary(
+    monthDisplayConfig,
+    appSettings.fiscalPeriod,
+    delta,
+    getPlanFiscalMonths(),
+  );
+  if (!next) return;
+  monthDisplayConfig = next;
+  applyMonthDisplayConfigChange();
 }
 
 function renderTable({ measureColumnWidths = false } = {}) {

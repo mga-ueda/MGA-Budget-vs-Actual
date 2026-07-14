@@ -4278,6 +4278,14 @@ tr.row-sub-variance .col-amount.has-variance {
   text-align: right;
 }
 
+.revenue-settings-wrap .revenue-order-months-summary-table tbody td.revenue-order-months-summary-range {
+  font-family: "Cascadia Mono", Consolas, "Courier New", ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  text-align: left;
+  font-weight: 400;
+  white-space: nowrap;
+}
+
 .revenue-settings-wrap .revenue-order-months-summary-sort {
   flex: 0 0 auto;
   margin: 0;

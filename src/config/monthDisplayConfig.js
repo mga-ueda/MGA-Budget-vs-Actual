@@ -210,6 +210,42 @@ export function toggleMonthDisplayMode(
   return normalizeMonthDisplayConfig(nextConfig, fiscalMonths);
 }
 
+/** 予実境界を1か月ずつ前後する。 delta > 0: 計画開始を後へ（実績月を増やす）。 delta < 0: 計画開始を前へ（計画月を増やす）。 */
+export function shiftMonthDisplayBoundary(
+  config,
+  fiscalPeriod,
+  delta,
+  fiscalMonths = FISCAL_MONTHS,
+  date = new Date(),
+) {
+  const step = delta > 0 ? 1 : delta < 0 ? -1 : 0;
+  if (!step) return null;
+
+  const normalized = normalizeMonthDisplayConfig(config, fiscalMonths);
+  const periodKey = String(fiscalPeriod);
+  const firstPlanIdx = getFirstPlanMonthIndex(normalized, fiscalPeriod, fiscalMonths, date);
+  const firstToggleIdx = fiscalMonths.findIndex((m) => isMonthDisplayToggleTarget(m));
+  const lastToggleIdx = getLastToggleMonthIndex(fiscalMonths);
+  if (firstToggleIdx < 0 || lastToggleIdx < 0) return null;
+
+  const minIdx = firstToggleIdx;
+  const maxIdx = lastToggleIdx + 1;
+  const nextIdx = Math.min(maxIdx, Math.max(minIdx, firstPlanIdx + step));
+  if (nextIdx === firstPlanIdx) return null;
+
+  const planFromMonth = nextIdx > lastToggleIdx ? null : fiscalMonths[nextIdx];
+  const nextConfig = { ...normalized };
+  const defaultPlanFromMonth = getDefaultPlanFromMonth(fiscalMonths, date);
+
+  if (planFromMonth === defaultPlanFromMonth) {
+    delete nextConfig[periodKey];
+  } else {
+    nextConfig[periodKey] = { planFromMonth };
+  }
+
+  return normalizeMonthDisplayConfig(nextConfig, fiscalMonths);
+}
+
 /** 設定画面で編集不可な月（実績表示の月） */
 export function getSettingsLockedMonths({
   config,
@@ -250,7 +286,7 @@ export function getSettingsLockedMonths({
 /** 月クリック時のツールチップ文字を返す。 */
 export function getMonthDisplayClickHint(mode) {
   if (mode === 'plan') {
-    return "クリックでこの月まで実績表示に切り替え";
+    return "クリックでこの月まで実績表示に切り替え（Ctrl+←→ で境界を1か月ずつ移動）";
   }
-  return "クリックでこの月以降を計画表示に切り替え";
+  return "クリックでこの月以降を計画表示に切り替え（Ctrl+←→ で境界を1か月ずつ移動）";
 }

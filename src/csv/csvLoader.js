@@ -22,6 +22,7 @@ export {
   getSavedFolderName,
   getSavedFolderState,
   hasFolderCsvCache,
+  hasPeriodCsvInCache,
   clearSavedFolderData,
   resolveFolderDataFromCache,
   resolveFiscalEndMonthFromCache,
